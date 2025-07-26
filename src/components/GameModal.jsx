@@ -26,17 +26,6 @@ const GameModal = ({ game, onClose }) => {
   const my_score = game.my_score || 'N/A';
   const description = game.description || 'N/A';
 
-  const hoursPlayedRaw = game.hoursPlayed?.toString().trim();
-  const hoursPlayedValid = hoursPlayedRaw && !invalidValues.includes(hoursPlayedRaw);
-  const playtimeValid = game.playtime && typeof game.playtime === 'number' && game.playtime > 0;
-
-  const displayHours =
-    hoursPlayedValid
-      ? hoursPlayedRaw
-      : playtimeValid
-        ? game.playtime.toString()
-        : 'N/A';
-
   let features = game.features || [];
   if (typeof features === 'string') {
     features = features.split(',').map(f => f.trim()).filter(Boolean);
@@ -100,7 +89,7 @@ const GameModal = ({ game, onClose }) => {
           <p>
             <strong>How Long to Beat:</strong>{' '}
             <span className="text-purple-400">
-              {displayHours !== 'N/A' ? `${displayHours} hours` : 'N/A'}
+            {game.how_long_to_beat != null ? `${game.how_long_to_beat} hours` : 'N/A'}
             </span>
           </p>
           <p><strong>Genres:</strong> <span className="text-purple-400">{genres}</span></p>

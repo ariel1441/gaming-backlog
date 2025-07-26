@@ -1,16 +1,6 @@
 import React from 'react';
 
 const GameCard = ({ game, onClick }) => {
-  const invalidValues = ['#N/A', 'N/A', 'null', '', null, undefined];
-  const hoursPlayedFromSheet = game.hoursPlayed?.toString().trim();
-  const hoursPlayedValid = hoursPlayedFromSheet && !invalidValues.includes(hoursPlayedFromSheet);
-
-  const goodHours = hoursPlayedValid
-    ? hoursPlayedFromSheet
-    : game.playtime && game.playtime > 0
-    ? game.playtime.toString()
-    : 'N/A';
-
   return (
     <div
       className="
@@ -37,8 +27,9 @@ const GameCard = ({ game, onClick }) => {
       <p className="text-sm text-purple-400">Rating: {game.rating || 'N/A'}</p>
       <p className="text-sm text-purple-400 capitalize">My Genres: {game.my_genre || 'N/A'}</p>
       <p className="text-sm text-purple-400">
-        How Long to Beat: {goodHours} {goodHours !== 'N/A' ? 'hours' : ''}
+        How Long to Beat: {game.how_long_to_beat != null ? `${game.how_long_to_beat} hours` : 'N/A'}
       </p>
+
     </div>
   );
 };
