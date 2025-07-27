@@ -33,10 +33,10 @@ const saveCache = async (cache) => {
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT g.*, s.name AS status, s.rank AS status_rank
-      FROM games g
-      JOIN statuses s ON g.status_id = s.id
-      ORDER BY s.rank ASC, g.id ASC;
+    SELECT g.*, s.rank AS status_rank
+    FROM games g
+    LEFT JOIN statuses s ON g.status = s.status
+    ORDER BY s.rank ASC, g.id ASC;
     `);
 
     const rawgCache = req.app.locals.rawgCache;
@@ -71,8 +71,6 @@ router.get('/', async (req, res) => {
             url: s.url,
           })) || [],
           features: rawgData?.tags?.map((t) => t.name) || [],
-          userScore: game.userScore || 'N/A',
-          metacriticUrl: null,
         };
       })
     );
@@ -86,10 +84,10 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { name, status_id, my_genre = '', thoughts = '', my_score = '' } = req.body;
+    const { name, status, how_long_to_beat, my_genre = '', thoughts = '', my_score } = req.body;
 
-    if (!name || !status_id) {
-      return res.status(400).json({ error: 'Name and status_id are required' });
+    if (!name || !status) {
+      return res.status(400).json({ error: 'Name and status are required' });
     }
 
     const rawgCache = req.app.locals.rawgCache;
@@ -108,13 +106,18 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const genres = rawgData?.genres?.map(g => g.name).join(', ') || '';
-
     const result = await pool.query(`
-      INSERT INTO games (name, my_genre, genres, thoughts, my_score, status_id)
+      INSERT INTO games (name, status, how_long_to_beat, my_genre, thoughts, my_score)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *;
-    `, [name.trim(), my_genre.trim(), genres, thoughts.trim(), my_score, status_id]);
+    `, [
+      name.trim(), 
+      status, 
+      how_long_to_beat || null,
+      my_genre.trim(), 
+      thoughts.trim(), 
+      my_score || null
+    ]);
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -122,6 +125,5 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to add game' });
   }
 });
-
 export const initCache = loadCache;
 export default router;
