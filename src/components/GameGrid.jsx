@@ -1,7 +1,7 @@
 import React from 'react';
 import GameCard from './GameCard';
 
-const GameGrid = ({ games, onSelectGame }) => {
+const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame }) => {
   if (!games.length) {
     return <p>No games found.</p>;
   }
@@ -15,6 +15,8 @@ const GameGrid = ({ games, onSelectGame }) => {
             key={idx}
             game={game}
             onClick={() => onSelectGame(game)}
+            onEdit={() => onEditGame(game)}
+            onDelete={() => onDeleteGame(game.id)}
           />
         ))}
     </div>

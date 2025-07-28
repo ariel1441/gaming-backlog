@@ -4,6 +4,7 @@ import FilterPanel from './components/FilterPanel';
 import AddGameForm from './components/AddGameForm';
 import GameGrid from './components/GameGrid';
 import GameModal from './components/GameModal';
+import EditGameForm from './components/EditGameForm'; // New import
 
 const App = () => {
   const [games, setGames] = useState([]);
@@ -29,6 +30,9 @@ const App = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // New state for editing
+  const [editingGame, setEditingGame] = useState(null);
 
   const filterRef = useRef(null);
   const addFormRef = useRef(null);
@@ -133,6 +137,73 @@ const App = () => {
     }
   };
 
+  // New function for editing games
+  const handleEditGame = async (gameData) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/games/${gameData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(gameData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Update failed with status ${response.status}:`, errorText);
+        alert(`Update failed: ${errorText}`);
+        return;
+      }
+
+      const updatedGame = await response.json();
+      
+      // Update the games list with the edited game
+      setGames(prevGames => 
+        prevGames.map(game => 
+          game.id === updatedGame.id ? { ...game, ...updatedGame } : game
+        )
+      );
+
+      // Close edit mode
+      setEditingGame(null);
+      
+      console.log('Game updated successfully:', updatedGame);
+    } catch (error) {
+      console.error('Error updating game:', error);
+      alert('Failed to update game. Please try again.');
+    }
+  };
+
+  // New function for deleting games
+  const handleDeleteGame = async (gameId) => {
+    if (!confirm('Are you sure you want to delete this game?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/games/${gameId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete game');
+      }
+
+      // Remove the game from the list
+      setGames(prevGames => prevGames.filter(game => game.id !== gameId));
+      
+      console.log('Game deleted successfully');
+    } catch (error) {
+      console.error('Error deleting game:', error);
+      alert('Failed to delete game. Please try again.');
+    }
+  };
+
+  // New function to start editing
+  const startEditing = (game) => {
+    setEditingGame(game);
+  };
+
   const handleSurpriseMe = () => {
     if (games.length > 0) {
       setSurpriseGame(games[Math.floor(Math.random() * games.length)]);
@@ -202,6 +273,8 @@ const App = () => {
           <GameGrid
             games={filteredGames}
             onSelectGame={setSelectedGame}
+            onEditGame={startEditing}
+            onDeleteGame={handleDeleteGame}
           />
         )}
 
@@ -214,6 +287,16 @@ const App = () => {
             game={surpriseGame}
             onClose={() => setSurpriseGame(null)}
             onRefresh={handleSurpriseMe}
+          />
+        )}
+
+        {/* New EditGameForm modal */}
+        {editingGame && (
+          <EditGameForm
+            game={editingGame}
+            onSubmit={handleEditGame}
+            onCancel={() => setEditingGame(null)}
+            statuses={allStatuses}
           />
         )}
       </main>

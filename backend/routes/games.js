@@ -1,4 +1,3 @@
-// backend/routes/games.js
 import express from 'express';
 import { pool } from '../db.js';
 import { fetchGameData } from '../utils/fetchRAWG.js';
@@ -125,5 +124,70 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to add game' });
   }
 });
+
+// PUT route for editing a game
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, status, how_long_to_beat, my_genre = '', thoughts = '', my_score } = req.body;
+
+    if (!name || !status) {
+      return res.status(400).json({ error: 'Name and status are required' });
+    }
+
+    // TODO: Add JWT authentication check here later
+    // if (!req.user || !req.user.isAdmin) {
+    //   return res.status(403).json({ error: 'Admin access required' });
+    // }
+
+    const result = await pool.query(`
+      UPDATE games 
+      SET name = $1, status = $2, how_long_to_beat = $3, my_genre = $4, thoughts = $5, my_score = $6
+      WHERE id = $7
+      RETURNING *;
+    `, [
+      name.trim(), 
+      status, 
+      how_long_to_beat || null,
+      my_genre.trim(), 
+      thoughts.trim(), 
+      my_score || null,
+      id
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error in PUT /games/:id:', err);
+    res.status(500).json({ error: 'Failed to update game' });
+  }
+});
+
+// DELETE route for deleting a game
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // TODO: Add JWT authentication check here later
+    // if (!req.user || !req.user.isAdmin) {
+    //   return res.status(403).json({ error: 'Admin access required' });
+    // }
+
+    const result = await pool.query('DELETE FROM games WHERE id = $1 RETURNING *;', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+
+    res.json({ message: 'Game deleted successfully', game: result.rows[0] });
+  } catch (err) {
+    console.error('Error in DELETE /games/:id:', err);
+    res.status(500).json({ error: 'Failed to delete game' });
+  }
+});
+
 export const initCache = loadCache;
 export default router;

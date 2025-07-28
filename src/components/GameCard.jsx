@@ -1,35 +1,92 @@
 import React from 'react';
 
-const GameCard = ({ game, onClick }) => {
+const GameCard = ({ game, onClick, onEdit, onDelete }) => {
+  const handleCardClick = (e) => {
+    if (e.target.closest('.action-button')) return;
+    onClick();
+  };
+
+  const handleEdit = (e) => {
+    e.stopPropagation();
+    onEdit();
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    onDelete();
+  };
+
   return (
     <div
-      className="
-        bg-gray-900 rounded-lg shadow-md p-4 cursor-pointer
-        transition-shadow duration-300
-        hover:shadow-[0_0_15px_4px_rgba(124,58,237,0.7)]
-      "
-      onClick={() => onClick(game)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if(e.key === 'Enter') onClick(game); }}
-      aria-label={`View details for ${game.name}`}
+      className="bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-700 transition-colors duration-200 relative group"
+      onClick={handleCardClick}
     >
-      {game.cover && (
-        <img
-          src={game.cover}
-          alt={game.name}
-          className="w-full h-60 object-cover rounded mb-4 shadow-[0_0_5px_3px_rgba(124,58,237,0.7)]"
-        />
-      )}
-      <h3 className="text-lg font-semibold text-white">{game.name}</h3>
-      <p className="text-sm text-purple-400 capitalize">Status: {game.status || 'N/A'}</p>
-      <p className="text-sm text-purple-400 capitalize">Genres: {game.genres || 'N/A'}</p>
-      <p className="text-sm text-purple-400">Rating: {game.rating || 'N/A'}</p>
-      <p className="text-sm text-purple-400 capitalize">My Genres: {game.my_genre || 'N/A'}</p>
-      <p className="text-sm text-purple-400">
-        How Long to Beat: {game.how_long_to_beat != null ? `${game.how_long_to_beat} hours` : 'N/A'}
-      </p>
+      {/* Action buttons */}
+      <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-2">
+        <button
+          onClick={handleEdit}
+          className="action-button bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full text-xs font-bold shadow-lg"
+          title="Edit game"
+        >
+          ✏️
+        </button>
+        <button
+          onClick={handleDelete}
+          className="action-button bg-red-600 hover:bg-red-700 text-white p-2 rounded-full text-xs font-bold shadow-lg"
+          title="Delete game"
+        >
+          🗑️
+        </button>
+      </div>
 
+      {/* Game cover image */}
+      {game.cover && (
+        <div className="relative">
+          <img
+            src={game.cover}
+            alt={game.name}
+            className="w-full h-64 object-cover" // increased from h-56
+            onError={(e) => {
+              e.target.style.display = 'none';
+            }}
+          />
+        </div>
+      )}
+
+      {/* Game info */}
+      <div className="p-2.5">
+        <h3 className="text-base font-semibold mb-1.5 text-white truncate">
+          {game.name}
+        </h3>
+
+        <div className="space-y-1 text-sm text-gray-300 leading-snug">
+          {game.status && (
+            <p className="truncate">
+              <span className="font-medium">Status:</span> {game.status}
+            </p>
+          )}
+          {game.my_genre && (
+            <p className="truncate">
+              <span className="font-medium">My Genres:</span> {game.my_genre}
+            </p>
+          )}
+          {game.genres && (
+            <p className="truncate">
+              <span className="font-medium">Genres:</span> {game.genres}
+            </p>
+          )}
+          {game.how_long_to_beat && (
+            <p className="truncate">
+              <span className="font-medium">How Long to Beat:</span> {game.how_long_to_beat}h
+            </p>
+          )}
+          {game.rating && (
+            <p className="truncate">
+              <span className="font-medium">Rating:</span> {game.rating}/5
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
