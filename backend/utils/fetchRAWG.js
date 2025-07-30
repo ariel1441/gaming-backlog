@@ -9,8 +9,6 @@ export async function fetchGameData(gameName) {
     }
 
     const searchUrl = `${BASE_URL}?key=${RAWG_API_KEY}&search=${encodeURIComponent(gameName)}&page_size=1`;
-    console.log('Search URL:', searchUrl);
-
     const searchRes = await fetch(searchUrl);
 
     if (!searchRes.ok) {
@@ -19,7 +17,6 @@ export async function fetchGameData(gameName) {
     }
 
     const searchData = await searchRes.json();
-
     const firstResult = searchData.results?.[0];
     if (!firstResult) {
       console.warn(`No search results found for: "${gameName}"`);

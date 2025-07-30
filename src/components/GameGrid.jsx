@@ -1,9 +1,15 @@
 import React from 'react';
 import GameCard from './GameCard';
 
-const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame }) => {
+const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin }) => {
   if (!games.length) {
-    return <p>No games found.</p>;
+    return (
+      <div className="text-center py-10 text-gray-400">
+        <div className="text-6xl mb-4">🎮</div>
+        <p className="text-xl">No games found.</p>
+        <p className="text-sm mt-2">Try adjusting your search or filters.</p>
+      </div>
+    );
   }
 
   return (
@@ -12,11 +18,12 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame }) => {
         .filter((game) => game.name?.trim())
         .map((game, idx) => (
           <GameCard
-            key={idx}
+            key={game.id || idx}
             game={game}
             onClick={() => onSelectGame(game)}
             onEdit={() => onEditGame(game)}
             onDelete={() => onDeleteGame(game.id)}
+            isAdmin={isAdmin}
           />
         ))}
     </div>

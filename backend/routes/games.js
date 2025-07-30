@@ -1,6 +1,7 @@
 import express from 'express';
 import { pool } from '../db.js';
 import { fetchGameData } from '../utils/fetchRAWG.js';
+import { verifyAdminToken, checkAdminStatus } from '../middleware/auth.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -29,6 +30,7 @@ const saveCache = async (cache) => {
   }
 };
 
+// GET all games (public route)
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -81,12 +83,19 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+// POST new game (public route, but status override for non-admins)
+router.post('/', checkAdminStatus, async (req, res) => {
   try {
-    const { name, status, how_long_to_beat, my_genre = '', thoughts = '', my_score } = req.body;
+    let { name, status, how_long_to_beat, my_genre = '', thoughts = '', my_score } = req.body;
 
     if (!name || !status) {
       return res.status(400).json({ error: 'Name and status are required' });
+    }
+
+    // If user is not admin, override status to "recommended by someone"
+    if (!req.isAdmin) {
+      status = 'recommended by someone';
+      console.log(`Non-admin user added game "${name}" with auto-set status: ${status}`);
     }
 
     const rawgCache = req.app.locals.rawgCache;
@@ -125,8 +134,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT route for editing a game
-router.put('/:id', async (req, res) => {
+// PUT route for editing a game (admin only)
+router.put('/:id', verifyAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, status, how_long_to_beat, my_genre = '', thoughts = '', my_score } = req.body;
@@ -135,10 +144,11 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: 'Name and status are required' });
     }
 
-    // TODO: Add JWT authentication check here later
-    // if (!req.user || !req.user.isAdmin) {
-    //   return res.status(403).json({ error: 'Admin access required' });
-    // }
+    // Validate that the game exists before updating
+    const gameExists = await pool.query('SELECT id FROM games WHERE id = $1', [id]);
+    if (gameExists.rows.length === 0) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
 
     const result = await pool.query(`
       UPDATE games 
@@ -155,10 +165,7 @@ router.put('/:id', async (req, res) => {
       id
     ]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-
+    console.log(`Admin updated game: ${name} (ID: ${id})`);
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error in PUT /games/:id:', err);
@@ -166,15 +173,10 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE route for deleting a game
-router.delete('/:id', async (req, res) => {
+// DELETE route for deleting a game (admin only)
+router.delete('/:id', verifyAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
-
-    // TODO: Add JWT authentication check here later
-    // if (!req.user || !req.user.isAdmin) {
-    //   return res.status(403).json({ error: 'Admin access required' });
-    // }
 
     const result = await pool.query('DELETE FROM games WHERE id = $1 RETURNING *;', [id]);
 
@@ -182,6 +184,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Game not found' });
     }
 
+    console.log(`Admin deleted game: ${result.rows[0].name} (ID: ${id})`);
     res.json({ message: 'Game deleted successfully', game: result.rows[0] });
   } catch (err) {
     console.error('Error in DELETE /games/:id:', err);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 
 const AddGameForm = ({
@@ -8,8 +8,19 @@ const AddGameForm = ({
   handleAddGame,
   allMyGenres = [],
   allStatuses = [],
+  isAdmin,
 }) => {
   const [errors, setErrors] = useState({});
+
+  // 🟣 Ensure non-admins always default to "recommended by someone"
+  useEffect(() => {
+    if (!isAdmin) {
+      setNewGame((prev) => ({
+        ...prev,
+        status: 'recommended by someone',
+      }));
+    }
+  }, [isAdmin]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -19,7 +30,7 @@ const AddGameForm = ({
   const validate = () => {
     const newErrors = {};
     if (!newGame.name.trim()) newErrors.name = 'Name is required.';
-    if (!newGame.status.trim()) newErrors.status = 'Status is required.';
+    if (isAdmin && !newGame.status.trim()) newErrors.status = 'Status is required.';
     if (newGame.how_long_to_beat && isNaN(newGame.how_long_to_beat)) {
       newErrors.how_long_to_beat = 'How long to beat must be a number.';
     }
@@ -68,7 +79,7 @@ const AddGameForm = ({
       backgroundColor: '#4B5563',
       borderColor: '#6B21A8',
       color: '#fff',
-      minHeight: '38px', // ✅ Match Tailwind input height
+      minHeight: '38px',
     }),
     multiValue: (base) => ({ ...base, backgroundColor: '#6B21A8', color: '#fff' }),
     multiValueLabel: (base) => ({ ...base, color: '#fff' }),
@@ -100,7 +111,14 @@ const AddGameForm = ({
       onSubmit={onSubmit}
       className="bg-gray-800 p-4 rounded mb-6"
     >
-      <h2 className="text-lg font-semibold mb-2">Add a New Game</h2>
+      <div className="flex justify-between items-center mb-2">
+        <h2 className="text-lg font-semibold">Add a New Game</h2>
+        {!isAdmin && (
+          <span className="text-xs text-yellow-400 bg-yellow-900/30 px-2 py-1 rounded border border-yellow-600">
+            ⚠️ Status will be set to "recommended by someone"
+          </span>
+        )}
+      </div>
 
       {Object.values(errors).length > 0 && (
         <div className="bg-red-900 text-red-300 p-2 rounded mb-3">
@@ -125,13 +143,14 @@ const AddGameForm = ({
         />
 
         {/* Status */}
-        <div>
+        <div className="relative">
           <Select
             options={statusOptions}
             value={selectedStatus}
             onChange={handleStatusSelect}
             styles={customStyles}
             placeholder="Select status..."
+            isDisabled={!isAdmin}
           />
         </div>
 
@@ -170,11 +189,27 @@ const AddGameForm = ({
         rows={3}
       />
 
+      {/* My Score */}
+      <div className="mb-4">
+        <label className="block mb-1 font-semibold">My Score (0-10):</label>
+        <input
+          name="my_score"
+          type="number"
+          min="0"
+          max="10"
+          step="0.1"
+          placeholder="e.g., 8.5"
+          value={newGame.my_score}
+          onChange={handleChange}
+          className="bg-gray-700 text-white px-2 py-2 rounded w-full h-[38px]"
+        />
+      </div>
+
       <button
         type="submit"
-        className="bg-purple-600 px-4 py-2 rounded hover:bg-purple-700 w-full"
+        className="bg-purple-600 px-4 py-2 rounded hover:bg-purple-700 w-full font-medium transition-colors"
       >
-        Submit Game
+        {isAdmin ? 'Add Game' : 'Suggest Game'}
       </button>
     </form>
   );

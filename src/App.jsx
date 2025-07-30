@@ -1,12 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { AuthProvider } from './contexts/AuthContext';
+import { useAuth } from './contexts/AuthContext';
 import Sidebar from './components/Sidebar';
 import FilterPanel from './components/FilterPanel';
 import AddGameForm from './components/AddGameForm';
 import GameGrid from './components/GameGrid';
 import GameModal from './components/GameModal';
-import EditGameForm from './components/EditGameForm'; // New import
+import EditGameForm from './components/EditGameForm';
+import AdminLoginForm from './components/AdminLoginForm';
 
-const App = () => {
+const AppContent = () => {
   const [games, setGames] = useState([]);
   const [filteredGames, setFilteredGames] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,6 +23,7 @@ const App = () => {
   const [filterVisible, setFilterVisible] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
 
   const [sortKey, setSortKey] = useState('');
   const [isReversed, setIsReversed] = useState(false);
@@ -30,16 +34,18 @@ const App = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // New state for editing
   const [editingGame, setEditingGame] = useState(null);
+
+  const { isAdmin, loading: authLoading, getAuthHeaders } = useAuth();
 
   const filterRef = useRef(null);
   const addFormRef = useRef(null);
 
   useEffect(() => {
-    fetchGames();
-  }, []);
+    if (!authLoading) {
+      fetchGames();
+    }
+  }, [authLoading]);
 
   const fetchGames = async () => {
     setLoading(true);
@@ -122,51 +128,69 @@ const App = () => {
   const handleAddGame = async (e) => {
     e.preventDefault();
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      };
+
       const res = await fetch('http://localhost:5000/api/games', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(newGame),
       });
+      
       if (!res.ok) throw new Error('Failed to add game');
-      await res.json();
+      
+      const addedGame = await res.json();
+      
+      // Show notification if status was overridden for non-admin
+      if (!isAdmin && newGame.status !== 'recommended by someone') {
+        alert('Game added successfully! Since you\'re not logged in as admin, the status was set to "recommended by someone".');
+      }
+      
       setNewGame({ name: '', status: '', how_long_to_beat: '', my_genre: '', thoughts: '', my_score: '' });
       setShowAddForm(false);
       fetchGames();
     } catch (err) {
       console.error('Error adding game:', err);
+      alert('Failed to add game. Please try again.');
     }
   };
 
-  // New function for editing games
   const handleEditGame = async (gameData) => {
+    if (!isAdmin) {
+      alert('Admin access required to edit games.');
+      return;
+    }
+
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      };
+
       const response = await fetch(`http://localhost:5000/api/games/${gameData.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(gameData),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Update failed with status ${response.status}:`, errorText);
-        alert(`Update failed: ${errorText}`);
+        const errorData = await response.json();
+        console.error(`Update failed with status ${response.status}:`, errorData);
+        alert(`Update failed: ${errorData.error}`);
         return;
       }
 
       const updatedGame = await response.json();
       
-      // Update the games list with the edited game
       setGames(prevGames => 
         prevGames.map(game => 
           game.id === updatedGame.id ? { ...game, ...updatedGame } : game
         )
       );
 
-      // Close edit mode
       setEditingGame(null);
-      
       console.log('Game updated successfully:', updatedGame);
     } catch (error) {
       console.error('Error updating game:', error);
@@ -174,24 +198,30 @@ const App = () => {
     }
   };
 
-  // New function for deleting games
   const handleDeleteGame = async (gameId) => {
+    if (!isAdmin) {
+      alert('Admin access required to delete games.');
+      return;
+    }
+
     if (!confirm('Are you sure you want to delete this game?')) {
       return;
     }
 
     try {
+      const headers = getAuthHeaders();
+
       const response = await fetch(`http://localhost:5000/api/games/${gameId}`, {
         method: 'DELETE',
+        headers,
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete game');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete game');
       }
 
-      // Remove the game from the list
       setGames(prevGames => prevGames.filter(game => game.id !== gameId));
-      
       console.log('Game deleted successfully');
     } catch (error) {
       console.error('Error deleting game:', error);
@@ -199,8 +229,11 @@ const App = () => {
     }
   };
 
-  // New function to start editing
   const startEditing = (game) => {
+    if (!isAdmin) {
+      alert('Admin access required to edit games.');
+      return;
+    }
     setEditingGame(game);
   };
 
@@ -215,6 +248,14 @@ const App = () => {
     setSelectedGenres([]);
     setSelectedMyGenres([]);
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen bg-gray-900 text-white items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-purple-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
@@ -232,6 +273,8 @@ const App = () => {
         setSortKey={setSortKey}
         isReversed={isReversed}
         setIsReversed={setIsReversed}
+        isAdmin={isAdmin}
+        onShowAdminLogin={() => setShowAdminLogin(true)}
       />
 
       <main className="flex-1 p-6 overflow-auto">
@@ -260,6 +303,7 @@ const App = () => {
             handleAddGame={handleAddGame}
             allStatuses={allStatuses}
             allMyGenres={allMyGenres}
+            isAdmin={isAdmin}
           />
         )}
 
@@ -275,6 +319,7 @@ const App = () => {
             onSelectGame={setSelectedGame}
             onEditGame={startEditing}
             onDeleteGame={handleDeleteGame}
+            isAdmin={isAdmin}
           />
         )}
 
@@ -290,7 +335,6 @@ const App = () => {
           />
         )}
 
-        {/* New EditGameForm modal */}
         {editingGame && (
           <EditGameForm
             game={editingGame}
@@ -299,8 +343,20 @@ const App = () => {
             statuses={allStatuses}
           />
         )}
+
+        {showAdminLogin && (
+          <AdminLoginForm onClose={() => setShowAdminLogin(false)} />
+        )}
       </main>
     </div>
+  );
+};
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 
