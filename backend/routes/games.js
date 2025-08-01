@@ -8,6 +8,8 @@ import path from 'path';
 const router = express.Router();
 const CACHE_PATH = path.resolve('cached_rawg_data.json');
 
+const DEFAULT_POSITION_SPACING = 1000;
+
 // Load cache from disk
 const loadCache = async (app) => {
   try {
@@ -30,14 +32,25 @@ const saveCache = async (cache) => {
   }
 };
 
+// Get next position in a given status
+const getNextPosition = async (status) => {
+  const result = await pool.query(
+    'SELECT MAX(position) as max FROM games WHERE status = $1',
+    [status]
+  );
+  return (result.rows[0].max || 0) + DEFAULT_POSITION_SPACING;
+};
+
+// These functions are no longer needed - removed for simplicity
+
 // GET all games (public route)
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
-    SELECT g.*, s.rank AS status_rank
-    FROM games g
-    LEFT JOIN statuses s ON g.status = s.status
-    ORDER BY s.rank ASC, g.id ASC;
+      SELECT g.*, s.rank AS status_rank
+      FROM games g
+      LEFT JOIN statuses s ON g.status = s.status
+      ORDER BY s.rank ASC, g.position ASC NULLS LAST, g.id ASC;
     `);
 
     const rawgCache = req.app.locals.rawgCache;
@@ -60,11 +73,11 @@ router.get('/', async (req, res) => {
           cover: rawgData?.background_image || '',
           releaseDate: rawgData?.released || '',
           description: rawgData?.description || '',
-          how_long_to_beat:(typeof game.how_long_to_beat === 'number' && game.how_long_to_beat > 0)
-            ? game.how_long_to_beat: (typeof rawgData?.playtime === 'number' && rawgData.playtime > 0)? rawgData.playtime: null,
-
+          how_long_to_beat: (typeof game.how_long_to_beat === 'number' && game.how_long_to_beat > 0)
+            ? game.how_long_to_beat
+            : (typeof rawgData?.playtime === 'number' && rawgData.playtime > 0) ? rawgData.playtime : null,
           rating: rawgData?.rating || '',
-          genres: rawgData?.genres?.map((g) => g.name).join(', ')  || 'Unknown',
+          genres: rawgData?.genres?.map((g) => g.name).join(', ') || 'Unknown',
           metacritic: rawgData?.metacritic || 'N/A',
           stores: rawgData?.stores?.map((s) => ({
             store_id: s.store?.id,
@@ -114,17 +127,20 @@ router.post('/', checkAdminStatus, async (req, res) => {
       }
     }
 
+    const position = await getNextPosition(status);
+
     const result = await pool.query(`
-      INSERT INTO games (name, status, how_long_to_beat, my_genre, thoughts, my_score)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO games (name, status, how_long_to_beat, my_genre, thoughts, my_score, position)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `, [
-      name.trim(), 
-      status, 
+      name.trim(),
+      status,
       how_long_to_beat || null,
-      my_genre.trim(), 
-      thoughts.trim(), 
-      my_score || null
+      my_genre.trim(),
+      thoughts.trim(),
+      my_score || null,
+      position
     ]);
 
     res.status(201).json(result.rows[0]);
@@ -144,24 +160,30 @@ router.put('/:id', verifyAdminToken, async (req, res) => {
       return res.status(400).json({ error: 'Name and status are required' });
     }
 
-    // Validate that the game exists before updating
-    const gameExists = await pool.query('SELECT id FROM games WHERE id = $1', [id]);
-    if (gameExists.rows.length === 0) {
+    const existingGame = await pool.query('SELECT * FROM games WHERE id = $1', [id]);
+    if (existingGame.rows.length === 0) {
       return res.status(404).json({ error: 'Game not found' });
+    }
+    const oldStatus = existingGame.rows[0].status;
+    let position = existingGame.rows[0].position;
+
+    if (status !== oldStatus) {
+      position = await getNextPosition(status);
     }
 
     const result = await pool.query(`
       UPDATE games 
-      SET name = $1, status = $2, how_long_to_beat = $3, my_genre = $4, thoughts = $5, my_score = $6
-      WHERE id = $7
+      SET name = $1, status = $2, how_long_to_beat = $3, my_genre = $4, thoughts = $5, my_score = $6, position = $7
+      WHERE id = $8
       RETURNING *;
     `, [
-      name.trim(), 
-      status, 
+      name.trim(),
+      status,
       how_long_to_beat || null,
-      my_genre.trim(), 
-      thoughts.trim(), 
+      my_genre.trim(),
+      thoughts.trim(),
       my_score || null,
+      position,
       id
     ]);
 
@@ -189,6 +211,70 @@ router.delete('/:id', verifyAdminToken, async (req, res) => {
   } catch (err) {
     console.error('Error in DELETE /games/:id:', err);
     res.status(500).json({ error: 'Failed to delete game' });
+  }
+});
+
+// PATCH route for updating position within same status (admin only)
+router.patch('/:id/position', verifyAdminToken, async (req, res) => {
+  const { id } = req.params;
+  const { targetIndex, status } = req.body;
+
+  if (typeof targetIndex !== 'number' || !status) {
+    return res.status(400).json({ error: 'targetIndex and status are required' });
+  }
+
+  try {
+    // Get all games in the same status, ordered by position, then by id
+    const statusGames = await pool.query(
+      'SELECT id, position FROM games WHERE status = $1 ORDER BY position ASC, id ASC',
+      [status]
+    );
+
+    if (statusGames.rows.length === 0) {
+      return res.status(404).json({ error: 'No games found in this status' });
+    }
+
+    // Find the game being moved
+    const gameIndex = statusGames.rows.findIndex(g => g.id === parseInt(id));
+    if (gameIndex === -1) {
+      return res.status(404).json({ error: 'Game not found in this status' });
+    }
+
+    // If target index is the same as current, no change needed
+    if (gameIndex === targetIndex) {
+      const game = await pool.query('SELECT * FROM games WHERE id = $1', [id]);
+      return res.json(game.rows[0]);
+    }
+
+    // Simple approach: Just rerank all games in this status with clean spacing
+    // This is more reliable than trying to calculate positions between existing ones
+    const gameIds = statusGames.rows.map(g => g.id);
+    
+    // Remove the moving game from its current position
+    gameIds.splice(gameIndex, 1);
+    
+    // Insert it at the new position
+    gameIds.splice(targetIndex, 0, parseInt(id));
+    
+    // Update all positions with clean 1000-spaced intervals
+    const updates = gameIds.map((gameId, index) => {
+      const newPosition = (index + 1) * DEFAULT_POSITION_SPACING;
+      return pool.query(
+        'UPDATE games SET position = $1 WHERE id = $2',
+        [newPosition, gameId]
+      );
+    });
+
+    await Promise.all(updates);
+
+    // Get the updated game to return
+    const result = await pool.query('SELECT * FROM games WHERE id = $1', [id]);
+    
+    console.log(`Reordered ${gameIds.length} games in status ${status}, moved game ${id} to index ${targetIndex}`);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error in PATCH /games/:id/position:', err);
+    res.status(500).json({ error: 'Failed to update position' });
   }
 });
 

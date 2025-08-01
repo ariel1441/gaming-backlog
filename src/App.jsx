@@ -69,6 +69,56 @@ const AppContent = () => {
     }
   };
 
+  // Smart Update approach - smooth reordering without page reset
+  const handleReorderGames = async (gameId, targetIndex, status) => {
+    console.log(`🎯 REORDER REQUEST: Game ${gameId} → Index ${targetIndex} in status "${status}"`);
+    
+    try {
+      // Step 1: Send reorder request to backend
+      const response = await fetch(`http://localhost:5000/api/games/${gameId}/position`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ 
+          targetIndex: targetIndex,
+          status: status 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      console.log(`✅ Backend confirmed reorder for game ${gameId}`);
+
+      // Step 2: Get fresh data from backend (all games with updated positions)
+      const freshGamesResponse = await fetch('http://localhost:5000/api/games');
+      if (!freshGamesResponse.ok) {
+        throw new Error('Failed to fetch updated games');
+      }
+      
+      const freshGamesData = await freshGamesResponse.json();
+      const normalizedData = freshGamesData.map(game => ({ 
+        ...game, 
+        rawgRating: game.rating || 0 
+      }));
+      
+      // Step 3: Update React state with fresh data (smooth update, no reset)
+      setGames(normalizedData);
+      
+      console.log(`✅ SUCCESS: UI updated with fresh game positions`);
+
+    } catch (err) {
+      console.error('❌ FAILED to reorder game:', err);
+      // Fallback: refresh everything if something goes wrong
+      fetchGames();
+      alert('Failed to reorder game. Please try again.');
+    }
+  };
+
+  // Updated filtering and sorting
   useEffect(() => {
     const filtered = games.filter(g => {
       const lower = searchQuery.toLowerCase();
@@ -83,6 +133,23 @@ const AppContent = () => {
       return nameMatch && statusMatch && genreMatch && myGenreMatch;
     });
 
+    // Always sort by status rank first, then position within status, then id
+    filtered.sort((a, b) => {
+      // Primary sort: status rank
+      const statusCompare = (a.status_rank || 999) - (b.status_rank || 999);
+      if (statusCompare !== 0) return statusCompare;
+      
+      // Secondary sort: position within status (null positions go to end)
+      const posA = a.position || 999999;
+      const posB = b.position || 999999;
+      const positionCompare = posA - posB;
+      if (positionCompare !== 0) return positionCompare;
+      
+      // Tertiary sort: id as final fallback
+      return a.id - b.id;
+    });
+
+    // Only apply additional sorting if sortKey is set (this overrides the default sorting)
     if (sortKey) {
       filtered.sort((a, b) => {
         let compare = 0;
@@ -138,16 +205,16 @@ const AppContent = () => {
         headers,
         body: JSON.stringify(newGame),
       });
-      
+
       if (!res.ok) throw new Error('Failed to add game');
-      
+
       const addedGame = await res.json();
-      
+
       // Show notification if status was overridden for non-admin
       if (!isAdmin && newGame.status !== 'recommended by someone') {
         alert('Game added successfully! Since you\'re not logged in as admin, the status was set to "recommended by someone".');
       }
-      
+
       setNewGame({ name: '', status: '', how_long_to_beat: '', my_genre: '', thoughts: '', my_score: '' });
       setShowAddForm(false);
       fetchGames();
@@ -183,9 +250,9 @@ const AppContent = () => {
       }
 
       const updatedGame = await response.json();
-      
-      setGames(prevGames => 
-        prevGames.map(game => 
+
+      setGames(prevGames =>
+        prevGames.map(game =>
           game.id === updatedGame.id ? { ...game, ...updatedGame } : game
         )
       );
@@ -320,6 +387,7 @@ const AppContent = () => {
             onEditGame={startEditing}
             onDeleteGame={handleDeleteGame}
             isAdmin={isAdmin}
+            onReorder={isAdmin ? handleReorderGames : null}
           />
         )}
 
