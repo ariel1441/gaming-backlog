@@ -1,4 +1,3 @@
-// components/AdminLoginForm.jsx
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -37,13 +36,13 @@ const AdminLoginForm = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-modal">
+      <div className="bg-surface-card border border-surface-border rounded-lg p-6 w-full max-w-md mx-4">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-white">Admin Login</h2>
+          <h2 className="text-xl font-bold text-content-primary">Admin Login</h2>
           <button
             onClick={handleClose}
-            className="text-gray-400 hover:text-white transition-colors text-2xl"
+            className="text-content-muted hover:text-content-primary transition-colors text-2xl"
             disabled={loading}
           >
             ×
@@ -52,7 +51,7 @@ const AdminLoginForm = ({ onClose }) => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-content-secondary mb-2">
               Admin Password
             </label>
             <input
@@ -60,7 +59,7 @@ const AdminLoginForm = ({ onClose }) => {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full px-3 py-2 bg-surface-elevated border border-surface-border rounded-md text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="Enter admin password"
               disabled={loading}
               autoFocus
@@ -68,7 +67,7 @@ const AdminLoginForm = ({ onClose }) => {
           </div>
 
           {error && (
-            <div className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-md p-2">
+            <div className="text-state-error text-sm bg-state-error/20 border border-state-error rounded-md p-2">
               {error}
             </div>
           )}
@@ -77,7 +76,7 @@ const AdminLoginForm = ({ onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-md transition-colors flex items-center justify-center"
+              className="flex-1 bg-action-primary hover:bg-action-primary-hover disabled:bg-primary-dark disabled:cursor-not-allowed text-content-primary font-medium py-2 px-4 rounded-md transition-colors flex items-center justify-center"
             >
               {loading ? (
                 <>
@@ -92,14 +91,14 @@ const AdminLoginForm = ({ onClose }) => {
               type="button"
               onClick={handleClose}
               disabled={loading}
-              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
+              className="px-4 py-2 bg-surface-elevated hover:bg-surface-border disabled:bg-surface-elevated disabled:cursor-not-allowed text-content-primary font-medium rounded-md transition-colors"
             >
               Cancel
             </button>
           </div>
         </form>
 
-        <div className="mt-4 text-xs text-gray-400">
+        <div className="mt-4 text-xs text-content-muted">
           <p>This login is for administrative functions only.</p>
         </div>
       </div>

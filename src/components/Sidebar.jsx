@@ -1,141 +1,108 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  PlusIcon,
+  SparklesIcon,
+  ArrowsUpDownIcon,
+  ArrowRightOnRectangleIcon,
+  KeyIcon,
+} from '@heroicons/react/24/outline';
+
+const Tooltip = ({ text, children }) => (
+  <div className="group relative flex items-center justify-center">
+    {children}
+    <div className="absolute left-10 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded bg-surface-elevated border border-surface-border text-content-primary opacity-0 group-hover:opacity-100 transition whitespace-nowrap shadow-md pointer-events-none z-tooltip">
+      {text}
+    </div>
+  </div>
+);
 
 const Sidebar = ({
-  sidebarOpen,
-  setSidebarOpen,
-  searchQuery,
-  setSearchQuery,
+  searchVisible,
+  setSearchVisible,
+  sortVisible,
+  setSortVisible,
   filterVisible,
   setFilterVisible,
   showAddForm,
   setShowAddForm,
   handleSurpriseMe,
-  sortKey,
-  setSortKey,
-  isReversed,
-  setIsReversed,
+  isAdmin,
   onShowAdminLogin,
 }) => {
-  const { isAdmin, logout } = useAuth();
+  const { logout } = useAuth();
 
   const handleLogout = () => {
     logout();
-    // Optional: Show a success message
     console.log('Logged out successfully');
   };
 
   return (
     <aside
-      className={`
-        transition-all duration-300 bg-gray-800 flex flex-col items-center
-        p-4 space-y-4
-        ${sidebarOpen ? 'w-[20vw] min-w-[150px] max-w-64' : 'w-16'}
-      `}
+      className=" w-10 sm:w-14 md:w-16
+                transition-all duration-300 bg-surface-bg/95 backdrop-blur-md flex flex-col items-center
+                p-6 space-y-6 border-r border-surface-border shadow"
+      style={{ zIndex: 999 }}
     >
-      <button
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className={`mt-4 ${
-          sidebarOpen
-            ? 'text-left w-full bg-gray-700 px-3 py-2 rounded hover:bg-purple-600'
-            : 'bg-gray-700 w-10 h-10 flex items-center justify-center rounded hover:bg-purple-600'
-        }`}
-      >
-        ☰ {sidebarOpen && 'Menu'}
-      </button>
+      <Tooltip text="Search Games">
+        <MagnifyingGlassIcon
+          className={`w-6 h-6 cursor-pointer transition-colors ${
+            searchVisible ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+          }`}
+          onClick={() => setSearchVisible(!searchVisible)}
+        />
+      </Tooltip>
 
-      {sidebarOpen && (
-        <>
-          <h1 className="text-xl font-bold text-center">Game Backlog 🎮</h1>
+      <Tooltip text="Sort Games">
+        <ArrowsUpDownIcon
+          className={`w-6 h-6 cursor-pointer transition-colors ${
+            sortVisible ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+          }`}
+          onClick={() => setSortVisible(!sortVisible)}
+        />
+      </Tooltip>
 
-          {/* Admin Status Indicator */}
-          {isAdmin && (
-            <div className="w-full bg-purple-900 border border-purple-600 px-3 py-2 rounded text-center text-sm">
-              <div className="text-purple-300">👑 Admin Mode</div>
-            </div>
-          )}
+      <Tooltip text="Filter Games">
+        <FunnelIcon
+          className={`w-6 h-6 cursor-pointer transition-colors ${
+            filterVisible ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+          }`}
+          onClick={() => setFilterVisible(!filterVisible)}
+        />
+      </Tooltip>
 
-          {/* Admin Login/Logout Button */}
-          <div className="w-full">
-            {isAdmin ? (
-              <button
-                onClick={handleLogout}
-                className="w-full bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white font-medium transition-colors"
-              >
-                🚪 Logout
-              </button>
-            ) : (
-              <button
-                onClick={onShowAdminLogin}
-                className="w-full bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-white font-medium transition-colors"
-              >
-                🔑 Admin Login
-              </button>
-            )}
-          </div>
+      <Tooltip text={showAddForm ? 'Cancel Add Game' : 'Add New Game'}>
+        <PlusIcon
+          className={`w-6 h-6 cursor-pointer transition-colors ${
+            showAddForm ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+          }`}
+          onClick={() => setShowAddForm(!showAddForm)}
+        />
+      </Tooltip>
 
-          <input
-            className="bg-gray-700 text-white px-3 py-2 rounded w-full"
-            placeholder="Search games..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+      <Tooltip text="Surprise Me!">
+        <SparklesIcon
+          className="w-6 h-6 text-content-muted cursor-pointer hover:text-state-warning transition-colors"
+          onClick={handleSurpriseMe}
+        />
+      </Tooltip>
+
+      {isAdmin ? (
+        <Tooltip text="Admin Logout">
+          <ArrowRightOnRectangleIcon
+            className="w-6 h-6 text-content-muted cursor-pointer hover:text-action-danger transition-colors"
+            onClick={handleLogout}
           />
-
-          <button
-            onClick={() => setFilterVisible(!filterVisible)}
-            className="w-full bg-gray-700 px-3 py-2 rounded hover:bg-purple-600"
-          >
-            {filterVisible ? 'Hide Filters' : 'Show Filters'}
-          </button>
-
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="w-full bg-gray-700 px-3 py-2 rounded hover:bg-purple-600"
-          >
-            {showAddForm ? 'Cancel' : 'Add Game'}
-          </button>
-
-          <button
-            onClick={handleSurpriseMe}
-            className="w-full bg-gray-700 px-3 py-2 rounded hover:bg-purple-600"
-          >
-            Surprise Me 🎲
-          </button>
-
-          <select
-            className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-            value={sortKey}
-            onChange={(e) => {
-              const key = e.target.value;
-              setSortKey(key);
-              const descendingByDefault = ['hoursPlayed', 'rawgRating', 'metacritic'];
-              setIsReversed(descendingByDefault.includes(key));
-            }}
-          >
-            <option value="">Sort By</option>
-            <option value="name">Name</option>
-            <option value="hoursPlayed">How Long To Beat</option>
-            <option value="rawgRating">RAWG Rating</option>
-            <option value="metacritic">Metacritic</option>
-            <option value="releaseDate">Release Date</option>
-          </select>
-
-          <button
-            onClick={() => sortKey && setIsReversed((prev) => !prev)}
-            className="w-full bg-gray-600 px-3 py-2 rounded hover:bg-purple-600"
-            disabled={!sortKey}
-          >
-            Reverse Sort ⇅
-          </button>
-
-          {/* Admin Helper Text */}
-          {!isAdmin && (
-            <div className="w-full text-xs text-gray-400 text-center mt-4 px-2">
-              <p>💡 Anyone can add games!</p>
-              <p>Login as admin to edit/delete.</p>
-            </div>
-          )}
-        </>
+        </Tooltip>
+      ) : (
+        <Tooltip text="Admin Login">
+          <KeyIcon
+            className="w-6 h-6 text-content-muted cursor-pointer hover:text-state-success transition-colors"
+            onClick={onShowAdminLogin}
+          />
+        </Tooltip>
       )}
     </aside>
   );

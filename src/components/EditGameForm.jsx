@@ -41,20 +41,20 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
   if (!game) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-      <div className="bg-gray-900 text-white rounded-xl p-6 w-full max-w-lg shadow-lg relative">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface-card border border-surface-border text-content-primary rounded-xl p-6 w-full max-w-lg shadow-glow-primary relative">
         <button
           onClick={onCancel}
-          className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-xl"
+          className="absolute top-2 right-2 text-content-muted hover:text-action-danger text-xl transition-colors"
           title="Close"
         >
           ×
         </button>
-        <h2 className="text-xl font-bold mb-4">Edit Game: {game.name}</h2>
+        <h2 className="text-xl font-bold mb-4 text-content-primary">Edit Game: {game.name}</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium mb-1">Game Name *</label>
+            <label htmlFor="name" className="block text-sm font-medium mb-1 text-content-secondary">Game Name *</label>
             <input
               type="text"
               id="name"
@@ -62,19 +62,19 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               value={formData.name}
               onChange={handleChange}
               required
-              className="w-full p-2 rounded bg-gray-800 border border-gray-600 text-white"
+              className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
 
           <div>
-            <label htmlFor="status" className="block text-sm font-medium mb-1">Status *</label>
+            <label htmlFor="status" className="block text-sm font-medium mb-1 text-content-secondary">Status *</label>
             <select
               id="status"
               name="status"
               value={formData.status}
               onChange={handleChange}
               required
-              className="w-full p-2 rounded bg-gray-800 border border-gray-600 text-white"
+              className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             >
               <option value="">Select Status</option>
               {statuses.map(status => (
@@ -86,7 +86,7 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
           </div>
 
           <div>
-            <label htmlFor="how_long_to_beat" className="block text-sm font-medium mb-1">
+            <label htmlFor="how_long_to_beat" className="block text-sm font-medium mb-1 text-content-secondary">
               How Long to Beat (hours)
             </label>
             <input
@@ -96,12 +96,12 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               value={formData.how_long_to_beat}
               onChange={handleChange}
               min="0"
-              className="w-full p-2 rounded bg-gray-800 border border-gray-600 text-white"
+              className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
 
           <div>
-            <label htmlFor="my_genre" className="block text-sm font-medium mb-1">My Genre</label>
+            <label htmlFor="my_genre" className="block text-sm font-medium mb-1 text-content-secondary">My Genre</label>
             <input
               type="text"
               id="my_genre"
@@ -109,12 +109,12 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               value={formData.my_genre}
               onChange={handleChange}
               placeholder="e.g., RPG, Action, Indie"
-              className="w-full p-2 rounded bg-gray-800 border border-gray-600 text-white"
+              className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
 
           <div>
-            <label htmlFor="thoughts" className="block text-sm font-medium mb-1">Thoughts</label>
+            <label htmlFor="thoughts" className="block text-sm font-medium mb-1 text-content-secondary">Thoughts</label>
             <textarea
               id="thoughts"
               name="thoughts"
@@ -122,12 +122,12 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               onChange={handleChange}
               rows="3"
               placeholder="Your thoughts about the game..."
-              className="w-full p-2 rounded bg-gray-800 border border-gray-600 text-white"
+              className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
 
           <div>
-            <label htmlFor="my_score" className="block text-sm font-medium mb-1">My Score (0–10)</label>
+            <label htmlFor="my_score" className="block text-sm font-medium mb-1 text-content-secondary">My Score (0–10)</label>
             <input
               type="number"
               id="my_score"
@@ -137,7 +137,7 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               min="0"
               max="10"
               step="0.1"
-              className="w-full p-2 rounded bg-gray-800 border border-gray-600 text-white"
+              className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
 
@@ -145,13 +145,13 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white"
+              className="px-4 py-2 rounded bg-surface-elevated hover:bg-surface-border text-content-primary border border-surface-border transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white"
+              className="px-4 py-2 rounded bg-action-primary hover:bg-action-primary-hover text-content-primary transition-colors"
             >
               Save Changes
             </button>

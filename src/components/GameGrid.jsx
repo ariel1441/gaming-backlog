@@ -105,7 +105,7 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
 
   if (!games.length) {
     return (
-      <div className="text-center py-10 text-gray-400">
+      <div className="text-center py-10 text-content-muted">
         <div className="text-6xl mb-4">🎮</div>
         <p className="text-xl">No games found.</p>
         <p className="text-sm mt-2">Try adjusting your search or filters.</p>
