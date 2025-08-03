@@ -80,9 +80,9 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
     const draggedGame = localGames[oldIndex];
     const targetGame = localGames[newIndex];
 
-    // Check if games are in the same status
-    if (draggedGame.status !== targetGame.status) {
-      console.log('Cannot move games between different statuses');
+    // Check if games are in the same RANK (not just same status)
+    if (draggedGame.status_rank !== targetGame.status_rank) {
+      console.log('Cannot move games between different ranks');
       return;
     }
 
@@ -90,16 +90,15 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
     const newOrder = arrayMove(localGames, oldIndex, newIndex);
     setLocalGames(newOrder);
 
-    // Call the reorder function with the correct status-specific index
+    // Call the reorder function with the correct rank-specific index
     if (onReorder) {
-      // Get ONLY games in the same status from the NEW order
-      const sameStatusGames = newOrder.filter(g => g.status === draggedGame.status);
-      const targetIndexInStatus = sameStatusGames.findIndex(g => g.id === draggedGame.id);
+      // Get ONLY games in the same RANK from the NEW order
+      const sameRankGames = newOrder.filter(g => g.status_rank === draggedGame.status_rank);
+      const targetIndexInRank = sameRankGames.findIndex(g => g.id === draggedGame.id);
       
-      console.log(`Moving game ${draggedGame.id} to index ${targetIndexInStatus} within status "${draggedGame.status}"`);
-      console.log(`Same status games:`, sameStatusGames.map(g => `${g.name}(${g.id})`));
+      console.log(`Moving game ${draggedGame.id} to index ${targetIndexInRank} within rank "${draggedGame.status_rank}"`);
       
-      await onReorder(draggedGame.id, targetIndexInStatus, draggedGame.status);
+      await onReorder(draggedGame.id, targetIndexInRank, draggedGame.status);
     }
   };
 

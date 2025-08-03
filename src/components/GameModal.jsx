@@ -108,7 +108,7 @@ const GameModal = ({ game, onClose }) => {
         {/* Right side - Content */}
         <div className="flex-1 flex flex-col">
           {/* Title */}
-          <h2 id="game-modal-title" className="text-4xl font-bold mb-6 bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent tracking-wide">
+            <h2 id="game-modal-title" className="text-4xl font-bold mb-6 bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent tracking-wide pb-1 decoration-clone">
             {game.name}
           </h2>
 

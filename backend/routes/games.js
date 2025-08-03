@@ -224,20 +224,23 @@ router.patch('/:id/position', verifyAdminToken, async (req, res) => {
   }
 
   try {
-    // Get all games in the same status, ordered by position, then by id
-    const statusGames = await pool.query(
-      'SELECT id, position FROM games WHERE status = $1 ORDER BY position ASC, id ASC',
-      [status]
-    );
+    // Get all games with the SAME RANK as the provided status
+    const rankGames = await pool.query(`
+      SELECT g.id, g.position, g.status
+      FROM games g
+      JOIN statuses s ON g.status = s.status
+      WHERE s.rank = (SELECT rank FROM statuses WHERE status = $1)
+      ORDER BY g.position ASC NULLS LAST, g.id ASC
+    `, [status]);
 
-    if (statusGames.rows.length === 0) {
-      return res.status(404).json({ error: 'No games found in this status' });
+    if (rankGames.rows.length === 0) {
+      return res.status(404).json({ error: 'No games found in this rank' });
     }
 
     // Find the game being moved
-    const gameIndex = statusGames.rows.findIndex(g => g.id === parseInt(id));
+    const gameIndex = rankGames.rows.findIndex(g => g.id === parseInt(id));
     if (gameIndex === -1) {
-      return res.status(404).json({ error: 'Game not found in this status' });
+      return res.status(404).json({ error: 'Game not found in this rank' });
     }
 
     // If target index is the same as current, no change needed
@@ -246,9 +249,8 @@ router.patch('/:id/position', verifyAdminToken, async (req, res) => {
       return res.json(game.rows[0]);
     }
 
-    // Simple approach: Just rerank all games in this status with clean spacing
-    // This is more reliable than trying to calculate positions between existing ones
-    const gameIds = statusGames.rows.map(g => g.id);
+    // Reorder all games in this RANK
+    const gameIds = rankGames.rows.map(g => g.id);
     
     // Remove the moving game from its current position
     gameIds.splice(gameIndex, 1);
@@ -270,7 +272,7 @@ router.patch('/:id/position', verifyAdminToken, async (req, res) => {
     // Get the updated game to return
     const result = await pool.query('SELECT * FROM games WHERE id = $1', [id]);
     
-    console.log(`Reordered ${gameIds.length} games in status ${status}, moved game ${id} to index ${targetIndex}`);
+    console.log(`Reordered ${gameIds.length} games in rank, moved game ${id} to index ${targetIndex}`);
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error in PATCH /games/:id/position:', err);
