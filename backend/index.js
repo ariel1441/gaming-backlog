@@ -5,9 +5,10 @@ import cors from 'cors';
 import path from 'path';
 import gamesRouter, { initCache } from './routes/games.js';
 import authRouter from './routes/auth.js';
+import corsOptions from './config/cors.js';
 
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 console.log(`starting`);
 
