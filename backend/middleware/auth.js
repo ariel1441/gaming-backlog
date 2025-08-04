@@ -18,7 +18,7 @@ export const verifyAdminToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access denied. No valid token provided.' });
   }
 
-  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+  const token = authHeader.substring(7); 
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -72,6 +72,6 @@ export const generateAdminToken = () => {
   return jwt.sign(
     { isAdmin: true },
     JWT_SECRET,
-    { expiresIn: '7d' } // Token expires in 7 days
+    { expiresIn: '1d' } // Token expires in 1 days
   );
 };

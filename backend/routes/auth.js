@@ -27,7 +27,7 @@ router.post('/login', async (req, res) => {
     res.json({
       message: 'Login successful',
       token,
-      expiresIn: '7d'
+      expiresIn: '1d'
     });
   } catch (error) {
     console.error('Error in admin login:', error);

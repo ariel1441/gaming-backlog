@@ -37,14 +37,22 @@ const GameModal = ({ game, onClose }) => {
 
   // Status color mapping using your color scheme
   const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'completed': return 'bg-state-success/20 text-state-success border-state-success/30';
-      case 'playing': return 'bg-primary/20 text-primary border-primary/30';
-      case 'backlog': return 'bg-state-warning/20 text-state-warning border-state-warning/30';
-      case 'dropped': return 'bg-state-error/20 text-state-error border-state-error/30';
-      case 'on hold': return 'bg-secondary/20 text-secondary border-secondary/30';
-      default: return 'bg-content-muted/20 text-content-muted border-content-muted/30';
-    }
+    const statusMap = {
+      'playing': 'bg-status-playing/20 text-status-playing border-status-playing/30',
+      'plan to play soon': 'bg-status-plan-to-play-soon/20 text-status-plan-to-play-soon border-status-plan-to-play-soon/30',
+      'plan to play': 'bg-status-plan-to-play/20 text-status-plan-to-play border-status-plan-to-play/30',
+      'played and should come back': 'bg-status-played-and-should-come-back/20 text-status-played-and-should-come-back border-status-played-and-should-come-back/30',
+      'play when in the mood': 'bg-status-play-when-in-the-mood/20 text-status-play-when-in-the-mood border-status-play-when-in-the-mood/30',
+      'maybe in the future': 'bg-status-maybe-in-the-future/20 text-status-maybe-in-the-future border-status-maybe-in-the-future/30',
+      'recommended by someone': 'bg-status-recommended-by-someone/20 text-status-recommended-by-someone border-status-recommended-by-someone/30',
+      'not anytime soon': 'bg-status-not-anytime-soon/20 text-status-not-anytime-soon border-status-not-anytime-soon/30',
+      'finished': 'bg-status-finished/20 text-status-finished border-status-finished/30',
+      'played alot but didnt finish': 'bg-status-played-alot-but-didnt-finish/20 text-status-played-alot-but-didnt-finish border-status-played-alot-but-didnt-finish/30',
+      'played a bit': 'bg-status-played-a-bit/20 text-status-played-a-bit border-status-played-a-bit/30',
+      'played and wont come back': 'bg-status-played-and-wont-come-back/20 text-status-played-and-wont-come-back border-status-played-and-wont-come-back/30',
+    };
+    
+    return statusMap[status?.toLowerCase()] || 'bg-content-muted/20 text-content-muted border-content-muted/30';
   };
 
   const renderFeatureIcons = (features) => {
