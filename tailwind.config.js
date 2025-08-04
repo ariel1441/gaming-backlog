@@ -37,20 +37,6 @@ module.exports = {
           danger: '#ef4444',             
           'danger-hover': '#dc2626',     
         },
-        status: {
-          playing: '#f97316',                    // Priority 1 - Orange (primary)
-          'plan-to-play-soon': '#f59e0b',        // Priority 2 - Amber  
-          'plan-to-play': '#eab308',             // Priority 3 - Yellow
-          'played-and-should-come-back': '#84cc16', // Priority 4 - Lime
-          'play-when-in-the-mood': '#3b82f6',    // Priority 5 - Blue (secondary)
-          'maybe-in-the-future': '#8b5cf6',      // Priority 6 - Violet
-          'recommended-by-someone': '#06b6d4',   // Priority 7 - Cyan
-          'not-anytime-soon': '#64748b',         // Priority 8 - Slate
-          finished: '#22c55e',                   // completed - Green (both finished states)
-          'played-alot-but-didnt-finish': '#22c55e', // completed - Green (same as finished)
-          'played-a-bit': '#6b7280',             // Priority 9 - Gray
-          'played-and-wont-come-back': '#ef4444', // Priority 9 - Red
-        },
       },
       boxShadow: {
         'glow-primary': '0 0 20px rgba(249, 115, 22, 0.4)',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { statusClassMap } from '../utils/statusClassMap';
 
 const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
   const handleCardClick = (e) => {
@@ -24,24 +25,10 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
     onDelete();
   };
 
-  // Clean status mapping using Tailwind config colors
   const getStatusColor = (status) => {
-    const statusMap = {
-      'playing': 'bg-status-playing/20 text-status-playing border-status-playing/30',
-      'plan to play soon': 'bg-status-plan-to-play-soon/20 text-status-plan-to-play-soon border-status-plan-to-play-soon/30',
-      'plan to play': 'bg-status-plan-to-play/20 text-status-plan-to-play border-status-plan-to-play/30',
-      'played and should come back': 'bg-status-played-and-should-come-back/20 text-status-played-and-should-come-back border-status-played-and-should-come-back/30',
-      'play when in the mood': 'bg-status-play-when-in-the-mood/20 text-status-play-when-in-the-mood border-status-play-when-in-the-mood/30',
-      'maybe in the future': 'bg-status-maybe-in-the-future/20 text-status-maybe-in-the-future border-status-maybe-in-the-future/30',
-      'recommended by someone': 'bg-status-recommended-by-someone/20 text-status-recommended-by-someone border-status-recommended-by-someone/30',
-      'not anytime soon': 'bg-status-not-anytime-soon/20 text-status-not-anytime-soon border-status-not-anytime-soon/30',
-      'finished': 'bg-status-finished/20 text-status-finished border-status-finished/30',
-      'played alot but didnt finish': 'bg-status-played-alot-but-didnt-finish/20 text-status-played-alot-but-didnt-finish border-status-played-alot-but-didnt-finish/30',
-      'played a bit': 'bg-status-played-a-bit/20 text-status-played-a-bit border-status-played-a-bit/30',
-      'played and wont come back': 'bg-status-played-and-wont-come-back/20 text-status-played-and-wont-come-back border-status-played-and-wont-come-back/30',
-    };
-    
-    return statusMap[status?.toLowerCase()] || 'bg-content-muted/20 text-content-muted border-content-muted/30';
+    if (!status || typeof status !== 'string') return 'bg-content-muted/20 text-content-muted border-content-muted/30';
+    const normalized = status.toLowerCase().trim().replaceAll('-', ' ');
+    return statusClassMap[normalized] || 'bg-content-muted/20 text-content-muted border-content-muted/30';
   };
 
   return (
@@ -73,6 +60,7 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
           <img
             src={game.cover}
             alt={game.name}
+            loading="lazy"
             className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
             onError={(e) => { e.target.style.display = 'none'; }}
           />

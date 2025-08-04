@@ -2,11 +2,18 @@
 import express from 'express';
 import { verifyAdminPassword, generateAdminToken } from '../middleware/auth.js';
 import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
 
+const loginLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 5,                 // Max 5 requests per IP
+  message: 'Too many login attempts. Please try again in 5 minutes.',
+});
+
 // Admin login route
-router.post('/login', async (req, res) => {
+router.post('/login',loginLimiter, async (req, res) => {
   try {
     const { password } = req.body;
 
