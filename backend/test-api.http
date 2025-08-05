@@ -1,0 +1,8 @@
+### Test invalid game creation (should hit error handler)
+POST http://localhost:5000/api/games
+Content-Type: application/json
+
+{
+  "name": "",
+  "status": ""
+}

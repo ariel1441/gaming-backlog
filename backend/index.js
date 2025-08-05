@@ -14,6 +14,7 @@ import gamesRouter, { initCache } from './routes/games.js';
 import authRouter from './routes/auth.js';
 import corsOptions from './config/cors.js';
 import compression from 'compression';
+import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
@@ -29,6 +30,8 @@ await initCache(app); // loads the cache and sets app.locals.rawgCache
 // Routes
 app.use('/api/games', gamesRouter);
 app.use('/api/auth', authRouter);
+
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

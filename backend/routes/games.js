@@ -7,10 +7,8 @@ import path from 'path';
 
 const router = express.Router();
 const CACHE_PATH = path.resolve('backend/data/cached_rawg_data.json');
-
 const DEFAULT_POSITION_SPACING = 1000;
 
-// Load cache from disk
 const loadCache = async (app) => {
   try {
     const data = await fs.readFile(CACHE_PATH, 'utf-8');
@@ -22,7 +20,6 @@ const loadCache = async (app) => {
   }
 };
 
-// Save cache to disk
 const saveCache = async (cache) => {
   try {
     await fs.writeFile(CACHE_PATH, JSON.stringify(cache, null, 2));
@@ -41,10 +38,8 @@ const getNextPosition = async (status) => {
   return (result.rows[0].max || 0) + DEFAULT_POSITION_SPACING;
 };
 
-// These functions are no longer needed - removed for simplicity
-
-// GET all games (public route)
-router.get('/', async (req, res) => {
+// GET all games
+router.get('/', async (req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT g.*, s.rank AS status_rank
@@ -58,24 +53,24 @@ router.get('/', async (req, res) => {
     const games = await Promise.all(
       result.rows.map(async (game) => {
         const cacheKey = game.name.toLowerCase();
-
         if (!rawgCache[cacheKey]) {
-          console.log(`Fetching RAWG data for: ${game.name}`);
           const data = await fetchGameData(game.name);
           rawgCache[cacheKey] = data || {};
           await saveCache(rawgCache);
         }
 
         const rawgData = rawgCache[cacheKey];
-
         return {
           ...game,
           cover: rawgData?.background_image || '',
           releaseDate: rawgData?.released || '',
           description: rawgData?.description || '',
-          how_long_to_beat: (typeof game.how_long_to_beat === 'number' && game.how_long_to_beat > 0)
-            ? game.how_long_to_beat
-            : (typeof rawgData?.playtime === 'number' && rawgData.playtime > 0) ? rawgData.playtime : null,
+          how_long_to_beat:
+            typeof game.how_long_to_beat === 'number' && game.how_long_to_beat > 0
+              ? game.how_long_to_beat
+              : typeof rawgData?.playtime === 'number' && rawgData.playtime > 0
+                ? rawgData.playtime
+                : null,
           rating: rawgData?.rating || '',
           genres: rawgData?.genres?.map((g) => g.name).join(', ') || 'Unknown',
           metacritic: rawgData?.metacritic || 'N/A',
@@ -91,79 +86,80 @@ router.get('/', async (req, res) => {
 
     res.json(games);
   } catch (err) {
-    console.error('Error in GET /games:', err);
-    res.status(500).json({ error: 'Server error' });
+    next(err);
   }
 });
 
-// POST new game (public route, but status override for non-admins)
-router.post('/', checkAdminStatus, async (req, res) => {
+// POST new game
+router.post('/', checkAdminStatus, async (req, res, next) => {
   try {
     let { name, status, how_long_to_beat, my_genre = '', thoughts = '', my_score } = req.body;
 
     if (!name || !status) {
-      return res.status(400).json({ error: 'Name and status are required' });
+      const err = new Error('Name and status are required');
+      err.statusCode = 400;
+      return next(err);
     }
 
     // If user is not admin, override status to "recommended by someone"
     if (!req.isAdmin) {
       status = 'recommended by someone';
-      console.log(`Non-admin user added game "${name}" with auto-set status: ${status}`);
     }
 
     const rawgCache = req.app.locals.rawgCache;
     const cacheKey = name.toLowerCase();
-
     let rawgData = rawgCache[cacheKey];
 
     if (!rawgData) {
-      console.log(`Fetching RAWG data for: ${name}`);
       rawgData = await fetchGameData(name);
       if (rawgData) {
         rawgCache[cacheKey] = rawgData;
         await saveCache(rawgCache);
-      } else {
-        console.warn(`No search results for: ${name}`);
       }
     }
 
     const position = await getNextPosition(status);
 
-    const result = await pool.query(`
-      INSERT INTO games (name, status, how_long_to_beat, my_genre, thoughts, my_score, position)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *;
-    `, [
-      name.trim(),
-      status,
-      how_long_to_beat || null,
-      my_genre.trim(),
-      thoughts.trim(),
-      my_score || null,
-      position
-    ]);
+    const result = await pool.query(
+      `INSERT INTO games (name, status, how_long_to_beat, my_genre, thoughts, my_score, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *;`,
+      [
+        name.trim(),
+        status,
+        how_long_to_beat || null,
+        my_genre.trim(),
+        thoughts.trim(),
+        my_score || null,
+        position
+      ]
+    );
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Error in POST /games:', err);
-    res.status(500).json({ error: 'Failed to add game' });
+    next(err);
   }
 });
 
-// PUT route for editing a game (admin only)
-router.put('/:id', verifyAdminToken, async (req, res) => {
+// PUT update game
+router.put('/:id', verifyAdminToken, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, status, how_long_to_beat, my_genre = '', thoughts = '', my_score } = req.body;
 
     if (!name || !status) {
-      return res.status(400).json({ error: 'Name and status are required' });
+      const err = new Error('Name and status are required');
+      err.statusCode = 400;
+      return next(err);
     }
 
     const existingGame = await pool.query('SELECT * FROM games WHERE id = $1', [id]);
     if (existingGame.rows.length === 0) {
-      return res.status(404).json({ error: 'Game not found' });
+      const err = new Error('Game not found');
+      err.statusCode = 404;
+      return next(err);
     }
+
     const oldStatus = existingGame.rows[0].status;
     let position = existingGame.rows[0].position;
 
@@ -171,56 +167,59 @@ router.put('/:id', verifyAdminToken, async (req, res) => {
       position = await getNextPosition(status);
     }
 
-    const result = await pool.query(`
-      UPDATE games 
-      SET name = $1, status = $2, how_long_to_beat = $3, my_genre = $4, thoughts = $5, my_score = $6, position = $7
-      WHERE id = $8
-      RETURNING *;
-    `, [
-      name.trim(),
-      status,
-      how_long_to_beat || null,
-      my_genre.trim(),
-      thoughts.trim(),
-      my_score || null,
-      position,
-      id
-    ]);
+    const result = await pool.query(
+      `UPDATE games 
+       SET name = $1, status = $2, how_long_to_beat = $3, my_genre = $4, thoughts = $5, my_score = $6, position = $7
+       WHERE id = $8
+       RETURNING *;`,
+      [
+        name.trim(),
+        status,
+        how_long_to_beat || null,
+        my_genre.trim(),
+        thoughts.trim(),
+        my_score || null,
+        position,
+        id
+      ]
+    );
 
     console.log(`Admin updated game: ${name} (ID: ${id})`);
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error in PUT /games/:id:', err);
-    res.status(500).json({ error: 'Failed to update game' });
+    next(err);
   }
 });
 
-// DELETE route for deleting a game (admin only)
-router.delete('/:id', verifyAdminToken, async (req, res) => {
+// DELETE game
+router.delete('/:id', verifyAdminToken, async (req, res, next) => {
   try {
     const { id } = req.params;
 
     const result = await pool.query('DELETE FROM games WHERE id = $1 RETURNING *;', [id]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Game not found' });
+      const err = new Error('Game not found');
+      err.statusCode = 404;
+      return next(err);
     }
 
     console.log(`Admin deleted game: ${result.rows[0].name} (ID: ${id})`);
     res.json({ message: 'Game deleted successfully', game: result.rows[0] });
   } catch (err) {
-    console.error('Error in DELETE /games/:id:', err);
-    res.status(500).json({ error: 'Failed to delete game' });
+    next(err);
   }
 });
 
-// PATCH route for updating position within same status (admin only)
-router.patch('/:id/position', verifyAdminToken, async (req, res) => {
+// PATCH reorder game
+router.patch('/:id/position', verifyAdminToken, async (req, res, next) => {
   const { id } = req.params;
   const { targetIndex, status } = req.body;
 
   if (typeof targetIndex !== 'number' || !status) {
-    return res.status(400).json({ error: 'targetIndex and status are required' });
+    const err = new Error('targetIndex and status are required');
+    err.statusCode = 400;
+    return next(err);
   }
 
   try {
@@ -234,13 +233,16 @@ router.patch('/:id/position', verifyAdminToken, async (req, res) => {
     `, [status]);
 
     if (rankGames.rows.length === 0) {
-      return res.status(404).json({ error: 'No games found in this rank' });
+      const err = new Error('No games found in this rank');
+      err.statusCode = 404;
+      return next(err);
     }
 
-    // Find the game being moved
     const gameIndex = rankGames.rows.findIndex(g => g.id === parseInt(id));
     if (gameIndex === -1) {
-      return res.status(404).json({ error: 'Game not found in this rank' });
+      const err = new Error('Game not found in this rank');
+      err.statusCode = 404;
+      return next(err);
     }
 
     // If target index is the same as current, no change needed
@@ -257,26 +259,20 @@ router.patch('/:id/position', verifyAdminToken, async (req, res) => {
     
     // Insert it at the new position
     gameIds.splice(targetIndex, 0, parseInt(id));
-    
-    // Update all positions with clean 1000-spaced intervals
+
     const updates = gameIds.map((gameId, index) => {
       const newPosition = (index + 1) * DEFAULT_POSITION_SPACING;
-      return pool.query(
-        'UPDATE games SET position = $1 WHERE id = $2',
-        [newPosition, gameId]
-      );
+      return pool.query('UPDATE games SET position = $1 WHERE id = $2', [newPosition, gameId]);
     });
 
     await Promise.all(updates);
 
-    // Get the updated game to return
     const result = await pool.query('SELECT * FROM games WHERE id = $1', [id]);
-    
+
     console.log(`Reordered ${gameIds.length} games in rank, moved game ${id} to index ${targetIndex}`);
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error in PATCH /games/:id/position:', err);
-    res.status(500).json({ error: 'Failed to update position' });
+    next(err);
   }
 });
 

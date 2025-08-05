@@ -1,4 +1,3 @@
-// routes/auth.js
 import express from 'express';
 import { verifyAdminPassword, generateAdminToken } from '../middleware/auth.js';
 import jwt from 'jsonwebtoken';
@@ -13,20 +12,23 @@ const loginLimiter = rateLimit({
 });
 
 // Admin login route
-router.post('/login',loginLimiter, async (req, res) => {
+router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { password } = req.body;
 
     if (!password) {
-      return res.status(400).json({ error: 'Password is required' });
+      const err = new Error('Password is required');
+      err.statusCode = 400;
+      return next(err);
     }
 
     const isValidPassword = await verifyAdminPassword(password);
     
     if (!isValidPassword) {
-      // Add a small delay to prevent brute force attacks
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return res.status(401).json({ error: 'Invalid password' });
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Prevent brute-force
+      const err = new Error('Invalid password');
+      err.statusCode = 401;
+      return next(err);
     }
 
     const token = generateAdminToken();
@@ -37,13 +39,12 @@ router.post('/login',loginLimiter, async (req, res) => {
       expiresIn: '1d'
     });
   } catch (error) {
-    console.error('Error in admin login:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    next(error); 
   }
 });
 
 // Token verification route (optional - for frontend to check if token is still valid)
-router.get('/verify', async (req, res) => {
+router.get('/verify', async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -61,7 +62,7 @@ router.get('/verify', async (req, res) => {
       res.status(401).json({ isValid: false });
     }
   } catch (error) {
-    res.status(401).json({ isValid: false });
+    next(error); 
   }
 });
 
