@@ -114,14 +114,14 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
           </div>
 
           <div>
-            <label htmlFor="thoughts" className="block text-sm font-medium mb-1 text-content-secondary">Thoughts</label>
+            <label htmlFor="thoughts" className="block text-sm font-medium mb-1 text-content-secondary">My Thoughts / Expectation</label>
             <textarea
               id="thoughts"
               name="thoughts"
               value={formData.thoughts}
               onChange={handleChange}
               rows="3"
-              placeholder="Your thoughts about the game..."
+              placeholder="Your Thoughts / Expectation about the game..."
               className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>

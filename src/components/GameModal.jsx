@@ -168,7 +168,7 @@ const GameModal = ({ game, onClose }) => {
             {/* My Thoughts */}
             {thoughts && thoughts.trim() && (
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">My Thoughts</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">My Thoughts / Expectation</div>
                 <div className="bg-surface-card/30 border border-surface-border/30 p-4 rounded-xl">
                   <span className="text-content-primary whitespace-pre-wrap leading-relaxed">{thoughts}</span>
                 </div>

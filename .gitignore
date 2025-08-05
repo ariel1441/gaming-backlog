@@ -1,1 +1,83 @@
-node_modules
+# -----------------------
+# 📁 Node dependencies
+# -----------------------
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# -----------------------
+# 🛠️ Vite build output
+# -----------------------
+dist/
+build/
+.vite/
+.cache/
+*.tsbuildinfo
+
+# -----------------------
+# ⚙️ Environment files
+# -----------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.example
+
+# -----------------------
+# 🧠 RAWG API cache
+# -----------------------
+backend/data/cached_rawg_data.json
+backend/data/cached_rawg_data_copy.json
+
+# -----------------------
+# 📜 Logs
+# -----------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# -----------------------
+# 🧪 Test coverage reports
+# -----------------------
+coverage/
+*.lcov
+
+# -----------------------
+# 🧼 OS-specific files
+# -----------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------
+# 🧑‍💻 Editor settings
+# -----------------------
+.vscode/
+.idea/
+*.swp
+
+# -----------------------
+# 🧪 Temp files
+# -----------------------
+*.tmp
+*.bak
+
+# -----------------------
+# 📦 Exported archives
+# -----------------------
+*.zip
+*.tar.gz
+*.tgz
+
+# -----------------------
+# 🧠 Local storage (in dev tools, optional)
+# -----------------------
+localStorage.json
+
+# -----------------------
+# 🗑️ Deprecated legacy rules (was used for Google Sheets)
+# -----------------------
+# service-account.json  # Removed since Sheets integration is gone

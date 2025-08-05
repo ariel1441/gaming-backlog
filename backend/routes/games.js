@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 const router = express.Router();
-const CACHE_PATH = path.resolve('cached_rawg_data.json');
+const CACHE_PATH = path.resolve('backend/data/cached_rawg_data.json');
 
 const DEFAULT_POSITION_SPACING = 1000;
 

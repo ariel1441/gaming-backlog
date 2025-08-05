@@ -1,4 +1,3 @@
--- backend/seed.sql
 INSERT INTO statuses (status, rank) VALUES
   ('playing', 1),
   ('plan to play soon', 2),
@@ -11,4 +10,5 @@ INSERT INTO statuses (status, rank) VALUES
   ('played a bit', 9),
   ('played and wont come back', 10),
   ('played alot but didnt finish', 11),
-  ('finished', 12);
+  ('finished', 12)
+ON CONFLICT (status) DO NOTHING;

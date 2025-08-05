@@ -201,7 +201,7 @@ const AddGameForm = ({
 
       <textarea
         name="thoughts"
-        placeholder="Thoughts"
+        placeholder="My Thoughts / Expectation"
         value={newGame.thoughts}
         onChange={handleChange}
         className="bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted px-2 py-2 rounded w-full mb-4 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
