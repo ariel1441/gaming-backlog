@@ -1,16 +1,16 @@
-import React from 'react';
-import { statusClassMap } from '../utils/statusClassMap';
+import React from "react";
+import { statusClassMap } from "../utils/statusClassMap";
 
 const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
   const handleCardClick = (e) => {
-    if (e.target.closest('.action-button')) return;
+    if (e.target.closest(".action-button")) return;
     onClick();
   };
 
   const handleEdit = (e) => {
     e.stopPropagation();
     if (!isAdmin) {
-      alert('Admin access required to edit games.');
+      alert("Admin access required to edit games.");
       return;
     }
     onEdit();
@@ -19,16 +19,20 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
   const handleDelete = (e) => {
     e.stopPropagation();
     if (!isAdmin) {
-      alert('Admin access required to delete games.');
+      alert("Admin access required to delete games.");
       return;
     }
     onDelete();
   };
 
   const getStatusColor = (status) => {
-    if (!status || typeof status !== 'string') return 'bg-content-muted/20 text-content-muted border-content-muted/30';
-    const normalized = status.toLowerCase().trim().replaceAll('-', ' ');
-    return statusClassMap[normalized] || 'bg-content-muted/20 text-content-muted border-content-muted/30';
+    if (!status || typeof status !== "string")
+      return "bg-content-muted/20 text-content-muted border-content-muted/30";
+    const normalized = status.toLowerCase().trim().replaceAll("-", " ");
+    return (
+      statusClassMap[normalized] ||
+      "bg-content-muted/20 text-content-muted border-content-muted/30"
+    );
   };
 
   return (
@@ -62,7 +66,9 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
             alt={game.name}
             loading="lazy"
             className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
-            onError={(e) => { e.target.style.display = 'none'; }}
+            onError={(e) => {
+              e.target.style.display = "none";
+            }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-surface-bg/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         </div>
@@ -76,8 +82,12 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
         <div className="space-y-4">
           {game.status && (
             <div className="flex items-center gap-3">
-              <span className="text-xs font-medium text-content-secondary uppercase tracking-wider min-w-fit">Status</span>
-              <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${getStatusColor(game.status)}`}>
+              <span className="text-xs font-medium text-content-secondary uppercase tracking-wider min-w-fit">
+                Status
+              </span>
+              <span
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${getStatusColor(game.status)}`}
+              >
                 {game.status}
               </span>
             </div>
@@ -86,14 +96,22 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
           <div className="grid grid-cols-2 gap-4 text-sm">
             {game.rating && (
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">Rating</div>
-                <div className="text-state-warning font-bold text-lg">⭐ {game.rating}/5</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">
+                  Rating
+                </div>
+                <div className="text-state-warning font-bold text-lg">
+                  ⭐ {game.rating}/5
+                </div>
               </div>
             )}
             {game.how_long_to_beat && (
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">How Long to Beat</div>
-                <div className="text-state-success font-semibold">🕒 {game.how_long_to_beat}h</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">
+                  How Long to Beat
+                </div>
+                <div className="text-state-success font-semibold">
+                  🕒 {game.how_long_to_beat}h
+                </div>
               </div>
             )}
           </div>
@@ -101,14 +119,22 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
           <div className="space-y-3 pt-2 border-t border-surface-border/50">
             {game.my_genre && (
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">My Genre</div>
-                <div className="text-content-primary text-sm">{game.my_genre}</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">
+                  My Genre
+                </div>
+                <div className="text-content-primary text-sm">
+                  {game.my_genre}
+                </div>
               </div>
             )}
             {game.genres && (
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">Genres</div>
-                <div className="text-content-primary text-sm line-clamp-1">{game.genres}</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-1">
+                  Genres
+                </div>
+                <div className="text-content-primary text-sm line-clamp-1">
+                  {game.genres}
+                </div>
               </div>
             )}
           </div>

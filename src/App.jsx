@@ -1,18 +1,18 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { AuthProvider } from './contexts/AuthContext';
-import { useAuth } from './contexts/AuthContext';
-import Sidebar from './components/Sidebar';
-import FilterPanel from './components/FilterPanel';
-import AddGameForm from './components/AddGameForm';
-import GameGrid from './components/GameGrid';
-import GameModal from './components/GameModal';
-import EditGameForm from './components/EditGameForm';
-import AdminLoginForm from './components/AdminLoginForm';
+import React, { useEffect, useState, useRef } from "react";
+import { AuthProvider } from "./contexts/AuthContext";
+import { useAuth } from "./contexts/AuthContext";
+import Sidebar from "./components/Sidebar";
+import FilterPanel from "./components/FilterPanel";
+import AddGameForm from "./components/AddGameForm";
+import GameGrid from "./components/GameGrid";
+import GameModal from "./components/GameModal";
+import EditGameForm from "./components/EditGameForm";
+import AdminLoginForm from "./components/AdminLoginForm";
 
 const AppContent = () => {
   const [games, setGames] = useState([]);
   const [filteredGames, setFilteredGames] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedGame, setSelectedGame] = useState(null);
   const [surpriseGame, setSurpriseGame] = useState(null);
 
@@ -27,11 +27,16 @@ const AppContent = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
 
-  const [sortKey, setSortKey] = useState('');
+  const [sortKey, setSortKey] = useState("");
   const [isReversed, setIsReversed] = useState(false);
 
   const [newGame, setNewGame] = useState({
-    name: '', status: '', how_long_to_beat: '', my_genre: '', thoughts: '', my_score: '',
+    name: "",
+    status: "",
+    how_long_to_beat: "",
+    my_genre: "",
+    thoughts: "",
+    my_score: "",
   });
 
   const [loading, setLoading] = useState(true);
@@ -56,16 +61,19 @@ const AppContent = () => {
     setError(null);
 
     try {
-      const res = await fetch('http://localhost:5000/api/games');
+      const res = await fetch("http://localhost:5000/api/games");
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
       const data = await res.json();
-      const normalized = data.map(game => ({ ...game, rawgRating: game.rating || 0 }));
+      const normalized = data.map((game) => ({
+        ...game,
+        rawgRating: game.rating || 0,
+      }));
       setGames(normalized);
       setFilteredGames(normalized);
     } catch (err) {
-      console.error('Failed to fetch games:', err);
-      setError('Failed to load games. Please try again.');
+      console.error("Failed to fetch games:", err);
+      setError("Failed to load games. Please try again.");
       setGames([]);
       setFilteredGames([]);
     } finally {
@@ -73,23 +81,27 @@ const AppContent = () => {
     }
   };
 
-  // Smart Update approach - smooth reordering without page reset
   const handleReorderGames = async (gameId, targetIndex, status) => {
-    console.log(`🎯 REORDER REQUEST: Game ${gameId} → Index ${targetIndex} in status "${status}"`);
-    
+    console.log(
+      `🎯 REORDER REQUEST: Game ${gameId} → Index ${targetIndex} in status "${status}"`,
+    );
+
     try {
       // Step 1: Send reorder request to backend
-      const response = await fetch(`http://localhost:5000/api/games/${gameId}/position`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
+      const response = await fetch(
+        `http://localhost:5000/api/games/${gameId}/position`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeaders(),
+          },
+          body: JSON.stringify({
+            targetIndex: targetIndex,
+            status: status,
+          }),
         },
-        body: JSON.stringify({ 
-          targetIndex: targetIndex,
-          status: status 
-        }),
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -98,42 +110,53 @@ const AppContent = () => {
       console.log(`✅ Backend confirmed reorder for game ${gameId}`);
 
       // Step 2: Get fresh data from backend (all games with updated positions)
-      const freshGamesResponse = await fetch('http://localhost:5000/api/games');
+      const freshGamesResponse = await fetch("http://localhost:5000/api/games");
       if (!freshGamesResponse.ok) {
-        throw new Error('Failed to fetch updated games');
+        throw new Error("Failed to fetch updated games");
       }
-      
+
       const freshGamesData = await freshGamesResponse.json();
-      const normalizedData = freshGamesData.map(game => ({ 
-        ...game, 
-        rawgRating: game.rating || 0 
+      const normalizedData = freshGamesData.map((game) => ({
+        ...game,
+        rawgRating: game.rating || 0,
       }));
-      
+
       // Step 3: Update React state with fresh data (smooth update, no reset)
       setGames(normalizedData);
-      
-      console.log(`✅ SUCCESS: UI updated with fresh game positions`);
 
+      console.log(`✅ SUCCESS: UI updated with fresh game positions`);
     } catch (err) {
-      console.error('❌ FAILED to reorder game:', err);
+      console.error("❌ FAILED to reorder game:", err);
       // Fallback: refresh everything if something goes wrong
       fetchGames();
-      alert('Failed to reorder game. Please try again.');
+      alert("Failed to reorder game. Please try again.");
     }
   };
 
   // Updated filtering and sorting
   useEffect(() => {
-    const filtered = games.filter(g => {
+    const filtered = games.filter((g) => {
       const lower = searchQuery.toLowerCase();
       const nameMatch = g.name?.toLowerCase().includes(lower);
-      const statusMatch = selectedStatuses.length === 0 || selectedStatuses.includes(g.status);
-      const genreMatch = selectedGenres.length === 0 || selectedGenres.some(genre =>
-        g.genres?.split(',').map(x => x.trim()).includes(genre)
-      );
-      const myGenreMatch = selectedMyGenres.length === 0 || selectedMyGenres.some(tag =>
-        g.my_genre?.toLowerCase().split(',').map(x => x.trim()).includes(tag.toLowerCase())
-      );
+      const statusMatch =
+        selectedStatuses.length === 0 || selectedStatuses.includes(g.status);
+      const genreMatch =
+        selectedGenres.length === 0 ||
+        selectedGenres.some((genre) =>
+          g.genres
+            ?.split(",")
+            .map((x) => x.trim())
+            .includes(genre),
+        );
+      const myGenreMatch =
+        selectedMyGenres.length === 0 ||
+        selectedMyGenres.some((tag) =>
+          g.my_genre
+            ?.toLowerCase()
+            .split(",")
+            .map((x) => x.trim())
+            .includes(tag.toLowerCase()),
+        );
       return nameMatch && statusMatch && genreMatch && myGenreMatch;
     });
 
@@ -142,13 +165,13 @@ const AppContent = () => {
       // Primary sort: status rank
       const statusCompare = (a.status_rank || 999) - (b.status_rank || 999);
       if (statusCompare !== 0) return statusCompare;
-      
+
       // Secondary sort: position within status (null positions go to end)
       const posA = a.position || 999999;
       const posB = b.position || 999999;
       const positionCompare = posA - posB;
       if (positionCompare !== 0) return positionCompare;
-      
+
       // Tertiary sort: id as final fallback
       return a.id - b.id;
     });
@@ -158,163 +181,222 @@ const AppContent = () => {
       filtered.sort((a, b) => {
         let compare = 0;
         switch (sortKey) {
-          case 'name': compare = (a.name || '').localeCompare(b.name || ''); break;
-          case 'hoursPlayed': compare = (Number(a.how_long_to_beat) || 0) - (Number(b.how_long_to_beat) || 0); break;
-          case 'rawgRating': compare = (Number(a.rawgRating) || 0) - (Number(b.rawgRating) || 0); break;
-          case 'metacritic': compare = (Number(a.metacritic) || 0) - (Number(b.metacritic) || 0); break;
-          case 'releaseDate':
+          case "name":
+            compare = (a.name || "").localeCompare(b.name || "");
+            break;
+          case "hoursPlayed":
+            compare =
+              (Number(a.how_long_to_beat) || 0) -
+              (Number(b.how_long_to_beat) || 0);
+            break;
+          case "rawgRating":
+            compare = (Number(a.rawgRating) || 0) - (Number(b.rawgRating) || 0);
+            break;
+          case "metacritic":
+            compare = (Number(a.metacritic) || 0) - (Number(b.metacritic) || 0);
+            break;
+          case "releaseDate":
             const dateA = new Date(a.releaseDate || a.released || 0);
             const dateB = new Date(b.releaseDate || b.released || 0);
             compare = dateA - dateB;
             break;
-          default: compare = 0;
+          default:
+            compare = 0;
         }
         return isReversed ? -compare : compare;
       });
     }
 
     setFilteredGames(filtered);
-  }, [searchQuery, selectedGenres, selectedStatuses, selectedMyGenres, games, sortKey, isReversed]);
+  }, [
+    searchQuery,
+    selectedGenres,
+    selectedStatuses,
+    selectedMyGenres,
+    games,
+    sortKey,
+    isReversed,
+  ]);
 
   useEffect(() => {
     if (filterVisible && filterRef.current) {
-      filterRef.current.scrollIntoView({ behavior: 'smooth' });
+      filterRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [filterVisible]);
 
   useEffect(() => {
     if (showAddForm && addFormRef.current) {
-      addFormRef.current.scrollIntoView({ behavior: 'smooth' });
+      addFormRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [showAddForm]);
 
   useEffect(() => {
     if (searchVisible && searchRef.current) {
-      searchRef.current.scrollIntoView({ behavior: 'smooth' });
+      searchRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [searchVisible]);
 
   useEffect(() => {
     if (sortVisible && sortRef.current) {
-      sortRef.current.scrollIntoView({ behavior: 'smooth' });
+      sortRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [sortVisible]);
 
-  const allGenres = [...new Set(games.flatMap(g => g.genres?.split(',').map(x => x.trim()).filter(Boolean)))].sort();
-  const allMyGenres = [...new Set(games.flatMap(g => g.my_genre?.split(',').map(x => x.trim()).filter(Boolean)))].sort();
-  const allStatuses = [...new Set(games.map(g => g.status).filter(Boolean))].sort();
+  const allGenres = [
+    ...new Set(
+      games.flatMap((g) =>
+        g.genres
+          ?.split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+      ),
+    ),
+  ].sort();
+  const allMyGenres = [
+    ...new Set(
+      games.flatMap((g) =>
+        g.my_genre
+          ?.split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+      ),
+    ),
+  ].sort();
+  const allStatuses = [
+    ...new Set(games.map((g) => g.status).filter(Boolean)),
+  ].sort();
 
   const handleCheckboxToggle = (value, list, setList) => {
-    setList(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+    setList((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+    );
   };
 
   const handleAddGame = async (e) => {
     e.preventDefault();
     try {
       const headers = {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
       };
 
-      const res = await fetch('http://localhost:5000/api/games', {
-        method: 'POST',
+      const res = await fetch("http://localhost:5000/api/games", {
+        method: "POST",
         headers,
         body: JSON.stringify(newGame),
       });
 
-      if (!res.ok) throw new Error('Failed to add game');
+      if (!res.ok) throw new Error("Failed to add game");
 
       const addedGame = await res.json();
 
       // Show notification if status was overridden for non-admin
-      if (!isAdmin && newGame.status !== 'recommended by someone') {
-        alert('Game added successfully! Since you\'re not logged in as admin, the status was set to "recommended by someone".');
+      if (!isAdmin && newGame.status !== "recommended by someone") {
+        alert(
+          'Game added successfully! Since you\'re not logged in as admin, the status was set to "recommended by someone".',
+        );
       }
 
-      setNewGame({ name: '', status: '', how_long_to_beat: '', my_genre: '', thoughts: '', my_score: '' });
+      setNewGame({
+        name: "",
+        status: "",
+        how_long_to_beat: "",
+        my_genre: "",
+        thoughts: "",
+        my_score: "",
+      });
       setShowAddForm(false);
       fetchGames();
     } catch (err) {
-      console.error('Error adding game:', err);
-      alert('Failed to add game. Please try again.');
+      console.error("Error adding game:", err);
+      alert("Failed to add game. Please try again.");
     }
   };
 
   const handleEditGame = async (gameData) => {
     if (!isAdmin) {
-      alert('Admin access required to edit games.');
+      alert("Admin access required to edit games.");
       return;
     }
 
     try {
       const headers = {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
       };
 
-      const response = await fetch(`http://localhost:5000/api/games/${gameData.id}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(gameData),
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/games/${gameData.id}`,
+        {
+          method: "PUT",
+          headers,
+          body: JSON.stringify(gameData),
+        },
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error(`Update failed with status ${response.status}:`, errorData);
+        console.error(
+          `Update failed with status ${response.status}:`,
+          errorData,
+        );
         alert(`Update failed: ${errorData.error}`);
         return;
       }
 
       const updatedGame = await response.json();
 
-      setGames(prevGames =>
-        prevGames.map(game =>
-          game.id === updatedGame.id ? { ...game, ...updatedGame } : game
-        )
+      setGames((prevGames) =>
+        prevGames.map((game) =>
+          game.id === updatedGame.id ? { ...game, ...updatedGame } : game,
+        ),
       );
 
       setEditingGame(null);
-      console.log('Game updated successfully:', updatedGame);
+      console.log("Game updated successfully:", updatedGame);
     } catch (error) {
-      console.error('Error updating game:', error);
-      alert('Failed to update game. Please try again.');
+      console.error("Error updating game:", error);
+      alert("Failed to update game. Please try again.");
     }
   };
 
   const handleDeleteGame = async (gameId) => {
     if (!isAdmin) {
-      alert('Admin access required to delete games.');
+      alert("Admin access required to delete games.");
       return;
     }
 
-    if (!confirm('Are you sure you want to delete this game?')) {
+    if (!confirm("Are you sure you want to delete this game?")) {
       return;
     }
 
     try {
       const headers = getAuthHeaders();
 
-      const response = await fetch(`http://localhost:5000/api/games/${gameId}`, {
-        method: 'DELETE',
-        headers,
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/games/${gameId}`,
+        {
+          method: "DELETE",
+          headers,
+        },
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete game');
+        throw new Error(errorData.error || "Failed to delete game");
       }
 
-      setGames(prevGames => prevGames.filter(game => game.id !== gameId));
-      console.log('Game deleted successfully');
+      setGames((prevGames) => prevGames.filter((game) => game.id !== gameId));
+      console.log("Game deleted successfully");
     } catch (error) {
-      console.error('Error deleting game:', error);
-      alert('Failed to delete game. Please try again.');
+      console.error("Error deleting game:", error);
+      alert("Failed to delete game. Please try again.");
     }
   };
 
   const startEditing = (game) => {
     if (!isAdmin) {
-      alert('Admin access required to edit games.');
+      alert("Admin access required to edit games.");
       return;
     }
     setEditingGame(game);
@@ -333,11 +415,11 @@ const AppContent = () => {
   };
 
   const clearSearch = () => {
-    setSearchQuery('');
+    setSearchQuery("");
   };
 
   const clearSort = () => {
-    setSortKey('');
+    setSortKey("");
     setIsReversed(false);
   };
 
@@ -369,9 +451,14 @@ const AppContent = () => {
 
       <main className="flex-1 p-6 overflow-auto">
         {searchVisible && (
-          <div ref={searchRef} className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border">
+          <div
+            ref={searchRef}
+            className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-primary">Search Games</h3>
+              <h3 className="text-xl font-semibold text-primary">
+                Search Games
+              </h3>
               <button
                 onClick={() => setSearchVisible(false)}
                 className="text-content-muted hover:text-content-primary transition-colors"
@@ -405,7 +492,10 @@ const AppContent = () => {
         )}
 
         {sortVisible && (
-          <div ref={sortRef} className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border">
+          <div
+            ref={sortRef}
+            className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
+          >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold text-primary">Sort Games</h3>
               <button
@@ -431,7 +521,7 @@ const AppContent = () => {
                   <option value="releaseDate">Release Date</option>
                 </select>
               </div>
-              
+
               <div className="flex gap-2 items-center">
                 <input
                   type="checkbox"
@@ -440,7 +530,10 @@ const AppContent = () => {
                   onChange={(e) => setIsReversed(e.target.checked)}
                   className="w-4 h-4 text-primary bg-surface-elevated border-surface-border rounded focus:ring-primary"
                 />
-                <label htmlFor="reverse-sort" className="text-sm text-content-muted">
+                <label
+                  htmlFor="reverse-sort"
+                  className="text-sm text-content-muted"
+                >
                   Reverse Order
                 </label>
               </div>
@@ -452,10 +545,11 @@ const AppContent = () => {
                 Clear Sort
               </button>
             </div>
-            
+
             {sortKey && (
               <p className="mt-2 text-sm text-content-muted">
-                Sorted by: {sortKey} {isReversed ? '(descending)' : '(ascending)'}
+                Sorted by: {sortKey}{" "}
+                {isReversed ? "(descending)" : "(ascending)"}
               </p>
             )}
           </div>
@@ -508,7 +602,10 @@ const AppContent = () => {
         )}
 
         {selectedGame && (
-          <GameModal game={selectedGame} onClose={() => setSelectedGame(null)} />
+          <GameModal
+            game={selectedGame}
+            onClose={() => setSelectedGame(null)}
+          />
         )}
 
         {surpriseGame && (
@@ -531,7 +628,6 @@ const AppContent = () => {
         {showAdminLogin && (
           <AdminLoginForm onClose={() => setShowAdminLogin(false)} />
         )}
-
       </main>
     </div>
   );

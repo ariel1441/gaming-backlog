@@ -1,37 +1,37 @@
-import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
 
 const AdminLoginForm = ({ onClose }) => {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!password.trim()) {
-      setError('Password is required');
+      setError("Password is required");
       return;
     }
 
     setLoading(true);
-    setError('');
+    setError("");
 
     const result = await login(password);
-    
+
     if (result.success) {
       onClose();
-      setPassword('');
+      setPassword("");
     } else {
       setError(result.error);
     }
-    
+
     setLoading(false);
   };
 
   const handleClose = () => {
-    setPassword('');
-    setError('');
+    setPassword("");
+    setError("");
     onClose();
   };
 
@@ -39,7 +39,9 @@ const AdminLoginForm = ({ onClose }) => {
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-modal">
       <div className="bg-surface-card border border-surface-border rounded-lg p-6 w-full max-w-md mx-4">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-content-primary">Admin Login</h2>
+          <h2 className="text-xl font-bold text-content-primary">
+            Admin Login
+          </h2>
           <button
             onClick={handleClose}
             className="text-content-muted hover:text-content-primary transition-colors text-2xl"
@@ -51,7 +53,10 @@ const AdminLoginForm = ({ onClose }) => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-content-secondary mb-2">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-content-secondary mb-2"
+            >
               Admin Password
             </label>
             <input
@@ -84,7 +89,7 @@ const AdminLoginForm = ({ onClose }) => {
                   Logging in...
                 </>
               ) : (
-                'Login'
+                "Login"
               )}
             </button>
             <button

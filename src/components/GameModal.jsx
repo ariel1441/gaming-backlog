@@ -1,62 +1,75 @@
-import React, { useState } from 'react';
-import { statusClassMap } from '../utils/statusClassMap';
+import React, { useState } from "react";
+import { statusClassMap } from "../utils/statusClassMap";
 
 const featureIconsMap = {
-  multiplayer: '🎮',
-  singleplayer: '👤',
-  'co-op': '🤝',
-  vr: '🕶️',
-  'controller support': '🕹️',
-  achievements: '🏆',
+  multiplayer: "🎮",
+  singleplayer: "👤",
+  "co-op": "🤝",
+  vr: "🕶️",
+  "controller support": "🕹️",
+  achievements: "🏆",
 };
 
 const GameModal = ({ game, onClose }) => {
   const [showDescription, setShowDescription] = useState(false);
   if (!game) return null;
 
-  const invalidValues = ['#N/A', 'N/A', 'null', '', null, undefined];
+  const invalidValues = ["#N/A", "N/A", "null", "", null, undefined];
 
-  const cover = game.cover || 'https://via.placeholder.com/300x180?text=No+Image';
-  const metacritic = game.metacritic && !invalidValues.includes(game.metacritic) ? game.metacritic : 'N/A';
-  const my_genre = game.my_genre || 'Unknown';
-  const status = game.status || 'Unknown';
-  const rating = game.rating || 'N/A';
-  const releaseDate = game.releaseDate || 'Unknown';
-  const genres = game.genres || 'N/A';
-  const thoughts = game.thoughts ?? game.thoughts ?? '';
-  const my_score = game.my_score || '';
-  const description = game.description || 'N/A';
+  const cover =
+    game.cover || "https://via.placeholder.com/300x180?text=No+Image";
+  const metacritic =
+    game.metacritic && !invalidValues.includes(game.metacritic)
+      ? game.metacritic
+      : "N/A";
+  const my_genre = game.my_genre || "Unknown";
+  const status = game.status || "Unknown";
+  const rating = game.rating || "N/A";
+  const releaseDate = game.releaseDate || "Unknown";
+  const genres = game.genres || "N/A";
+  const thoughts = game.thoughts ?? game.thoughts ?? "";
+  const my_score = game.my_score || "";
+  const description = game.description || "N/A";
 
   let features = game.features || [];
-  if (typeof features === 'string') {
-    features = features.split(',').map(f => f.trim()).filter(Boolean);
+  if (typeof features === "string") {
+    features = features
+      .split(",")
+      .map((f) => f.trim())
+      .filter(Boolean);
   }
 
   const toggleDescription = () => {
-    setShowDescription(prev => !prev);
+    setShowDescription((prev) => !prev);
   };
 
   const getStatusColor = (status) => {
-    if (!status || typeof status !== 'string') return 'bg-content-muted/20 text-content-muted border-content-muted/30';
-    const normalized = status.toLowerCase().trim().replaceAll('-', ' ');
-    return statusClassMap[normalized] || 'bg-content-muted/20 text-content-muted border-content-muted/30';
-   };
+    if (!status || typeof status !== "string")
+      return "bg-content-muted/20 text-content-muted border-content-muted/30";
+    const normalized = status.toLowerCase().trim().replaceAll("-", " ");
+    return (
+      statusClassMap[normalized] ||
+      "bg-content-muted/20 text-content-muted border-content-muted/30"
+    );
+  };
 
   const renderFeatureIcons = (features) => {
     if (!Array.isArray(features) || features.length === 0) return null;
     return (
       <div className="flex flex-wrap gap-3 mt-6">
-        <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2 w-full">Features</div>
+        <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2 w-full">
+          Features
+        </div>
         <div className="flex flex-wrap gap-2">
           {features.map((feat, i) => {
             const key = feat.toLowerCase();
             if (!featureIconsMap[key]) return null;
             return (
-              <span 
-                key={i} 
-                title={feat} 
-                className="text-lg bg-surface-elevated/40 px-3 py-2 rounded-lg border border-surface-border/50 hover:border-primary/50 transition-colors" 
-                role="img" 
+              <span
+                key={i}
+                title={feat}
+                className="text-lg bg-surface-elevated/40 px-3 py-2 rounded-lg border border-surface-border/50 hover:border-primary/50 transition-colors"
+                role="img"
                 aria-label={feat}
               >
                 {featureIconsMap[key]}
@@ -94,7 +107,7 @@ const GameModal = ({ game, onClose }) => {
         <div className="lg:w-2/5 flex-shrink-0">
           <img
             src={cover}
-            alt={game.name || 'Game cover image'}
+            alt={game.name || "Game cover image"}
             className="w-full rounded-2xl object-cover h-full max-h-[80vh] shadow-glow-primary border border-surface-border/20"
             loading="lazy"
           />
@@ -103,14 +116,21 @@ const GameModal = ({ game, onClose }) => {
         {/* Right side - Content */}
         <div className="flex-1 flex flex-col">
           {/* Title */}
-            <h2 id="game-modal-title" className="text-4xl font-bold mb-6 bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent tracking-wide pb-1 decoration-clone">
+          <h2
+            id="game-modal-title"
+            className="text-4xl font-bold mb-6 bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent tracking-wide pb-1 decoration-clone"
+          >
             {game.name}
           </h2>
 
           {/* Status Badge - Most Important */}
           <div className="mb-6">
-            <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">Status</div>
-            <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold border ${getStatusColor(status)}`}>
+            <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">
+              Status
+            </div>
+            <span
+              className={`inline-block px-4 py-2 rounded-full text-sm font-semibold border ${getStatusColor(status)}`}
+            >
               {status}
             </span>
           </div>
@@ -122,24 +142,38 @@ const GameModal = ({ game, onClose }) => {
                 How Long to Beat
               </div>
               <div className="text-state-success font-bold text-xl">
-                {game.how_long_to_beat != null ? `🕒 ${game.how_long_to_beat}h` : 'N/A'}
+                {game.how_long_to_beat != null
+                  ? `🕒 ${game.how_long_to_beat}h`
+                  : "N/A"}
               </div>
-            </div>
-                        
-            <div>
-              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">RAWG Rating</div>
-              <div className="text-state-warning font-bold text-xl">⭐ {rating}</div>
             </div>
 
             <div>
-              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">Metacritic</div>
-              <div className="text-primary font-bold text-xl">🎯 {metacritic}</div>
+              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
+                RAWG Rating
+              </div>
+              <div className="text-state-warning font-bold text-xl">
+                ⭐ {rating}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
+                Metacritic
+              </div>
+              <div className="text-primary font-bold text-xl">
+                🎯 {metacritic}
+              </div>
             </div>
 
             {my_score && (
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">My Score</div>
-                <div className="text-secondary font-bold text-xl">💯 {my_score}</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
+                  My Score
+                </div>
+                <div className="text-secondary font-bold text-xl">
+                  💯 {my_score}
+                </div>
               </div>
             )}
           </div>
@@ -148,29 +182,39 @@ const GameModal = ({ game, onClose }) => {
           <div className="space-y-6 pt-6 border-t border-surface-border/50">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">My Genre</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
+                  My Genre
+                </div>
                 <div className="text-content-primary text-lg">{my_genre}</div>
               </div>
 
-             <div>
-              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">Genres</div>
-              <div className="text-content-primary text-lg">{genres}</div>
-            </div>
+              <div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
+                  Genres
+                </div>
+                <div className="text-content-primary text-lg">{genres}</div>
+              </div>
 
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">Release Date</div>
-                <div className="text-content-primary text-lg">{releaseDate}</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
+                  Release Date
+                </div>
+                <div className="text-content-primary text-lg">
+                  {releaseDate}
+                </div>
               </div>
             </div>
-
-           
 
             {/* My Thoughts */}
             {thoughts && thoughts.trim() && (
               <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">My Thoughts / Expectation</div>
+                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">
+                  My Thoughts / Expectation
+                </div>
                 <div className="bg-surface-card/30 border border-surface-border/30 p-4 rounded-xl">
-                  <span className="text-content-primary whitespace-pre-wrap leading-relaxed">{thoughts}</span>
+                  <span className="text-content-primary whitespace-pre-wrap leading-relaxed">
+                    {thoughts}
+                  </span>
                 </div>
               </div>
             )}
@@ -183,7 +227,9 @@ const GameModal = ({ game, onClose }) => {
                 aria-expanded={showDescription}
                 aria-controls="game-description"
               >
-                {showDescription ? '🙈 Hide Description' : '📖 Show Description'}
+                {showDescription
+                  ? "🙈 Hide Description"
+                  : "📖 Show Description"}
               </button>
 
               {showDescription && (

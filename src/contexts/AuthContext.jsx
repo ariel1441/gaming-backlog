@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import axios from "axios";
 
 const AuthContext = createContext();
 
@@ -7,7 +7,7 @@ export const AuthProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true); // loading state for token check
 
-  const TOKEN_KEY = 'admin_token';
+  const TOKEN_KEY = "admin_token";
 
   const getToken = () => localStorage.getItem(TOKEN_KEY);
 
@@ -22,14 +22,20 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (password) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', { password });
+      const response = await axios.post(
+        "http://localhost:5000/api/auth/login",
+        { password },
+      );
       const { token } = response.data;
       saveToken(token);
       setIsAdmin(true);
       return { success: true };
     } catch (error) {
-      console.error('Login failed:', error.response?.data || error.message);
-      return { success: false, error: error.response?.data?.error || 'Login failed' };
+      console.error("Login failed:", error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.error || "Login failed",
+      };
     }
   };
 
@@ -47,13 +53,16 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const res = await axios.get('http://localhost:5000/api/auth/verify', {
+      const res = await axios.get("http://localhost:5000/api/auth/verify", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       setIsAdmin(res.data?.isAdmin === true);
     } catch (err) {
-      console.warn('Token verification failed:', err.response?.data || err.message);
+      console.warn(
+        "Token verification failed:",
+        err.response?.data || err.message,
+      );
       clearToken();
       setIsAdmin(false);
     } finally {
@@ -74,7 +83,9 @@ export const AuthProvider = ({ children }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ isAdmin, login, logout, loading, getAuthHeaders }}>
+    <AuthContext.Provider
+      value={{ isAdmin, login, logout, loading, getAuthHeaders }}
+    >
       {children}
     </AuthContext.Provider>
   );

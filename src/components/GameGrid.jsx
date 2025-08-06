@@ -1,5 +1,5 @@
-import React from 'react';
-import GameCard from './GameCard';
+import React from "react";
+import GameCard from "./GameCard";
 import {
   DndContext,
   closestCenter,
@@ -7,20 +7,28 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-} from '@dnd-kit/core';
+} from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   rectSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
-const SortableGameCard = ({ game, onClick, onEdit, onDelete, isAdmin, isDragging }) => {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: game.id,
-  });
+const SortableGameCard = ({
+  game,
+  onClick,
+  onEdit,
+  onDelete,
+  isAdmin,
+  isDragging,
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({
+      id: game.id,
+    });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -42,7 +50,14 @@ const SortableGameCard = ({ game, onClick, onEdit, onDelete, isAdmin, isDragging
   );
 };
 
-const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onReorder }) => {
+const GameGrid = ({
+  games,
+  onSelectGame,
+  onEditGame,
+  onDeleteGame,
+  isAdmin,
+  onReorder,
+}) => {
   const [localGames, setLocalGames] = React.useState(games);
   const [activeId, setActiveId] = React.useState(null);
 
@@ -54,7 +69,7 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   // Update local games when props change
@@ -72,8 +87,8 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
 
     if (!over || active.id === over.id) return;
 
-    const oldIndex = localGames.findIndex(g => g.id === active.id);
-    const newIndex = localGames.findIndex(g => g.id === over.id);
+    const oldIndex = localGames.findIndex((g) => g.id === active.id);
+    const newIndex = localGames.findIndex((g) => g.id === over.id);
 
     if (oldIndex === -1 || newIndex === -1) return;
 
@@ -82,7 +97,7 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
 
     // Check if games are in the same RANK (not just same status)
     if (draggedGame.status_rank !== targetGame.status_rank) {
-      console.log('Cannot move games between different ranks');
+      console.log("Cannot move games between different ranks");
       return;
     }
 
@@ -93,11 +108,17 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
     // Call the reorder function with the correct rank-specific index
     if (onReorder) {
       // Get ONLY games in the same RANK from the NEW order
-      const sameRankGames = newOrder.filter(g => g.status_rank === draggedGame.status_rank);
-      const targetIndexInRank = sameRankGames.findIndex(g => g.id === draggedGame.id);
-      
-      console.log(`Moving game ${draggedGame.id} to index ${targetIndexInRank} within rank "${draggedGame.status_rank}"`);
-      
+      const sameRankGames = newOrder.filter(
+        (g) => g.status_rank === draggedGame.status_rank,
+      );
+      const targetIndexInRank = sameRankGames.findIndex(
+        (g) => g.id === draggedGame.id,
+      );
+
+      console.log(
+        `Moving game ${draggedGame.id} to index ${targetIndexInRank} within rank "${draggedGame.status_rank}"`,
+      );
+
       await onReorder(draggedGame.id, targetIndexInRank, draggedGame.status);
     }
   };
@@ -112,13 +133,13 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
     );
   }
 
-  const filteredGames = localGames.filter(game => game.name?.trim());
+  const filteredGames = localGames.filter((game) => game.name?.trim());
 
   if (!isAdmin) {
     // Regular grid for non-admins
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {filteredGames.map(game => (
+        {filteredGames.map((game) => (
           <GameCard
             key={game.id}
             game={game}
@@ -134,18 +155,18 @@ const GameGrid = ({ games, onSelectGame, onEditGame, onDeleteGame, isAdmin, onRe
 
   // Admin mode with drag-and-drop
   return (
-    <DndContext 
-      sensors={sensors} 
-      collisionDetection={closestCenter} 
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={filteredGames.map(g => g.id)}
+        items={filteredGames.map((g) => g.id)}
         strategy={rectSortingStrategy}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {filteredGames.map(game => (
+          {filteredGames.map((game) => (
             <SortableGameCard
               key={game.id}
               game={game}

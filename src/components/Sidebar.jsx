@@ -1,5 +1,5 @@
-import React from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import React from "react";
+import { useAuth } from "../contexts/AuthContext";
 import {
   MagnifyingGlassIcon,
   FunnelIcon,
@@ -8,7 +8,7 @@ import {
   ArrowsUpDownIcon,
   ArrowRightOnRectangleIcon,
   KeyIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 const Tooltip = ({ text, children }) => (
   <div className="group relative flex items-center justify-center">
@@ -36,7 +36,7 @@ const Sidebar = ({
 
   const handleLogout = () => {
     logout();
-    console.log('Logged out successfully');
+    console.log("Logged out successfully");
   };
 
   return (
@@ -49,7 +49,9 @@ const Sidebar = ({
       <Tooltip text="Search Games">
         <MagnifyingGlassIcon
           className={`w-6 h-6 cursor-pointer transition-colors ${
-            searchVisible ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+            searchVisible
+              ? "text-primary"
+              : "text-content-muted hover:text-content-primary"
           }`}
           onClick={() => setSearchVisible(!searchVisible)}
         />
@@ -58,7 +60,9 @@ const Sidebar = ({
       <Tooltip text="Sort Games">
         <ArrowsUpDownIcon
           className={`w-6 h-6 cursor-pointer transition-colors ${
-            sortVisible ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+            sortVisible
+              ? "text-primary"
+              : "text-content-muted hover:text-content-primary"
           }`}
           onClick={() => setSortVisible(!sortVisible)}
         />
@@ -67,16 +71,20 @@ const Sidebar = ({
       <Tooltip text="Filter Games">
         <FunnelIcon
           className={`w-6 h-6 cursor-pointer transition-colors ${
-            filterVisible ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+            filterVisible
+              ? "text-primary"
+              : "text-content-muted hover:text-content-primary"
           }`}
           onClick={() => setFilterVisible(!filterVisible)}
         />
       </Tooltip>
 
-      <Tooltip text={showAddForm ? 'Cancel Add Game' : 'Add New Game'}>
+      <Tooltip text={showAddForm ? "Cancel Add Game" : "Add New Game"}>
         <PlusIcon
           className={`w-6 h-6 cursor-pointer transition-colors ${
-            showAddForm ? 'text-primary' : 'text-content-muted hover:text-content-primary'
+            showAddForm
+              ? "text-primary"
+              : "text-content-muted hover:text-content-primary"
           }`}
           onClick={() => setShowAddForm(!showAddForm)}
         />

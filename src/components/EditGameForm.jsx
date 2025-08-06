@@ -1,35 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 
 const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
   const [formData, setFormData] = useState({
-    id: '',
-    name: '',
-    status: '',
-    how_long_to_beat: '',
-    my_genre: '',
-    thoughts: '',
-    my_score: ''
+    id: "",
+    name: "",
+    status: "",
+    how_long_to_beat: "",
+    my_genre: "",
+    thoughts: "",
+    my_score: "",
   });
 
   useEffect(() => {
     if (game) {
       setFormData({
         id: game.id,
-        name: game.name || '',
-        status: game.status || '',
-        how_long_to_beat: game.how_long_to_beat || '',
-        my_genre: game.my_genre || '',
-        thoughts: game.thoughts || '',
-        my_score: game.my_score || ''
+        name: game.name || "",
+        status: game.status || "",
+        how_long_to_beat: game.how_long_to_beat || "",
+        my_genre: game.my_genre || "",
+        thoughts: game.thoughts || "",
+        my_score: game.my_score || "",
       });
     }
   }, [game]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -50,11 +50,18 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
         >
           ×
         </button>
-        <h2 className="text-xl font-bold mb-4 text-content-primary">Edit Game: {game.name}</h2>
+        <h2 className="text-xl font-bold mb-4 text-content-primary">
+          Edit Game: {game.name}
+        </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium mb-1 text-content-secondary">Game Name *</label>
+            <label
+              htmlFor="name"
+              className="block text-sm font-medium mb-1 text-content-secondary"
+            >
+              Game Name *
+            </label>
             <input
               type="text"
               id="name"
@@ -67,7 +74,12 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
           </div>
 
           <div>
-            <label htmlFor="status" className="block text-sm font-medium mb-1 text-content-secondary">Status *</label>
+            <label
+              htmlFor="status"
+              className="block text-sm font-medium mb-1 text-content-secondary"
+            >
+              Status *
+            </label>
             <select
               id="status"
               name="status"
@@ -77,7 +89,7 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             >
               <option value="">Select Status</option>
-              {statuses.map(status => (
+              {statuses.map((status) => (
                 <option key={status} value={status}>
                   {status}
                 </option>
@@ -86,7 +98,10 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
           </div>
 
           <div>
-            <label htmlFor="how_long_to_beat" className="block text-sm font-medium mb-1 text-content-secondary">
+            <label
+              htmlFor="how_long_to_beat"
+              className="block text-sm font-medium mb-1 text-content-secondary"
+            >
               How Long to Beat (hours)
             </label>
             <input
@@ -101,7 +116,12 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
           </div>
 
           <div>
-            <label htmlFor="my_genre" className="block text-sm font-medium mb-1 text-content-secondary">My Genre</label>
+            <label
+              htmlFor="my_genre"
+              className="block text-sm font-medium mb-1 text-content-secondary"
+            >
+              My Genre
+            </label>
             <input
               type="text"
               id="my_genre"
@@ -114,7 +134,12 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
           </div>
 
           <div>
-            <label htmlFor="thoughts" className="block text-sm font-medium mb-1 text-content-secondary">My Thoughts / Expectation</label>
+            <label
+              htmlFor="thoughts"
+              className="block text-sm font-medium mb-1 text-content-secondary"
+            >
+              My Thoughts / Expectation
+            </label>
             <textarea
               id="thoughts"
               name="thoughts"
@@ -127,7 +152,12 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
           </div>
 
           <div>
-            <label htmlFor="my_score" className="block text-sm font-medium mb-1 text-content-secondary">My Score (0–10)</label>
+            <label
+              htmlFor="my_score"
+              className="block text-sm font-medium mb-1 text-content-secondary"
+            >
+              My Score (0–10)
+            </label>
             <input
               type="number"
               id="my_score"
