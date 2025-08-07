@@ -8,6 +8,7 @@ export const statusClassMap = {
   "maybe in the future": "bg-[#8b5cf6]/20 text-[#8b5cf6] border-[#8b5cf6]/30",
   "recommended by someone":
     "bg-[#06b6d4]/20 text-[#06b6d4] border-[#06b6d4]/30",
+  wishlist: "bg-[#06b6d4]/20 text-[#06b6d4] border-[#06b6d4]/30",
   "not anytime soon": "bg-[#64748b]/20 text-[#64748b] border-[#64748b]/30",
   finished: "bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]/30",
   "played alot but didnt finish":

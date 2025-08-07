@@ -83,7 +83,7 @@ const AppContent = () => {
 
   const handleReorderGames = async (gameId, targetIndex, status) => {
     console.log(
-      `🎯 REORDER REQUEST: Game ${gameId} → Index ${targetIndex} in status "${status}"`,
+      `🎯 REORDER REQUEST: Game ${gameId} → Index ${targetIndex} in status "${status}"`
     );
 
     try {
@@ -100,7 +100,7 @@ const AppContent = () => {
             targetIndex: targetIndex,
             status: status,
           }),
-        },
+        }
       );
 
       if (!response.ok) {
@@ -146,7 +146,7 @@ const AppContent = () => {
           g.genres
             ?.split(",")
             .map((x) => x.trim())
-            .includes(genre),
+            .includes(genre)
         );
       const myGenreMatch =
         selectedMyGenres.length === 0 ||
@@ -155,7 +155,7 @@ const AppContent = () => {
             ?.toLowerCase()
             .split(",")
             .map((x) => x.trim())
-            .includes(tag.toLowerCase()),
+            .includes(tag.toLowerCase())
         );
       return nameMatch && statusMatch && genreMatch && myGenreMatch;
     });
@@ -248,8 +248,8 @@ const AppContent = () => {
         g.genres
           ?.split(",")
           .map((x) => x.trim())
-          .filter(Boolean),
-      ),
+          .filter(Boolean)
+      )
     ),
   ].sort();
   const allMyGenres = [
@@ -258,8 +258,8 @@ const AppContent = () => {
         g.my_genre
           ?.split(",")
           .map((x) => x.trim())
-          .filter(Boolean),
-      ),
+          .filter(Boolean)
+      )
     ),
   ].sort();
   const allStatuses = [
@@ -268,7 +268,7 @@ const AppContent = () => {
 
   const handleCheckboxToggle = (value, list, setList) => {
     setList((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
     );
   };
 
@@ -293,7 +293,7 @@ const AppContent = () => {
       // Show notification if status was overridden for non-admin
       if (!isAdmin && newGame.status !== "recommended by someone") {
         alert(
-          'Game added successfully! Since you\'re not logged in as admin, the status was set to "recommended by someone".',
+          'Game added successfully! Since you\'re not logged in as admin, the status was set to "recommended by someone".'
         );
       }
 
@@ -331,14 +331,14 @@ const AppContent = () => {
           method: "PUT",
           headers,
           body: JSON.stringify(gameData),
-        },
+        }
       );
 
       if (!response.ok) {
         const errorData = await response.json();
         console.error(
           `Update failed with status ${response.status}:`,
-          errorData,
+          errorData
         );
         alert(`Update failed: ${errorData.error}`);
         return;
@@ -348,8 +348,8 @@ const AppContent = () => {
 
       setGames((prevGames) =>
         prevGames.map((game) =>
-          game.id === updatedGame.id ? { ...game, ...updatedGame } : game,
-        ),
+          game.id === updatedGame.id ? { ...game, ...updatedGame } : game
+        )
       );
 
       setEditingGame(null);
@@ -378,7 +378,7 @@ const AppContent = () => {
         {
           method: "DELETE",
           headers,
-        },
+        }
       );
 
       if (!response.ok) {
