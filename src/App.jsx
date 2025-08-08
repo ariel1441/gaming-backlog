@@ -43,7 +43,13 @@ const AppContent = () => {
   const [error, setError] = useState(null);
   const [editingGame, setEditingGame] = useState(null);
 
-  const { isAdmin, loading: authLoading, getAuthHeaders } = useAuth();
+  // CHANGED: pull user/isAuthenticated + keep getAuthHeaders and authLoading
+  const {
+    user,
+    isAuthenticated,
+    loading: authLoading,
+    getAuthHeaders,
+  } = useAuth(); // CHANGED
 
   const filterRef = useRef(null);
   const addFormRef = useRef(null);
@@ -51,17 +57,29 @@ const AppContent = () => {
   const sortRef = useRef(null);
 
   useEffect(() => {
-    if (!authLoading) {
+    // CHANGED: only fetch when logged-in is known AND authenticated
+    if (!authLoading && isAuthenticated) {
       fetchGames();
     }
-  }, [authLoading]);
+    // If not authenticated, clear lists and stop loading
+    if (!authLoading && !isAuthenticated) {
+      setGames([]);
+      setFilteredGames([]);
+      setLoading(false);
+    }
+  }, [authLoading, isAuthenticated]); // CHANGED
 
   const fetchGames = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch("http://localhost:5000/api/games");
+      // CHANGED: include auth header
+      const res = await fetch("http://localhost:5000/api/games", {
+        headers: {
+          ...getAuthHeaders(), // CHANGED
+        },
+      });
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
       const data = await res.json();
@@ -87,7 +105,6 @@ const AppContent = () => {
     );
 
     try {
-      // Step 1: Send reorder request to backend
       const response = await fetch(
         `http://localhost:5000/api/games/${gameId}/position`,
         {
@@ -109,8 +126,14 @@ const AppContent = () => {
 
       console.log(`✅ Backend confirmed reorder for game ${gameId}`);
 
-      // Step 2: Get fresh data from backend (all games with updated positions)
-      const freshGamesResponse = await fetch("http://localhost:5000/api/games");
+      const freshGamesResponse = await fetch(
+        "http://localhost:5000/api/games",
+        {
+          headers: {
+            ...getAuthHeaders(), // CHANGED
+          },
+        }
+      );
       if (!freshGamesResponse.ok) {
         throw new Error("Failed to fetch updated games");
       }
@@ -121,19 +144,17 @@ const AppContent = () => {
         rawgRating: game.rating || 0,
       }));
 
-      // Step 3: Update React state with fresh data (smooth update, no reset)
       setGames(normalizedData);
 
       console.log(`✅ SUCCESS: UI updated with fresh game positions`);
     } catch (err) {
       console.error("❌ FAILED to reorder game:", err);
-      // Fallback: refresh everything if something goes wrong
       fetchGames();
       alert("Failed to reorder game. Please try again.");
     }
   };
 
-  // Updated filtering and sorting
+  // Updated filtering and sorting (unchanged)
   useEffect(() => {
     const filtered = games.filter((g) => {
       const lower = searchQuery.toLowerCase();
@@ -160,23 +181,18 @@ const AppContent = () => {
       return nameMatch && statusMatch && genreMatch && myGenreMatch;
     });
 
-    // Always sort by status rank first, then position within status, then id
     filtered.sort((a, b) => {
-      // Primary sort: status rank
       const statusCompare = (a.status_rank || 999) - (b.status_rank || 999);
       if (statusCompare !== 0) return statusCompare;
 
-      // Secondary sort: position within status (null positions go to end)
       const posA = a.position || 999999;
       const posB = b.position || 999999;
       const positionCompare = posA - posB;
       if (positionCompare !== 0) return positionCompare;
 
-      // Tertiary sort: id as final fallback
       return a.id - b.id;
     });
 
-    // Only apply additional sorting if sortKey is set (this overrides the default sorting)
     if (sortKey) {
       filtered.sort((a, b) => {
         let compare = 0;
@@ -277,7 +293,7 @@ const AppContent = () => {
     try {
       const headers = {
         "Content-Type": "application/json",
-        ...getAuthHeaders(),
+        ...getAuthHeaders(), // CHANGED
       };
 
       const res = await fetch("http://localhost:5000/api/games", {
@@ -290,12 +306,7 @@ const AppContent = () => {
 
       const addedGame = await res.json();
 
-      // Show notification if status was overridden for non-admin
-      if (!isAdmin && newGame.status !== "recommended by someone") {
-        alert(
-          'Game added successfully! Since you\'re not logged in as admin, the status was set to "recommended by someone".'
-        );
-      }
+      // CHANGED: removed old non-admin status override alert (not relevant in multi-user)
 
       setNewGame({
         name: "",
@@ -314,15 +325,16 @@ const AppContent = () => {
   };
 
   const handleEditGame = async (gameData) => {
-    if (!isAdmin) {
-      alert("Admin access required to edit games.");
+    // CHANGED: was admin-only; now just require login
+    if (!isAuthenticated) {
+      alert("Login required to edit games.");
       return;
     }
 
     try {
       const headers = {
         "Content-Type": "application/json",
-        ...getAuthHeaders(),
+        ...getAuthHeaders(), // CHANGED
       };
 
       const response = await fetch(
@@ -340,7 +352,9 @@ const AppContent = () => {
           `Update failed with status ${response.status}:`,
           errorData
         );
-        alert(`Update failed: ${errorData.error}`);
+        alert(
+          `Update failed: ${errorData.error || errorData.message || "Unknown error"}`
+        );
         return;
       }
 
@@ -361,8 +375,9 @@ const AppContent = () => {
   };
 
   const handleDeleteGame = async (gameId) => {
-    if (!isAdmin) {
-      alert("Admin access required to delete games.");
+    // CHANGED: was admin-only; now just require login
+    if (!isAuthenticated) {
+      alert("Login required to delete games.");
       return;
     }
 
@@ -371,7 +386,9 @@ const AppContent = () => {
     }
 
     try {
-      const headers = getAuthHeaders();
+      const headers = {
+        ...getAuthHeaders(), // CHANGED
+      };
 
       const response = await fetch(
         `http://localhost:5000/api/games/${gameId}`,
@@ -395,8 +412,9 @@ const AppContent = () => {
   };
 
   const startEditing = (game) => {
-    if (!isAdmin) {
-      alert("Admin access required to edit games.");
+    // CHANGED: was admin-only; now just require login
+    if (!isAuthenticated) {
+      alert("Login required to edit games.");
       return;
     }
     setEditingGame(game);
@@ -445,7 +463,7 @@ const AppContent = () => {
         showAddForm={showAddForm}
         setShowAddForm={setShowAddForm}
         handleSurpriseMe={handleSurpriseMe}
-        isAdmin={isAdmin}
+        // CHANGED: old "admin login" button likely needs replacing later with Login/Register UI
         onShowAdminLogin={() => setShowAdminLogin(true)}
       />
 
@@ -580,7 +598,7 @@ const AppContent = () => {
             handleAddGame={handleAddGame}
             allStatuses={allStatuses}
             allMyGenres={allMyGenres}
-            isAdmin={isAdmin}
+            isAdmin={isAuthenticated} // CHANGED: allow user to pick status
           />
         )}
 
@@ -596,8 +614,8 @@ const AppContent = () => {
             onSelectGame={setSelectedGame}
             onEditGame={startEditing}
             onDeleteGame={handleDeleteGame}
-            isAdmin={isAdmin}
-            onReorder={isAdmin ? handleReorderGames : null}
+            isAdmin={isAuthenticated} // CHANGED: components still expect prop name "isAdmin"
+            onReorder={isAuthenticated ? handleReorderGames : null} // CHANGED
           />
         )}
 

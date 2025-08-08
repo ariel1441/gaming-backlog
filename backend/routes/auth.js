@@ -1,68 +1,131 @@
-import express from 'express';
-import { verifyAdminPassword, generateAdminToken } from '../middleware/auth.js';
-import jwt from 'jsonwebtoken';
-import rateLimit from 'express-rate-limit';
+import express from "express";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import { pool } from "../db.js";
+import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
-const loginLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 5,                 // Max 5 requests per IP
-  message: 'Too many login attempts. Please try again in 5 minutes.',
-});
-
-// Admin login route
-router.post('/login', loginLimiter, async (req, res, next) => {
+/**
+ * POST /api/auth/register
+ * Creates a new user
+ */
+router.post("/register", async (req, res, next) => {
   try {
-    const { password } = req.body;
+    const { username, password } = req.body;
 
-    if (!password) {
-      const err = new Error('Password is required');
+    if (!username || !password) {
+      const err = new Error("Username and password are required");
       err.statusCode = 400;
       return next(err);
     }
 
-    const isValidPassword = await verifyAdminPassword(password);
-    
-    if (!isValidPassword) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Prevent brute-force
-      const err = new Error('Invalid password');
+    // Check if username already exists
+    const existingUser = await pool.query(
+      "SELECT id FROM users WHERE username = $1",
+      [username]
+    );
+    if (existingUser.rows.length > 0) {
+      const err = new Error("Username already taken");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    // Hash the password
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // Insert new user
+    const result = await pool.query(
+      "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
+      [username, passwordHash]
+    );
+
+    const user = result.rows[0];
+
+    // Create JWT
+    const token = jwt.sign(
+      { id: user.id, username: user.username },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.status(201).json({ token, user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/auth/login
+ * Authenticates a user and returns a JWT
+ */
+router.post("/login", async (req, res, next) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      const err = new Error("Username and password are required");
+      err.statusCode = 400;
+      return next(err);
+    }
+
+    // Find user
+    const result = await pool.query("SELECT * FROM users WHERE username = $1", [
+      username,
+    ]);
+    if (result.rows.length === 0) {
+      const err = new Error("Invalid username or password");
       err.statusCode = 401;
       return next(err);
     }
 
-    const token = generateAdminToken();
-    
+    const user = result.rows[0];
+
+    // Check password
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      const err = new Error("Invalid username or password");
+      err.statusCode = 401;
+      return next(err);
+    }
+
+    // Create JWT
+    const token = jwt.sign(
+      { id: user.id, username: user.username },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
     res.json({
-      message: 'Login successful',
       token,
-      expiresIn: '1d'
+      user: { id: user.id, username: user.username },
     });
-  } catch (error) {
-    next(error); 
+  } catch (err) {
+    next(err);
   }
 });
 
-// Token verification route (optional - for frontend to check if token is still valid)
-router.get('/verify', async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ isValid: false });
-  }
-
-  const token = authHeader.substring(7);
-  
+/**
+ * GET /api/auth/me
+ * Returns the current authenticated user's info
+ */
+router.get("/me", verifyToken, async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    if (decoded.isAdmin) {
-      res.json({ isValid: true, isAdmin: true });
-    } else {
-      res.status(401).json({ isValid: false });
+    const result = await pool.query(
+      "SELECT id, username FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      const err = new Error("User not found");
+      err.statusCode = 404;
+      return next(err);
     }
-  } catch (error) {
-    next(error); 
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
   }
 });
 

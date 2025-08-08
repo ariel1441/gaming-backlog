@@ -1,7 +1,16 @@
 import React from "react";
 import { statusClassMap } from "../utils/statusClassMap";
+import { useAuth } from "../contexts/AuthContext";
 
 const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
+  const { user, isAuthenticated } = useAuth();
+
+  // If game has a user_id, only that user can edit/delete.
+  // Otherwise, fall back to legacy isAdmin prop.
+  const canEdit =
+    typeof game?.user_id === "number"
+      ? isAuthenticated && user?.id === game.user_id
+      : !!isAdmin;
   const handleCardClick = (e) => {
     if (e.target.closest(".action-button")) return;
     onClick();
@@ -9,7 +18,7 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
 
   const handleEdit = (e) => {
     e.stopPropagation();
-    if (!isAdmin) {
+    if (!canEdit) {
       alert("Admin access required to edit games.");
       return;
     }
@@ -18,7 +27,7 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
 
   const handleDelete = (e) => {
     e.stopPropagation();
-    if (!isAdmin) {
+    if (!canEdit) {
       alert("Admin access required to delete games.");
       return;
     }
@@ -40,7 +49,7 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
       className="bg-surface-card/90 backdrop-blur-sm rounded-xl overflow-hidden cursor-pointer hover:bg-surface-elevated/90 transition-all duration-300 relative group border border-surface-border hover:border-primary/40 hover:shadow-glow-primary hover:scale-[1.02]"
       onClick={handleCardClick}
     >
-      {isAdmin && (
+      {canEdit && (
         <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-all duration-300 flex gap-2">
           <button
             onClick={handleEdit}
@@ -65,7 +74,7 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
             src={game.cover}
             alt={game.name}
             loading="lazy"
-            className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
+            className="w-full h-60 object-cover transition-transform duration-300 group-hover:scale-105"
             onError={(e) => {
               e.target.style.display = "none";
             }}
@@ -74,8 +83,8 @@ const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
         </div>
       )}
 
-      <div className="p-5">
-        <h3 className="text-xl font-bold mb-4 text-content-primary truncate group-hover:text-primary transition-colors duration-200">
+      <div className="p-4">
+        <h3 className="text-lg font-bold mb-3 text-content-primary truncate group-hover:text-primary transition-colors duration-200">
           {game.name}
         </h3>
 

@@ -1,94 +1,98 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import axios from "axios";
+// src/contexts/AuthContext.jsx
+import React, { createContext, useContext, useEffect, useState } from "react";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true); // loading state for token check
+  const [user, setUser] = useState(null); // { id, username }
+  const [loading, setLoading] = useState(true);
 
-  const TOKEN_KEY = "admin_token";
-
-  const getToken = () => localStorage.getItem(TOKEN_KEY);
-
-  const saveToken = (token) => localStorage.setItem(TOKEN_KEY, token);
-
-  const clearToken = () => localStorage.removeItem(TOKEN_KEY);
-
-  const getAuthHeaders = () => {
-    const token = getToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
-  const login = async (password) => {
-    try {
-      const response = await axios.post(
-        "http://localhost:5000/api/auth/login",
-        { password },
-      );
-      const { token } = response.data;
-      saveToken(token);
-      setIsAdmin(true);
-      return { success: true };
-    } catch (error) {
-      console.error("Login failed:", error.response?.data || error.message);
-      return {
-        success: false,
-        error: error.response?.data?.error || "Login failed",
-      };
-    }
-  };
-
-  const logout = () => {
-    clearToken();
-    setIsAdmin(false);
-  };
-
-  const verifyToken = async () => {
-    const token = getToken();
+  // Verify token on mount
+  useEffect(() => {
+    const token = localStorage.getItem("token");
     if (!token) {
-      setIsAdmin(false);
       setLoading(false);
       return;
     }
 
-    try {
-      const res = await axios.get("http://localhost:5000/api/auth/verify", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+    fetch("http://localhost:5000/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.id) setUser(data);
+        else localStorage.removeItem("token");
+      })
+      .catch(() => {
+        localStorage.removeItem("token");
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-      setIsAdmin(res.data?.isAdmin === true);
-    } catch (err) {
-      console.warn(
-        "Token verification failed:",
-        err.response?.data || err.message,
-      );
-      clearToken();
-      setIsAdmin(false);
-    } finally {
-      setLoading(false);
+  const login = async (username, password) => {
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.token) {
+        return { success: false, error: data?.error || "Login failed" };
+      }
+      localStorage.setItem("token", data.token);
+      setUser(data.user);
+      return { success: true, user: data.user };
+    } catch {
+      return { success: false, error: "Network error" };
     }
   };
 
-  useEffect(() => {
-    verifyToken();
-  }, []);
+  const register = async (username, password) => {
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.token) {
+        return { success: false, error: data?.error || "Registration failed" };
+      }
+      localStorage.setItem("token", data.token);
+      setUser(data.user);
+      return { success: true, user: data.user };
+    } catch {
+      return { success: false, error: "Network error" };
+    }
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white text-sm">
-        Checking admin access...
-      </div>
-    );
-  }
+  const logout = () => {
+    localStorage.removeItem("token");
+    setUser(null);
+  };
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   return (
     <AuthContext.Provider
-      value={{ isAdmin, login, logout, loading, getAuthHeaders }}
+      value={{
+        user,
+        isAuthenticated: !!user,
+        loading,
+        login,
+        register,
+        logout,
+        getAuthHeaders,
+      }}
     >
       {children}
     </AuthContext.Provider>
   );
 };
 
+// ⬇️ This named export is what Sidebar/App are importing
 export const useAuth = () => useContext(AuthContext);
