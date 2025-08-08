@@ -2,15 +2,9 @@ import React from "react";
 import { statusClassMap } from "../utils/statusClassMap";
 import { useAuth } from "../contexts/AuthContext";
 
-const GameCard = ({ game, onClick, onEdit, onDelete, isAdmin }) => {
+const GameCard = ({ game, onClick, onEdit, onDelete }) => {
   const { user, isAuthenticated } = useAuth();
-
-  // If game has a user_id, only that user can edit/delete.
-  // Otherwise, fall back to legacy isAdmin prop.
-  const canEdit =
-    typeof game?.user_id === "number"
-      ? isAuthenticated && user?.id === game.user_id
-      : !!isAdmin;
+  const canEdit = isAuthenticated && user?.id === game.user_id;
   const handleCardClick = (e) => {
     if (e.target.closest(".action-button")) return;
     onClick();

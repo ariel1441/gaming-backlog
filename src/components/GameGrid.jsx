@@ -17,18 +17,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-const SortableGameCard = ({
-  game,
-  onClick,
-  onEdit,
-  onDelete,
-  isAdmin,
-  isDragging,
-}) => {
+const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({
-      id: game.id,
-    });
+    useSortable({ id: game.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -44,7 +35,6 @@ const SortableGameCard = ({
         onClick={onClick}
         onEdit={onEdit}
         onDelete={onDelete}
-        isAdmin={isAdmin}
       />
     </div>
   );
@@ -55,24 +45,21 @@ const GameGrid = ({
   onSelectGame,
   onEditGame,
   onDeleteGame,
-  isAdmin,
-  onReorder,
+  onReorder, // presence of this enables drag-and-drop for the owner
 }) => {
   const [localGames, setLocalGames] = React.useState(games);
   const [activeId, setActiveId] = React.useState(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // 8px movement before drag starts
-      },
+      activationConstraint: { distance: 8 }, // start drag after 8px move
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    })
   );
 
-  // Update local games when props change
+  // Keep local state in sync with props
   React.useEffect(() => {
     setLocalGames(games);
   }, [games]);
@@ -84,39 +71,32 @@ const GameGrid = ({
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveId(null);
-
     if (!over || active.id === over.id) return;
 
     const oldIndex = localGames.findIndex((g) => g.id === active.id);
     const newIndex = localGames.findIndex((g) => g.id === over.id);
-
     if (oldIndex === -1 || newIndex === -1) return;
 
     const draggedGame = localGames[oldIndex];
     const targetGame = localGames[newIndex];
 
-    // Check if games are in the same RANK (not just same status)
+    // Don’t allow cross-rank moves
     if (draggedGame.status_rank !== targetGame.status_rank) {
       console.log("Cannot move games between different ranks");
       return;
     }
 
-    // Update local state immediately for smooth UX
+    // Optimistic UI
     const newOrder = arrayMove(localGames, oldIndex, newIndex);
     setLocalGames(newOrder);
 
-    // Call the reorder function with the correct rank-specific index
+    // Persist new position within the rank
     if (onReorder) {
-      // Get ONLY games in the same RANK from the NEW order
       const sameRankGames = newOrder.filter(
-        (g) => g.status_rank === draggedGame.status_rank,
+        (g) => g.status_rank === draggedGame.status_rank
       );
       const targetIndexInRank = sameRankGames.findIndex(
-        (g) => g.id === draggedGame.id,
-      );
-
-      console.log(
-        `Moving game ${draggedGame.id} to index ${targetIndexInRank} within rank "${draggedGame.status_rank}"`,
+        (g) => g.id === draggedGame.id
       );
 
       await onReorder(draggedGame.id, targetIndexInRank, draggedGame.status);
@@ -135,8 +115,8 @@ const GameGrid = ({
 
   const filteredGames = localGames.filter((game) => game.name?.trim());
 
-  if (!isAdmin) {
-    // Regular grid for non-admins
+  // Read-only grid when no reorder handler is provided
+  if (!onReorder) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         {filteredGames.map((game) => (
@@ -146,14 +126,13 @@ const GameGrid = ({
             onClick={() => onSelectGame(game)}
             onEdit={() => onEditGame(game)}
             onDelete={() => onDeleteGame(game.id)}
-            isAdmin={isAdmin}
           />
         ))}
       </div>
     );
   }
 
-  // Admin mode with drag-and-drop
+  // Drag-and-drop grid when onReorder is provided
   return (
     <DndContext
       sensors={sensors}
@@ -173,7 +152,6 @@ const GameGrid = ({
               onClick={() => onSelectGame(game)}
               onEdit={() => onEditGame(game)}
               onDelete={() => onDeleteGame(game.id)}
-              isAdmin={isAdmin}
               isDragging={activeId === game.id}
             />
           ))}

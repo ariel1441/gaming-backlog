@@ -9,6 +9,8 @@ import GameModal from "./components/GameModal";
 import EditGameForm from "./components/EditGameForm";
 import AdminLoginForm from "./components/AdminLoginForm";
 
+const API_BASE = "http://localhost:5000"; // keep as-is for now
+
 const AppContent = () => {
   const [games, setGames] = useState([]);
   const [filteredGames, setFilteredGames] = useState([]);
@@ -43,42 +45,54 @@ const AppContent = () => {
   const [error, setError] = useState(null);
   const [editingGame, setEditingGame] = useState(null);
 
-  // CHANGED: pull user/isAuthenticated + keep getAuthHeaders and authLoading
-  const {
-    user,
-    isAuthenticated,
-    loading: authLoading,
-    getAuthHeaders,
-  } = useAuth(); // CHANGED
+  const { isAuthenticated, loading: authLoading, getAuthHeaders } = useAuth();
 
   const filterRef = useRef(null);
   const addFormRef = useRef(null);
   const searchRef = useRef(null);
   const sortRef = useRef(null);
 
+  // 🔹 NEW: statuses come from backend (statuses table), not from existing games
+  const [allStatuses, setAllStatuses] = useState([]);
+
   useEffect(() => {
-    // CHANGED: only fetch when logged-in is known AND authenticated
+    let ignore = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/games/statuses-list`);
+        if (!res.ok)
+          throw new Error(`Failed to fetch statuses (${res.status})`);
+        const statuses = await res.json(); // array of strings
+        if (!ignore) setAllStatuses(statuses || []);
+      } catch (err) {
+        console.error("Failed to fetch statuses:", err);
+        if (!ignore) setAllStatuses([]);
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, []); // <-- runs once on mount, no auth required
+  useEffect(() => {
     if (!authLoading && isAuthenticated) {
       fetchGames();
-    }
-    // If not authenticated, clear lists and stop loading
-    if (!authLoading && !isAuthenticated) {
+    } else {
+      // logged out -> clear personal games
       setGames([]);
       setFilteredGames([]);
       setLoading(false);
     }
-  }, [authLoading, isAuthenticated]); // CHANGED
+  }, [authLoading, isAuthenticated]);
 
   const fetchGames = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // CHANGED: include auth header
-      const res = await fetch("http://localhost:5000/api/games", {
-        headers: {
-          ...getAuthHeaders(), // CHANGED
-        },
+      const res = await fetch(`${API_BASE}/api/games`, {
+        headers: { ...getAuthHeaders() },
       });
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
@@ -105,20 +119,17 @@ const AppContent = () => {
     );
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/games/${gameId}/position`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeaders(),
-          },
-          body: JSON.stringify({
-            targetIndex: targetIndex,
-            status: status,
-          }),
-        }
-      );
+      const response = await fetch(`${API_BASE}/api/games/${gameId}/position`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          targetIndex: targetIndex,
+          status: status,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -126,14 +137,9 @@ const AppContent = () => {
 
       console.log(`✅ Backend confirmed reorder for game ${gameId}`);
 
-      const freshGamesResponse = await fetch(
-        "http://localhost:5000/api/games",
-        {
-          headers: {
-            ...getAuthHeaders(), // CHANGED
-          },
-        }
-      );
+      const freshGamesResponse = await fetch(`${API_BASE}/api/games`, {
+        headers: { ...getAuthHeaders() },
+      });
       if (!freshGamesResponse.ok) {
         throw new Error("Failed to fetch updated games");
       }
@@ -145,7 +151,6 @@ const AppContent = () => {
       }));
 
       setGames(normalizedData);
-
       console.log(`✅ SUCCESS: UI updated with fresh game positions`);
     } catch (err) {
       console.error("❌ FAILED to reorder game:", err);
@@ -154,7 +159,7 @@ const AppContent = () => {
     }
   };
 
-  // Updated filtering and sorting (unchanged)
+  // Filtering + sorting
   useEffect(() => {
     const filtered = games.filter((g) => {
       const lower = searchQuery.toLowerCase();
@@ -181,6 +186,7 @@ const AppContent = () => {
       return nameMatch && statusMatch && genreMatch && myGenreMatch;
     });
 
+    // Default ordering: rank → position → id
     filtered.sort((a, b) => {
       const statusCompare = (a.status_rank || 999) - (b.status_rank || 999);
       if (statusCompare !== 0) return statusCompare;
@@ -258,6 +264,7 @@ const AppContent = () => {
     }
   }, [sortVisible]);
 
+  // These still come from the games list (that’s fine)
   const allGenres = [
     ...new Set(
       games.flatMap((g) =>
@@ -278,9 +285,6 @@ const AppContent = () => {
       )
     ),
   ].sort();
-  const allStatuses = [
-    ...new Set(games.map((g) => g.status).filter(Boolean)),
-  ].sort();
 
   const handleCheckboxToggle = (value, list, setList) => {
     setList((prev) =>
@@ -293,10 +297,10 @@ const AppContent = () => {
     try {
       const headers = {
         "Content-Type": "application/json",
-        ...getAuthHeaders(), // CHANGED
+        ...getAuthHeaders(),
       };
 
-      const res = await fetch("http://localhost:5000/api/games", {
+      const res = await fetch(`${API_BASE}/api/games`, {
         method: "POST",
         headers,
         body: JSON.stringify(newGame),
@@ -305,8 +309,6 @@ const AppContent = () => {
       if (!res.ok) throw new Error("Failed to add game");
 
       const addedGame = await res.json();
-
-      // CHANGED: removed old non-admin status override alert (not relevant in multi-user)
 
       setNewGame({
         name: "",
@@ -325,26 +327,22 @@ const AppContent = () => {
   };
 
   const handleEditGame = async (gameData) => {
-    // CHANGED: was admin-only; now just require login
     if (!isAuthenticated) {
-      alert("Login required to edit games.");
+      alert("Sign in required to edit games.");
       return;
     }
 
     try {
       const headers = {
         "Content-Type": "application/json",
-        ...getAuthHeaders(), // CHANGED
+        ...getAuthHeaders(),
       };
 
-      const response = await fetch(
-        `http://localhost:5000/api/games/${gameData.id}`,
-        {
-          method: "PUT",
-          headers,
-          body: JSON.stringify(gameData),
-        }
-      );
+      const response = await fetch(`${API_BASE}/api/games/${gameData.id}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(gameData),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -352,9 +350,7 @@ const AppContent = () => {
           `Update failed with status ${response.status}:`,
           errorData
         );
-        alert(
-          `Update failed: ${errorData.error || errorData.message || "Unknown error"}`
-        );
+        alert(`Update failed: ${errorData.error || "Unknown error"}`);
         return;
       }
 
@@ -375,9 +371,8 @@ const AppContent = () => {
   };
 
   const handleDeleteGame = async (gameId) => {
-    // CHANGED: was admin-only; now just require login
     if (!isAuthenticated) {
-      alert("Login required to delete games.");
+      alert("Sign in required to delete games.");
       return;
     }
 
@@ -386,17 +381,12 @@ const AppContent = () => {
     }
 
     try {
-      const headers = {
-        ...getAuthHeaders(), // CHANGED
-      };
+      const headers = getAuthHeaders();
 
-      const response = await fetch(
-        `http://localhost:5000/api/games/${gameId}`,
-        {
-          method: "DELETE",
-          headers,
-        }
-      );
+      const response = await fetch(`${API_BASE}/api/games/${gameId}`, {
+        method: "DELETE",
+        headers,
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -412,9 +402,8 @@ const AppContent = () => {
   };
 
   const startEditing = (game) => {
-    // CHANGED: was admin-only; now just require login
     if (!isAuthenticated) {
-      alert("Login required to edit games.");
+      alert("Sign in required to edit games.");
       return;
     }
     setEditingGame(game);
@@ -463,7 +452,6 @@ const AppContent = () => {
         showAddForm={showAddForm}
         setShowAddForm={setShowAddForm}
         handleSurpriseMe={handleSurpriseMe}
-        // CHANGED: old "admin login" button likely needs replacing later with Login/Register UI
         onShowAdminLogin={() => setShowAdminLogin(true)}
       />
 
@@ -598,7 +586,6 @@ const AppContent = () => {
             handleAddGame={handleAddGame}
             allStatuses={allStatuses}
             allMyGenres={allMyGenres}
-            isAdmin={isAuthenticated} // CHANGED: allow user to pick status
           />
         )}
 
@@ -614,8 +601,7 @@ const AppContent = () => {
             onSelectGame={setSelectedGame}
             onEditGame={startEditing}
             onDeleteGame={handleDeleteGame}
-            isAdmin={isAuthenticated} // CHANGED: components still expect prop name "isAdmin"
-            onReorder={isAuthenticated ? handleReorderGames : null} // CHANGED
+            onReorder={isAuthenticated ? handleReorderGames : null}
           />
         )}
 

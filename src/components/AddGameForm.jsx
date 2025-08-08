@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Select from "react-select";
+import { useAuth } from "../contexts/AuthContext"; // ✅ useAuth instead of isAdmin prop
 
 const AddGameForm = ({
   addFormRef,
@@ -8,18 +9,19 @@ const AddGameForm = ({
   handleAddGame,
   allMyGenres = [],
   allStatuses = [],
-  isAdmin,
 }) => {
+  const { isAuthenticated } = useAuth(); // ✅ every logged-in user can add/edit their own games
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    if (!isAdmin) {
+    // If not logged in, default status to "recommended by someone"
+    if (!isAuthenticated) {
       setNewGame((prev) => ({
         ...prev,
         status: "recommended by someone",
       }));
     }
-  }, [isAdmin]);
+  }, [isAuthenticated, setNewGame]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -29,7 +31,7 @@ const AddGameForm = ({
   const validate = () => {
     const newErrors = {};
     if (!newGame.name.trim()) newErrors.name = "Name is required.";
-    if (isAdmin && !newGame.status.trim())
+    if (isAuthenticated && !newGame.status?.trim())
       newErrors.status = "Status is required.";
     if (newGame.how_long_to_beat && isNaN(newGame.how_long_to_beat)) {
       newErrors.how_long_to_beat = "How long to beat must be a number.";
@@ -78,30 +80,30 @@ const AddGameForm = ({
   const customStyles = {
     control: (base, state) => ({
       ...base,
-      backgroundColor: "#374151", // surface.elevated
-      borderColor: state.isFocused ? "#f97316" : "#4b5563", // primary OR surface.border
-      color: "#f9fafb", // content.primary
+      backgroundColor: "#374151",
+      borderColor: state.isFocused ? "#f97316" : "#4b5563",
+      color: "#f9fafb",
       minHeight: "38px",
-      boxShadow: state.isFocused ? "0 0 0 2px rgba(249, 115, 22, 0.5)" : "none", // primary glow
+      boxShadow: state.isFocused ? "0 0 0 2px rgba(249, 115, 22, 0.5)" : "none",
       transition: "all 0.2s ease",
       "&:hover": {
-        borderColor: "#f97316", // primary
+        borderColor: "#f97316",
       },
     }),
     menu: (base) => ({
       ...base,
-      backgroundColor: "#374151", // surface.elevated
+      backgroundColor: "#374151",
       border: "1px solid #4b5563",
       zIndex: 10,
     }),
     option: (base, state) => ({
       ...base,
       backgroundColor: state.isSelected
-        ? "#f97316" // primary
+        ? "#f97316"
         : state.isFocused
-          ? "#fb923c" // primary.light
-          : "#374151", // surface.elevated
-      color: "#f9fafb", // content.primary
+          ? "#fb923c"
+          : "#374151",
+      color: "#f9fafb",
       cursor: "pointer",
       "&:active": {
         backgroundColor: "#f97316",
@@ -109,7 +111,7 @@ const AddGameForm = ({
     }),
     multiValue: (base) => ({
       ...base,
-      backgroundColor: "#f97316", // primary
+      backgroundColor: "#f97316",
       color: "#f9fafb",
     }),
     multiValueLabel: (base) => ({
@@ -120,7 +122,7 @@ const AddGameForm = ({
       ...base,
       color: "#f9fafb",
       ":hover": {
-        backgroundColor: "#fb923c", // primary.light
+        backgroundColor: "#fb923c",
         color: "#ffffff",
       },
     }),
@@ -144,7 +146,7 @@ const AddGameForm = ({
         <h2 className="text-lg font-semibold text-content-primary">
           Add a New Game
         </h2>
-        {!isAdmin && (
+        {!isAuthenticated && (
           <span className="text-xs text-state-warning bg-state-warning/20 px-2 py-1 rounded border border-state-warning">
             ⚠️ Status will be set to "recommended by someone"
           </span>
@@ -179,7 +181,7 @@ const AddGameForm = ({
             onChange={handleStatusSelect}
             styles={customStyles}
             placeholder="Select status..."
-            isDisabled={!isAdmin}
+            isDisabled={!isAuthenticated} // ✅ only logged-in users pick status
           />
         </div>
 
@@ -238,7 +240,7 @@ const AddGameForm = ({
         type="submit"
         className="bg-action-primary hover:bg-action-primary-hover text-content-primary px-4 py-2 rounded w-full font-medium transition-colors"
       >
-        {isAdmin ? "Add Game" : "Suggest Game"}
+        {isAuthenticated ? "Add Game" : "Suggest Game"}
       </button>
     </form>
   );
