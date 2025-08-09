@@ -1,98 +1,139 @@
-// src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useContext,
+} from "react";
 
-const AuthContext = createContext(null);
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
+
+export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // { id, username }
+  const [token, setToken] = useState(
+    () => localStorage.getItem("token") || null
+  );
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Verify token on mount
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  const getAuthHeaders = useCallback(() => {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [token]);
 
-    fetch("http://localhost:5000/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.id) setUser(data);
-        else localStorage.removeItem("token");
-      })
-      .catch(() => {
-        localStorage.removeItem("token");
-      })
-      .finally(() => setLoading(false));
+  // Load /me on boot if token exists
+  useEffect(() => {
+    let ignore = false;
+
+    const loadMe = async () => {
+      if (!token) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
+          headers: { ...getAuthHeaders() },
+        });
+        if (!res.ok) throw new Error(`Failed to fetch /me (${res.status})`);
+        const me = await res.json();
+        if (!ignore) setUser(me);
+      } catch (e) {
+        console.error("Failed to load /me:", e);
+        if (!ignore) {
+          // invalid token or network issue → log out
+          setUser(null);
+          setToken(null);
+          localStorage.removeItem("token");
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
+
+    loadMe();
+    return () => {
+      ignore = true;
+    };
+  }, [token, getAuthHeaders]);
+
+  const login = useCallback((nextToken, nextUser) => {
+    setToken(nextToken);
+    localStorage.setItem("token", nextToken);
+    setUser(nextUser ?? null);
   }, []);
 
-  const login = async (username, password) => {
-    try {
-      const res = await fetch("http://localhost:5000/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.token) {
-        return { success: false, error: data?.error || "Login failed" };
-      }
-      localStorage.setItem("token", data.token);
-      setUser(data.user);
-      return { success: true, user: data.user };
-    } catch {
-      return { success: false, error: "Network error" };
-    }
-  };
-
-  const register = async (username, password) => {
-    try {
-      const res = await fetch("http://localhost:5000/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.token) {
-        return { success: false, error: data?.error || "Registration failed" };
-      }
-      localStorage.setItem("token", data.token);
-      setUser(data.user);
-      return { success: true, user: data.user };
-    } catch {
-      return { success: false, error: "Network error" };
-    }
-  };
-
-  const logout = () => {
+  const logout = useCallback(() => {
+    setToken(null);
     localStorage.removeItem("token");
     setUser(null);
-  };
+  }, []);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem("token");
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
+  const refreshMe = useCallback(async () => {
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) throw new Error(`Failed to fetch /me (${res.status})`);
+      const me = await res.json();
+      setUser(me);
+      return me;
+    } catch (e) {
+      console.error("refreshMe failed:", e);
+      return null;
+    }
+  }, [getAuthHeaders, token]);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: !!user,
-        loading,
-        login,
-        register,
-        logout,
-        getAuthHeaders,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  /**
+   * Domain method: toggle public mode with optimistic UI + rollback on failure.
+   */
+  const setPublic = useCallback(
+    async (nextIsPublic) => {
+      if (!user) return;
+      const prev = user;
+      // Optimistic update
+      setUser({ ...user, is_public: nextIsPublic });
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/me/is-public`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify({ is_public: nextIsPublic }),
+        });
+        if (!res.ok)
+          throw new Error(`Failed to update public mode (${res.status})`);
+        const updated = await res.json(); // { id, username, is_public }
+        // Ensure we keep any other fields we track on user:
+        setUser((u) => (u ? { ...u, ...updated } : updated));
+        return updated;
+      } catch (e) {
+        console.error("setPublic failed, rolling back:", e);
+        // Rollback
+        setUser(prev);
+        throw e;
+      }
+    },
+    [user, getAuthHeaders]
   );
+
+  const value = useMemo(
+    () => ({
+      user,
+      token,
+      isAuthenticated: !!token,
+      loading,
+      getAuthHeaders,
+      login,
+      logout,
+      refreshMe,
+      setPublic, // ← smart, single source of truth mutation
+    }),
+    [user, token, loading, getAuthHeaders, login, logout, refreshMe, setPublic]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// ⬇️ This named export is what Sidebar/App are importing
+// Optional convenience hook
 export const useAuth = () => useContext(AuthContext);

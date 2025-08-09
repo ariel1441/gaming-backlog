@@ -8,6 +8,9 @@ import GameGrid from "./components/GameGrid";
 import GameModal from "./components/GameModal";
 import EditGameForm from "./components/EditGameForm";
 import AdminLoginForm from "./components/AdminLoginForm";
+import { Routes, Route } from "react-router-dom";
+import PublicProfile from "./pages/PublicProfile";
+import PublicSettingsModal from "./components/PublicSettingsModal";
 
 const API_BASE = "http://localhost:5000"; // keep as-is for now
 
@@ -28,6 +31,7 @@ const AppContent = () => {
   const [sortVisible, setSortVisible] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showPublicSettings, setShowPublicSettings] = useState(false);
 
   const [sortKey, setSortKey] = useState("");
   const [isReversed, setIsReversed] = useState(false);
@@ -453,6 +457,7 @@ const AppContent = () => {
         setShowAddForm={setShowAddForm}
         handleSurpriseMe={handleSurpriseMe}
         onShowAdminLogin={() => setShowAdminLogin(true)}
+        onShowPublicSettings={() => setShowPublicSettings(true)}
       />
 
       <main className="flex-1 p-6 overflow-auto">
@@ -632,6 +637,13 @@ const AppContent = () => {
         {showAdminLogin && (
           <AdminLoginForm onClose={() => setShowAdminLogin(false)} />
         )}
+
+        {showPublicSettings && (
+          <PublicSettingsModal
+            open={showPublicSettings}
+            onClose={() => setShowPublicSettings(false)}
+          />
+        )}
       </main>
     </div>
   );
@@ -640,7 +652,10 @@ const AppContent = () => {
 const App = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <Routes>
+        <Route path="/" element={<AppContent />} />
+        <Route path="/u/:username" element={<PublicProfile />} />
+      </Routes>
     </AuthProvider>
   );
 };

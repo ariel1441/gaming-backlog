@@ -1,53 +1,66 @@
+// backend/routes/auth.js
 import express from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+
+/**
+ * Optional: protect against brute-force on login
+ */
+const loginLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 /**
  * POST /api/auth/register
- * Creates a new user
+ * Body: { username, password }
+ * Creates a user and returns { token, user }
  */
 router.post("/register", async (req, res, next) => {
   try {
-    const { username, password } = req.body;
-
+    const { username, password } = req.body || {};
     if (!username || !password) {
-      const err = new Error("Username and password are required");
-      err.statusCode = 400;
-      return next(err);
+      return res
+        .status(400)
+        .json({ error: "username and password are required" });
     }
 
-    // Check if username already exists
-    const existingUser = await pool.query(
+    // basic username guard
+    if (!/^[\w.-]{3,30}$/.test(username)) {
+      return res.status(400).json({ error: "invalid username format" });
+    }
+
+    const existing = await pool.query(
       "SELECT id FROM users WHERE username = $1",
       [username]
     );
-    if (existingUser.rows.length > 0) {
-      const err = new Error("Username already taken");
-      err.statusCode = 400;
-      return next(err);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: "username already taken" });
     }
 
-    // Hash the password
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
-
-    // Insert new user
-    const result = await pool.query(
-      "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
-      [username, passwordHash]
+    const hash = await bcrypt.hash(password, 10);
+    const insert = await pool.query(
+      `INSERT INTO users (username, password_hash, is_public)
+       VALUES ($1, $2, false)
+       RETURNING id, username, is_public`,
+      [username, hash]
     );
 
-    const user = result.rows[0];
-
-    // Create JWT
+    const user = insert.rows[0];
     const token = jwt.sign(
       { id: user.id, username: user.username },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
     );
 
     res.status(201).json({ token, user });
@@ -58,48 +71,49 @@ router.post("/register", async (req, res, next) => {
 
 /**
  * POST /api/auth/login
- * Authenticates a user and returns a JWT
+ * Body: { username, password }
+ * Returns { token, user }
  */
-router.post("/login", async (req, res, next) => {
+router.post("/login", loginLimiter, async (req, res, next) => {
   try {
-    const { username, password } = req.body;
-
+    const { username, password } = req.body || {};
     if (!username || !password) {
-      const err = new Error("Username and password are required");
-      err.statusCode = 400;
-      return next(err);
+      return res
+        .status(400)
+        .json({ error: "username and password are required" });
     }
 
-    // Find user
-    const result = await pool.query("SELECT * FROM users WHERE username = $1", [
-      username,
-    ]);
+    const result = await pool.query(
+      "SELECT id, username, password_hash, is_public FROM users WHERE username = $1",
+      [username]
+    );
+
     if (result.rows.length === 0) {
-      const err = new Error("Invalid username or password");
-      err.statusCode = 401;
-      return next(err);
+      return res.status(401).json({ error: "invalid credentials" });
     }
 
     const user = result.rows[0];
-
-    // Check password
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      const err = new Error("Invalid username or password");
-      err.statusCode = 401;
-      return next(err);
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: "invalid credentials" });
     }
 
-    // Create JWT
     const token = jwt.sign(
       { id: user.id, username: user.username },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
     );
 
+    // Return without password hash
     res.json({
       token,
-      user: { id: user.id, username: user.username },
+      user: {
+        id: user.id,
+        username: user.username,
+        is_public: user.is_public,
+      },
     });
   } catch (err) {
     next(err);
@@ -108,22 +122,41 @@ router.post("/login", async (req, res, next) => {
 
 /**
  * GET /api/auth/me
- * Returns the current authenticated user's info
+ * Returns authenticated user's profile
  */
 router.get("/me", verifyToken, async (req, res, next) => {
   try {
-    const result = await pool.query(
-      "SELECT id, username FROM users WHERE id = $1",
+    const me = await pool.query(
+      "SELECT id, username, is_public, created_at FROM users WHERE id = $1",
       [req.user.id]
     );
+    if (me.rows.length === 0) {
+      return res.status(404).json({ error: "user not found" });
+    }
+    res.json(me.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    if (result.rows.length === 0) {
-      const err = new Error("User not found");
-      err.statusCode = 404;
-      return next(err);
+/**
+ * PATCH /api/auth/me/is-public
+ * Body: { is_public: boolean }
+ * Toggle public mode for the authenticated user
+ */
+router.patch("/me/is-public", verifyToken, async (req, res, next) => {
+  try {
+    const { is_public } = req.body || {};
+    if (typeof is_public !== "boolean") {
+      return res.status(400).json({ error: "is_public must be boolean" });
     }
 
-    res.json(result.rows[0]);
+    const updated = await pool.query(
+      "UPDATE users SET is_public = $1 WHERE id = $2 RETURNING id, username, is_public",
+      [is_public, req.user.id]
+    );
+
+    res.json(updated.rows[0]);
   } catch (err) {
     next(err);
   }

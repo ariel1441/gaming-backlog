@@ -2,7 +2,8 @@ import React from "react";
 import { statusClassMap } from "../utils/statusClassMap";
 import { useAuth } from "../contexts/AuthContext";
 
-const GameCard = ({ game, onClick, onEdit, onDelete }) => {
+const GameCard = ({ game, onClick, onEdit, onDelete, readOnly = false }) => {
+  // added readOnly (default false)
   const { user, isAuthenticated } = useAuth();
   const canEdit = isAuthenticated && user?.id === game.user_id;
   const handleCardClick = (e) => {
@@ -43,24 +44,25 @@ const GameCard = ({ game, onClick, onEdit, onDelete }) => {
       className="bg-surface-card/90 backdrop-blur-sm rounded-xl overflow-hidden cursor-pointer hover:bg-surface-elevated/90 transition-all duration-300 relative group border border-surface-border hover:border-primary/40 hover:shadow-glow-primary hover:scale-[1.02]"
       onClick={handleCardClick}
     >
-      {canEdit && (
-        <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-all duration-300 flex gap-2">
-          <button
-            onClick={handleEdit}
-            className="action-button bg-gradient-to-r from-action-secondary to-action-secondary-hover hover:from-secondary-light hover:to-secondary text-content-primary p-2.5 rounded-full text-xs font-bold shadow-lg hover:shadow-glow-secondary transform hover:scale-110 transition-all duration-200"
-            title="Edit game"
-          >
-            ✏️
-          </button>
-          <button
-            onClick={handleDelete}
-            className="action-button bg-gradient-to-r from-action-danger to-action-danger-hover hover:from-state-error/80 hover:to-state-error text-content-primary p-2.5 rounded-full text-xs font-bold shadow-lg hover:shadow-glow-error transform hover:scale-110 transition-all duration-200"
-            title="Delete game"
-          >
-            🗑️
-          </button>
-        </div>
-      )}
+      {!readOnly &&
+        canEdit && ( // hide actions in read-only
+          <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-all duration-300 flex gap-2">
+            <button
+              onClick={handleEdit}
+              className="action-button bg-gradient-to-r from-action-secondary to-action-secondary-hover hover:from-secondary-light hover:to-secondary text-content-primary p-2.5 rounded-full text-xs font-bold shadow-lg hover:shadow-glow-secondary transform hover:scale-110 transition-all duration-200"
+              title="Edit game"
+            >
+              ✏️
+            </button>
+            <button
+              onClick={handleDelete}
+              className="action-button bg-gradient-to-r from-action-danger to-action-danger-hover hover:from-state-error/80 hover:to-state-error text-content-primary p-2.5 rounded-full text-xs font-bold shadow-lg hover:shadow-glow-error transform hover:scale-110 transition-all duration-200"
+              title="Delete game"
+            >
+              🗑️
+            </button>
+          </div>
+        )}
 
       {game.cover && (
         <div className="relative overflow-hidden">

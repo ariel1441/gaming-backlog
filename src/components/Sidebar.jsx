@@ -24,6 +24,9 @@ const Sidebar = ({
 
   // opens Auth modal
   onShowAdminLogin,
+
+  // NEW: opens public profile modal
+  onShowPublicSettings, // <-- added
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const authed = isAuthenticated ?? !!isAdmin;
@@ -72,14 +75,13 @@ const Sidebar = ({
     <aside
       className={[
         "relative",
-        // base/sm/md: always w-16 (collapsed). lg+: animate width between 16 and 72
         "w-16 lg:transition-[width] lg:duration-300 lg:ease-out",
         sidebarOpen ? "lg:w-72" : "lg:w-16",
         "bg-surface-card border-r border-surface-border text-content-primary",
         "h-screen shrink-0 flex flex-col overflow-hidden",
       ].join(" ")}
     >
-      {/* HEADER: row-style toggle with icon + title (title only on lg when expanded) */}
+      {/* HEADER */}
       <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
         <button
           onClick={tryToggleSidebar}
@@ -87,11 +89,9 @@ const Sidebar = ({
           title={sidebarOpen ? "Collapse" : "Expand"}
           aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
-          {/* fixed icon cell so it stays centered when collapsed */}
           <div className="w-10 flex justify-center">
             <span className="text-xl">≡</span>
           </div>
-          {/* Title fades/slides in on lg when expanded; hidden otherwise */}
           <div
             className={[
               "min-w-0 text-left",
@@ -111,11 +111,10 @@ const Sidebar = ({
         </button>
       </div>
 
-      {/* Auth box (single icon when collapsed) */}
+      {/* Auth box */}
       <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
         {authed ? (
           sidebarOpen ? (
-            // Expanded (lg+): avatar + username + text button
             <div className="hidden lg:flex items-center">
               <div className="w-10 flex justify-center">
                 <span className="text-base">👤</span>
@@ -137,7 +136,6 @@ const Sidebar = ({
               </button>
             </div>
           ) : (
-            // Collapsed: ONE icon button only (logout)
             <button
               onClick={logout}
               className="w-full flex items-center justify-center rounded-lg border border-surface-border bg-surface-elevated hover:bg-surface-border py-2 transition-colors"
@@ -148,7 +146,6 @@ const Sidebar = ({
             </button>
           )
         ) : (
-          // Not authed: one button in both states; label only on lg when expanded
           <button
             onClick={onShowAdminLogin}
             className="w-full flex items-center px-3 py-2 rounded bg-action-primary hover:bg-action-primary-hover text-content-primary font-medium transition-colors"
@@ -212,6 +209,15 @@ const Sidebar = ({
           onClick={handleSurpriseMe}
           expanded={sidebarOpen}
         />
+        {/* NEW: Public Profile Button (only if logged in) */}
+        {authed && (
+          <SidebarRow
+            label="Public Profile"
+            icon="🌐"
+            onClick={onShowPublicSettings}
+            expanded={sidebarOpen}
+          />
+        )}
       </nav>
 
       {/* Footer tip */}
@@ -238,8 +244,6 @@ const Sidebar = ({
   );
 };
 
-// Fixed 40px icon cell; label fades/slides so icons never move.
-// Label is only visible on lg when expanded (sidebarOpen true).
 const SidebarRow = ({ label, icon, active, onClick, expanded }) => {
   return (
     <button

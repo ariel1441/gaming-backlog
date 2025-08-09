@@ -1,25 +1,33 @@
--- Optional: Clear old tables if you're in dev
+-- DEV RESET (optional)
 DROP TABLE IF EXISTS games;
 DROP TABLE IF EXISTS statuses;
+DROP TABLE IF EXISTS users;
 
--- Statuses table defines all possible statuses and their rank
+-- Users who own their games
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Statuses (global lookup)
 CREATE TABLE statuses (
   id SERIAL PRIMARY KEY,
   status TEXT UNIQUE NOT NULL,
   rank INTEGER NOT NULL
 );
 
--- Games table
+-- Games, owned by a user
 CREATE TABLE games (
   id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-
   status TEXT NOT NULL REFERENCES statuses(status),
   position INTEGER NOT NULL DEFAULT 1000,
-
   my_genre TEXT,
-  my_score TEXT,
-  how_long_to_beat TEXT,
+  how_long_to_beat INTEGER
+  my_score NUMERIC(3,1),           
   thoughts TEXT,
   cover TEXT
 );

@@ -52,14 +52,13 @@ const GameGrid = ({
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 }, // start drag after 8px move
+      activationConstraint: { distance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
-  // Keep local state in sync with props
   React.useEffect(() => {
     setLocalGames(games);
   }, [games]);
@@ -80,17 +79,14 @@ const GameGrid = ({
     const draggedGame = localGames[oldIndex];
     const targetGame = localGames[newIndex];
 
-    // Don’t allow cross-rank moves
     if (draggedGame.status_rank !== targetGame.status_rank) {
       console.log("Cannot move games between different ranks");
       return;
     }
 
-    // Optimistic UI
     const newOrder = arrayMove(localGames, oldIndex, newIndex);
     setLocalGames(newOrder);
 
-    // Persist new position within the rank
     if (onReorder) {
       const sameRankGames = newOrder.filter(
         (g) => g.status_rank === draggedGame.status_rank
@@ -124,8 +120,9 @@ const GameGrid = ({
             key={game.id}
             game={game}
             onClick={() => onSelectGame(game)}
-            onEdit={() => onEditGame(game)}
-            onDelete={() => onDeleteGame(game.id)}
+            onEdit={undefined}
+            onDelete={undefined}
+            readOnly={true}
           />
         ))}
       </div>
