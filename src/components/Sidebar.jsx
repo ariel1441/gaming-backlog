@@ -25,8 +25,8 @@ const Sidebar = ({
   // opens Auth modal
   onShowAdminLogin,
 
-  // NEW: opens public profile modal
-  onShowPublicSettings, // <-- added
+  // opens public profile modal
+  onShowPublicSettings,
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const authed = isAuthenticated ?? !!isAdmin;
@@ -66,7 +66,7 @@ const Sidebar = ({
 
   // Allow expand/collapse only on lg+ (>= 1024px)
   const tryToggleSidebar = () => {
-    if (window.innerWidth < 1024) return; // lock collapsed on md and below
+    if (window.innerWidth < 1024) return;
     setSidebarOpen(!sidebarOpen);
     if (sidebarOpen) closeAllPanels();
   };
@@ -85,12 +85,14 @@ const Sidebar = ({
       <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
         <button
           onClick={tryToggleSidebar}
-          className="w-full flex items-center rounded-lg border border-surface-border bg-surface-elevated hover:bg-surface-border transition-colors py-2"
+          className="w-full h-11 flex items-center rounded-xl border border-surface-border bg-surface-elevated hover:border-primary hover:text-primary transition-colors"
           title={sidebarOpen ? "Collapse" : "Expand"}
           aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
           <div className="w-10 flex justify-center">
-            <span className="text-xl">≡</span>
+            <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
+              <span className="text-base">≡</span>
+            </div>
           </div>
           <div
             className={[
@@ -111,13 +113,15 @@ const Sidebar = ({
         </button>
       </div>
 
-      {/* Auth box */}
+      {/* AUTH BOX */}
       <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
         {authed ? (
           sidebarOpen ? (
-            <div className="hidden lg:flex items-center">
+            <div className="hidden lg:flex items-center gap-2">
               <div className="w-10 flex justify-center">
-                <span className="text-base">👤</span>
+                <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
+                  <span className="text-sm">👤</span>
+                </div>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-content-secondary">
@@ -129,7 +133,7 @@ const Sidebar = ({
               </div>
               <button
                 onClick={logout}
-                className="ml-auto px-2.5 py-1.5 rounded bg-surface-elevated hover:bg-surface-border border border-surface-border text-content-primary text-xs transition-colors"
+                className="ml-auto px-2.5 py-1.5 rounded-lg bg-surface-elevated hover:border-primary hover:text-primary border border-surface-border text-content-primary text-xs transition-colors"
                 title="Sign out"
               >
                 Sign out
@@ -138,21 +142,25 @@ const Sidebar = ({
           ) : (
             <button
               onClick={logout}
-              className="w-full flex items-center justify-center rounded-lg border border-surface-border bg-surface-elevated hover:bg-surface-border py-2 transition-colors"
+              className="w-full h-11 flex items-center justify-center rounded-xl border border-surface-border bg-surface-elevated hover:border-primary hover:text-primary transition-colors"
               title="Sign out"
               aria-label="Sign out"
             >
-              <span className="text-xl">⎋</span>
+              <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
+                <span className="text-base">⎋</span>
+              </div>
             </button>
           )
         ) : (
           <button
             onClick={onShowAdminLogin}
-            className="w-full flex items-center px-3 py-2 rounded bg-action-primary hover:bg-action-primary-hover text-content-primary font-medium transition-colors"
+            className="w-full h-11 flex items-center rounded-xl border border-surface-border bg-action-primary hover:bg-action-primary-hover text-content-primary font-medium transition-colors"
             title="Sign in / Create account"
           >
             <div className="w-10 flex justify-center">
-              <span className="text-lg">★</span>
+              <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card text-content-primary">
+                <span className="text-sm">★</span>
+              </div>
             </div>
             <div
               className={[
@@ -173,7 +181,7 @@ const Sidebar = ({
         )}
       </div>
 
-      {/* Actions */}
+      {/* ACTIONS */}
       <nav className="p-2 lg:p-3 flex-1 overflow-auto space-y-2">
         <SidebarRow
           label="Search"
@@ -209,7 +217,6 @@ const Sidebar = ({
           onClick={handleSurpriseMe}
           expanded={sidebarOpen}
         />
-        {/* NEW: Public Profile Button (only if logged in) */}
         {authed && (
           <SidebarRow
             label="Public Profile"
@@ -220,7 +227,7 @@ const Sidebar = ({
         )}
       </nav>
 
-      {/* Footer tip */}
+      {/* FOOTER TIP */}
       <div className="px-2 lg:px-3 py-3 border-t border-surface-border text-xs text-content-muted">
         <div
           className={[
@@ -244,22 +251,35 @@ const Sidebar = ({
   );
 };
 
+// Only the ROW highlights; the icon chip stays neutral.
+// Active = primary border + subtle bg tint + primary icon.
 const SidebarRow = ({ label, icon, active, onClick, expanded }) => {
   return (
     <button
       onClick={onClick}
       className={[
-        "w-full flex items-center rounded-lg border transition-colors",
+        "w-full h-11 flex items-center rounded-xl border transition-colors",
         active
-          ? "bg-surface-elevated border-primary text-primary"
-          : "bg-surface-elevated hover:bg-surface-border border-surface-border text-content-primary",
-        "py-2",
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-surface-border bg-surface-elevated text-content-primary hover:border-primary",
       ].join(" ")}
       title={label}
     >
+      {/* Icon chip stays neutral; only icon color changes on active */}
       <div className="w-10 flex justify-center">
-        <span className="text-xl">{icon}</span>
+        <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
+          <span
+            className={[
+              "text-base leading-none",
+              active ? "text-primary" : "text-content-muted",
+            ].join(" ")}
+          >
+            {icon}
+          </span>
+        </div>
       </div>
+
+      {/* Text label (shows only when expanded) */}
       <div
         className={[
           "min-w-0 text-left",
