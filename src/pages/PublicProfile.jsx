@@ -207,7 +207,7 @@ export default function PublicProfile() {
   return (
     <div className="min-h-screen bg-surface-bg text-content-primary">
       <header className="p-6 border-b border-surface-border">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">@{profile.username}</h1>
             <p className="text-content-muted text-sm">
@@ -221,7 +221,7 @@ export default function PublicProfile() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-6">
+      <main className="w-full max-w-none p-6">
         {/* Toolbar buttons */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <button
