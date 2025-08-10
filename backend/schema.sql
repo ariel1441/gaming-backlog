@@ -8,6 +8,7 @@ CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  is_public BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -26,7 +27,7 @@ CREATE TABLE games (
   status TEXT NOT NULL REFERENCES statuses(status),
   position INTEGER NOT NULL DEFAULT 1000,
   my_genre TEXT,
-  how_long_to_beat INTEGER
+  how_long_to_beat INTEGER,
   my_score NUMERIC(3,1),           
   thoughts TEXT,
   cover TEXT
