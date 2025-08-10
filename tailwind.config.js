@@ -7,6 +7,7 @@ export default {
           DEFAULT: "#f97316", // Orange 500
           light: "#fb923c", // Orange 400
           dark: "#ea580c", // Orange 600
+          darker: "#c2410c", // Orange 700
         },
         secondary: {
           DEFAULT: "#3b82f6", // Blue 500

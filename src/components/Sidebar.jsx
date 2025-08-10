@@ -1,31 +1,32 @@
+// src/components/Sidebar.jsx
 import React from "react";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  Menu,
+  Search as IconSearch,
+  ArrowUpDown as IconSort,
+  SlidersHorizontal as IconFilter,
+  Plus as IconPlus,
+  Dice5 as IconDice,
+  Globe as IconGlobe,
+  LogOut as IconLogout,
+  User2 as IconUser,
+} from "lucide-react";
 
 const Sidebar = ({
   sidebarOpen,
   setSidebarOpen,
-
   searchVisible,
   setSearchVisible,
-
   sortVisible,
   setSortVisible,
-
   filterVisible,
   setFilterVisible,
-
   showAddForm,
   setShowAddForm,
-
   handleSurpriseMe,
-
-  // legacy compatibility
   isAdmin,
-
-  // opens Auth modal
   onShowAdminLogin,
-
-  // opens public profile modal
   onShowPublicSettings,
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -64,7 +65,6 @@ const Sidebar = ({
     setFilterVisible(false);
   };
 
-  // Allow expand/collapse only on lg+ (>= 1024px)
   const tryToggleSidebar = () => {
     if (window.innerWidth < 1024) return;
     setSidebarOpen(!sidebarOpen);
@@ -84,15 +84,14 @@ const Sidebar = ({
       {/* HEADER */}
       <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
         <button
+          type="button"
           onClick={tryToggleSidebar}
-          className="w-full h-11 flex items-center rounded-xl border border-surface-border bg-surface-elevated hover:border-primary hover:text-primary transition-colors"
+          className="w-full h-11 flex items-center justify-center lg:justify-start rounded-lg bg-transparent hover:bg-primary-darker hover:text-white transition-colors"
           title={sidebarOpen ? "Collapse" : "Expand"}
           aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
-          <div className="w-10 flex justify-center">
-            <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
-              <span className="text-base">≡</span>
-            </div>
+          <div className="w-10 h-11 flex justify-center items-center">
+            <Menu className="w-5 h-5" />
           </div>
           <div
             className={[
@@ -117,11 +116,9 @@ const Sidebar = ({
       <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
         {authed ? (
           sidebarOpen ? (
-            <div className="hidden lg:flex items-center gap-2">
-              <div className="w-10 flex justify-center">
-                <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
-                  <span className="text-sm">👤</span>
-                </div>
+            <div className="hidden lg:flex items-center h-11">
+              <div className="w-10 h-11 flex justify-center items-center">
+                <IconUser className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-content-secondary">
@@ -132,35 +129,35 @@ const Sidebar = ({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={logout}
-                className="ml-auto px-2.5 py-1.5 rounded-lg bg-surface-elevated hover:border-primary hover:text-primary border border-surface-border text-content-primary text-xs transition-colors"
+                className="ml-auto h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded bg-transparent hover:bg-primary-darker hover:text-white text-xs transition-colors"
                 title="Sign out"
               >
-                Sign out
+                <IconLogout className="w-4 h-4" />
+                <span>Sign out</span>
               </button>
             </div>
           ) : (
             <button
+              type="button"
               onClick={logout}
-              className="w-full h-11 flex items-center justify-center rounded-xl border border-surface-border bg-surface-elevated hover:border-primary hover:text-primary transition-colors"
+              className="w-full h-11 flex items-center justify-center rounded-lg bg-transparent hover:bg-primary-darker hover:text-white transition-colors"
               title="Sign out"
               aria-label="Sign out"
             >
-              <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
-                <span className="text-base">⎋</span>
-              </div>
+              <IconLogout className="w-5 h-5" />
             </button>
           )
         ) : (
           <button
+            type="button"
             onClick={onShowAdminLogin}
-            className="w-full h-11 flex items-center rounded-xl border border-surface-border bg-action-primary hover:bg-action-primary-hover text-content-primary font-medium transition-colors"
+            className="w-full h-11 flex items-center justify-center lg:justify-start px-3 rounded-lg bg-transparent hover:bg-primary-darker hover:text-white transition-colors"
             title="Sign in / Create account"
           >
-            <div className="w-10 flex justify-center">
-              <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card text-content-primary">
-                <span className="text-sm">★</span>
-              </div>
+            <div className="w-10 h-11 flex justify-center items-center">
+              <IconUser className="w-5 h-5" />
             </div>
             <div
               className={[
@@ -185,42 +182,42 @@ const Sidebar = ({
       <nav className="p-2 lg:p-3 flex-1 overflow-auto space-y-2">
         <SidebarRow
           label="Search"
-          icon="🔎"
+          icon={IconSearch}
           active={searchVisible}
           onClick={toggleSearch}
           expanded={sidebarOpen}
         />
         <SidebarRow
           label="Sort"
-          icon="↕️"
+          icon={IconSort}
           active={sortVisible}
           onClick={toggleSort}
           expanded={sidebarOpen}
         />
         <SidebarRow
           label="Filter"
-          icon="🎛️"
+          icon={IconFilter}
           active={filterVisible}
           onClick={toggleFilter}
           expanded={sidebarOpen}
         />
         <SidebarRow
           label={authed ? "Add Game" : "Add (sign in)"}
-          icon="➕"
+          icon={IconPlus}
           active={showAddForm}
           onClick={toggleAdd}
           expanded={sidebarOpen}
         />
         <SidebarRow
           label="Surprise Me"
-          icon="🎲"
+          icon={IconDice}
           onClick={handleSurpriseMe}
           expanded={sidebarOpen}
         />
         {authed && (
           <SidebarRow
             label="Public Profile"
-            icon="🌐"
+            icon={IconGlobe}
             onClick={onShowPublicSettings}
             expanded={sidebarOpen}
           />
@@ -240,7 +237,7 @@ const Sidebar = ({
         >
           {sidebarOpen ? (
             <span className="hidden lg:inline">
-              Tip: drag & drop to reorder within a status.
+              Tip: drag &amp; drop to reorder within a status.
             </span>
           ) : (
             <span>ℹ️</span>
@@ -251,35 +248,24 @@ const Sidebar = ({
   );
 };
 
-// Only the ROW highlights; the icon chip stays neutral.
-// Active = primary border + subtle bg tint + primary icon.
+// Sidebar row
 const SidebarRow = ({ label, icon, active, onClick, expanded }) => {
+  const Icon = icon;
   return (
     <button
+      type="button"
       onClick={onClick}
       className={[
-        "w-full h-11 flex items-center rounded-xl border transition-colors",
+        "w-full h-11 flex items-center justify-center lg:justify-start rounded-lg transition-colors",
         active
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-surface-border bg-surface-elevated text-content-primary hover:border-primary",
+          ? "bg-primary-darker text-white"
+          : "bg-transparent text-content-primary hover:bg-primary-darker hover:text-white",
       ].join(" ")}
       title={label}
     >
-      {/* Icon chip stays neutral; only icon color changes on active */}
-      <div className="w-10 flex justify-center">
-        <div className="grid place-items-center w-8 h-8 rounded-lg border border-surface-border bg-surface-card">
-          <span
-            className={[
-              "text-base leading-none",
-              active ? "text-primary" : "text-content-muted",
-            ].join(" ")}
-          >
-            {icon}
-          </span>
-        </div>
+      <div className="w-10 h-full flex items-center justify-center">
+        <Icon className="w-5 h-5" aria-hidden="true" />
       </div>
-
-      {/* Text label (shows only when expanded) */}
       <div
         className={[
           "min-w-0 text-left",
