@@ -144,12 +144,7 @@ const GameGrid = ({
         items={filteredGames.map((g) => g.id)}
         strategy={rectSortingStrategy}
       >
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
-          }}
-        >
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]">
           {filteredGames.map((game) => (
             <SortableGameCard
               key={game.id}

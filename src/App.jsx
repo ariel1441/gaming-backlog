@@ -11,9 +11,9 @@ import AdminLoginForm from "./components/AdminLoginForm";
 import { Routes, Route } from "react-router-dom";
 import PublicProfile from "./pages/PublicProfile";
 import PublicSettingsModal from "./components/PublicSettingsModal";
+import { applyFiltersAndSort } from "./utils/applyFiltersAndSort";
 
-const API_BASE = "http://localhost:5000"; // keep as-is for now
-
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 const AppContent = () => {
   const [games, setGames] = useState([]);
   const [filteredGames, setFilteredGames] = useState([]);
@@ -165,81 +165,22 @@ const AppContent = () => {
 
   // Filtering + sorting
   useEffect(() => {
-    const filtered = games.filter((g) => {
-      const lower = searchQuery.toLowerCase();
-      const nameMatch = g.name?.toLowerCase().includes(lower);
-      const statusMatch =
-        selectedStatuses.length === 0 || selectedStatuses.includes(g.status);
-      const genreMatch =
-        selectedGenres.length === 0 ||
-        selectedGenres.some((genre) =>
-          g.genres
-            ?.split(",")
-            .map((x) => x.trim())
-            .includes(genre)
-        );
-      const myGenreMatch =
-        selectedMyGenres.length === 0 ||
-        selectedMyGenres.some((tag) =>
-          g.my_genre
-            ?.toLowerCase()
-            .split(",")
-            .map((x) => x.trim())
-            .includes(tag.toLowerCase())
-        );
-      return nameMatch && statusMatch && genreMatch && myGenreMatch;
+    const filtered = applyFiltersAndSort({
+      games,
+      searchQuery,
+      selectedStatuses,
+      selectedGenres,
+      selectedMyGenres,
+      sortKey,
+      isReversed,
     });
-
-    // Default ordering: rank → position → id
-    filtered.sort((a, b) => {
-      const statusCompare = (a.status_rank || 999) - (b.status_rank || 999);
-      if (statusCompare !== 0) return statusCompare;
-
-      const posA = a.position || 999999;
-      const posB = b.position || 999999;
-      const positionCompare = posA - posB;
-      if (positionCompare !== 0) return positionCompare;
-
-      return a.id - b.id;
-    });
-
-    if (sortKey) {
-      filtered.sort((a, b) => {
-        let compare = 0;
-        switch (sortKey) {
-          case "name":
-            compare = (a.name || "").localeCompare(b.name || "");
-            break;
-          case "hoursPlayed":
-            compare =
-              (Number(a.how_long_to_beat) || 0) -
-              (Number(b.how_long_to_beat) || 0);
-            break;
-          case "rawgRating":
-            compare = (Number(a.rawgRating) || 0) - (Number(b.rawgRating) || 0);
-            break;
-          case "metacritic":
-            compare = (Number(a.metacritic) || 0) - (Number(b.metacritic) || 0);
-            break;
-          case "releaseDate":
-            const dateA = new Date(a.releaseDate || a.released || 0);
-            const dateB = new Date(b.releaseDate || b.released || 0);
-            compare = dateA - dateB;
-            break;
-          default:
-            compare = 0;
-        }
-        return isReversed ? -compare : compare;
-      });
-    }
-
     setFilteredGames(filtered);
   }, [
-    searchQuery,
-    selectedGenres,
-    selectedStatuses,
-    selectedMyGenres,
     games,
+    searchQuery,
+    selectedStatuses,
+    selectedGenres,
+    selectedMyGenres,
     sortKey,
     isReversed,
   ]);
@@ -591,6 +532,7 @@ const AppContent = () => {
             handleAddGame={handleAddGame}
             allStatuses={allStatuses}
             allMyGenres={allMyGenres}
+            onClose={() => setShowAddForm(false)}
           />
         )}
 

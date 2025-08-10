@@ -1,8 +1,14 @@
-### Test invalid game creation (should hit error handler)
-POST http://localhost:5000/api/games
+@base = http://localhost:5000
+@api = {{base}}/api
+@username = ariel1441
+@password = a123456
+
+### Login (copy the "token" from the JSON response)
+POST {{api}}/auth/login
 Content-Type: application/json
+Accept: application/json
 
 {
-  "name": "",
-  "status": ""
+  "username": "{{username}}",
+  "password": "{{password}}"
 }

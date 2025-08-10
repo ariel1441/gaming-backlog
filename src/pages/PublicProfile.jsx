@@ -104,7 +104,8 @@ export default function PublicProfile() {
 
   // recompute filters & sort when state changes
   useEffect(() => {
-    const next = applyFiltersAndSort(games, {
+    const next = applyFiltersAndSort({
+      games,
       searchQuery,
       selectedStatuses,
       selectedGenres,
