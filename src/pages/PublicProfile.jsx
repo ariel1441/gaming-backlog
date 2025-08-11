@@ -1,12 +1,14 @@
 // src/pages/PublicProfile.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+
 import GameGrid from "../components/GameGrid";
 import GameModal from "../components/GameModal";
 import FilterPanel from "../components/FilterPanel";
-import { applyFiltersAndSort } from "../utils/applyFiltersAndSort";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
+import { listPublicGames, getPublicProfile } from "../services/publicService";
+import { useStatuses } from "../hooks/useStatuses";
+import { useFilters } from "../hooks/useFilters";
 
 export default function PublicProfile() {
   const { username } = useParams();
@@ -14,115 +16,86 @@ export default function PublicProfile() {
   // profile + games
   const [profile, setProfile] = useState(null);
   const [games, setGames] = useState([]);
-  const [filteredGames, setFilteredGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   // modal
   const [selectedGame, setSelectedGame] = useState(null);
 
-  // controls visibility (collapsed by default now)
+  // visibility controls (keep UI unchanged)
   const [filterVisible, setFilterVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [sortVisible, setSortVisible] = useState(false);
 
-  // filter/sort state (mirror private)
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStatuses, setSelectedStatuses] = useState([]);
-  const [selectedGenres, setSelectedGenres] = useState([]);
-  const [selectedMyGenres, setSelectedMyGenres] = useState([]);
-  const [sortKey, setSortKey] = useState("");
-  const [isReversed, setIsReversed] = useState(false);
-
-  // statuses list (try backend first; fallback to derive from games)
-  const [allStatuses, setAllStatuses] = useState([]);
-
-  // refs for smooth scroll (mirror private)
+  // refs (for smooth scroll; unchanged)
   const filterRef = useRef(null);
   const searchRef = useRef(null);
   const sortRef = useRef(null);
 
+  // Load public profile + games via services
   useEffect(() => {
-    let ignore = false;
+    const ac = new AbortController();
     (async () => {
       try {
         setLoading(true);
-        const [pRes, gRes] = await Promise.all([
-          fetch(`${API_BASE}/api/public/${encodeURIComponent(username)}`),
-          fetch(`${API_BASE}/api/public/${encodeURIComponent(username)}/games`),
-        ]);
-        if (!pRes.ok) throw new Error(`Profile error ${pRes.status}`);
-        if (!gRes.ok) throw new Error(`Games error ${gRes.status}`);
+        setError("");
 
-        const [pJson, gJson] = await Promise.all([pRes.json(), gRes.json()]);
-        if (!ignore) {
-          setProfile(pJson);
-          setGames(
-            (gJson || []).map((g) => ({
-              ...g,
-              rawgRating: g.rating || 0, // normalize like private
-            }))
-          );
-        }
+        const [p, g] = await Promise.all([
+          getPublicProfile(username, { signal: ac.signal, auth: false }),
+          listPublicGames(username, { signal: ac.signal, auth: false }),
+        ]);
+
+        setProfile(p || null);
+
+        // normalize RAWG rating key like private view
+        const list = (
+          Array.isArray(g) ? g : Array.isArray(g?.games) ? g.games : []
+        )?.map((x) => ({
+          ...x,
+          rawgRating: x.rating ?? x.rawgRating ?? 0,
+        }));
+        setGames(list || []);
       } catch (e) {
-        setError(e.message || "Failed to load");
+        if (e.name !== "AbortError") setError(e.message || "Failed to load");
       } finally {
-        if (!ignore) setLoading(false);
+        setLoading(false);
       }
     })();
-    return () => {
-      ignore = true;
-    };
+    return () => ac.abort();
   }, [username]);
 
-  // try to fetch statuses list (no auth needed)
-  useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/games/statuses-list`);
-        if (res.ok) {
-          const statuses = await res.json();
-          if (!ignore) setAllStatuses(statuses || []);
-        } else {
-          const statuses = Array.from(
-            new Set(games.map((g) => g.status).filter(Boolean))
-          );
-          if (!ignore) setAllStatuses(statuses);
-        }
-      } catch {
-        const statuses = Array.from(
-          new Set(games.map((g) => g.status).filter(Boolean))
-        );
-        if (!ignore) setAllStatuses(statuses);
-      }
-    })();
-    return () => {
-      ignore = true;
-    };
+  // Global statuses (cached). If none available publicly, derive simple string list from games.
+  const { statuses: apiStatuses } = useStatuses();
+  const derivedStatuses = useMemo(() => {
+    if (!games?.length) return [];
+    const set = new Set(games.map((g) => String(g.status)).filter(Boolean));
+    return Array.from(set).sort(); // strings (FilterPanel expects strings)
   }, [games]);
+  const allStatuses = apiStatuses?.length ? apiStatuses : derivedStatuses;
 
-  // recompute filters & sort when state changes
-  useEffect(() => {
-    const next = applyFiltersAndSort({
-      games,
-      searchQuery,
-      selectedStatuses,
-      selectedGenres,
-      selectedMyGenres,
-      sortKey,
-      isReversed,
-    });
-    setFilteredGames(next);
-  }, [
-    games,
+  // Shared filter/search/sort logic (exact same hook as private view)
+  const {
     searchQuery,
+    setSearchQuery,
     selectedStatuses,
+    setSelectedStatuses,
     selectedGenres,
+    setSelectedGenres,
     selectedMyGenres,
+    setSelectedMyGenres,
     sortKey,
+    setSortKey,
     isReversed,
-  ]);
+    setIsReversed,
+    toggleStatus,
+    toggleGenre,
+    toggleMyGenre,
+    clearFilters,
+    filteredGames,
+    allGenres,
+    allMyGenres,
+    noFiltersActive,
+  } = useFilters(games, { statuses: allStatuses });
 
   // mirror private scrolling UX
   useEffect(() => {
@@ -141,40 +114,25 @@ export default function PublicProfile() {
     }
   }, [sortVisible]);
 
-  // derive genre lists from games
-  const allGenres = [
-    ...new Set(
-      games
-        .flatMap((g) => (g.genres || "").split(",").map((x) => x.trim()))
-        .filter(Boolean)
-    ),
-  ].sort();
-  const allMyGenres = [
-    ...new Set(
-      games
-        .flatMap((g) => (g.my_genre || "").split(",").map((x) => x.trim()))
-        .filter(Boolean)
-    ),
-  ].sort();
-
-  const handleCheckboxToggle = (value, list, setList) => {
-    setList((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+  // IMPORTANT: same helper signature that App.jsx passes to FilterPanel
+  const handleCheckboxToggle = (value, listSetter, currentList) => {
+    listSetter(
+      currentList.includes(value)
+        ? currentList.filter((v) => v !== value)
+        : [...currentList, value]
     );
   };
 
-  const resetFilters = () => {
-    setSelectedStatuses([]);
-    setSelectedGenres([]);
-    setSelectedMyGenres([]);
-  };
-
+  const resetFilters = () => clearFilters();
   const clearSearch = () => setSearchQuery("");
   const clearSort = () => {
     setSortKey("");
     setIsReversed(false);
   };
 
+  const displayGames = noFiltersActive ? games : filteredGames || [];
+
+  // ---------- UI below unchanged ----------
   if (loading) {
     return (
       <div className="flex h-screen bg-surface-bg text-content-primary items-center justify-center">
@@ -223,7 +181,7 @@ export default function PublicProfile() {
       </header>
 
       <main className="w-full max-w-none p-6">
-        {/* Toolbar buttons */}
+        {/* Toolbar */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <button
             onClick={() => setSearchVisible((v) => !v)}
@@ -284,7 +242,7 @@ export default function PublicProfile() {
             </div>
             {searchQuery && (
               <p className="mt-2 text-sm text-content-muted">
-                Searching for: "{searchQuery}" ({filteredGames.length} results)
+                Searching for: "{searchQuery}" ({displayGames.length} results)
               </p>
             )}
           </div>
@@ -358,17 +316,23 @@ export default function PublicProfile() {
             selectedStatuses={selectedStatuses}
             selectedGenres={selectedGenres}
             selectedMyGenres={selectedMyGenres}
-            handleCheckboxToggle={handleCheckboxToggle}
+            // IMPORTANT: same signature App.jsx passes
+            handleCheckboxToggle={(v, list, setList) =>
+              handleCheckboxToggle(v, setList, list)
+            }
             setSelectedStatuses={setSelectedStatuses}
             setSelectedGenres={setSelectedGenres}
             setSelectedMyGenres={setSelectedMyGenres}
             resetFilters={resetFilters}
+            toggleStatus={toggleStatus}
+            toggleGenre={toggleGenre}
+            toggleMyGenre={toggleMyGenre}
           />
         )}
 
-        {/* Read-only grid */}
+        {/* Read-only grid (unchanged) */}
         <GameGrid
-          games={filteredGames}
+          games={displayGames}
           onSelectGame={setSelectedGame}
           onEditGame={() => {}}
           onDeleteGame={() => {}}
