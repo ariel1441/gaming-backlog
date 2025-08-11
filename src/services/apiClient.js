@@ -8,8 +8,9 @@ export class ApiError extends Error {
   }
 }
 
-// (Optional) token helpers, if you still use localStorage directly anywhere
-const TOKEN_KEY = "auth_token";
+// ✅ unify with AuthContext storage key
+const TOKEN_KEY = "token";
+
 export function getAuthToken() {
   try {
     return localStorage.getItem(TOKEN_KEY) || null;
@@ -28,10 +29,12 @@ export function getAuthHeaders() {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-const API_BASE =
-  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
-    ? import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, "")
-    : "";
+// ✅ support both env names; strip trailing slash
+const API_BASE_RAW =
+  (typeof import.meta !== "undefined" &&
+    (import.meta.env?.VITE_API_BASE_URL || import.meta.env?.VITE_API_BASE)) ||
+  "";
+const API_BASE = API_BASE_RAW.replace(/\/+$/, "");
 
 function buildUrl(path) {
   const clean = path.startsWith("/") ? path : `/${path}`;
@@ -77,15 +80,19 @@ export async function apiFetch(
 
   const res = await fetch(buildUrl(path), init);
 
-  if (res.ok) {
-    return await parseJsonSafe(res);
-  }
+  if (res.ok) return await parseJsonSafe(res);
 
   const payload = await parseJsonSafe(res);
   const message =
     (payload && (payload.error || payload.message)) ||
     res.statusText ||
     "Request failed";
+
+  // NEW: auto sign-out on auth failures so the app falls back to "guest"
+  if (res.status === 401 || res.status === 403) {
+    setAuthToken(null);
+  }
+
   throw new ApiError(message, { status: res.status, details: payload });
 }
 

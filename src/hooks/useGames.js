@@ -6,33 +6,8 @@ import {
   createGame as createGameApi,
   updateGame as updateGameApi,
   deleteGame as deleteGameApi,
-  reorderGames as reorderGamesApi,
+  reorderGames as reorderGamesApi, // PATCH /api/games/:id/position
 } from "../services/gameService";
-
-function reorderLocally(games, status, orderedIds) {
-  const laneIndex = new Map(orderedIds.map((id, i) => [String(id), i]));
-  // Create a new array but keep non-lane items’ order stable
-  const inLane = [];
-  const outLane = [];
-  for (const g of games) {
-    if (g.status === status && laneIndex.has(String(g.id))) inLane.push(g);
-    else outLane.push(g);
-  }
-  inLane.sort(
-    (a, b) => laneIndex.get(String(a.id)) - laneIndex.get(String(b.id))
-  );
-  // Merge back, preserving relative order of outLane
-  const result = [];
-  let i = 0;
-  for (const g of games) {
-    if (g.status === status && laneIndex.has(String(g.id))) {
-      result.push(inLane[i++]);
-    } else {
-      result.push(g);
-    }
-  }
-  return result;
-}
 
 export function useGames() {
   const { getAuthHeaders } = useAuth();
@@ -126,29 +101,16 @@ export function useGames() {
     [getAuthHeaders]
   );
 
-  const reorderGames = useCallback(
-    async ({ status, orderedIds, optimistic = true }) => {
-      if (optimistic) {
-        const prev = games;
-        setGames((pg) => reorderLocally(pg, status, orderedIds));
-        try {
-          await reorderGamesApi(
-            { status, gameIds: orderedIds },
-            { auth: false, headers: getAuthHeaders() }
-          );
-        } catch (e) {
-          setGames(prev); // rollback
-          throw e;
-        }
-      } else {
-        await reorderGamesApi(
-          { status, gameIds: orderedIds },
-          { auth: false, headers: getAuthHeaders() }
-        );
-        await refresh();
-      }
+  // Reorder a single game on the server (no refresh on success to avoid flicker).
+  // GameGrid handles optimistic UI already.
+  const reorderGame = useCallback(
+    async (id, targetIndex, status) => {
+      await reorderGamesApi(
+        { id, targetIndex, status },
+        { auth: false, headers: getAuthHeaders() }
+      );
     },
-    [games, getAuthHeaders, refresh]
+    [getAuthHeaders]
   );
 
   return {
@@ -159,7 +121,7 @@ export function useGames() {
     addGame,
     editGame,
     removeGame,
-    reorderGames,
-    setGames, // for rare advanced flows
+    reorderGame,
+    setGames, // kept for rare advanced flows
   };
 }

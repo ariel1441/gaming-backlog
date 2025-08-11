@@ -7,8 +7,10 @@ import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
-
+const { JWT_SECRET } = process.env;
+if (!JWT_SECRET) {
+  throw new Error("Missing JWT_SECRET");
+}
 const loginLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 20,

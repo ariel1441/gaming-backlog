@@ -20,7 +20,7 @@ import { useFilters } from "./hooks/useFilters";
 import { useUI } from "./hooks/useUI";
 
 const AppContent = () => {
-  const { isAuthenticated, loading: authLoading, getAuthHeaders } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   const {
     games,
@@ -30,6 +30,7 @@ const AppContent = () => {
     editGame,
     removeGame,
     refresh,
+    reorderGame, // ← from hook (no success refresh)
   } = useGames();
 
   const { statuses: allStatuses } = useStatuses();
@@ -109,6 +110,21 @@ const AppContent = () => {
   useEffect(() => {
     if (sortVisible) scrollIntoView(sortRef);
   }, [sortVisible, scrollIntoView]);
+
+  const handleDeleteGame = async (gameId) => {
+    if (!isAuthenticated) {
+      alert("Sign in required to delete games.");
+      return;
+    }
+    if (!confirm("Are you sure you want to delete this game?")) return;
+
+    try {
+      await removeGame(gameId);
+    } catch (err) {
+      console.error("Error deleting game:", err);
+      alert("Failed to delete game. Please try again.");
+    }
+  };
 
   const handleSurpriseMe = () => {
     if (games.length > 0) {
@@ -208,39 +224,12 @@ const AppContent = () => {
     }
   };
 
-  const handleDeleteGame = async (gameId) => {
-    if (!isAuthenticated) {
-      alert("Sign in required to delete games.");
-      return;
-    }
-    if (!confirm("Are you sure you want to delete this game?")) return;
-    try {
-      await removeGame(gameId);
-    } catch (err) {
-      console.error("Error deleting game:", err);
-      alert("Failed to delete game. Please try again.");
-    }
-  };
-
-  // Keep current per-item reorder endpoint (auth via getAuthHeaders)
-  const handleReorderGames = async (gameId, targetIndex, status) => {
-    try {
-      const res = await fetch(`/api/games/${gameId}/position`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
-        body: JSON.stringify({ targetIndex, status }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await refresh();
-    } catch (err) {
+  const handleReorderGames = (gameId, targetIndex, status) =>
+    reorderGame(gameId, targetIndex, status).catch(async (err) => {
       console.error("Failed to reorder game:", err);
       alert("Failed to reorder game. Please try again.");
-      await refresh();
-    }
-  };
+      await refresh(); // recover on failure only
+    });
 
   if (authLoading || gamesLoading) {
     return (
@@ -249,7 +238,13 @@ const AppContent = () => {
       </div>
     );
   }
-  if (gamesError) {
+
+  // NEW: treat auth errors as "guest" (no fatal screen)
+  const isAuthError =
+    gamesError && (gamesError.status === 401 || gamesError.status === 403);
+
+  // Keep previous behavior for non-auth errors
+  if (gamesError && !isAuthError) {
     return (
       <div className="flex h-screen bg-surface-bg text-content-primary items-center justify-center">
         <div className="text-state-error">
@@ -259,7 +254,12 @@ const AppContent = () => {
     );
   }
 
-  const displayGames = noFiltersActive ? games : filteredGames || [];
+  // Use empty list if unauthorized so the grid renders cleanly
+  const displayGames = isAuthError
+    ? []
+    : noFiltersActive
+      ? games
+      : filteredGames || [];
 
   return (
     <div className="flex h-screen bg-surface-bg text-content-primary overflow-hidden">

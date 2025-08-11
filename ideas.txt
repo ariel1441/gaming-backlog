@@ -1,4 +1,7 @@
-fixing app.jsx - currently doing - medium/ahrd
+fix the gamecard in small devices, the gamecard is to big for a iphone 7 for exmaple,(probably just reduce max width)  easy
+make it so when you search for agame and theres noly 1 result, dont show that gamecard on the entire row.(basicly have a max width) easy
+make canging a game status not sieasper the game and have you restart the website easy/medium
+make adding a game be instant and not having to restart the website  easy
 make the my genre selection be multi selction(used to be) - easy/medium
 make the my genre lowercase always (to avoid having action and Action for example) - easy
 add a data analisis mode - medium/hard

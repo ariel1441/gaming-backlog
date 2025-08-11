@@ -18,8 +18,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
+  // Use stable string IDs to avoid type mismatches
   const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: game.id });
+    useSortable({ id: String(game.id) });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -49,7 +50,7 @@ const GameGrid = ({
 }) => {
   const initial = Array.isArray(games) ? games : [];
   const [localGames, setLocalGames] = React.useState(initial);
-  const [activeId, setActiveId] = React.useState(null);
+  const [activeId, setActiveId] = React.useState(null); // store as string
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -60,37 +61,48 @@ const GameGrid = ({
     setLocalGames(Array.isArray(games) ? games : []);
   }, [games]);
 
-  const handleDragStart = (event) => setActiveId(event.active.id);
+  const handleDragStart = (event) => setActiveId(String(event.active.id));
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveId(null);
-    if (!over || active.id === over.id) return;
+    if (!over) return;
+
+    const activeKey = String(active.id);
+    const overKey = String(over.id);
+    if (activeKey === overKey) return;
 
     const current = Array.isArray(localGames) ? localGames : [];
-    const oldIndex = current.findIndex((g) => g.id === active.id);
-    const newIndex = current.findIndex((g) => g.id === over.id);
+    const oldIndex = current.findIndex((g) => String(g.id) === activeKey);
+    const newIndex = current.findIndex((g) => String(g.id) === overKey);
     if (oldIndex === -1 || newIndex === -1) return;
 
     const draggedGame = current[oldIndex];
     const targetGame = current[newIndex];
 
+    // Keep your rule: no moving across different ranks
     if (draggedGame?.status_rank !== targetGame?.status_rank) {
       console.log("Cannot move games between different ranks");
       return;
     }
 
+    // Optimistic UI reorder
     const newOrder = arrayMove(current, oldIndex, newIndex);
     setLocalGames(newOrder);
 
     if (onReorder) {
+      // Recompute index within this rank only
       const sameRankGames = newOrder.filter(
         (g) => g.status_rank === draggedGame.status_rank
       );
       const targetIndexInRank = sameRankGames.findIndex(
-        (g) => g.id === draggedGame.id
+        (g) => String(g.id) === activeKey
       );
-      await onReorder(draggedGame.id, targetIndexInRank, draggedGame.status);
+
+      // ✅ Use the destination status (target card’s status)
+      const destStatus = targetGame.status;
+
+      await onReorder(draggedGame.id, targetIndexInRank, destStatus);
     }
   };
 
@@ -113,8 +125,6 @@ const GameGrid = ({
       <div
         className="grid gap-4"
         style={{
-          // Keep cards at a comfortable width (≈ the 3-col look),
-          // but allow as many columns as fit on wide screens.
           gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
         }}
       >
@@ -141,7 +151,8 @@ const GameGrid = ({
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={filteredGames.map((g) => g.id)}
+        // DnD expects a stable array of IDs — make them strings
+        items={filteredGames.map((g) => String(g.id))}
         strategy={rectSortingStrategy}
       >
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]">
@@ -152,7 +163,7 @@ const GameGrid = ({
               onClick={() => onSelectGame?.(game)}
               onEdit={() => onEditGame?.(game)}
               onDelete={() => onDeleteGame?.(game.id)}
-              isDragging={activeId === game.id}
+              isDragging={activeId === String(game.id)}
             />
           ))}
         </div>
