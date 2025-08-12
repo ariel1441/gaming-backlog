@@ -18,7 +18,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
-  // Use stable string IDs to avoid type mismatches
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: String(game.id) });
 
@@ -30,7 +29,14 @@ const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      /* Mobile-only width cap + centering; no effect >= sm */
+      className="w-full max-w-[320px] sm:max-w-none mx-auto sm:mx-0"
+    >
       <GameCard
         game={game}
         onClick={onClick}
@@ -42,15 +48,15 @@ const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
 };
 
 const GameGrid = ({
-  games = [], // <-- safe default
+  games = [],
   onSelectGame,
   onEditGame,
   onDeleteGame,
-  onReorder, // presence of this enables drag-and-drop for the owner
+  onReorder, // if present, enables drag-and-drop
 }) => {
   const initial = Array.isArray(games) ? games : [];
   const [localGames, setLocalGames] = React.useState(initial);
-  const [activeId, setActiveId] = React.useState(null); // store as string
+  const [activeId, setActiveId] = React.useState(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -82,7 +88,6 @@ const GameGrid = ({
 
     // Keep your rule: no moving across different ranks
     if (draggedGame?.status_rank !== targetGame?.status_rank) {
-      console.log("Cannot move games between different ranks");
       return;
     }
 
@@ -99,7 +104,7 @@ const GameGrid = ({
         (g) => String(g.id) === activeKey
       );
 
-      // ✅ Use the destination status (target card’s status)
+      // Destination status = target card’s status
       const destStatus = targetGame.status;
 
       await onReorder(draggedGame.id, targetIndexInRank, destStatus);
@@ -119,24 +124,48 @@ const GameGrid = ({
 
   const filteredGames = list.filter((game) => game?.name?.trim());
 
+  // If exactly one result, center it and cap width (kept behavior you liked)
+  if (filteredGames.length === 1) {
+    const only = filteredGames[0];
+    return (
+      <div className="grid place-items-center">
+        <div className="w-full max-w-[420px]">
+          <GameCard
+            key={only.id}
+            game={only}
+            onClick={() => onSelectGame?.(only)}
+            onEdit={onReorder ? () => onEditGame?.(only) : undefined}
+            onDelete={onReorder ? () => onDeleteGame?.(only.id) : undefined}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Read-only grid when no reorder handler is provided
   if (!onReorder) {
     return (
       <div
-        className="grid gap-4"
-        style={{
-          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
-        }}
+        className="
+          grid gap-4 
+          justify-items-center sm:justify-items-stretch
+          /* Mobile-only narrower min column to prevent horizontal scroll */
+          [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]
+          sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]
+        "
       >
         {filteredGames.map((game) => (
-          <GameCard
+          <div
             key={game.id}
-            game={game}
-            onClick={() => onSelectGame?.(game)}
-            onEdit={undefined}
-            onDelete={undefined}
-            readOnly={true}
-          />
+            className="w-full max-w-[320px] sm:max-w-none mx-auto sm:mx-0"
+          >
+            <GameCard
+              game={game}
+              onClick={() => onSelectGame?.(game)}
+              onEdit={undefined}
+              onDelete={undefined}
+            />
+          </div>
         ))}
       </div>
     );
@@ -151,11 +180,17 @@ const GameGrid = ({
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        // DnD expects a stable array of IDs — make them strings
         items={filteredGames.map((g) => String(g.id))}
         strategy={rectSortingStrategy}
       >
-        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]">
+        <div
+          className="
+            grid gap-4 
+            justify-items-center sm:justify-items-stretch
+            [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]
+            sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]
+          "
+        >
           {filteredGames.map((game) => (
             <SortableGameCard
               key={game.id}

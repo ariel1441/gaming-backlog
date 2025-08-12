@@ -13,6 +13,7 @@ import EditGameForm from "./components/EditGameForm";
 import AdminLoginForm from "./components/AdminLoginForm";
 import PublicSettingsModal from "./components/PublicSettingsModal";
 import PublicProfile from "./pages/PublicProfile";
+import { smartFuzzySearch } from "./utils/fuzzySearch";
 
 import { useGames } from "./hooks/useGames";
 import { useStatuses } from "./hooks/useStatuses";
@@ -254,12 +255,51 @@ const AppContent = () => {
     );
   }
 
-  // Use empty list if unauthorized so the grid renders cleanly
-  const displayGames = isAuthError
+  // Build base list (filters/sort), then apply smart fuzzy search if there's a query
+  const normalize = (s = "") => s.toLowerCase().trim();
+
+  const applyNonSearchFilters = (items) => {
+    try {
+      return items.filter((g) => {
+        // Status filter
+        if (selectedStatuses?.length && !selectedStatuses.includes(g.status))
+          return false;
+
+        // Genre filter (CSV like "Action, RPG")
+        if (selectedGenres?.length) {
+          const gameGenres = (g.genres || "")
+            .toLowerCase()
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean);
+          const wanted = new Set(selectedGenres.map(normalize));
+          if (!gameGenres.some((gg) => wanted.has(gg))) return false;
+        }
+
+        // My-genre filter (single string)
+        if (selectedMyGenres?.length) {
+          const myg = normalize(g.my_genre || "");
+          if (!selectedMyGenres.map(normalize).includes(myg)) return false;
+        }
+
+        return true;
+      });
+    } catch {
+      return items;
+    }
+  };
+
+  const baseGames = isAuthError
     ? []
-    : noFiltersActive
-      ? games
-      : filteredGames || [];
+    : searchQuery?.trim()
+      ? applyNonSearchFilters(games) // <-- bypasses old strict search
+      : noFiltersActive
+        ? games
+        : filteredGames || [];
+
+  const displayGames = searchQuery?.trim()
+    ? smartFuzzySearch(baseGames, searchQuery)
+    : baseGames;
 
   return (
     <div className="flex h-screen bg-surface-bg text-content-primary overflow-hidden">

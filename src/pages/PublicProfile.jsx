@@ -5,6 +5,7 @@ import { useParams, Link } from "react-router-dom";
 import GameGrid from "../components/GameGrid";
 import GameModal from "../components/GameModal";
 import FilterPanel from "../components/FilterPanel";
+import { smartFuzzySearch } from "../utils/fuzzySearch";
 
 import { listPublicGames, getPublicProfile } from "../services/publicService";
 import { useStatuses } from "../hooks/useStatuses";
@@ -130,7 +131,45 @@ export default function PublicProfile() {
     setIsReversed(false);
   };
 
-  const displayGames = noFiltersActive ? games : filteredGames || [];
+  // When searching, apply ONLY non-search filters, then fuzzy search
+  const normalize = (s = "") => s.toLowerCase().trim();
+
+  const applyNonSearchFilters = (items) => {
+    return (items || []).filter((g) => {
+      // Status
+      if (selectedStatuses?.length && !selectedStatuses.includes(g.status))
+        return false;
+
+      // Genre (CSV like "Action, RPG")
+      if (selectedGenres?.length) {
+        const gameGenres = (g.genres || "")
+          .toLowerCase()
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean);
+        const wanted = new Set(selectedGenres.map(normalize));
+        if (!gameGenres.some((gg) => wanted.has(gg))) return false;
+      }
+
+      // My genre (single string)
+      if (selectedMyGenres?.length) {
+        const myg = normalize(g.my_genre || "");
+        if (!selectedMyGenres.map(normalize).includes(myg)) return false;
+      }
+
+      return true;
+    });
+  };
+
+  const basePublicGames = searchQuery?.trim()
+    ? applyNonSearchFilters(games)
+    : noFiltersActive
+      ? games
+      : filteredGames || [];
+
+  const displayGames = searchQuery?.trim()
+    ? smartFuzzySearch(basePublicGames, searchQuery)
+    : basePublicGames;
 
   // ---------- UI below unchanged ----------
   if (loading) {
