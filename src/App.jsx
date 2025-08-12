@@ -19,6 +19,7 @@ import { useGames } from "./hooks/useGames";
 import { useStatuses } from "./hooks/useStatuses";
 import { useFilters } from "./hooks/useFilters";
 import { useUI } from "./hooks/useUI";
+import { useDebouncedValue } from "./hooks/useDebouncedValue";
 
 const AppContent = () => {
   const { isAuthenticated, loading: authLoading } = useAuth();
@@ -62,6 +63,8 @@ const AppContent = () => {
     initialReverse: false,
     statuses: allStatuses,
   });
+
+  const debouncedQuery = useDebouncedValue(searchQuery, 120);
 
   const {
     sidebarOpen,
@@ -291,15 +294,31 @@ const AppContent = () => {
 
   const baseGames = isAuthError
     ? []
-    : searchQuery?.trim()
-      ? applyNonSearchFilters(games) // <-- bypasses old strict search
+    : debouncedQuery?.trim()
+      ? applyNonSearchFilters(games)
       : noFiltersActive
         ? games
         : filteredGames || [];
 
-  const displayGames = searchQuery?.trim()
-    ? smartFuzzySearch(baseGames, searchQuery)
+  // Default order comparator: status_rank → position → id
+  const sortByDefault = (a, b) => {
+    const sr = (g) => g?.status_rank ?? 999;
+    const pos = (g) => g?.position ?? Number.POSITIVE_INFINITY;
+    const num = (v) => (Number.isFinite(+v) ? +v : Number.MAX_SAFE_INTEGER);
+    if (sr(a) !== sr(b)) return sr(a) - sr(b);
+    if (pos(a) !== pos(b)) return pos(a) - pos(b);
+    return num(a?.id) - num(b?.id);
+  };
+
+  // Fuzzy = filter only; keep default order unless user picked a sort
+  const listAfterSearch = debouncedQuery?.trim()
+    ? smartFuzzySearch(baseGames, debouncedQuery)
     : baseGames;
+
+  const useDefaultSort = !sortKey || sortKey === "";
+  const displayGames = useDefaultSort
+    ? [...listAfterSearch].sort(sortByDefault)
+    : listAfterSearch;
 
   return (
     <div className="flex h-screen bg-surface-bg text-content-primary overflow-hidden">

@@ -10,6 +10,7 @@ import { smartFuzzySearch } from "../utils/fuzzySearch";
 import { listPublicGames, getPublicProfile } from "../services/publicService";
 import { useStatuses } from "../hooks/useStatuses";
 import { useFilters } from "../hooks/useFilters";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 export default function PublicProfile() {
   const { username } = useParams();
@@ -98,6 +99,8 @@ export default function PublicProfile() {
     noFiltersActive,
   } = useFilters(games, { statuses: allStatuses });
 
+  const debouncedQuery = useDebouncedValue(searchQuery, 120);
+
   // mirror private scrolling UX
   useEffect(() => {
     if (filterVisible && filterRef.current) {
@@ -161,15 +164,27 @@ export default function PublicProfile() {
     });
   };
 
-  const basePublicGames = searchQuery?.trim()
+  const basePublicGames = debouncedQuery?.trim()
     ? applyNonSearchFilters(games)
     : noFiltersActive
       ? games
       : filteredGames || [];
 
-  const displayGames = searchQuery?.trim()
-    ? smartFuzzySearch(basePublicGames, searchQuery)
+  // Default order comparator: status_rank → position → id
+  const sortByDefault = (a, b) => {
+    const sr = (g) => g?.status_rank ?? 999;
+    const pos = (g) => g?.position ?? Number.POSITIVE_INFINITY;
+    const num = (v) => (Number.isFinite(+v) ? +v : Number.MAX_SAFE_INTEGER);
+    if (sr(a) !== sr(b)) return sr(a) - sr(b);
+    if (pos(a) !== pos(b)) return pos(a) - pos(b);
+    return num(a?.id) - num(b?.id);
+  };
+
+  const listAfterSearch = debouncedQuery?.trim()
+    ? smartFuzzySearch(basePublicGames, debouncedQuery)
     : basePublicGames;
+
+  const displayGames = [...listAfterSearch].sort(sortByDefault);
 
   // ---------- UI below unchanged ----------
   if (loading) {

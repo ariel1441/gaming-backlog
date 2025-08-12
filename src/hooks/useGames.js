@@ -9,10 +9,9 @@ import {
   reorderGames as reorderGamesApi, // PATCH /api/games/:id/position
 } from "../services/gameService";
 
-/** ---- helpers (kept local to the hook file) ---- **/
+// Consider a row "not hydrated" until we have a cover or HLTB minutes
+const needsHydration = (g) => !g?.cover || !g?.how_long_to_beat;
 
-// Infer the status_rank for a given status by sampling existing games.
-// Fallback to 999 so unknown statuses sink to the bottom (until server replies).
 function inferStatusRank(status, list) {
   const sample = list.find(
     (g) => String(g?.status) === String(status) && g?.status_rank != null
@@ -82,120 +81,191 @@ export function useGames() {
     return () => ac.abort();
   }, [getAuthHeaders]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listGamesApi({
-        auth: false,
-        headers: getAuthHeaders(),
-      });
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.games)
-          ? data.games
-          : Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data?.rows)
-              ? data.rows
-              : [];
-      setGames(sortGames(list));
-    } catch (e) {
-      setError(e);
-    } finally {
-      setLoading(false);
-    }
-  }, [getAuthHeaders]);
-
-  // --- Add (optimistic): insert immediately at end of the target status group
-  const addGame = useCallback(
-    async (payload) => {
-      const tempId = `temp-${Date.now()}`;
-      let optimistic;
-      setGames((prev) => {
-        const pos = nextPositionForStatus(payload.status, prev);
-        const sr = inferStatusRank(payload.status, prev);
-        optimistic = {
-          id: tempId,
-          ...payload,
-          position: pos,
-          status_rank: sr,
-        };
-        return sortGames([...prev, optimistic]);
-      });
-
+  // Refresh; can run "silent" so UI doesn't flicker
+  const refresh = useCallback(
+    async (opts = {}) => {
+      const silent = !!opts.silent; // default false
+      if (!silent) setLoading(true);
+      if (!silent) setError(null);
       try {
-        const created = await createGameApi(payload, {
+        const data = await listGamesApi({
           auth: false,
           headers: getAuthHeaders(),
         });
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.games)
+            ? data.games
+            : Array.isArray(data?.data)
+              ? data.data
+              : Array.isArray(data?.rows)
+                ? data.rows
+                : [];
 
-        // Reconcile temp with server record (id, position, status_rank, etc.)
-        setGames((prev) =>
-          sortGames(
-            prev.map((g) =>
-              String(g.id) === tempId
-                ? { ...optimistic, ...(created ?? {}) }
-                : g
-            )
-          )
-        );
+        setGames((prev) => {
+          if (!silent) return sortGames(list);
 
-        return created ?? optimistic;
+          // silent refresh: merge new fields into existing rows by id, then re-sort
+          const byId = new Map(prev.map((g) => [g.id, g]));
+          for (const ng of list) {
+            const old = byId.get(ng.id);
+            byId.set(ng.id, old ? { ...old, ...ng } : ng);
+          }
+          return sortGames(Array.from(byId.values()));
+        });
       } catch (e) {
-        // Roll back the optimistic insert on error
-        setGames((prev) => prev.filter((g) => String(g.id) !== tempId));
-        throw e;
+        if (!silent) setError(e);
+      } finally {
+        if (!silent) setLoading(false);
       }
     },
     [getAuthHeaders]
   );
 
-  // --- Edit (optimistic): apply immediately; on status change, move to new group end
-  const editGame = useCallback(
-    async (id, patch) => {
-      let rollback = null;
+  // --- Add (optimistic): insert immediately at end of the target status group
+  const addGame = useCallback(
+    async (payload) => {
+      // Create a temp row so UI updates instantly, placed correctly
+      const tempId = `temp-${Date.now()}`;
+      const optimistic = (prev) => {
+        const sr = inferStatusRank(payload.status, prev);
+        const pos = nextPositionForStatus(payload.status, prev);
+        return {
+          id: tempId,
+          name: payload.name ?? "",
+          status: payload.status ?? "plan to play",
+          status_rank: sr,
+          position: pos,
+          my_genre: payload.my_genre ?? "",
+          genres: payload.genres ?? "",
+          how_long_to_beat: payload.how_long_to_beat ?? null,
+          rating: payload.rating ?? null,
+          thoughts: payload.thoughts ?? "",
+          cover: payload.cover ?? "",
+          // any other fields from your schema can be echoed here safely
+        };
+      };
 
-      // Apply changes optimistically and keep order stable
-      setGames((prev) => {
-        rollback = prev;
-        const next = prev.map((g) => {
-          if (String(g.id) !== String(id)) return g;
+      // Optimistic insert
+      setGames((prev) => sortGames([...prev, optimistic(prev)]));
 
-          // If status is changing, give a provisional end-of-group position and rank
-          if (patch?.status && patch.status !== g.status) {
-            const pos = nextPositionForStatus(patch.status, prev);
-            const sr = inferStatusRank(patch.status, prev);
-            return { ...g, ...patch, position: pos, status_rank: sr };
-          }
-          return { ...g, ...patch };
-        });
-        return sortGames(next);
-      });
-
+      let created;
       try {
-        const updated = await updateGameApi(id, patch, {
+        created = await createGameApi(payload, {
           auth: false,
           headers: getAuthHeaders(),
         });
-
-        // Merge authoritative server result (position/status_rank may change)
-        setGames((prev) =>
-          sortGames(
-            prev.map((g) =>
-              String(g.id) === String(id) ? { ...g, ...(updated ?? patch) } : g
-            )
-          )
-        );
-
-        return updated ?? patch;
       } catch (e) {
-        // Roll back to the exact pre-optimistic snapshot
-        if (rollback) setGames(rollback);
+        // Rollback on failure
+        setGames((prev) => prev.filter((g) => g.id !== tempId));
         throw e;
       }
+
+      // Reconcile temp row with server row (preserve placement fields if missing)
+      setGames((prev) => {
+        const temp = prev.find((g) => g.id === tempId);
+        const finalized = {
+          ...temp,
+          ...created,
+          status_rank:
+            created?.status_rank != null
+              ? created.status_rank
+              : temp?.status_rank,
+          position:
+            created?.position != null ? created.position : temp?.position,
+        };
+        return sortGames(prev.map((g) => (g.id === tempId ? finalized : g)));
+      });
+
+      // RAWG hydrate may finish shortly after create → silent revalidate
+      if (needsHydration(created)) {
+        setTimeout(() => {
+          refresh({ silent: true }).catch(() => {});
+        }, 400);
+        setTimeout(() => {
+          refresh({ silent: true }).catch(() => {});
+        }, 1600);
+      }
+
+      return created;
     },
-    [getAuthHeaders]
+    [getAuthHeaders, refresh]
+  );
+
+  // --- Edit (optimistic): apply immediately; on status change, move to new group end
+  const editGame = useCallback(
+    async (id, patch) => {
+      // Snapshot for rollback
+      let before;
+      setGames((prev) => {
+        before = prev;
+        const idx = prev.findIndex((g) => g.id === id);
+        if (idx === -1) return prev;
+
+        const current = prev[idx];
+        const nextStatus = patch?.status ?? current.status;
+        const statusChanged = String(nextStatus) !== String(current.status);
+
+        const next = { ...current, ...patch };
+
+        if (statusChanged) {
+          // Move to end of new status group with inferred rank/position
+          const listWithout = prev.filter((g) => g.id !== id);
+          next.status_rank = inferStatusRank(nextStatus, listWithout);
+          next.position = nextPositionForStatus(nextStatus, listWithout);
+          return sortGames([...listWithout, next]);
+        }
+
+        // Same status → keep position; just merge fields
+        const copy = [...prev];
+        copy[idx] = next;
+        return sortGames(copy);
+      });
+
+      let updated;
+      try {
+        updated = await updateGameApi(id, patch, {
+          auth: false,
+          headers: getAuthHeaders(),
+        });
+      } catch (e) {
+        // Roll back on failure
+        if (before) setGames(before);
+        throw e;
+      }
+
+      // Merge any server-provided fields back in (keep our placement if server omitted)
+      setGames((prev) =>
+        sortGames(
+          prev.map((g) =>
+            g.id === id
+              ? {
+                  ...g,
+                  ...updated,
+                  status_rank:
+                    updated?.status_rank != null
+                      ? updated.status_rank
+                      : g.status_rank,
+                  position:
+                    updated?.position != null ? updated.position : g.position,
+                }
+              : g
+          )
+        )
+      );
+
+      // If the name changed (new RAWG lookup likely) or still not hydrated, silent revalidate
+      const nameChanged =
+        typeof patch?.name === "string" && patch.name.trim() !== "";
+      if (nameChanged || needsHydration(updated)) {
+        setTimeout(() => {
+          refresh({ silent: true }).catch(() => {});
+        }, 400);
+      }
+
+      return updated ?? patch;
+    },
+    [getAuthHeaders, refresh]
   );
 
   const removeGame = useCallback(
