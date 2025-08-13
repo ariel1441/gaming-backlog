@@ -9,18 +9,25 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
     my_genre: "",
     thoughts: "",
     my_score: "",
+    started_at: "", // NEW
+    finished_at: "", // NEW
   });
 
   useEffect(() => {
     if (game) {
+      // type="date" wants YYYY-MM-DD; guard if backend sends null or full timestamps later
+      const toDateStr = (v) => (!v ? "" : String(v).slice(0, 10)); // works for "YYYY-MM-DD" or ISO strings
+
       setFormData({
         id: game.id,
         name: game.name || "",
         status: game.status || "",
-        how_long_to_beat: game.how_long_to_beat || "",
+        how_long_to_beat: game.how_long_to_beat ?? "",
         my_genre: game.my_genre || "",
         thoughts: game.thoughts || "",
-        my_score: game.my_score || "",
+        my_score: game.my_score ?? "",
+        started_at: toDateStr(game.started_at), // NEW
+        finished_at: toDateStr(game.finished_at), // NEW
       });
     }
   }, [game]);
@@ -35,6 +42,7 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Send dates as strings "YYYY-MM-DD" (or empty string → your backend treats as null)
     onSubmit(formData);
   };
 
@@ -111,6 +119,7 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               value={formData.how_long_to_beat}
               onChange={handleChange}
               min="0"
+              step="0.1"
               className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
@@ -169,6 +178,43 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               step="0.1"
               className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
+          </div>
+
+          {/* NEW: dates */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="started_at"
+                className="block text-sm font-medium mb-1 text-content-secondary"
+              >
+                Started on
+              </label>
+              <input
+                type="date"
+                id="started_at"
+                name="started_at"
+                value={formData.started_at}
+                onChange={handleChange}
+                className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="finished_at"
+                className="block text-sm font-medium mb-1 text-content-secondary"
+              >
+                Finished on
+              </label>
+              <input
+                type="date"
+                id="finished_at"
+                name="finished_at"
+                value={formData.finished_at}
+                onChange={handleChange}
+                className="w-full p-2 rounded bg-surface-elevated border border-surface-border text-content-primary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+            </div>
           </div>
 
           <div className="flex justify-end gap-4 pt-4">
