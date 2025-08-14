@@ -13,6 +13,7 @@ import gamesRouter, { initCache } from "./routes/games.js";
 import authRouter from "./routes/auth.js";
 import publicRouter from "./routes/public.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { errors } from "celebrate";
 
 const app = express();
 
@@ -24,6 +25,7 @@ await initCache(app); // sets app.locals.rawgCache
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/public", publicLimiter, publicRouter);
 app.use("/api/games", gamesRouter);
+app.use(errors());
 app.use(errorHandler);
 
 // ---- Server ----

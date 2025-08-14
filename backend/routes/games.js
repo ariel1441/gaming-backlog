@@ -1,58 +1,29 @@
 // backend/routes/games.js
 import express from "express";
 import { pool } from "../db.js";
-import { fetchGameData } from "../utils/fetchRAWG.js";
 import { verifyToken } from "../middleware/auth.js";
+import { fetchGameData } from "../utils/fetchRAWG.js";
+import { upsertGame, reorderGame } from "../validators/games.js";
+import DOMPurify from "isomorphic-dompurify";
 import fs from "fs/promises";
 import path from "path";
-import { fileURLToPath } from "url";
+
+import { todayUTC, toDateOrNull, toHourInt } from "../utils/time.js";
+import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
+import { normStatus, DONE_FINISH_SET } from "../utils/status.js";
 
 const router = express.Router();
+
 const CACHE_PATH = path.resolve("backend/data/cached_rawg_data.json");
 const DEFAULT_POSITION_SPACING = 1000;
 
-// Single debug toggle (quiet in production)
+// retry failed/empty cache entries after this many ms (default 1h)
+const RAWG_FAIL_TTL_MS = Number(process.env.RAWG_FAIL_TTL_MS || 60 * 60 * 1000);
+
 const DEBUG =
   process.env.DEBUG === "1" || process.env.NODE_ENV === "development";
 
-/* -------------------- Status / timestamp helpers -------------------- */
-
-const normStatus = (s) => (s || "").toLowerCase().trim();
-
-// Which statuses should auto-set finished_at (do NOT include “played and wont come back”)
-const DONE_FINISH_SET = new Set([
-  "finished",
-  "played alot but didnt finish",
-  "played a lot but didn't finish", // variant
-]);
-
-// UTC "today" (YYYY-MM-DD) for DATE columns
-const todayUTC = () => {
-  const d = new Date();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
-
-// Accept "YYYY-MM-DD" or any Date-like; coerce to YYYY-MM-DD or null
-const toDateOrNull = (v) => {
-  if (v === undefined || v === null || v === "") return null;
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
-
-// Coerce any input to whole hours (int) or null for DB writes
-const toHourInt = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
-};
-
-/* -------------------- RAWG cache helpers -------------------- */
+/* -------------------------------- RAWG cache -------------------------------- */
 
 const loadCache = async (app) => {
   try {
@@ -61,570 +32,600 @@ const loadCache = async (app) => {
     if (DEBUG) console.log("[RAWG] cache loaded");
   } catch {
     app.locals.rawgCache = {};
-    if (DEBUG) console.log("[RAWG] no cache, starting fresh");
+    if (DEBUG) console.log("[RAWG] new empty cache");
   }
 };
 
+// compact JSON, written atomically to avoid corruption
 const saveCache = async (cache) => {
+  const data = JSON.stringify(cache);
+  const dir = path.dirname(CACHE_PATH);
+  const tmp = path.join(dir, `.rawg-cache.${process.pid}.${Date.now()}.tmp`);
+
+  // Write to temp + fsync to improve durability
+  const fh = await fs.open(tmp, "w");
   try {
-    await fs.writeFile(CACHE_PATH, JSON.stringify(cache, null, 2));
-    if (DEBUG) console.log("[RAWG] cache saved");
-  } catch (err) {
-    console.error("[RAWG] failed to save cache:", err);
+    await fh.writeFile(data, "utf8");
+    await fh.sync(); // flush data/metadata to disk
+  } finally {
+    await fh.close();
   }
+
+  // Atomic swap into place
+  await fs.rename(tmp, CACHE_PATH);
+
+  if (DEBUG) console.log("[RAWG] cache saved");
 };
 
-/* -------------------- Position helper -------------------- */
-
-const getNextPosition = async (status, userId) => {
-  const result = await pool.query(
-    "SELECT MAX(position) AS max FROM games WHERE status = $1 AND user_id = $2",
-    [status, userId]
-  );
-  return (result.rows[0].max || 0) + DEFAULT_POSITION_SPACING;
-};
-
-/* -------------------- HLTB local lookup (JSON file) -------------------- */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const HLTB_ENV_PATH =
-  process.env.HLTB_DATA_PATH && String(process.env.HLTB_DATA_PATH).trim();
-
-// Roman numerals → digits (VII → 7, etc.)
-const romanTokenToInt = (tok) => {
-  const map = {
-    i: 1,
-    ii: 2,
-    iii: 3,
-    iv: 4,
-    v: 5,
-    vi: 6,
-    vii: 7,
-    viii: 8,
-    ix: 9,
-    x: 10,
-  };
-  const n = map[String(tok || "").toLowerCase()];
-  return n ? String(n) : tok;
-};
-
-// Normalize titles (punctuation-insensitive; handles roman numerals)
-const normalizeTitle = (s = "") =>
-  String(s)
-    .toLowerCase()
-    .replace(/’/g, "'")
-    .replace(/[\u2012\u2013\u2014\u2015\-:]/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
+const lowerKey = (s) =>
+  String(s || "")
     .trim()
-    .split(" ")
-    .map(romanTokenToInt)
-    .join(" ");
+    .toLowerCase();
 
-// Seconds → whole hours (int); treat 0/invalid as null
-const secToHourInt = (sec) => {
-  const n = Number(sec);
-  return Number.isFinite(n) && n > 0 ? Math.round(n / 3600) : null;
-};
-
-// Resolve the HLTB path with a simple, predictable order
-const resolveHLTBPath = async () => {
+/** Read a reasonable RAWG hours value from a few likely places (do NOT store to DB). */
+const getRawgHours = (rawg) => {
   const candidates = [
-    HLTB_ENV_PATH, // explicit override
-    path.resolve("backend/data/hltb_data.json"), // project root
-    path.join(__dirname, "../data/hltb_data.json"), // alongside this file
-  ].filter(Boolean);
-
-  for (const p of candidates) {
-    try {
-      await fs.access(p);
-      return p;
-    } catch {
-      /* keep trying */
-    }
+    rawg?.playtime, // common RAWG field (hours)
+    rawg?.time_to_beat?.main, // some wrappers
+    rawg?.time_to_beat?.main_story, // alt
+    rawg?.playtime_hours, // alt
+    rawg?.average_playtime, // alt
+  ];
+  for (const v of candidates) {
+    const h = toHourInt(v);
+    if (h != null) return h;
   }
   return null;
 };
 
-// Load HLTB JSON (array of rows or {data:[...]}) into { normTitle: { main, plus, comp } }
-const loadHLTBLocal = async (app) => {
-  const chosen = await resolveHLTBPath();
-  if (!chosen) {
-    if (DEBUG) console.warn("[HLTB] no local HLTB file found");
-    app.locals.hltbLookup = {};
-    return;
-  }
+const isEmptyObject = (obj) =>
+  obj &&
+  typeof obj === "object" &&
+  !Array.isArray(obj) &&
+  Object.keys(obj).length === 0;
 
-  try {
-    const txt = await fs.readFile(chosen, "utf8");
-    const parsed = JSON.parse(txt.replace(/^\uFEFF/, "")); // strip BOM if present
-
-    const rows = Array.isArray(parsed)
-      ? parsed
-      : parsed?.data || parsed?.rows || parsed?.records;
-
-    // If it's a keyed map already ({normTitle: {main,plus,comp}}), accept it as-is
-    if (!rows && parsed && typeof parsed === "object") {
-      const keys = Object.keys(parsed);
-      const sample = keys.length ? parsed[keys[0]] : null;
-      if (
-        sample &&
-        ("main" in sample || "plus" in sample || "comp" in sample)
-      ) {
-        app.locals.hltbLookup = parsed;
-        if (DEBUG)
-          console.log(`[HLTB] loaded keyed lookup (${keys.length} titles)`);
-        return;
-      }
-      // else fall through to empty
-    }
-
-    if (!rows || !Array.isArray(rows)) {
-      console.error("[HLTB] unrecognized JSON shape for file:", chosen);
-      app.locals.hltbLookup = {};
-      return;
-    }
-
-    const lookup = {};
-    for (const row of rows) {
-      const title = row?.game_game_name?.trim?.();
-      if (!title) continue;
-
-      // Mapping: main = main_med → fallback main_avg; plus = plus_med; comp = all_med
-      const main =
-        secToHourInt(row.game_comp_main_med) ??
-        secToHourInt(row.game_comp_main_avg);
-      const plus = secToHourInt(row.game_comp_plus_med);
-      const comp = secToHourInt(row.game_comp_all_med);
-
-      if (main != null || plus != null || comp != null) {
-        lookup[normalizeTitle(title)] = { main, plus, comp };
-      }
-    }
-
-    app.locals.hltbLookup = lookup;
-    if (DEBUG)
-      console.log(
-        `[HLTB] loaded ${Object.keys(lookup).length} titles from: ${chosen}`
-      );
-  } catch (e) {
-    console.error("[HLTB] load error:", e.message);
-    app.locals.hltbLookup = {};
-  }
+const isStaleMiss = (entry) => {
+  if (!entry) return true;
+  if (isEmptyObject(entry)) return true; // legacy empty cache entries: refetch
+  if (entry.__failedAt && Date.now() - entry.__failedAt > RAWG_FAIL_TTL_MS)
+    return true;
+  return false;
 };
 
-// Get hours by preference: 'main' | 'plus' | 'comp' (default 'main')
-const lookupHLTBHoursByPref = (app, rawTitle, pref = "main") => {
-  if (!rawTitle) return null;
-  const rec = app.locals?.hltbLookup?.[normalizeTitle(rawTitle)];
-  if (!rec) return null;
-  if (pref === "plus") return rec.plus ?? null;
-  if (pref === "comp") return rec.comp ?? null;
-  return rec.main ?? null;
+// NEW: coalesce concurrent RAWG fetches for the same title (process-local)
+const inflightRawg = new Map(); // key: lower(title) -> Promise<void>
+
+/**
+ * Ensure a RAWG entry in cache for a *user-entered* title (single cache key).
+ * Never re-key by canonical/official name — avoids duplicate cache entries.
+ * - Uses original userTitle for the API query (better relevance)
+ * - Uses lowercased/trimmed key for cache identity
+ * - On failure, stores { __failedAt } to allow TTL-based retries
+ * `persist=false` lets us batch many fetches and write once at the end.
+ * Dedup: multiple callers for the same key share one outbound fetch.
+ */
+const ensureRawgEntry = async (cache, userTitle, { persist = true } = {}) => {
+  const key = lowerKey(userTitle);
+  let entry = cache[key];
+
+  if (isStaleMiss(entry)) {
+    // If someone is already fetching this key, await that work
+    let p = inflightRawg.get(key);
+    if (!p) {
+      // Create one authoritative in-flight fetch (no disk write here)
+      p = (async () => {
+        try {
+          const data = await fetchGameData(userTitle); // query with original title
+          cache[key] = data ?? {};
+        } catch (e) {
+          if (DEBUG) console.warn("[RAWG] fetch error:", e.message);
+          cache[key] = { __failedAt: Date.now() };
+        }
+      })().finally(() => inflightRawg.delete(key));
+      inflightRawg.set(key, p);
+    }
+    await p; // wait for the single shared fetch to complete
+
+    // Persist if this caller requested it (e.g., POST/PUT); GET-list will persist once later
+    if (persist) await saveCache(cache);
+    entry = cache[key];
+  }
+
+  const rawg = entry || {};
+  const canonicalName = (rawg?.name || rawg?.slug || userTitle || "")
+    .toString()
+    .trim();
+  return { rawg, canonicalName };
 };
 
-/* -------------------- Routes -------------------- */
+/* ------------------------------- Position helper ------------------------------ */
 
-// GET all games for the authenticated user
+const getNextPosition = async (status, userId) => {
+  const result = await pool.query(
+    `
+      SELECT COALESCE(MAX(position), 0) AS max
+      FROM games
+      WHERE user_id = $1 AND status = $2
+    `,
+    [userId, status]
+  );
+  return (result.rows[0].max || 0) + DEFAULT_POSITION_SPACING;
+};
+
+/* -------------- Simple concurrency helper for the first cold rebuild ---------- */
+const mapWithLimit = async (items, limit, fn) => {
+  const out = new Array(items.length);
+  let i = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (i < items.length) {
+        const idx = i++;
+        out[idx] = await fn(items[idx], idx);
+      }
+    }
+  );
+  await Promise.all(workers);
+  return out;
+};
+
+/* --------------------------- UI-safe game serializer -------------------------- */
+/**
+ * Important: we return how_long_to_beat as the *display* value:
+ *   DB how_long_to_beat  OR  RAWG hours  OR  null
+ * This preserves your existing frontend behavior while still never storing RAWG hours.
+ * We also include displayHLTB and displayName for future UI migration (optional).
+ */
+const decorateGameForClient = (game, rawg) => {
+  const dbHours = toHourInt(game.how_long_to_beat);
+  const rawgHours = getRawgHours(rawg);
+
+  const genreNames = Array.isArray(rawg?.genres)
+    ? rawg.genres.map((g) => g?.name).filter(Boolean)
+    : [];
+  const storeNames = Array.isArray(rawg?.stores)
+    ? rawg.stores.map((s) => s?.store?.name ?? s?.name).filter(Boolean)
+    : [];
+  const tagNames = Array.isArray(rawg?.tags)
+    ? rawg.tags.map((t) => t?.name).filter(Boolean)
+    : [];
+
+  const displayHLTB = dbHours ?? rawgHours ?? null;
+
+  return {
+    ...game,
+    // Back-compat for UI:
+    how_long_to_beat: displayHLTB,
+    // Nice-to-have for future UI:
+    displayHLTB,
+    displayName: rawg?.name || game.name,
+    // RAWG fields normalized to primitives:
+    cover: rawg?.cover ?? rawg?.background_image ?? null,
+    releaseDate: rawg?.released ?? null,
+    // FIX: Sanitize HTML description to prevent XSS
+    description: rawg?.description
+      ? DOMPurify.sanitize(rawg.description, {
+          ALLOWED_TAGS: ["p", "br", "strong", "em", "ul", "ol", "li"],
+          ALLOWED_ATTR: [],
+        })
+      : null,
+    rating:
+      rawg && typeof rawg.rating === "number" && rawg.rating > 0
+        ? rawg.rating
+        : null,
+    genres: genreNames.length ? genreNames.join(", ") : null,
+    metacritic:
+      rawg && typeof rawg.metacritic === "number" && rawg.metacritic > 0
+        ? rawg.metacritic
+        : null,
+    stores: storeNames.length ? storeNames.join(", ") : null,
+    features: tagNames.length ? tagNames.join(", ") : null,
+  };
+};
+
+/* ----------------------------------- Routes ---------------------------------- */
+
+// GET all games for the authenticated user (fast cold rebuild)
 router.get("/", verifyToken, async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    const result = await pool.query(
+    const { rows } = await pool.query(
       `
       SELECT g.*, s.rank AS status_rank
       FROM games g
-      LEFT JOIN statuses s ON g.status = s.status
+      LEFT JOIN statuses s ON s.status = g.status
       WHERE g.user_id = $1
-      ORDER BY s.rank ASC, g.position ASC NULLS LAST, g.id ASC
+      ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
       `,
       [userId]
     );
 
-    const rawgCache = req.app.locals.rawgCache || {};
+    const cache = req.app.locals.rawgCache || {};
 
-    const games = await Promise.all(
-      result.rows.map(async (game) => {
-        const cacheKey = (game.name || "").toLowerCase().trim();
-        if (!rawgCache[cacheKey]) {
-          const data = await fetchGameData(game.name);
-          rawgCache[cacheKey] = data || {};
-          await saveCache(rawgCache);
-        }
+    // Case-insensitive dedupe: keep one original name per lowercased key
+    const nameMap = new Map(); // lowerName -> originalName
+    for (const r of rows) {
+      const orig = String(r.name || "").trim();
+      const lower = lowerKey(orig);
+      if (!nameMap.has(lower)) nameMap.set(lower, orig);
+    }
 
-        const rawgData = rawgCache[cacheKey] || {};
-        const dbHLTB =
-          typeof game.how_long_to_beat === "number" && game.how_long_to_beat > 0
-            ? game.how_long_to_beat
-            : null;
+    // Fetch missing entries in parallel with a safe cap and don't save yet
+    await mapWithLimit([...nameMap.values()], 6, async (name) => {
+      await ensureRawgEntry(cache, name, { persist: false });
+    });
 
-        // Display-only fallback to RAWG if DB lacks hours (never store RAWG)
-        const displayHLTB =
-          dbHLTB ??
-          (typeof rawgData?.playtime === "number" && rawgData.playtime > 0
-            ? rawgData.playtime
-            : null);
+    // One write after the batch (huge win vs N writes)
+    await saveCache(cache);
 
-        return {
-          ...game,
-          cover: rawgData?.background_image || "",
-          releaseDate: rawgData?.released || "",
-          description: rawgData?.description || "",
-          how_long_to_beat: displayHLTB,
-          rating: rawgData?.rating || "",
-          genres: rawgData?.genres?.map((g) => g.name).join(", ") || "Unknown",
-          metacritic: rawgData?.metacritic || "N/A",
-          stores:
-            rawgData?.stores?.map((s) => ({
-              store_id: s.store?.id,
-              store_name: s.store?.name,
-              url: s.url,
-            })) || [],
-          features: rawgData?.tags?.map((t) => t.name) || [],
-        };
-      })
-    );
+    // Now decorate from cache (no extra network)
+    const out = rows.map((game) => {
+      const rawg = cache[lowerKey(game.name)] || {};
+      return decorateGameForClient(game, rawg);
+    });
 
-    res.json(games);
+    res.json(out);
   } catch (err) {
     next(err);
   }
 });
 
-// POST create a new game (for the authenticated user)
-router.post("/", verifyToken, async (req, res, next) => {
+// POST create a new game
+router.post("/", verifyToken, upsertGame, async (req, res, next) => {
   try {
-    const userId = req.user.id;
-    let {
-      name,
-      status,
-      how_long_to_beat,
-      my_genre = "",
-      thoughts = "",
-      my_score,
-      started_at, // optional manual date (YYYY-MM-DD)
-      finished_at, // optional manual date (YYYY-MM-DD)
-    } = req.body;
-
-    if (!name || !status) {
-      const err = new Error("Name and status are required");
-      err.statusCode = 400;
-      return next(err);
-    }
-
-    const rawgCache = req.app.locals.rawgCache || {};
-    const cacheKey = name.toLowerCase().trim();
-    let rawgData = rawgCache[cacheKey];
-
-    if (!rawgData) {
-      rawgData = await fetchGameData(name);
-      rawgCache[cacheKey] = rawgData || {};
-      await saveCache(rawgCache);
-    }
-
-    // Autofill HLTB from local file if user didn't provide hours
-    const userHLTBPref = "main"; // future: make per-user
-    if (!how_long_to_beat) {
-      const hours = lookupHLTBHoursByPref(req.app, name, userHLTBPref);
-      if (hours != null) {
-        how_long_to_beat = hours; // already int
-        if (DEBUG)
-          console.log(
-            `[HLTB] autofilled "${name}" → ${hours}h (${userHLTBPref})`
-          );
-      } else if (DEBUG) {
-        console.log(`[HLTB] no local match for "${name}"`);
-      }
-    }
-
-    const position = await getNextPosition(status, userId);
-
-    // Auto-timestamps on initial status (manual values win)
-    const sNorm = normStatus(status);
-    let startedAtFinal = toDateOrNull(started_at);
-    let finishedAtFinal = toDateOrNull(finished_at);
-
-    if (!startedAtFinal && sNorm === "playing") {
-      startedAtFinal = todayUTC();
-    }
-    if (!finishedAtFinal && DONE_FINISH_SET.has(sNorm)) {
-      finishedAtFinal = todayUTC();
-    }
-
-    // Coerce to integer hours for DB
-    const howLongToBeatInt = toHourInt(how_long_to_beat);
-
-    const result = await pool.query(
-      `INSERT INTO games
-        (name, status, how_long_to_beat, my_genre, thoughts, my_score, position, user_id, started_at, finished_at)
-       VALUES
-        ($1,   $2,     $3,               $4,       $5,      $6,       $7,       $8,      $9,         $10)
-       RETURNING *`,
-      [
-        name.trim(),
-        status,
-        howLongToBeatInt,
-        my_genre.trim(),
-        thoughts.trim(),
-        my_score || null,
-        position,
-        userId,
-        startedAtFinal,
-        finishedAtFinal,
-      ]
-    );
-
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// PUT update a game (must be owned by the user)
-router.put("/:id", verifyToken, async (req, res, next) => {
-  try {
-    const id = parseInt(req.params.id, 10);
     const userId = req.user.id;
     const {
       name,
       status,
-      how_long_to_beat,
-      my_genre = "",
-      thoughts = "",
+      my_genre,
+      thoughts,
       my_score,
-      started_at, // optional manual date
-      finished_at, // optional manual date
-    } = req.body;
+      how_long_to_beat,
+      started_at,
+      finished_at,
+      hltb_pref, // 'main' | 'plus' | 'comp' (default 'main')
+    } = req.body || {};
 
-    if (!name || !status) {
-      const err = new Error("Name and status are required");
-      err.statusCode = 400;
-      return next(err);
+    const statusNorm = normStatus(status);
+    const userTitle = String(name).trim();
+
+    const cache = req.app.locals.rawgCache || {};
+    // persist immediately on single-item routes
+    const { rawg, canonicalName } = await ensureRawgEntry(cache, userTitle, {
+      persist: true,
+    });
+
+    // HLTB write-once logic (user value wins; else user name; else RAWG official name)
+    let hours = toHourInt(how_long_to_beat);
+    if (hours == null) {
+      const pref = ["main", "plus", "comp"].includes(hltb_pref)
+        ? hltb_pref
+        : "main";
+
+      // 1) try with user-entered title
+      hours = lookupHLTBHoursByPref(req.app, userTitle, pref);
+
+      // 2) fallback to RAWG official name (for lookup only; do NOT change DB name)
+      if (
+        hours == null &&
+        canonicalName &&
+        canonicalName.toLowerCase() !== userTitle.toLowerCase()
+      ) {
+        hours = lookupHLTBHoursByPref(req.app, canonicalName, pref);
+      }
     }
+    // If still null -> leave DB NULL; client will display RAWG hours only.
 
-    const existingGameRes = await pool.query(
-      "SELECT * FROM games WHERE id = $1 AND user_id = $2",
-      [id, userId]
-    );
-    if (existingGameRes.rows.length === 0) {
-      const err = new Error("Game not found");
-      err.statusCode = 404;
-      return next(err);
-    }
+    const position = await getNextPosition(statusNorm, userId);
 
-    const existingGame = existingGameRes.rows[0];
-    let position = existingGame.position;
-    if (status !== existingGame.status) {
-      position = await getNextPosition(status, userId);
-    }
+    const startedAt =
+      toDateOrNull(started_at) ??
+      (statusNorm === "playing" ? todayUTC() : null);
 
-    // Auto-timestamps on status transitions (manual values win)
-    const prev = normStatus(existingGame.status);
-    const next = normStatus(status);
-    const changed = prev !== next;
-
-    const wantsManualStart = Object.prototype.hasOwnProperty.call(
-      req.body,
-      "started_at"
-    );
-    const wantsManualFinish = Object.prototype.hasOwnProperty.call(
-      req.body,
-      "finished_at"
-    );
-
-    let startedAtFinal = wantsManualStart
-      ? toDateOrNull(started_at)
-      : existingGame.started_at;
-    let finishedAtFinal = wantsManualFinish
-      ? toDateOrNull(finished_at)
-      : existingGame.finished_at;
-
-    if (
-      !wantsManualStart &&
-      changed &&
-      next === "playing" &&
-      existingGame.started_at == null
-    ) {
-      startedAtFinal = todayUTC();
-    }
-    if (
-      !wantsManualFinish &&
-      changed &&
-      DONE_FINISH_SET.has(next) &&
-      existingGame.finished_at == null
-    ) {
-      finishedAtFinal = todayUTC();
-    }
-    // No auto-set for "played and wont come back"
-
-    // Coerce to integer hours for DB
-    const howLongToBeatInt = toHourInt(how_long_to_beat);
+    const finishedAt =
+      toDateOrNull(finished_at) ??
+      (DONE_FINISH_SET.has(statusNorm) ? todayUTC() : null);
 
     const result = await pool.query(
-      `UPDATE games
-       SET name = $1,
-           status = $2,
-           how_long_to_beat = $3,
-           my_genre = $4,
-           thoughts = $5,
-           my_score = $6,
-           position = $7,
-           started_at = $8,
-           finished_at = $9
-       WHERE id = $10 AND user_id = $11
-       RETURNING *`,
+      `
+      INSERT INTO games
+        (user_id, name, status, my_genre, thoughts, my_score, how_long_to_beat, position, started_at, finished_at)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+      `,
       [
-        name.trim(),
-        status,
-        howLongToBeatInt,
-        my_genre.trim(),
-        thoughts.trim(),
-        my_score || null,
+        userId,
+        userTitle, // keep exactly what the user typed
+        statusNorm,
+        (my_genre || "").trim(),
+        (thoughts || "").trim(),
+        toHourInt(my_score),
+        hours, // only user/HLTB hours; never RAWG
         position,
-        startedAtFinal,
-        finishedAtFinal,
-        id,
+        startedAt,
+        finishedAt,
+      ]
+    );
+
+    res.status(201).json(decorateGameForClient(result.rows[0], rawg));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT update a game
+router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const gameId = Number(req.params.id);
+    if (!Number.isFinite(gameId)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    const {
+      name,
+      status,
+      my_genre,
+      thoughts,
+      my_score,
+      how_long_to_beat,
+      started_at,
+      finished_at,
+      hltb_pref,
+    } = req.body || {};
+
+    if (!name || !status) {
+      return res.status(400).json({ error: "name and status are required" });
+    }
+
+    const statusNorm = normStatus(status);
+
+    // ensure ownership and get current row
+    const existing = await pool.query(
+      `SELECT * FROM games WHERE id = $1 AND user_id = $2`,
+      [gameId, userId]
+    );
+    const row = existing.rows[0];
+    if (!row) return res.status(404).json({ error: "Not found" });
+
+    // If status changed, allocate a new position in the new status
+    let position = row.position;
+    if (row.status !== statusNorm) {
+      position = await getNextPosition(statusNorm, userId);
+    }
+
+    // Auto timestamping (client override wins)
+    const startedAt =
+      toDateOrNull(started_at) ??
+      (row.status !== statusNorm && statusNorm === "playing"
+        ? todayUTC()
+        : row.started_at);
+
+    const finishedAt =
+      toDateOrNull(finished_at) ??
+      (row.status !== statusNorm && DONE_FINISH_SET.has(statusNorm)
+        ? todayUTC()
+        : row.finished_at);
+
+    // Respect rule: only store HLTB/user hours. If user didn't provide and name changed, retry HLTB.
+    let newHLTB = toHourInt(how_long_to_beat);
+    const nameChanged = String(name || "").trim() !== row.name;
+
+    if (newHLTB == null && nameChanged) {
+      const cache = req.app.locals.rawgCache || {};
+      const { canonicalName } = await ensureRawgEntry(cache, name, {
+        persist: true,
+      });
+
+      const pref = ["main", "plus", "comp"].includes(hltb_pref)
+        ? hltb_pref
+        : "main";
+
+      // 1) try with new user-entered title
+      newHLTB = lookupHLTBHoursByPref(req.app, name, pref);
+
+      // 2) fallback to RAWG official name (for lookup only)
+      if (
+        newHLTB == null &&
+        canonicalName &&
+        canonicalName.toLowerCase() !== String(name).toLowerCase()
+      ) {
+        newHLTB = lookupHLTBHoursByPref(req.app, canonicalName, pref);
+      }
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE games
+      SET name = $1,
+          status = $2,
+          my_genre = $3,
+          thoughts = $4,
+          my_score = $5,
+          how_long_to_beat = $6,
+          position = $7,
+          started_at = $8,
+          finished_at = $9
+      WHERE id = $10 AND user_id = $11
+      RETURNING *
+      `,
+      [
+        String(name || "").trim(),
+        statusNorm,
+        (my_genre || "").trim(),
+        (thoughts || "").trim(),
+        toHourInt(my_score),
+        newHLTB ?? toHourInt(row.how_long_to_beat), // keep existing DB value if still null
+        position,
+        startedAt,
+        finishedAt,
+        gameId,
         userId,
       ]
     );
 
-    if (result.rows.length === 0) {
-      const err = new Error("Not authorized to edit this game");
-      err.statusCode = 403;
-      return next(err);
-    }
-
-    res.json(result.rows[0]);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// DELETE a game (must be owned by the user)
-router.delete("/:id", verifyToken, async (req, res, next) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const userId = req.user.id;
-
-    const result = await pool.query(
-      "DELETE FROM games WHERE id = $1 AND user_id = $2 RETURNING *",
-      [id, userId]
-    );
-
-    if (result.rows.length === 0) {
-      const err = new Error("Game not found");
-      err.statusCode = 404;
-      return next(err);
-    }
-
-    res.json({ message: "Game deleted successfully", game: result.rows[0] });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get("/statuses-list", async (req, res, next) => {
-  try {
-    const result = await pool.query(
-      "SELECT status FROM statuses ORDER BY rank ASC"
-    );
-    res.json(result.rows.map((row) => row.status));
-  } catch (err) {
-    next(err);
-  }
-});
-
-// PATCH: reorder within a status rank (must be user's games)
-router.patch("/:id/position", verifyToken, async (req, res, next) => {
-  const id = parseInt(req.params.id, 10);
-  const { targetIndex, status } = req.body;
-  const userId = req.user.id;
-
-  if (typeof targetIndex !== "number" || !status) {
-    const err = new Error("targetIndex and status are required");
-    err.statusCode = 400;
-    return next(err);
-  }
-
-  try {
-    // Ensure the game exists and is owned by the user
-    const exists = await pool.query(
-      "SELECT id FROM games WHERE id = $1 AND user_id = $2",
-      [id, userId]
-    );
-    if (exists.rows.length === 0) {
-      const err = new Error("Game not found");
-      err.statusCode = 404;
-      return next(err);
-    }
-
-    // Get all games in the same RANK for this user
-    const rankGames = await pool.query(
-      `
-      SELECT g.id, g.position, g.status
-      FROM games g
-      JOIN statuses s ON g.status = s.status
-      WHERE s.rank = (SELECT rank FROM statuses WHERE status = $1)
-        AND g.user_id = $2
-      ORDER BY g.position ASC NULLS LAST, g.id ASC
-      `,
-      [status, userId]
-    );
-
-    if (rankGames.rows.length === 0) {
-      const err = new Error("No games found in this rank for this user");
-      err.statusCode = 404;
-      return next(err);
-    }
-
-    const gameIndex = rankGames.rows.findIndex((g) => g.id === id);
-    if (gameIndex === -1) {
-      const err = new Error("Game not found in this rank");
-      err.statusCode = 404;
-      return next(err);
-    }
-
-    if (gameIndex === targetIndex) {
-      const game = await pool.query(
-        "SELECT * FROM games WHERE id = $1 AND user_id = $2",
-        [id, userId]
-      );
-      return res.json(game.rows[0]);
-    }
-
-    // Build new order of ids for this user's rank
-    const gameIds = rankGames.rows.map((g) => g.id);
-    gameIds.splice(gameIndex, 1);
-    gameIds.splice(targetIndex, 0, id);
-
-    // Update positions (scoped by user for safety)
-    const updates = gameIds.map((gameId, index) => {
-      const newPosition = (index + 1) * DEFAULT_POSITION_SPACING;
-      return pool.query(
-        "UPDATE games SET position = $1 WHERE id = $2 AND user_id = $3",
-        [newPosition, gameId, userId]
-      );
+    // Ensure RAWG for (possibly updated) name, then decorate
+    const cache = req.app.locals.rawgCache || {};
+    const { rawg } = await ensureRawgEntry(cache, result.rows[0].name, {
+      persist: true,
     });
 
-    await Promise.all(updates);
-
-    const result = await pool.query(
-      "SELECT * FROM games WHERE id = $1 AND user_id = $2",
-      [id, userId]
-    );
-
-    res.json(result.rows[0]);
+    res.json(decorateGameForClient(result.rows[0], rawg));
   } catch (err) {
     next(err);
   }
 });
 
-/* -------------------- Startup -------------------- */
+// DELETE a game
+router.delete("/:id", verifyToken, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const gameId = Number(req.params.id);
+
+    const result = await pool.query(
+      `DELETE FROM games WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [gameId, userId]
+    );
+
+    if (!result.rows[0]) return res.status(404).json({ error: "Not found" });
+
+    // Decorate for consistency (harmless even if UI doesn't use it)
+    const cache = req.app.locals.rawgCache || {};
+    const rawg = cache[lowerKey(result.rows[0].name)] || {};
+    res.json(decorateGameForClient(result.rows[0], rawg));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Public list of statuses (ordered) -> return strings to keep UI simple
+router.get("/statuses-list", async (_req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT status FROM statuses ORDER BY rank, status`
+    );
+    res.json(rows.map((r) => r.status));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Reorder (position) within a rank (transactional)
+router.patch(
+  "/:id/position",
+  verifyToken,
+  reorderGame,
+  async (req, res, next) => {
+    let client; // SAFE: allow finally to release even if connect fails
+    try {
+      client = await pool.connect();
+
+      const userId = req.user.id;
+      const gameId = Number(req.params.id);
+      const { status, targetIndex } = req.body || {};
+      const targetStatus = normStatus(status);
+
+      if (typeof targetIndex !== "number" || !targetStatus) {
+        return res
+          .status(400)
+          .json({ error: "status and targetIndex required" });
+      }
+      // clamp to a safe integer once; we’ll bound to list length later
+      const idx = Math.trunc(targetIndex);
+
+      await client.query("BEGIN");
+
+      // Verify ownership (no lock needed here)
+      const gameRes = await client.query(
+        `
+      SELECT g.id, g.status, g.name
+      FROM games g
+      WHERE g.id = $1 AND g.user_id = $2
+      `,
+        [gameId, userId]
+      );
+      const current = gameRes.rows[0];
+      if (!current) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Not found" });
+      }
+
+      // Lock peers within the SAME status (index: user_id, status, position)
+      const peerRes = await client.query(
+        `
+      SELECT g.id, g.position
+      FROM games g
+      WHERE g.user_id = $1 AND g.status = $2
+      ORDER BY g.position NULLS LAST, g.id
+      FOR UPDATE OF g
+      `,
+        [userId, targetStatus]
+      );
+
+      const list = peerRes.rows.map((r) => ({
+        id: r.id,
+        position: r.position ?? 0,
+      }));
+      const fromIndex = list.findIndex((x) => x.id === gameId);
+      if (fromIndex === -1) {
+        await client.query("ROLLBACK");
+        return res
+          .status(404)
+          .json({ error: "Game not found in target status" });
+      }
+
+      // Move within list (unchanged logic)
+      const [moved] = list.splice(fromIndex, 1);
+      const clampedIndex = Math.max(0, Math.min(idx, list.length));
+      list.splice(clampedIndex, 0, moved);
+
+      // Renumber all rows with your spacing (unchanged logic, one UPDATE round-trip)
+      if (list.length > 0) {
+        const updateCases = list
+          .map(
+            (row, i) => `WHEN ${row.id} THEN ${i * DEFAULT_POSITION_SPACING}`
+          )
+          .join(" ");
+
+        await client.query(
+          `
+        UPDATE games
+        SET position = CASE id ${updateCases} END
+        WHERE id = ANY($1) AND user_id = $2
+        `,
+          [list.map((u) => u.id), userId]
+        );
+      }
+
+      await client.query("COMMIT");
+
+      // Return decorated row
+      const finalRes = await client.query(
+        `SELECT * FROM games WHERE id = $1 AND user_id = $2`,
+        [gameId, userId]
+      );
+      const cache = req.app.locals.rawgCache || {};
+      const { rawg } = await ensureRawgEntry(cache, finalRes.rows[0].name, {
+        persist: true,
+      });
+      res.json(decorateGameForClient(finalRes.rows[0], rawg));
+    } catch (err) {
+      try {
+        await client?.query("ROLLBACK");
+      } catch {}
+      next(err);
+    } finally {
+      client?.release();
+    }
+  }
+);
+
+/* ---------------------------------- Startup ---------------------------------- */
 
 export const initCache = async (app) => {
-  await loadCache(app); // RAWG cache
-  await loadHLTBLocal(app); // HLTB JSON
+  await loadCache(app); // RAWG cache JSON
+  await loadHLTBLocal(app); // HLTB local JSON (uses your dataset’s keys)
 };
 
 export default router;
