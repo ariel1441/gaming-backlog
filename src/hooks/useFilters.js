@@ -1,6 +1,8 @@
 // src/hooks/useFilters.js
 import { useMemo, useState, useCallback } from "react";
 import { useDebouncedValue } from "./useDebouncedValue";
+// (removed) this hook should be called by the list page component, not from inside useFilters
+// import useApplyFiltersFromQuery from "../hooks/useApplyFiltersFromQuery";
 
 /**
  * @param {Array} games
@@ -99,18 +101,23 @@ export function useFilters(games, opts = {}) {
     if (noFiltersActive) return games;
 
     const q = (debouncedSearch || "").trim().toLowerCase();
+
+    // ✅ Normalize filter values to ensure URL-driven values (Title Case) match stored values (any case)
     const statusesFilter = selectedStatuses.length
-      ? new Set(selectedStatuses)
+      ? new Set(selectedStatuses.map((s) => String(s).trim().toLowerCase()))
       : null;
     const genresFilter = selectedGenres.length
-      ? new Set(selectedGenres.map(String))
+      ? new Set(selectedGenres.map((s) => String(s).trim().toLowerCase()))
       : null;
     const myGenresFilter = selectedMyGenres.length
-      ? new Set(selectedMyGenres.map(String))
+      ? new Set(selectedMyGenres.map((s) => String(s).trim().toLowerCase()))
       : null;
 
     const pass = (g) => {
-      if (statusesFilter && !statusesFilter.has(String(g.status))) return false;
+      if (statusesFilter) {
+        const s = String(g.status).trim().toLowerCase();
+        if (!statusesFilter.has(s)) return false;
+      }
 
       if (genresFilter) {
         const raw = Array.isArray(g.genres)
@@ -118,7 +125,8 @@ export function useFilters(games, opts = {}) {
           : typeof g.genres === "string"
             ? g.genres.split(",")
             : [];
-        if (!raw.some((x) => genresFilter.has(String(x).trim()))) return false;
+        if (!raw.some((x) => genresFilter.has(String(x).trim().toLowerCase())))
+          return false;
       }
 
       if (myGenresFilter) {
@@ -127,7 +135,9 @@ export function useFilters(games, opts = {}) {
           : typeof g.my_genre === "string"
             ? g.my_genre.split(",")
             : [];
-        if (!raw.some((x) => myGenresFilter.has(String(x).trim())))
+        if (
+          !raw.some((x) => myGenresFilter.has(String(x).trim().toLowerCase()))
+        )
           return false;
       }
 
@@ -152,9 +162,7 @@ export function useFilters(games, opts = {}) {
           return String(a.name || "").localeCompare(
             String(b.name || ""),
             undefined,
-            {
-              sensitivity: "base",
-            }
+            { sensitivity: "base" }
           );
         case "hoursPlayed":
           return (
@@ -182,9 +190,7 @@ export function useFilters(games, opts = {}) {
           return String(a.name || "").localeCompare(
             String(b.name || ""),
             undefined,
-            {
-              sensitivity: "base",
-            }
+            { sensitivity: "base" }
           );
         }
       }

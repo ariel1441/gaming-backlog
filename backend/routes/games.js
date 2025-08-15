@@ -8,9 +8,10 @@ import DOMPurify from "isomorphic-dompurify";
 import fs from "fs/promises";
 import path from "path";
 
-import { toDateOrNull, toHourInt } from "../utils/time.js";
+import { toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { normStatus, DONE_FINISH_SET } from "../utils/status.js";
+import { cacheClear } from "../utils/microCache.js";
 
 const router = express.Router();
 
@@ -43,6 +44,8 @@ const loadCache = async (app) => {
 const saveCache = async (cache) => {
   const data = JSON.stringify(cache);
   const dir = path.dirname(CACHE_PATH);
+  await fs.mkdir(dir, { recursive: true }); // ensure folder exists
+
   const tmp = path.join(dir, `.rawg-cache.${process.pid}.${Date.now()}.tmp`);
 
   // Write to temp + fsync to improve durability
@@ -376,6 +379,9 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
 
     const { rows } = await pool.query(insertSql, params);
 
+    // Invalidate Insights micro-cache for this user (new game affects analytics)
+    cacheClear(userId);
+
     res.status(201).json(decorateGameForClient(rows[0], rawg));
   } catch (err) {
     next(err);
@@ -512,14 +518,26 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
     ];
 
     const { rows } = await pool.query(updateSql, params);
+    const nextRow = rows[0];
+
+    // Invalidate Insights micro-cache if analytics-relevant fields changed
+    const prevHours = Number(row.how_long_to_beat) || 0;
+    const nextHours = Number(nextRow.how_long_to_beat) || 0;
+    if (
+      row.status !== nextRow.status ||
+      row.name !== nextRow.name ||
+      prevHours !== nextHours
+    ) {
+      cacheClear(userId);
+    }
 
     // Ensure RAWG for (possibly updated) name, then decorate
     const cache = req.app.locals.rawgCache || {};
-    const { rawg } = await ensureRawgEntry(cache, rows[0].name, {
+    const { rawg } = await ensureRawgEntry(cache, nextRow.name, {
       persist: true,
     });
 
-    res.json(decorateGameForClient(rows[0], rawg));
+    res.json(decorateGameForClient(nextRow, rawg));
   } catch (err) {
     next(err);
   }
@@ -537,6 +555,9 @@ router.delete("/:id", verifyToken, async (req, res, next) => {
     );
 
     if (!result.rows[0]) return res.status(404).json({ error: "Not found" });
+
+    // Invalidate Insights micro-cache for this user (deletion affects analytics)
+    cacheClear(userId);
 
     // Decorate for consistency (harmless even if UI doesn't use it)
     const cache = req.app.locals.rawgCache || {};

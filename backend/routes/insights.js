@@ -4,35 +4,28 @@ import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 import { cacheGet, cacheSet } from "../utils/microCache.js";
 import { lookupHLTBHoursByPref } from "../utils/hltb.js";
+import { GROUP_SETS, statusGroupOf, BUCKETS } from "../utils/status.js";
 
 const router = express.Router();
 
-/** ---- Status groupings (your final sets) ---- */
-const DONE_SET = new Set(["finished", "played alot but didnt finish"]);
-const PLAYING_SET = new Set(["playing", "played and should come back"]);
-const PLANNED_SET = new Set([
-  "plan to play soon",
-  "plan to play",
-  "play when in the mood",
-  "maybe in the future",
-]);
-const OTHER_SET = new Set([
-  "recommended by someone",
-  "wishlist",
-  "not anytime soon",
-  "played a bit",
-]);
+/** ---- Status groupings (server-authoritative) ---- */
+const {
+  planned: PLANNED_SET,
+  playing: PLAYING_SET,
+  done: DONE_SET,
+} = GROUP_SETS;
+
+// Backlog semantic bucket from the server:
+const BACKLOG_GROUPS = new Set(BUCKETS.backlog);
 
 const DEFAULT_WEEKLY_HOURS = 10;
 
 /* --------------------------- shared helpers --------------------------- */
-/** MUST match games.js RAWG keying */
 const lowerKey = (s) =>
   String(s || "")
     .trim()
     .toLowerCase();
 
-/** Extract “hours” from a RAWG-like object (aligned with games.js) */
 function getRawgHours(rawg) {
   const candidates = [
     rawg?.playtime,
@@ -130,18 +123,20 @@ async function mapWithLimit(items, limit, fn) {
 
 /* ----------------------------- Aggregation ---------------------------- */
 function computeAggregates(rowsWithHours, weeklyHours) {
-  const map = new Map(); // status -> { status, rank, count, hours }
+  // status -> { status, rank, count, hours }
+  const map = new Map();
   let totalGamesCounted = 0;
   let sumAllHours = 0;
   let countForAvg = 0;
 
   for (const r of rowsWithHours) {
     totalGamesCounted++;
-    if (!map.has(r.status))
+    if (!map.has(r.status)) {
       map.set(r.status, { status: r.status, rank: r.rank, count: 0, hours: 0 });
+    }
     const m = map.get(r.status);
     m.count += 1;
-    m.hours += r.hours;
+    m.hours += r.hours; // hours already int
 
     if (r.hours > 0) {
       sumAllHours += r.hours;
@@ -150,19 +145,19 @@ function computeAggregates(rowsWithHours, weeklyHours) {
   }
 
   const byStatus = Array.from(map.values()).sort((a, b) => a.rank - b.rank);
+
   const sumWhere = (pred) =>
     rowsWithHours.reduce((acc, r) => (pred(r.status) ? acc + r.hours : acc), 0);
 
+  // ✅ use statusGroupOf so casing/aliases never break math
   const hours_planned = sumWhere((s) => PLANNED_SET.has(s));
   const hours_playing = sumWhere((s) => PLAYING_SET.has(s));
   const hours_done = sumWhere((s) => DONE_SET.has(s));
-  const hours_remaining = sumWhere(
-    (s) => PLAYING_SET.has(s) || PLANNED_SET.has(s) || OTHER_SET.has(s)
-  );
-
-  // ETA: derive finish date from unrounded weeks, then round weeks for display
-  let weeks = null,
-    finish_date = null;
+  // Backlog = everything not done (includes planned, playing, and any “other”)
+  const hours_remaining = sumWhere((s) => statusGroupOf(s) !== "done");
+  // ETA
+  let weeks = null;
+  let finish_date = null;
   if (hours_remaining === 0) {
     weeks = 0;
     finish_date = fmtDate(new Date());

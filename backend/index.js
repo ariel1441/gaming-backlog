@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import metaRouter from "./routes/meta.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,6 +29,7 @@ app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/public", publicLimiter, publicRouter);
 app.use("/api/games", gamesRouter);
 app.use("/api/insights", insightsRouter);
+app.use("/api/meta", metaRouter);
 app.use(errors());
 app.use(errorHandler);
 

@@ -14,7 +14,13 @@ import AdminLoginForm from "./components/AdminLoginForm";
 import PublicSettingsModal from "./components/PublicSettingsModal";
 import PublicProfile from "./pages/PublicProfile";
 import { smartFuzzySearch } from "./utils/fuzzySearch";
+import InsightsTab from "./features/insights/InsightsTab";
+import {
+  StatusGroupsProvider,
+  useStatusGroups,
+} from "./contexts/StatusGroupsContext";
 
+import useApplyFiltersFromQuery from "./hooks/useApplyFiltersFromQuery";
 import { useGames } from "./hooks/useGames";
 import { useStatuses } from "./hooks/useStatuses";
 import { useFilters } from "./hooks/useFilters";
@@ -62,6 +68,13 @@ const AppContent = () => {
     initialSortKey: "",
     initialReverse: false,
     statuses: allStatuses,
+  });
+
+  // Apply URL → filters (group/status/genreType/genre)
+  useApplyFiltersFromQuery({
+    setSelectedStatuses,
+    setSelectedGenres,
+    setSelectedMyGenres,
   });
 
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
@@ -568,10 +581,13 @@ const AppContent = () => {
 const App = () => {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/" element={<AppContent />} />
-        <Route path="/u/:username" element={<PublicProfile />} />
-      </Routes>
+      <StatusGroupsProvider>
+        <Routes>
+          <Route path="/" element={<AppContent />} />
+          <Route path="/insights" element={<InsightsTab />} />
+          <Route path="/u/:username" element={<PublicProfile />} />
+        </Routes>
+      </StatusGroupsProvider>
     </AuthProvider>
   );
 };
