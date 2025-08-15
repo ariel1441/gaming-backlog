@@ -2,7 +2,9 @@
 import dotenv from "dotenv";
 dotenv.config();
 import pkg from "pg";
-const { Pool } = pkg;
+
+const { Pool, types } = pkg;
+types.setTypeParser(1082, (val) => val); // OID 1082 = DAT
 
 export const pool = new Pool({
   user: process.env.DB_USER,

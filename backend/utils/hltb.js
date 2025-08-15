@@ -1,4 +1,3 @@
-// backend/utils/hltb.js
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -6,7 +5,7 @@ import { toHourInt } from "./time.js";
 
 /**
  * If your dataset's values are minutes or hours instead of seconds,
- * change this to "minutes" or "hours".
+ * set HLTB_UNITS to "minutes" or "hours".
  * Allowed values: "seconds" | "minutes" | "hours"
  */
 const HLTB_VALUE_UNITS = (process.env.HLTB_UNITS || "seconds").toLowerCase();
@@ -72,7 +71,7 @@ const resolveHLTBPath = async () => {
     process.env.HLTB_DATA_PATH && String(process.env.HLTB_DATA_PATH).trim();
   const candidates = [
     envPath, // explicit override
-    path.resolve("backend/data/hltb_data.json"), // project root
+    path.resolve("backend/data/hltb_data.json"), // repo root
     path.join(__dirname, "../data/hltb_data.json"), // next to utils
   ].filter(Boolean);
 
@@ -105,9 +104,8 @@ const extractArrayContainer = (parsed) => {
 };
 
 const extractMapContainer = (parsed) => {
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
     return parsed;
-  }
   return null;
 };
 
@@ -115,7 +113,7 @@ const extractMapContainer = (parsed) => {
  * Load HLTB JSON into:
  *   app.locals.hltbLookup = { normalizedTitle: { main, plus, comp } }
  *
- * Assumes the dataset uses fields:
+ * Expects fields like:
  *   - Main:          game_comp_main_med (fallback game_comp_main_avg)
  *   - Main + Extra:  game_comp_plus_med
  *   - Completionist: game_comp_all_med

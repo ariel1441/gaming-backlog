@@ -12,19 +12,22 @@ import { authLimiter, publicLimiter } from "./middleware/rateLimit.js";
 import gamesRouter, { initCache } from "./routes/games.js";
 import authRouter from "./routes/auth.js";
 import publicRouter from "./routes/public.js";
+import insightsRouter from "./routes/insights.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { errors } from "celebrate";
-
 const app = express();
 
 registerSecurity(app);
 
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false }));
 await initCache(app); // sets app.locals.rawgCache
 
 // ---- Routes ----
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/public", publicLimiter, publicRouter);
 app.use("/api/games", gamesRouter);
+app.use("/api/insights", insightsRouter);
 app.use(errors());
 app.use(errorHandler);
 

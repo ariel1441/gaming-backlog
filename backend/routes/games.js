@@ -8,7 +8,7 @@ import DOMPurify from "isomorphic-dompurify";
 import fs from "fs/promises";
 import path from "path";
 
-import { todayUTC, toDateOrNull, toHourInt } from "../utils/time.js";
+import { toDateOrNull, toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { normStatus, DONE_FINISH_SET } from "../utils/status.js";
 
@@ -22,6 +22,9 @@ const RAWG_FAIL_TTL_MS = Number(process.env.RAWG_FAIL_TTL_MS || 60 * 60 * 1000);
 
 const DEBUG =
   process.env.DEBUG === "1" || process.env.NODE_ENV === "development";
+
+// Use DB local day (Israel) — avoids UTC "yesterday" issues.
+const TODAY_SQL = "(now() AT TIME ZONE 'Asia/Jerusalem')::date";
 
 /* -------------------------------- RAWG cache -------------------------------- */
 
@@ -92,7 +95,7 @@ const isStaleMiss = (entry) => {
   return false;
 };
 
-// NEW: coalesce concurrent RAWG fetches for the same title (process-local)
+// coalesce concurrent RAWG fetches for the same title (process-local)
 const inflightRawg = new Map(); // key: lower(title) -> Promise<void>
 
 /**
@@ -202,7 +205,7 @@ const decorateGameForClient = (game, rawg) => {
     // RAWG fields normalized to primitives:
     cover: rawg?.cover ?? rawg?.background_image ?? null,
     releaseDate: rawg?.released ?? null,
-    // FIX: Sanitize HTML description to prevent XSS
+    // Sanitize HTML description to prevent XSS
     description: rawg?.description
       ? DOMPurify.sanitize(rawg.description, {
           ALLOWED_TAGS: ["p", "br", "strong", "em", "ul", "ol", "li"],
@@ -290,6 +293,9 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const statusNorm = normStatus(status);
     const userTitle = String(name).trim();
 
+    // Optional score; stores null when omitted/empty
+    const score = toHourInt(my_score);
+
     const cache = req.app.locals.rawgCache || {};
     // persist immediately on single-item routes
     const { rawg, canonicalName } = await ensureRawgEntry(cache, userTitle, {
@@ -319,37 +325,58 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
 
     const position = await getNextPosition(statusNorm, userId);
 
-    const startedAt =
-      toDateOrNull(started_at) ??
-      (statusNorm === "playing" ? todayUTC() : null);
-
-    const finishedAt =
-      toDateOrNull(finished_at) ??
-      (DONE_FINISH_SET.has(statusNorm) ? todayUTC() : null);
-
-    const result = await pool.query(
-      `
-      INSERT INTO games
-        (user_id, name, status, my_genre, thoughts, my_score, how_long_to_beat, position, started_at, finished_at)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING *
-      `,
-      [
-        userId,
-        userTitle, // keep exactly what the user typed
-        statusNorm,
-        (my_genre || "").trim(),
-        (thoughts || "").trim(),
-        toHourInt(my_score),
-        hours, // only user/HLTB hours; never RAWG
-        position,
-        startedAt,
-        finishedAt,
-      ]
+    // Did the client explicitly include these keys?
+    const startedProvided = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "started_at"
     );
+    const finishedProvided = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "finished_at"
+    );
+    const startedBody = startedProvided ? req.body.started_at : null;
+    const finishedBody = finishedProvided ? req.body.finished_at : null;
 
-    res.status(201).json(decorateGameForClient(result.rows[0], rawg));
+    const insertSql = `
+      INSERT INTO games
+        (user_id, name, status, my_genre, thoughts, my_score,
+         how_long_to_beat, position, started_at, finished_at)
+      VALUES
+        (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8,
+          CASE
+            WHEN $9  THEN $10
+            WHEN $3 = 'playing' THEN ${TODAY_SQL}
+            ELSE NULL
+          END,
+          CASE
+            WHEN $11 THEN $12
+            WHEN $3 IN ('finished','played alot but didnt finish') THEN ${TODAY_SQL}
+            ELSE NULL
+          END
+        )
+      RETURNING *;
+    `;
+
+    const params = [
+      userId, // $1
+      userTitle, // $2
+      statusNorm, // $3
+      (my_genre || "").trim(), // $4
+      (thoughts || "").trim(), // $5
+      score, // $6 (optional -> null when absent)
+      hours, // $7 (only user/HLTB hours; never RAWG)
+      position, // $8
+      startedProvided, // $9 (bool)
+      startedBody, // $10 (date or null)
+      finishedProvided, // $11 (bool)
+      finishedBody, // $12 (date or null)
+    ];
+
+    const { rows } = await pool.query(insertSql, params);
+
+    res.status(201).json(decorateGameForClient(rows[0], rawg));
   } catch (err) {
     next(err);
   }
@@ -380,6 +407,7 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
     }
 
     const statusNorm = normStatus(status);
+    const userTitle = String(name || "").trim();
 
     // ensure ownership and get current row
     const existing = await pool.query(
@@ -395,26 +423,13 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       position = await getNextPosition(statusNorm, userId);
     }
 
-    // Auto timestamping (client override wins)
-    const startedAt =
-      toDateOrNull(started_at) ??
-      (row.status !== statusNorm && statusNorm === "playing"
-        ? todayUTC()
-        : row.started_at);
-
-    const finishedAt =
-      toDateOrNull(finished_at) ??
-      (row.status !== statusNorm && DONE_FINISH_SET.has(statusNorm)
-        ? todayUTC()
-        : row.finished_at);
-
     // Respect rule: only store HLTB/user hours. If user didn't provide and name changed, retry HLTB.
     let newHLTB = toHourInt(how_long_to_beat);
-    const nameChanged = String(name || "").trim() !== row.name;
+    const nameChanged = userTitle !== row.name;
 
     if (newHLTB == null && nameChanged) {
       const cache = req.app.locals.rawgCache || {};
-      const { canonicalName } = await ensureRawgEntry(cache, name, {
+      const { canonicalName } = await ensureRawgEntry(cache, userTitle, {
         persist: true,
       });
 
@@ -423,55 +438,88 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
         : "main";
 
       // 1) try with new user-entered title
-      newHLTB = lookupHLTBHoursByPref(req.app, name, pref);
+      newHLTB = lookupHLTBHoursByPref(req.app, userTitle, pref);
 
       // 2) fallback to RAWG official name (for lookup only)
       if (
         newHLTB == null &&
         canonicalName &&
-        canonicalName.toLowerCase() !== String(name).toLowerCase()
+        canonicalName.toLowerCase() !== userTitle.toLowerCase()
       ) {
         newHLTB = lookupHLTBHoursByPref(req.app, canonicalName, pref);
       }
     }
 
-    const result = await pool.query(
-      `
-      UPDATE games
-      SET name = $1,
-          status = $2,
-          my_genre = $3,
-          thoughts = $4,
-          my_score = $5,
-          how_long_to_beat = $6,
-          position = $7,
-          started_at = $8,
-          finished_at = $9
-      WHERE id = $10 AND user_id = $11
-      RETURNING *
-      `,
-      [
-        String(name || "").trim(),
-        statusNorm,
-        (my_genre || "").trim(),
-        (thoughts || "").trim(),
-        toHourInt(my_score),
-        newHLTB ?? toHourInt(row.how_long_to_beat), // keep existing DB value if still null
-        position,
-        startedAt,
-        finishedAt,
-        gameId,
-        userId,
-      ]
+    const score = toHourInt(my_score);
+
+    // Date logic: explicit edits win; else one-time auto on qualifying transition
+    const statusChanged = row.status !== statusNorm;
+
+    const startedProvided = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "started_at"
     );
+    const finishedProvided = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "finished_at"
+    );
+    const startedBody = startedProvided ? req.body.started_at : null; // 'YYYY-MM-DD' or null
+    const finishedBody = finishedProvided ? req.body.finished_at : null;
+
+    const hours_new = newHLTB ?? toHourInt(row.how_long_to_beat);
+
+    const updateSql = `
+  UPDATE games g
+     SET name = $1,
+         status = $2,
+         my_genre = $3,
+         thoughts = $4,
+         my_score = $5,
+         how_long_to_beat = $6,
+         position = $7,
+
+         started_at = CASE
+           WHEN $11 THEN $8
+           WHEN $13 AND $2 = 'playing' AND g.started_at IS NULL THEN ${TODAY_SQL}
+           ELSE g.started_at
+         END,
+
+         finished_at = CASE
+           WHEN $12 THEN $9
+           WHEN $13 AND $2 IN ('finished','played alot but didnt finish') AND g.finished_at IS NULL THEN ${TODAY_SQL}
+           ELSE g.finished_at
+         END
+
+   WHERE g.id = $10 AND g.user_id = $14
+   RETURNING *;
+`;
+
+    const params = [
+      userTitle, // $1
+      statusNorm, // $2
+      (my_genre || "").trim(), // $3
+      (thoughts || "").trim(), // $4
+      score, // $5
+      hours_new, // $6
+      position, // $7
+      startedBody, // $8
+      finishedBody, // $9
+      gameId, // $10
+      startedProvided, // $11
+      finishedProvided, // $12
+      statusChanged, // $13
+      userId, // $14
+    ];
+
+    const { rows } = await pool.query(updateSql, params);
 
     // Ensure RAWG for (possibly updated) name, then decorate
     const cache = req.app.locals.rawgCache || {};
-    const { rawg } = await ensureRawgEntry(cache, result.rows[0].name, {
+    const { rawg } = await ensureRawgEntry(cache, rows[0].name, {
       persist: true,
     });
 
-    res.json(decorateGameForClient(result.rows[0], rawg));
+    res.json(decorateGameForClient(rows[0], rawg));
   } catch (err) {
     next(err);
   }

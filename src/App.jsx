@@ -209,6 +209,29 @@ const AppContent = () => {
       my_score: toNumOrNull(pick("my_score", "myScore") ?? orig.my_score),
     };
 
+    // Canonical date: 'YYYY-MM-DD' string or null
+    const canonDate = (v) =>
+      v == null || v === "" ? null : String(v).slice(0, 10);
+
+    const startedDraftRaw =
+      draft?.started_at !== undefined ? draft.started_at : draft?.startedAt;
+    const finishedDraftRaw =
+      draft?.finished_at !== undefined ? draft.finished_at : draft?.finishedAt;
+
+    // started_at: include only if changed (including clearing to null)
+    if (startedDraftRaw !== undefined) {
+      const next = canonDate(startedDraftRaw); // null if cleared
+      const prev = canonDate(orig.started_at); // null or 'YYYY-MM-DD'
+      if (next !== prev) body.started_at = next; // include key; null means clear
+    }
+
+    // finished_at: include only if changed (including clearing to null)
+    if (finishedDraftRaw !== undefined) {
+      const next = canonDate(finishedDraftRaw);
+      const prev = canonDate(orig.finished_at);
+      if (next !== prev) body.finished_at = next; // include key; null means clear
+    }
+
     if (!body.name || !body.status) {
       alert("Name and status are required.");
       return;
