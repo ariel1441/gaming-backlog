@@ -18,13 +18,33 @@ import {
 } from "recharts";
 
 /* ========================= ROUTE CONFIG ========================= */
-const GAMES_ROUTE = "/"; // your games list route
+const GAMES_ROUTE = "/";
+
+/* ========================= Theme-driven chart colors =========================
+   Reads CSS variables you define once in index.css:
+   --chart-1..12, --axis-tick, --grid-stroke, --tooltip-bg, --tooltip-border, --tooltip-text
+*/
+const cssVar = (name) =>
+  typeof window !== "undefined"
+    ? getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+    : "";
+
+const palette = () =>
+  Array.from({ length: 12 }, (_, i) => cssVar(`--chart-${i + 1}`) || "#888");
+
+const colorAt = (i) => {
+  const p = palette();
+  return p[i % p.length];
+};
+
+const AXIS_TICK = () => cssVar("--axis-tick") || "#9ca3af";
+const GRID_STROKE = () => cssVar("--grid-stroke") || "rgba(156,163,175,.25)";
+const TOOLTIP_BG = () => cssVar("--tooltip-bg") || "#1f2937";
+const TOOLTIP_BORDER = () => cssVar("--tooltip-border") || "#374151";
 
 /* ========================= Small helpers ========================= */
 const fmtInt = (n) => (Number.isFinite(n) ? n.toLocaleString() : "0");
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const HUES = [206, 28, 142, 46, 264, 12, 182, 320];
-const colorAt = (i) => `hsl(${HUES[i % HUES.length]} 70% 50%)`;
 const norm = (s) => {
   const t = String(s || "").trim();
   if (!t) return "Unknown";
@@ -40,7 +60,6 @@ const splitCSV = (s) =>
     .map((x) => norm(x))
     .filter((x) => x && x !== "Unknown");
 
-// query-backed state (syncs to URL + optional localStorage)
 const parseBool = (v, d = false) => (v == null ? d : v === "true");
 const parseIntSafe = (v, d = 0) => {
   const n = parseInt(v ?? "", 10);
@@ -68,20 +87,22 @@ function useQueryBackedState({
   return [value, setValue];
 }
 
-// compact UI atoms
+/* ========================= Compact UI atoms (themed) ========================= */
 function Tile({ label, value }) {
   return (
-    <div className="rounded-2xl border p-4 md:p-5 flex flex-col gap-1">
-      <div className="text-xs uppercase tracking-wide text-gray-500">
+    <div className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 flex flex-col gap-1">
+      <div className="text-xs uppercase tracking-wide text-content-muted">
         {label}
       </div>
-      <div className="text-lg md:text-xl font-semibold">{value}</div>
+      <div className="text-lg md:text-xl font-semibold text-content-primary">
+        {value}
+      </div>
     </div>
   );
 }
 function Segmented({ value, onChange, options }) {
   return (
-    <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+    <div className="inline-flex rounded-lg border border-surface-border bg-surface-card overflow-hidden">
       {options.map((opt, i) => {
         const active = value === opt.value;
         return (
@@ -90,9 +111,11 @@ function Segmented({ value, onChange, options }) {
             type="button"
             onClick={() => onChange(opt.value)}
             className={[
-              "px-2.5 py-1 text-xs",
-              active ? "bg-primary text-white" : "bg-white hover:bg-gray-100",
-              i > 0 ? "border-l border-gray-300" : "",
+              "px-2.5 py-1 text-xs transition-colors",
+              active
+                ? "bg-primary text-black"
+                : "text-content-secondary hover:bg-surface-elevated",
+              i > 0 ? "border-l border-surface-border" : "",
             ].join(" ")}
             aria-pressed={active}
           >
@@ -105,9 +128,9 @@ function Segmented({ value, onChange, options }) {
 }
 function ChartCard({ title, children, right = null }) {
   return (
-    <section className="rounded-2xl border p-4 md:p-5 space-y-3">
+    <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">{title}</h2>
+        <h2 className="font-semibold text-content-primary">{title}</h2>
         <div className="flex items-center gap-2">{right}</div>
       </div>
       {children}
@@ -116,14 +139,17 @@ function ChartCard({ title, children, right = null }) {
 }
 function Skeleton({ className = "" }) {
   return (
-    <div className={`animate-pulse rounded-lg bg-gray-200/70 ${className}`} />
+    <div className={`animate-pulse rounded-lg bg-white/10 ${className}`} />
   );
 }
 function KPISkeleton() {
   return (
     <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="rounded-2xl border p-4 md:p-5">
+        <div
+          key={i}
+          className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5"
+        >
           <Skeleton className="h-3 w-20 mb-3" />
           <Skeleton className="h-6 w-24" />
         </div>
@@ -133,7 +159,7 @@ function KPISkeleton() {
 }
 function ChartSkeleton() {
   return (
-    <section className="rounded-2xl border p-4 md:p-5 space-y-3">
+    <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
       <Skeleton className="h-5 w-40" />
       <Skeleton className="h-64 w-full" />
     </section>
@@ -146,7 +172,7 @@ export default function InsightsTab() {
   const { ready, statusGroupOf, toGroup, doneKeys, groupKeys } =
     useStatusGroups();
 
-  // URL-backed controls (shareable + persistent)
+  // URL-backed UI state
   const [weeklyHours, setWeeklyHours] = useQueryBackedState({
     key: "wh",
     defaultValue: 10,
@@ -184,7 +210,6 @@ export default function InsightsTab() {
     storageKey: "insights.genreStatus",
   });
 
-  // data
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [data, setData] = useState(null);
@@ -203,7 +228,6 @@ export default function InsightsTab() {
       ]);
 
       setData(insights);
-
       const g = Array.isArray(gamesRes)
         ? gamesRes.map((x) => ({
             my_genre: x.my_genre ?? null,
@@ -226,24 +250,19 @@ export default function InsightsTab() {
     }
   };
 
+  // initial load
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --------- From here on, ALWAYS call hooks in same order; branch in JSX only ---------
-
-  // Safeguards so memos can run even if not ready/loading
-  const safeGroupKeys = groupKeys || [];
   const doneSet = useMemo(() => new Set(doneKeys || []), [doneKeys]);
 
   const totals = data?.totals || {};
   const byStatus = data?.byStatus || [];
   const eta = data?.eta || {};
   const missing = data?.meta?.missing_names || [];
-  const missingCount = data?.meta?.missing_stats_count || 0;
 
-  // Hours by status (bar) and base for ETA pie
   const statusData = useMemo(
     () =>
       (byStatus || []).map((s) => ({
@@ -254,24 +273,16 @@ export default function InsightsTab() {
     [byStatus]
   );
 
-  // ETA pie excludes all groups the server marks as "done"
   const etaPieData = useMemo(
-    () =>
-      statusData.filter((row) => {
-        // toGroup is stable from context; if not ready, doneSet is empty so nothing is filtered out
-        const g = toGroup(row.name);
-        return !doneSet.has(g);
-      }),
+    () => statusData.filter((row) => !doneSet.has(toGroup(row.name))),
     [statusData, doneSet, toGroup]
   );
 
-  // Genres: filter by selected group (all/planned/playing/done)
   const filteredGames = useMemo(() => {
     if (genreStatus === "all") return games;
     return games.filter((g) => statusGroupOf(g.status) === genreStatus);
   }, [games, genreStatus, statusGroupOf]);
 
-  // Build genre distributions with fair split across multiple tags
   const { myGenreData, rawgGenreData } = useMemo(() => {
     const myMap = new Map();
     const rawgMap = new Map();
@@ -333,7 +344,6 @@ export default function InsightsTab() {
     return { myGenreData: topMy, rawgGenreData: topRawg };
   }, [filteredGames]);
 
-  // Rounded-UP hours for display as requested
   const myGenreDisplay = useMemo(
     () => myGenreData.map((d) => ({ ...d, hoursRounded: Math.ceil(d.hours) })),
     [myGenreData]
@@ -356,66 +366,32 @@ export default function InsightsTab() {
     return s ? `?${s}` : "";
   }, []);
 
-  const applyPreset = (v) => load({ weeklyHours: v, includeMissing });
   const handleApply = () => load({ weeklyHours, includeMissing });
 
-  // Build dynamic group options (works even if not ready → empty list)
   const groupOptions = useMemo(
     () =>
       [{ value: "all", label: "All" }].concat(
-        (safeGroupKeys || []).map((g) => ({
+        (groupKeys || []).map((g) => ({
           value: g,
           label: g[0].toUpperCase() + g.slice(1),
         }))
       ),
-    [safeGroupKeys]
+    [groupKeys]
   );
 
-  // ---------------------------- Render ----------------------------
   const showSkeletons = !ready || loading;
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="min-h-screen bg-surface-bg text-content-primary p-4 md:p-6 space-y-6">
       {/* Header controls */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-xl md:text-2xl font-semibold">Insights</h1>
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            {[5, 10, 15, 20].map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => applyPreset(p)}
-                className={[
-                  "px-2.5 py-1 rounded-lg text-sm border",
-                  p === weeklyHours
-                    ? "bg-primary text-white border-primary"
-                    : "hover:bg-gray-100 border-gray-300",
-                ].join(" ")}
-                aria-pressed={p === weeklyHours}
-              >
-                {p}h
-              </button>
-            ))}
-          </div>
+          {/* Single, compact weekly-hours control: number input only */}
           <label className="flex items-center gap-3 text-sm">
-            <span className="text-gray-600 whitespace-nowrap">
+            <span className="text-content-muted whitespace-nowrap">
               Weekly hours
             </span>
-            <input
-              type="range"
-              min={0}
-              max={40}
-              step={1}
-              value={Number.isFinite(weeklyHours) ? weeklyHours : 0}
-              onChange={(e) =>
-                setWeeklyHours(
-                  clamp(parseInt(e.target.value || "0", 10), 0, 40)
-                )
-              }
-              className="w-36"
-              aria-label="Weekly hours"
-            />
             <input
               type="number"
               min={0}
@@ -426,21 +402,25 @@ export default function InsightsTab() {
                   clamp(parseInt(e.target.value || "0", 10), 0, 999)
                 )
               }
-              className="w-20 border rounded px-2 py-1 text-sm"
+              className="w-20 border border-surface-border rounded px-2 py-1 text-sm bg-surface-card text-content-primary"
               aria-label="Weekly hours value"
             />
           </label>
+
+          {/* Show/Hide missing names (manual apply) */}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={includeMissing}
               onChange={(e) => setIncludeMissing(e.target.checked)}
+              className="accent-primary"
             />
-            <span className="text-gray-600">Show missing</span>
+            <span className="text-content-muted">Show missing</span>
           </label>
+
           <button
             onClick={handleApply}
-            className="px-3 py-1.5 rounded bg-primary text-white text-sm hover:bg-primary-dark disabled:opacity-50"
+            className="px-3 py-1.5 rounded bg-action-primary hover:bg-action-primary-hover text-black text-sm border border-action-primary"
             disabled={loading}
           >
             Apply
@@ -449,7 +429,9 @@ export default function InsightsTab() {
       </div>
 
       {err ? (
-        <div className="p-3 rounded bg-red-50 text-red-600 text-sm">{err}</div>
+        <div className="p-3 rounded bg-red-500/10 text-red-300 text-sm border border-red-500/30">
+          {err}
+        </div>
       ) : null}
 
       {showSkeletons ? (
@@ -486,7 +468,7 @@ export default function InsightsTab() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             <ChartCard title="Hours by status">
               {statusData.length === 0 ? (
-                <div className="text-sm text-gray-500">No data.</div>
+                <div className="text-sm text-content-muted">No data.</div>
               ) : (
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
@@ -494,10 +476,23 @@ export default function InsightsTab() {
                       data={statusData}
                       margin={{ top: 4, right: 8, left: 0, bottom: 8 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} />
+                      <CartesianGrid stroke={GRID_STROKE()} vertical={false} />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 12, fill: AXIS_TICK() }}
+                      />
+                      <YAxis tick={{ fontSize: 12, fill: AXIS_TICK() }} />
                       <RTooltip
+                        cursor={{ fill: "transparent" }} // remove white hover overlay
+                        wrapperStyle={{ outline: "none" }}
+                        contentStyle={{
+                          background: TOOLTIP_BG(),
+                          border: `1px solid ${TOOLTIP_BORDER()}`,
+                          borderRadius: 8,
+                        }}
+                        labelStyle={{ color: "#fff" }} // tooltip text white
+                        itemStyle={{ color: "#fff" }} // tooltip text white
+                        labelFormatter={() => ""} // hide duplicate plain label
                         formatter={(value, _name, { payload }) => [
                           `${fmtInt(value)} h`,
                           `${payload.name} (${fmtInt(payload.count)} games)`,
@@ -509,7 +504,6 @@ export default function InsightsTab() {
                             key={i}
                             fill={colorAt(i)}
                             cursor="pointer"
-                            title={`View ${row.name} games`}
                             onClick={() =>
                               nav(
                                 `${GAMES_ROUTE}${toQP({ group: toGroup(row.name) })}`
@@ -528,7 +522,7 @@ export default function InsightsTab() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-center">
                 <div className="h-64">
                   {etaPieData.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-sm text-gray-500">
+                    <div className="h-full flex items-center justify-center text-sm text-content-muted">
                       No planned/playing hours to visualize.
                     </div>
                   ) : (
@@ -547,7 +541,6 @@ export default function InsightsTab() {
                               key={i}
                               fill={colorAt(i)}
                               cursor="pointer"
-                              title={`View ${row.name} games`}
                               onClick={() =>
                                 nav(
                                   `${GAMES_ROUTE}${toQP({ group: toGroup(row.name) })}`
@@ -557,6 +550,15 @@ export default function InsightsTab() {
                           ))}
                         </Pie>
                         <RTooltip
+                          wrapperStyle={{ outline: "none" }}
+                          contentStyle={{
+                            background: TOOLTIP_BG(),
+                            border: `1px solid ${TOOLTIP_BORDER()}`,
+                            borderRadius: 8,
+                          }}
+                          labelStyle={{ color: "#fff" }} // tooltip text white
+                          itemStyle={{ color: "#fff" }} // tooltip text white
+                          labelFormatter={() => ""} // keep consistent: no duplicate label
                           formatter={(value, name, { payload }) => [
                             `${fmtInt(value)} h`,
                             `${name} (${fmtInt(payload.count)} games)`,
@@ -569,23 +571,23 @@ export default function InsightsTab() {
 
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between gap-6">
-                    <span className="text-gray-600">Remaining</span>
+                    <span className="text-content-muted">Remaining</span>
                     <span className="font-medium">
                       {fmtInt(eta.remaining_hours)} h
                     </span>
                   </div>
                   <div className="flex justify-between gap-6">
-                    <span className="text-gray-600">Weekly pace</span>
+                    <span className="text-content-muted">Weekly pace</span>
                     <span className="font-medium">
                       {fmtInt(eta.weekly_hours)} h/wk
                     </span>
                   </div>
                   <div className="flex justify-between gap-6">
-                    <span className="text-gray-600">ETA (weeks)</span>
+                    <span className="text-content-muted">ETA (weeks)</span>
                     <span className="font-medium">{eta.weeks ?? "—"}</span>
                   </div>
                   <div className="flex justify-between gap-6">
-                    <span className="text-gray-600">Finish date</span>
+                    <span className="text-content-muted">Finish date</span>
                     <span className="font-medium">
                       {eta.finish_date || "—"}
                     </span>
@@ -620,7 +622,7 @@ export default function InsightsTab() {
                   value={genreStatus}
                   onChange={setGenreStatus}
                   options={[{ value: "all", label: "All" }].concat(
-                    (safeGroupKeys || []).map((g) => ({
+                    (groupKeys || []).map((g) => ({
                       value: g,
                       label: g[0].toUpperCase() + g.slice(1),
                     }))
@@ -630,7 +632,7 @@ export default function InsightsTab() {
             }
           >
             {genreData.length === 0 ? (
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-content-muted">
                 No data. Tip: tag some games with{" "}
                 <span className="font-medium">My Genre</span> to populate this
                 chart.
@@ -642,24 +644,33 @@ export default function InsightsTab() {
                     data={genreData}
                     margin={{ top: 8, right: 8, left: 0, bottom: 32 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
+                    <CartesianGrid stroke={GRID_STROKE()} vertical={false} />
                     <XAxis
                       dataKey="key"
                       angle={-25}
                       textAnchor="end"
                       interval={0}
                       height={60}
-                      tick={{ fontSize: 12 }}
+                      tick={{ fontSize: 12, fill: AXIS_TICK() }}
                     />
-                    <YAxis tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12, fill: AXIS_TICK() }} />
                     <RTooltip
+                      cursor={{ fill: "transparent" }} // remove white hover overlay
+                      wrapperStyle={{ outline: "none" }}
+                      contentStyle={{
+                        background: TOOLTIP_BG(),
+                        border: `1px solid ${TOOLTIP_BORDER()}`,
+                        borderRadius: 8,
+                      }}
+                      labelStyle={{ color: "#fff" }} // tooltip text white
+                      itemStyle={{ color: "#fff" }} // tooltip text white
+                      labelFormatter={() => ""} // hide duplicate label
                       formatter={(value, _name, { payload }) => [
                         genreMetric === "hours"
                           ? `${fmtInt(value)} h`
                           : `${fmtInt(value)} games`,
                         payload.key,
                       ]}
-                      labelFormatter={() => ""}
                     />
                     <Bar dataKey={genreAccessor} radius={[6, 6, 0, 0]}>
                       {genreData.map((row, i) => (
@@ -667,7 +678,6 @@ export default function InsightsTab() {
                           key={i}
                           fill={colorAt(i)}
                           cursor="pointer"
-                          title={`View ${row.key} games`}
                           onClick={() =>
                             nav(
                               `${GAMES_ROUTE}${toQP({
@@ -692,9 +702,9 @@ export default function InsightsTab() {
 
           {/* Missing list */}
           {includeMissing && missing?.length ? (
-            <section className="rounded-2xl border p-4 md:p-5">
+            <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5">
               <h2 className="font-semibold mb-2">Missing hours (excluded)</h2>
-              <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+              <ul className="list-disc pl-5 text-sm text-content-secondary space-y-1">
                 {missing.map((name) => (
                   <li key={name}>{name}</li>
                 ))}
@@ -703,7 +713,7 @@ export default function InsightsTab() {
           ) : null}
         </>
       ) : (
-        <div className="text-sm text-gray-500">No insights available.</div>
+        <div className="text-sm text-content-muted">No insights available.</div>
       )}
     </div>
   );

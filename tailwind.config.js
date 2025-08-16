@@ -15,10 +15,10 @@ export default {
           dark: "#2563eb", // Blue 600
         },
         surface: {
-          bg: "#111827", // Gray 900
-          card: "#1f2937", // Gray 800
-          elevated: "#2C3E50", // Gray 700
-          border: "#4b5563", // Gray 600
+          bg: "#0B1220", // Gray 900
+          card: "#162235", // Gray 800
+          elevated: "#1B2B45", // Gray 700
+          border: "#2A3B55", // Gray 600
         },
         content: {
           primary: "#f9fafb", // Gray 50

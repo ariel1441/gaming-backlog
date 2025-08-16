@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { useEffect, useRef, useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom"; // ← added useNavigate, useLocation
 import { AuthProvider } from "./contexts/AuthContext";
 import { useAuth } from "./contexts/AuthContext";
 
@@ -29,6 +29,10 @@ import { useDebouncedValue } from "./hooks/useDebouncedValue";
 
 const AppContent = () => {
   const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // ← added: for clearing URL when resetting filters
+  const nav = useNavigate();
+  const loc = useLocation();
 
   const {
     games,
@@ -156,7 +160,13 @@ const AppContent = () => {
         : [...currentList, value]
     );
   };
-  const resetFilters = () => clearFilters();
+
+  // ← updated: clear state AND remove ?query from URL so URL-driven filters don't re-apply
+  const resetFilters = () => {
+    clearFilters();
+    nav(loc.pathname, { replace: true });
+  };
+
   const clearSearch = () => setSearchQuery("");
   const clearSort = () => {
     setSortKey("");

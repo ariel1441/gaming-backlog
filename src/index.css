@@ -1,3 +1,28 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* === Chart & UI color variables coming from Tailwind tokens === */
+@layer base {
+  :root {
+    /* brand palette for charts */
+    --chart-1: theme(colors.primary.DEFAULT);
+    --chart-2: theme(colors.secondary.light);
+    --chart-3: theme(colors.state.success);
+    --chart-4: theme(colors.secondary.DEFAULT);
+    --chart-5: theme(colors.info.DEFAULT, #06b6d4);
+    --chart-6: theme(colors.state.warning);
+    --chart-7: theme(colors.rose.500, #f43f5e);
+    --chart-8: theme(colors.teal.500, #14b8a6);
+    --chart-9: theme(colors.rose.400, #fb7185);
+    --chart-10: theme(colors.secondary.light); /* repeat ok */
+    --chart-11: theme(colors.primary.light);
+    --chart-12: theme(colors.emerald.400, #34d399);
+
+    /* neutrals driven by your theme */
+    --axis-tick: theme(colors.content.muted);
+    --grid-stroke: theme(colors.surface.border);
+    --tooltip-bg: theme(colors.surface.card);
+    --tooltip-border: theme(colors.surface.border);
+    --tooltip-text: theme(colors.content.primary);
+  }
+}
