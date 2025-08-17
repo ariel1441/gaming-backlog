@@ -1,9 +1,16 @@
 // src/features/insights/InsightsTab.jsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchInsights } from "../../services/insightsService";
 import { api } from "../../services/apiClient";
 import { useStatusGroups } from "../../contexts/StatusGroupsContext";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   ResponsiveContainer,
   PieChart,
@@ -17,13 +24,9 @@ import {
   CartesianGrid,
 } from "recharts";
 
-/* ========================= ROUTE CONFIG ========================= */
 const GAMES_ROUTE = "/";
 
-/* ========================= Theme-driven chart colors =========================
-   Reads CSS variables you define once in index.css:
-   --chart-1..12, --axis-tick, --grid-stroke, --tooltip-bg, --tooltip-border, --tooltip-text
-*/
+/* ========================= Theme-driven chart colors ========================= */
 const cssVar = (name) =>
   typeof window !== "undefined"
     ? getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -65,6 +68,7 @@ const parseIntSafe = (v, d = 0) => {
   const n = parseInt(v ?? "", 10);
   return Number.isFinite(n) ? n : d;
 };
+
 function useQueryBackedState({
   key,
   defaultValue,
@@ -87,7 +91,53 @@ function useQueryBackedState({
   return [value, setValue];
 }
 
-/* ========================= Compact UI atoms (themed) ========================= */
+/* ===== simple media query hook ===== */
+function useMedia(query, initial = false) {
+  const get = () =>
+    typeof window === "undefined" ? initial : window.matchMedia(query).matches;
+  const [matches, setMatches] = useState(get);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const onChange = () => setMatches(m.matches);
+    onChange();
+    m.addEventListener?.("change", onChange);
+    return () => m.removeEventListener?.("change", onChange);
+  }, [query]);
+  return matches;
+}
+
+/* ===== debounce hook (for weekly hours) ===== */
+function useDebounced(value, delay = 400) {
+  const [deb, setDeb] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDeb(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return deb;
+}
+
+/* ===== Tick renderers ===== */
+function EllipsisTick({ x, y, payload, angle = -18, maxChars = 22 }) {
+  const full = String(payload?.value ?? "");
+  const text =
+    full.length > maxChars ? `${full.slice(0, maxChars - 1)}…` : full;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        dy={8}
+        textAnchor="end"
+        transform={`rotate(${angle})`}
+        fill={AXIS_TICK()}
+        fontSize={12}
+        title={full}
+      >
+        {text}
+      </text>
+    </g>
+  );
+}
+
+/* ========================= UI atoms ========================= */
 function Tile({ label, value }) {
   return (
     <div className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 flex flex-col gap-1">
@@ -126,17 +176,6 @@ function Segmented({ value, onChange, options }) {
     </div>
   );
 }
-function ChartCard({ title, children, right = null }) {
-  return (
-    <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-content-primary">{title}</h2>
-        <div className="flex items-center gap-2">{right}</div>
-      </div>
-      {children}
-    </section>
-  );
-}
 function Skeleton({ className = "" }) {
   return (
     <div className={`animate-pulse rounded-lg bg-white/10 ${className}`} />
@@ -169,8 +208,15 @@ function ChartSkeleton() {
 /* ========================= Component ========================= */
 export default function InsightsTab() {
   const nav = useNavigate();
-  const { ready, statusGroupOf, toGroup, doneKeys, groupKeys } =
-    useStatusGroups();
+  const { ready, statusGroupOf, toGroup, groupKeys } = useStatusGroups();
+  const { user } = useAuth();
+  const displayName = useMemo(
+    () => user?.name || user?.username || user?.email || "You",
+    [user]
+  );
+
+  const isSmall = useMedia("(max-width: 1024px)");
+  const isPhone = useMedia("(max-width: 640px)");
 
   // URL-backed UI state
   const [weeklyHours, setWeeklyHours] = useQueryBackedState({
@@ -256,26 +302,54 @@ export default function InsightsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const doneSet = useMemo(() => new Set(doneKeys || []), [doneKeys]);
+  // debounce weeklyHours, auto-fetch
+  const debWH = useDebounced(weeklyHours, 450);
+  const didInitWH = useRef(false);
+  useEffect(() => {
+    if (!didInitWH.current) {
+      didInitWH.current = true;
+      return;
+    }
+    load({ weeklyHours: debWH });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debWH]);
+
+  // includeMissing toggles re-fetch immediately
+  const didInitMissing = useRef(false);
+  useEffect(() => {
+    if (!didInitMissing.current) {
+      didInitMissing.current = true;
+      return;
+    }
+    load({ includeMissing });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includeMissing]);
 
   const totals = data?.totals || {};
   const byStatus = data?.byStatus || [];
   const eta = data?.eta || {};
   const missing = data?.meta?.missing_names || [];
 
+  /* ---------- Status data uses FULL names for all devices ---------- */
   const statusData = useMemo(
     () =>
       (byStatus || []).map((s) => ({
-        name: s.status,
+        name: s.status, // full string used everywhere (tooltip, routing)
+        display: s.status, // tick shows full name w/ ellipsis via custom tick
         value: Number(s.hours || 0),
         count: Number(s.count || 0),
       })),
     [byStatus]
   );
 
+  // spacing & size
+  const bottomForTicks = isPhone ? 44 : isSmall ? 32 : 36;
+  const topForPlot = 16;
+
+  // exclude "done" from ETA composition
   const etaPieData = useMemo(
-    () => statusData.filter((row) => !doneSet.has(toGroup(row.name))),
-    [statusData, doneSet, toGroup]
+    () => statusData.filter((row) => toGroup(row.name) !== "done"),
+    [statusData, toGroup]
   );
 
   const filteredGames = useMemo(() => {
@@ -286,7 +360,6 @@ export default function InsightsTab() {
   const { myGenreData, rawgGenreData } = useMemo(() => {
     const myMap = new Map();
     const rawgMap = new Map();
-
     const add = (map, key, countInc, hoursInc) => {
       const k = key || "Unknown";
       const cur = map.get(k) || { key: k, count: 0, hours: 0 };
@@ -294,10 +367,8 @@ export default function InsightsTab() {
       cur.hours += hoursInc;
       map.set(k, cur);
     };
-
     for (const g of filteredGames) {
       const hours = Number.isFinite(g.hours) ? g.hours : 0;
-
       const myTags = new Set(splitCSV(g.my_genre));
       const mSize = myTags.size || 1;
       const mShare = hours / mSize;
@@ -310,7 +381,6 @@ export default function InsightsTab() {
       if (rawgTags.size === 0) add(rawgMap, "Unknown", 1, hours);
       else for (const t of rawgTags) add(rawgMap, t, 1, rShare);
     }
-
     const arrMy = Array.from(myMap.values()).sort(
       (a, b) =>
         b.count - a.count || b.hours - a.hours || a.key.localeCompare(b.key)
@@ -330,7 +400,6 @@ export default function InsightsTab() {
         hours: tailMy.reduce((a, x) => a + x.hours, 0),
       });
     }
-
     const topRawg = arrRawg.slice(0, cap);
     const tailRawg = arrRawg.slice(cap);
     if (tailRawg.length) {
@@ -340,7 +409,6 @@ export default function InsightsTab() {
         hours: tailRawg.reduce((a, x) => a + x.hours, 0),
       });
     }
-
     return { myGenreData: topMy, rawgGenreData: topRawg };
   }, [filteredGames]);
 
@@ -366,28 +434,27 @@ export default function InsightsTab() {
     return s ? `?${s}` : "";
   }, []);
 
-  const handleApply = () => load({ weeklyHours, includeMissing });
-
-  const groupOptions = useMemo(
+  const allHoursFallback = useMemo(
     () =>
-      [{ value: "all", label: "All" }].concat(
-        (groupKeys || []).map((g) => ({
-          value: g,
-          label: g[0].toUpperCase() + g.slice(1),
-        }))
-      ),
-    [groupKeys]
+      Array.isArray(byStatus)
+        ? byStatus.reduce((a, s) => a + (s.hours || 0), 0)
+        : 0,
+    [byStatus]
   );
 
   const showSkeletons = !ready || loading;
 
   return (
     <div className="min-h-screen bg-surface-bg text-content-primary p-4 md:p-6 space-y-6">
-      {/* Header controls */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-xl md:text-2xl font-semibold">Insights</h1>
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Single, compact weekly-hours control: number input only */}
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-xl md:text-2xl font-semibold">
+          Insights{" "}
+          <span className="font-normal text-content-secondary">
+            — {displayName}
+          </span>
+        </h1>
+        <div className="flex items-center gap-3 flex-wrap justify-end">
           <label className="flex items-center gap-3 text-sm">
             <span className="text-content-muted whitespace-nowrap">
               Weekly hours
@@ -407,23 +474,25 @@ export default function InsightsTab() {
             />
           </label>
 
-          {/* Show/Hide missing names (manual apply) */}
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={includeMissing}
-              onChange={(e) => setIncludeMissing(e.target.checked)}
-              className="accent-primary"
-            />
-            <span className="text-content-muted">Show missing</span>
-          </label>
+          <button
+            type="button"
+            onClick={() => setIncludeMissing((v) => !v)}
+            className={[
+              "px-3 py-1.5 rounded border text-sm transition-colors",
+              includeMissing
+                ? "bg-surface-elevated border-surface-border text-content-primary"
+                : "bg-surface-card border-surface-border text-content-primary hover:bg-surface-elevated",
+            ].join(" ")}
+          >
+            {includeMissing ? "Hide missing games" : "Show missing games"}
+          </button>
 
           <button
-            onClick={handleApply}
-            className="px-3 py-1.5 rounded bg-action-primary hover:bg-action-primary-hover text-black text-sm border border-action-primary"
-            disabled={loading}
+            onClick={() => nav(GAMES_ROUTE)}
+            className="px-3 py-1.5 rounded border border-surface-border bg-surface-card text-content-primary hover:bg-surface-elevated transition-colors text-sm"
+            aria-label="Back to main"
           >
-            Apply
+            Back to Games
           </button>
         </div>
       </div>
@@ -458,56 +527,135 @@ export default function InsightsTab() {
             />
             <Tile label="Done hours" value={`${fmtInt(totals.hours_done)} h`} />
             <Tile
-              label="Backlog hours"
-              value={`${fmtInt(eta.remaining_hours)} h`}
+              label="Total games hours"
+              value={`${fmtInt(totals.total_hours ?? allHoursFallback)} h`}
             />
             <Tile label="Avg hours" value={`${fmtInt(totals.avg_hours)} h`} />
           </section>
 
           {/* Hours by status + ETA */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-            <ChartCard title="Hours by status">
+            {/* Hours by status — full labels everywhere, ellipsis + angle, phone scrolls */}
+            <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="font-semibold text-content-primary">
+                  Hours by status
+                </h2>
+              </div>
+
               {statusData.length === 0 ? (
                 <div className="text-sm text-content-muted">No data.</div>
+              ) : isPhone ? (
+                <div className="overflow-x-auto">
+                  <div
+                    className="h-64"
+                    style={{ minWidth: Math.max(statusData.length * 120, 640) }}
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={statusData}
+                        margin={{
+                          top: topForPlot,
+                          right: 8,
+                          left: 0,
+                          bottom: bottomForTicks,
+                        }}
+                        barCategoryGap={16}
+                        barGap={4}
+                      >
+                        <CartesianGrid
+                          stroke={GRID_STROKE()}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="display"
+                          interval={0}
+                          tick={<EllipsisTick angle={-18} maxChars={18} />}
+                          tickLine={false}
+                          height={bottomForTicks}
+                        />
+                        <YAxis tick={{ fontSize: 12, fill: AXIS_TICK() }} />
+                        <RTooltip
+                          cursor={{ fill: "transparent" }}
+                          wrapperStyle={{ outline: "none" }}
+                          contentStyle={{
+                            background: TOOLTIP_BG(),
+                            border: `1px solid ${TOOLTIP_BORDER()}`,
+                            borderRadius: 8,
+                          }}
+                          labelStyle={{ color: "#fff" }}
+                          itemStyle={{ color: "#fff" }}
+                          labelFormatter={() => ""}
+                          formatter={(value, _name, { payload }) => [
+                            `${fmtInt(value)} h`,
+                            `${payload.name} (${fmtInt(payload.count)} games)`,
+                          ]}
+                        />
+                        <Bar dataKey="value" barSize={22} radius={[6, 6, 0, 0]}>
+                          {statusData.map((row, i) => (
+                            <Cell
+                              key={i}
+                              fill={colorAt(i)}
+                              cursor="pointer"
+                              onClick={() =>
+                                nav(
+                                  `${GAMES_ROUTE}${toQP({ status: row.name })}`
+                                )
+                              }
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               ) : (
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={statusData}
-                      margin={{ top: 4, right: 8, left: 0, bottom: 8 }}
+                      margin={{
+                        top: topForPlot,
+                        right: 8,
+                        left: 0,
+                        bottom: bottomForTicks,
+                      }}
+                      barCategoryGap={16}
+                      barGap={4}
                     >
                       <CartesianGrid stroke={GRID_STROKE()} vertical={false} />
                       <XAxis
-                        dataKey="name"
-                        tick={{ fontSize: 12, fill: AXIS_TICK() }}
+                        dataKey="display"
+                        interval={0}
+                        tick={<EllipsisTick angle={-18} maxChars={22} />}
+                        tickLine={false}
+                        height={bottomForTicks}
                       />
                       <YAxis tick={{ fontSize: 12, fill: AXIS_TICK() }} />
                       <RTooltip
-                        cursor={{ fill: "transparent" }} // remove white hover overlay
+                        cursor={{ fill: "transparent" }}
                         wrapperStyle={{ outline: "none" }}
                         contentStyle={{
                           background: TOOLTIP_BG(),
                           border: `1px solid ${TOOLTIP_BORDER()}`,
                           borderRadius: 8,
                         }}
-                        labelStyle={{ color: "#fff" }} // tooltip text white
-                        itemStyle={{ color: "#fff" }} // tooltip text white
-                        labelFormatter={() => ""} // hide duplicate plain label
+                        labelStyle={{ color: "#fff" }}
+                        itemStyle={{ color: "#fff" }}
+                        labelFormatter={() => ""}
                         formatter={(value, _name, { payload }) => [
                           `${fmtInt(value)} h`,
                           `${payload.name} (${fmtInt(payload.count)} games)`,
                         ]}
                       />
-                      <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      <Bar dataKey="value" barSize={28} radius={[6, 6, 0, 0]}>
                         {statusData.map((row, i) => (
                           <Cell
                             key={i}
                             fill={colorAt(i)}
                             cursor="pointer"
                             onClick={() =>
-                              nav(
-                                `${GAMES_ROUTE}${toQP({ group: toGroup(row.name) })}`
-                              )
+                              nav(`${GAMES_ROUTE}${toQP({ status: row.name })}`)
                             }
                           />
                         ))}
@@ -516,14 +664,19 @@ export default function InsightsTab() {
                   </ResponsiveContainer>
                 </div>
               )}
-            </ChartCard>
+            </section>
 
-            <ChartCard title="ETA">
+            {/* ETA */}
+            <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="font-semibold text-content-primary">ETA</h2>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-center">
                 <div className="h-64">
                   {etaPieData.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-sm text-content-muted">
-                      No planned/playing hours to visualize.
+                      No hours to visualize.
                     </div>
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
@@ -543,7 +696,7 @@ export default function InsightsTab() {
                               cursor="pointer"
                               onClick={() =>
                                 nav(
-                                  `${GAMES_ROUTE}${toQP({ group: toGroup(row.name) })}`
+                                  `${GAMES_ROUTE}${toQP({ status: row.name })}`
                                 )
                               }
                             />
@@ -556,9 +709,9 @@ export default function InsightsTab() {
                             border: `1px solid ${TOOLTIP_BORDER()}`,
                             borderRadius: 8,
                           }}
-                          labelStyle={{ color: "#fff" }} // tooltip text white
-                          itemStyle={{ color: "#fff" }} // tooltip text white
-                          labelFormatter={() => ""} // keep consistent: no duplicate label
+                          labelStyle={{ color: "#fff" }}
+                          itemStyle={{ color: "#fff" }}
+                          labelFormatter={() => ""}
                           formatter={(value, name, { payload }) => [
                             `${fmtInt(value)} h`,
                             `${name} (${fmtInt(payload.count)} games)`,
@@ -573,35 +726,37 @@ export default function InsightsTab() {
                   <div className="flex justify-between gap-6">
                     <span className="text-content-muted">Remaining</span>
                     <span className="font-medium">
-                      {fmtInt(eta.remaining_hours)} h
+                      {fmtInt(eta?.remaining_hours)}
                     </span>
                   </div>
                   <div className="flex justify-between gap-6">
                     <span className="text-content-muted">Weekly pace</span>
                     <span className="font-medium">
-                      {fmtInt(eta.weekly_hours)} h/wk
+                      {fmtInt(eta?.weekly_hours)} h/wk
                     </span>
                   </div>
                   <div className="flex justify-between gap-6">
                     <span className="text-content-muted">ETA (weeks)</span>
-                    <span className="font-medium">{eta.weeks ?? "—"}</span>
+                    <span className="font-medium">{eta?.weeks ?? "—"}</span>
                   </div>
                   <div className="flex justify-between gap-6">
                     <span className="text-content-muted">Finish date</span>
                     <span className="font-medium">
-                      {eta.finish_date || "—"}
+                      {eta?.finish_date || "—"}
                     </span>
                   </div>
                 </div>
               </div>
-            </ChartCard>
+            </section>
           </div>
 
           {/* Genres */}
-          <ChartCard
-            title={`Genres (${genreTitleSuffix})`}
-            right={
-              <>
+          <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="font-semibold text-content-primary">
+                Genres ({genreType === "my" ? "My Genre" : "RAWG Genre"})
+              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
                 <Segmented
                   value={genreType}
                   onChange={setGenreType}
@@ -628,79 +783,96 @@ export default function InsightsTab() {
                     }))
                   )}
                 />
-              </>
-            }
-          >
-            {genreData.length === 0 ? (
-              <div className="text-sm text-content-muted">
-                No data. Tip: tag some games with{" "}
-                <span className="font-medium">My Genre</span> to populate this
-                chart.
               </div>
-            ) : (
-              <div className="h-[22rem]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={genreData}
-                    margin={{ top: 8, right: 8, left: 0, bottom: 32 }}
-                  >
-                    <CartesianGrid stroke={GRID_STROKE()} vertical={false} />
-                    <XAxis
-                      dataKey="key"
-                      angle={-25}
-                      textAnchor="end"
-                      interval={0}
-                      height={60}
-                      tick={{ fontSize: 12, fill: AXIS_TICK() }}
-                    />
-                    <YAxis tick={{ fontSize: 12, fill: AXIS_TICK() }} />
-                    <RTooltip
-                      cursor={{ fill: "transparent" }} // remove white hover overlay
-                      wrapperStyle={{ outline: "none" }}
-                      contentStyle={{
-                        background: TOOLTIP_BG(),
-                        border: `1px solid ${TOOLTIP_BORDER()}`,
-                        borderRadius: 8,
-                      }}
-                      labelStyle={{ color: "#fff" }} // tooltip text white
-                      itemStyle={{ color: "#fff" }} // tooltip text white
-                      labelFormatter={() => ""} // hide duplicate label
-                      formatter={(value, _name, { payload }) => [
-                        genreMetric === "hours"
-                          ? `${fmtInt(value)} h`
-                          : `${fmtInt(value)} games`,
-                        payload.key,
-                      ]}
-                    />
-                    <Bar dataKey={genreAccessor} radius={[6, 6, 0, 0]}>
-                      {genreData.map((row, i) => (
-                        <Cell
-                          key={i}
-                          fill={colorAt(i)}
-                          cursor="pointer"
-                          onClick={() =>
-                            nav(
-                              `${GAMES_ROUTE}${toQP({
-                                genreType,
-                                genre: row.key,
-                                group:
-                                  genreStatus !== "all"
-                                    ? genreStatus
-                                    : undefined,
-                                metric: genreMetric,
-                              })}`
-                            )
-                          }
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </ChartCard>
+            </div>
 
-          {/* Missing list */}
+            {(() => {
+              const gd = genreData;
+              if (!gd.length)
+                return (
+                  <div className="text-sm text-content-muted">
+                    No data. Tag some games with{" "}
+                    <span className="font-medium">My Genre</span> to populate
+                    this chart.
+                  </div>
+                );
+
+              return (
+                <div className="overflow-x-auto">
+                  <div
+                    className="h-[22rem] w-full"
+                    style={{
+                      minWidth: isSmall
+                        ? Math.max(gd.length * 64, 720)
+                        : undefined,
+                    }}
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={gd}
+                        margin={{ top: 8, right: 8, left: 0, bottom: 32 }}
+                      >
+                        <CartesianGrid
+                          stroke={GRID_STROKE()}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="key"
+                          angle={-25}
+                          textAnchor="end"
+                          interval={0}
+                          height={60}
+                          tick={{ fontSize: 12, fill: AXIS_TICK() }}
+                        />
+                        <YAxis tick={{ fontSize: 12, fill: AXIS_TICK() }} />
+                        <RTooltip
+                          cursor={{ fill: "transparent" }}
+                          wrapperStyle={{ outline: "none" }}
+                          contentStyle={{
+                            background: TOOLTIP_BG(),
+                            border: `1px solid ${TOOLTIP_BORDER()}`,
+                            borderRadius: 8,
+                          }}
+                          labelStyle={{ color: "#fff" }}
+                          itemStyle={{ color: "#fff" }}
+                          labelFormatter={() => ""}
+                          formatter={(value, _name, { payload }) => [
+                            genreMetric === "hours"
+                              ? `${fmtInt(value)} h`
+                              : `${fmtInt(value)} games`,
+                            payload.key,
+                          ]}
+                        />
+                        <Bar dataKey={genreAccessor} radius={[6, 6, 0, 0]}>
+                          {gd.map((row, i) => (
+                            <Cell
+                              key={i}
+                              fill={colorAt(i)}
+                              cursor="pointer"
+                              onClick={() =>
+                                nav(
+                                  `${GAMES_ROUTE}${toQP({
+                                    genreType,
+                                    genre: row.key,
+                                    group:
+                                      genreStatus !== "all"
+                                        ? genreStatus
+                                        : undefined,
+                                    metric: genreMetric,
+                                  })}`
+                                )
+                              }
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
+
           {includeMissing && missing?.length ? (
             <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5">
               <h2 className="font-semibold mb-2">Missing hours (excluded)</h2>

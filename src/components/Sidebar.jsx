@@ -1,6 +1,8 @@
 // src/components/Sidebar.jsx
 import React from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useNavigate, useLocation } from "react-router-dom";
+
 import {
   Menu,
   Search as IconSearch,
@@ -11,6 +13,7 @@ import {
   Globe as IconGlobe,
   LogOut as IconLogout,
   User2 as IconUser,
+  BarChart3 as IconInsights,
 } from "lucide-react";
 
 const Sidebar = ({
@@ -31,6 +34,14 @@ const Sidebar = ({
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const authed = isAuthenticated ?? !!isAdmin;
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isInsights = location.pathname.startsWith("/insights");
+  const goInsights = () => {
+    closeAllPanels();
+    navigate("/insights");
+  };
 
   const closeAllPanels = () => {
     setSearchVisible(false);
@@ -212,6 +223,13 @@ const Sidebar = ({
           label="Surprise Me"
           icon={IconDice}
           onClick={handleSurpriseMe}
+          expanded={sidebarOpen}
+        />
+        <SidebarRow
+          label="Insights"
+          icon={IconInsights}
+          active={isInsights}
+          onClick={goInsights}
           expanded={sidebarOpen}
         />
         {authed && (

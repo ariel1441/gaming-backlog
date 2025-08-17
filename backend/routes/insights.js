@@ -4,29 +4,41 @@ import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 import { cacheGet, cacheSet } from "../utils/microCache.js";
 import { lookupHLTBHoursByPref } from "../utils/hltb.js";
-import { GROUP_SETS, statusGroupOf, BUCKETS } from "../utils/status.js";
 
 const router = express.Router();
 
-/** ---- Status groupings (server-authoritative) ---- */
-const {
-  planned: PLANNED_SET,
-  playing: PLAYING_SET,
-  done: DONE_SET,
-} = GROUP_SETS;
-
-// Backlog semantic bucket from the server:
-const BACKLOG_GROUPS = new Set(BUCKETS.backlog);
+/** ---- Status groupings (your final sets) ---- */
+const DONE_SET = new Set([
+  "finished",
+  "played alot but didnt finish",
+  "played a lot but didn't finish",
+]);
+const PLAYING_SET = new Set(["playing", "played and should come back"]);
+const PLANNED_SET = new Set([
+  "plan to play soon",
+  "plan to play",
+  "play when in the mood",
+  "maybe in the future",
+]);
+const OTHER_SET = new Set([
+  "recommended by someone",
+  "wishlist",
+  "not anytime soon",
+  "played a bit",
+]);
 
 const DEFAULT_WEEKLY_HOURS = 10;
 
 /* --------------------------- shared helpers --------------------------- */
+/** MUST match games.js RAWG keying */
 const lowerKey = (s) =>
   String(s || "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
 function getRawgHours(rawg) {
+  if (!rawg) return null;
   const candidates = [
     rawg?.playtime,
     rawg?.time_to_beat?.main,
@@ -62,17 +74,6 @@ async function fetchBaseRows(userId) {
   return rows;
 }
 
-async function updateGameHoursIfEmpty(gameId, userId, hours) {
-  const sql = `
-    UPDATE games
-       SET how_long_to_beat = $1
-     WHERE id = $2
-       AND user_id = $3
-       AND (how_long_to_beat IS NULL OR how_long_to_beat <= 0)
-  `;
-  await pool.query(sql, [hours, gameId, userId]);
-}
-
 /* ------------------------ HLTB / RAWG resolvers ----------------------- */
 function getHLTBHours(app, title) {
   const h = lookupHLTBHoursByPref(app, title, "main");
@@ -104,39 +105,21 @@ async function resolveHoursForRow(req, row, userId) {
   return null; // excluded from stats
 }
 
-/* --------------------------- small async util -------------------------- */
-async function mapWithLimit(items, limit, fn) {
-  const out = new Array(items.length);
-  let i = 0;
-  const workers = Array.from(
-    { length: Math.min(limit, items.length) },
-    async () => {
-      while (i < items.length) {
-        const idx = i++;
-        out[idx] = await fn(items[idx], idx);
-      }
-    }
-  );
-  await Promise.all(workers);
-  return out;
-}
-
-/* ----------------------------- Aggregation ---------------------------- */
+/* --------------------------- Aggregation core -------------------------- */
 function computeAggregates(rowsWithHours, weeklyHours) {
-  // status -> { status, rank, count, hours }
+  // Build per-status aggregates and totals
   const map = new Map();
-  let totalGamesCounted = 0;
   let sumAllHours = 0;
   let countForAvg = 0;
+  let totalGamesCounted = 0;
 
   for (const r of rowsWithHours) {
-    totalGamesCounted++;
-    if (!map.has(r.status)) {
+    totalGamesCounted += 1;
+    if (!map.has(r.status))
       map.set(r.status, { status: r.status, rank: r.rank, count: 0, hours: 0 });
-    }
     const m = map.get(r.status);
     m.count += 1;
-    m.hours += r.hours; // hours already int
+    m.hours += r.hours;
 
     if (r.hours > 0) {
       sumAllHours += r.hours;
@@ -144,30 +127,39 @@ function computeAggregates(rowsWithHours, weeklyHours) {
     }
   }
 
+  // Normalize status before set lookups (robust against minor variants)
+  const norm = (s) =>
+    String(s || "")
+      .trim()
+      .toLowerCase();
+
   const byStatus = Array.from(map.values()).sort((a, b) => a.rank - b.rank);
-
   const sumWhere = (pred) =>
-    rowsWithHours.reduce((acc, r) => (pred(r.status) ? acc + r.hours : acc), 0);
+    rowsWithHours.reduce(
+      (acc, r) => (pred(norm(r.status)) ? acc + r.hours : acc),
+      0
+    );
 
-  // ✅ use statusGroupOf so casing/aliases never break math
   const hours_planned = sumWhere((s) => PLANNED_SET.has(s));
   const hours_playing = sumWhere((s) => PLAYING_SET.has(s));
   const hours_done = sumWhere((s) => DONE_SET.has(s));
-  // Backlog = everything not done (includes planned, playing, and any “other”)
-  const hours_remaining = sumWhere((s) => statusGroupOf(s) !== "done");
-  // ETA
-  let weeks = null;
-  let finish_date = null;
+
+  // >>> ETA must include everything EXCEPT Done (i.e., include Playing + Planned + Other)
+  const hours_remaining = sumWhere((s) => !DONE_SET.has(s));
+
+  // ETA: derive finish date from unrounded weeks, then round weeks for display
+  let weeks = null,
+    finish_date = null;
   if (hours_remaining === 0) {
     weeks = 0;
     finish_date = fmtDate(new Date());
   } else if (weeklyHours > 0) {
     const rawWeeks = hours_remaining / weeklyHours;
     const days = Math.ceil(rawWeeks * 7);
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    finish_date = fmtDate(d);
+    const finish = new Date();
+    finish.setDate(finish.getDate() + days);
     weeks = roundWeeks(rawWeeks);
+    finish_date = fmtDate(finish);
   }
 
   return {
@@ -176,7 +168,8 @@ function computeAggregates(rowsWithHours, weeklyHours) {
       hours_planned,
       hours_playing,
       hours_done,
-      hours_remaining,
+      hours_remaining, // still returned for compatibility (not used for the KPI rename)
+      total_hours: sumAllHours, // <<< NEW: all hours across every status
       avg_hours: countForAvg ? Math.round(sumAllHours / countForAvg) : 0,
     },
     byStatus,
@@ -224,34 +217,34 @@ router.get("/", verifyToken, async (req, res, next) => {
         continue;
       }
 
-      sources[resolved.source] += 1;
-      accepted.push({
-        id: r.id,
-        name: r.name,
-        status: r.status,
-        rank: r.rank,
-        hours: resolved.hours,
-      });
+      accepted.push({ ...r, hours: resolved.hours });
+      sources[resolved.source]++;
 
-      // Only persist later if the source was HLTB and DB was empty
+      // (optional) persist HLTB in the background in small bursts
       if (resolved.source === "hltb") {
-        hltbWrites.push({ gameId: r.id, userId, hours: resolved.hours });
+        hltbWrites.push({ id: r.id, hours: resolved.hours });
       }
     }
 
-    // Best-effort: persist HLTB hours (bounded concurrency)
-    await mapWithLimit(hltbWrites, 6, ({ gameId, userId, hours }) =>
-      updateGameHoursIfEmpty(gameId, userId, hours)
-    );
+    // Flush at most N HLTB updates to de-batch writes
+    if (hltbWrites.length) {
+      const sql = `
+        UPDATE games SET how_long_to_beat = $2
+        WHERE id = $1
+      `;
+      const batch = hltbWrites.slice(0, 50); // cap batch size
+      for (const w of batch) {
+        // eslint-disable-next-line no-await-in-loop
+        await pool.query(sql, [w.id, w.hours]);
+      }
+    }
 
-    const { totals, byStatus, eta } = computeAggregates(accepted, weekly_hours);
+    const agg = computeAggregates(accepted, weekly_hours);
 
     const payload = {
-      totals,
-      byStatus,
-      eta,
+      ...agg,
       meta: {
-        sources_used: sources,
+        sources,
         missing_stats_count: skipped.length,
         ...(includeMissing ? { missing_names: skipped } : {}),
       },
