@@ -219,16 +219,18 @@ export default function PublicProfile() {
 
   return (
     <div className="min-h-screen bg-surface-bg text-content-primary">
-      <header className="p-6 border-b border-surface-border">
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">@{profile.username}</h1>
-            <p className="text-content-muted text-sm">
+      <header className="px-4 sm:px-6 py-3 border-b border-surface-border">
+        <div className="w-full flex items-center justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold truncate">
+              @{profile.username}
+            </h1>
+            <p className="text-content-muted text-xs sm:text-sm whitespace-nowrap">
               {profile.game_count} games · joined{" "}
               {new Date(profile.joined_at).toLocaleDateString()}
             </p>
           </div>
-          <Link to="/" className="text-primary hover:underline">
+          <Link to="/" className="shrink-0 text-primary hover:underline">
             Back to app
           </Link>
         </div>

@@ -110,30 +110,34 @@ const inflightRawg = new Map(); // key: lower(title) -> Promise<void>
  * `persist=false` lets us batch many fetches and write once at the end.
  * Dedup: multiple callers for the same key share one outbound fetch.
  */
+// coalesce concurrent RAWG fetches for the same title
+
 const ensureRawgEntry = async (cache, userTitle, { persist = true } = {}) => {
   const key = lowerKey(userTitle);
   let entry = cache[key];
+  let changed = false;
 
   if (isStaleMiss(entry)) {
-    // If someone is already fetching this key, await that work
     let p = inflightRawg.get(key);
     if (!p) {
-      // Create one authoritative in-flight fetch (no disk write here)
       p = (async () => {
         try {
-          const data = await fetchGameData(userTitle); // query with original title
+          const data = await fetchGameData(userTitle);
           cache[key] = data ?? {};
         } catch (e) {
           if (DEBUG) console.warn("[RAWG] fetch error:", e.message);
+          // mark a timed miss to allow retry later
           cache[key] = { __failedAt: Date.now() };
         }
       })().finally(() => inflightRawg.delete(key));
       inflightRawg.set(key, p);
     }
-    await p; // wait for the single shared fetch to complete
+    await p;
+    changed = true;
 
-    // Persist if this caller requested it (e.g., POST/PUT); GET-list will persist once later
+    // Immediate write for single-item callers (e.g. POST/PUT)
     if (persist) await saveCache(cache);
+
     entry = cache[key];
   }
 
@@ -141,7 +145,7 @@ const ensureRawgEntry = async (cache, userTitle, { persist = true } = {}) => {
   const canonicalName = (rawg?.name || rawg?.slug || userTitle || "")
     .toString()
     .trim();
-  return { rawg, canonicalName };
+  return { rawg, canonicalName, changed };
 };
 
 /* ------------------------------- Position helper ------------------------------ */
@@ -257,10 +261,15 @@ router.get("/", verifyToken, async (req, res, next) => {
       if (!nameMap.has(lower)) nameMap.set(lower, orig);
     }
 
-    // Fetch missing entries in parallel with a safe cap and don't save yet
+    let dirty = false;
     await mapWithLimit([...nameMap.values()], 6, async (name) => {
-      await ensureRawgEntry(cache, name, { persist: false });
+      const { changed } = await ensureRawgEntry(cache, name, {
+        persist: false,
+      });
+      if (changed) dirty = true;
     });
+    // Persist only if we actually touched the cache
+    if (dirty) await saveCache(cache);
 
     // One write after the batch (huge win vs N writes)
     await saveCache(cache);

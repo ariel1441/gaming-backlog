@@ -14,7 +14,7 @@ import AdminLoginForm from "./components/AdminLoginForm";
 import PublicSettingsModal from "./components/PublicSettingsModal";
 import PublicProfile from "./pages/PublicProfile";
 import { smartFuzzySearch } from "./utils/fuzzySearch";
-import InsightsTab from "./features/insights/InsightsTab";
+import InsightsTab from "./pages/Insights/InsightsPage";
 import {
   StatusGroupsProvider,
   useStatusGroups,
