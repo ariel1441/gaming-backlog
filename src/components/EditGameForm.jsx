@@ -122,7 +122,7 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               value={formData.how_long_to_beat}
               onChange={handleChange}
               min="0"
-              step="1"
+              step="any"
               className="w-full p-2 rounded bg-surface-elevated ...e-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
@@ -179,7 +179,7 @@ const EditGameForm = ({ game, onSubmit, onCancel, statuses }) => {
               onChange={handleChange}
               min="0"
               max="10"
-              step="1"
+              step="any"
               className="w-full p-2 rounded bg-surface-elevated ...e-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>

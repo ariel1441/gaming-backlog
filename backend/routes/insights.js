@@ -14,31 +14,35 @@ const DONE_SET = new Set([
   "played a lot but didn't finish",
 ]);
 const PLAYING_SET = new Set(["playing", "played and should come back"]);
-const PLANNED_SET = new Set([
-  "plan to play soon",
-  "plan to play",
-  "play when in the mood",
-  "maybe in the future",
+const STRONGLY_INTERESTED_SET = new Set([
+  "want to play",
+  "want to play much",
+  "start today",
 ]);
-const OTHER_SET = new Set([
-  "recommended by someone",
-  "wishlist",
-  "not anytime soon",
-  "played a bit",
+const INTERESTED_SET = new Set([
+  "want to play a little",
+  "maybe try",
+  "i think i'll like it",
+  "i think ill like it",
+  "i think i’ll like it",
+]);
+const NOT_SURE_SET = new Set(["not sure", "maybe"]);
+const NOT_INTERESTED_SET = new Set(["not interested", "leave aside"]);
+const RECOMMENDED_SET = new Set([
+  "recommended",
+  "cheack it out",
+  "check it out",
 ]);
 
-const DEFAULT_WEEKLY_HOURS = 10;
-
-/* --------------------------- shared helpers --------------------------- */
-/** MUST match games.js RAWG keying */
-const lowerKey = (s) =>
-  String(s || "")
+/* ------------------------------- Utilities ----------------------------- */
+function lowerKey(s) {
+  return String(s || "")
     .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+    .toLowerCase();
+}
 
 function getRawgHours(rawg) {
-  if (!rawg) return null;
+  if (!rawg || typeof rawg !== "object") return null;
   const candidates = [
     rawg?.playtime,
     rawg?.time_to_beat?.main,
@@ -92,7 +96,7 @@ function getRawgPlaytime(app, title) {
  * 3) RAWG playtime (do NOT persist)
  * 4) else exclude (return null)
  */
-async function resolveHoursForRow(req, row, userId) {
+function resolveHoursForRow(req, row, userId) {
   const dbHours = toHoursInt(row.how_long_to_beat);
   if (dbHours > 0) return { hours: dbHours, source: "db" };
 
@@ -134,70 +138,60 @@ function computeAggregates(rowsWithHours, weeklyHours) {
       .toLowerCase();
 
   const byStatus = Array.from(map.values()).sort((a, b) => a.rank - b.rank);
-  const sumWhere = (pred) =>
-    rowsWithHours.reduce(
-      (acc, r) => (pred(norm(r.status)) ? acc + r.hours : acc),
-      0
-    );
 
-  const hours_planned = sumWhere((s) => PLANNED_SET.has(s));
-  const hours_playing = sumWhere((s) => PLAYING_SET.has(s));
-  const hours_done = sumWhere((s) => DONE_SET.has(s));
+  // Remaining hours exclude DONE statuses
+  const remainingHours = byStatus
+    .filter((x) => !DONE_SET.has(norm(x.status)))
+    .reduce((acc, x) => acc + x.hours, 0);
 
-  // >>> ETA must include everything EXCEPT Done (i.e., include Playing + Planned + Other)
-  const hours_remaining = sumWhere((s) => !DONE_SET.has(s));
+  const totalHours = byStatus.reduce((acc, x) => acc + x.hours, 0);
+  const avgHours =
+    countForAvg > 0 ? Math.round((sumAllHours / countForAvg) * 10) / 10 : 0;
 
-  // ETA: derive finish date from unrounded weeks, then round weeks for display
-  let weeks = null,
-    finish_date = null;
-  if (hours_remaining === 0) {
-    weeks = 0;
-    finish_date = fmtDate(new Date());
-  } else if (weeklyHours > 0) {
-    const rawWeeks = hours_remaining / weeklyHours;
-    const days = Math.ceil(rawWeeks * 7);
-    const finish = new Date();
-    finish.setDate(finish.getDate() + days);
-    weeks = roundWeeks(rawWeeks);
-    finish_date = fmtDate(finish);
-  }
+  const etaWeeks =
+    weeklyHours > 0 ? roundWeeks(remainingHours / weeklyHours) : null;
+
+  const today = new Date();
+  const etaDate =
+    etaWeeks != null
+      ? fmtDate(new Date(today.getTime() + etaWeeks * 7 * 86400e3))
+      : null;
 
   return {
     totals: {
-      count: totalGamesCounted,
-      hours_planned,
-      hours_playing,
-      hours_done,
-      hours_remaining, // still returned for compatibility (not used for the KPI rename)
-      total_hours: sumAllHours, // <<< NEW: all hours across every status
-      avg_hours: countForAvg ? Math.round(sumAllHours / countForAvg) : 0,
+      total_hours: totalHours,
+      remaining_hours: remainingHours,
+      avg_hours: avgHours,
+      total_games_counted: totalGamesCounted,
     },
     byStatus,
     eta: {
       weekly_hours: weeklyHours,
-      remaining_hours: hours_remaining,
-      weeks,
-      finish_date,
+      eta_weeks: etaWeeks,
+      eta_date: etaDate,
     },
   };
 }
 
-/* --------------------------------- Route -------------------------------- */
+/* -------------------------------- Route -------------------------------- */
 router.get("/", verifyToken, async (req, res, next) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const userId = req.user.id;
 
+    // Parse params
     const weekly_hours = Math.max(
       0,
-      parseInt(req.query.weekly_hours ?? DEFAULT_WEEKLY_HOURS, 10) || 0
+      Math.min(
+        200,
+        Number.parseInt(String(req.query.weekly_hours || ""), 10) || 0
+      )
     );
     const includeMissing =
       String(req.query.include_missing_names || "false").toLowerCase() ===
       "true";
 
-    // Micro-cache keyed by sensible params
-    const cacheKey = `wh=${weekly_hours}&missing=${includeMissing ? 1 : 0}`;
+    // Micro-cache keyed by sensible params (versioned)
+    const cacheKey = `v1|wh=${weekly_hours}&missing=${includeMissing ? 1 : 0}`;
     const hit = cacheGet(userId, cacheKey);
     if (hit) return res.json(hit);
 
@@ -210,8 +204,7 @@ router.get("/", verifyToken, async (req, res, next) => {
     const hltbWrites = [];
 
     for (const r of baseRows) {
-      // eslint-disable-next-line no-await-in-loop
-      const resolved = await resolveHoursForRow(req, r, userId);
+      const resolved = resolveHoursForRow(req, r, userId);
       if (!resolved) {
         skipped.push(r.name);
         continue;
@@ -226,17 +219,22 @@ router.get("/", verifyToken, async (req, res, next) => {
       }
     }
 
-    // Flush at most N HLTB updates to de-batch writes
+    // Flush at most N HLTB updates as ONE SQL to cut round-trips
     if (hltbWrites.length) {
-      const sql = `
-        UPDATE games SET how_long_to_beat = $2
-        WHERE id = $1
-      `;
       const batch = hltbWrites.slice(0, 50); // cap batch size
-      for (const w of batch) {
-        // eslint-disable-next-line no-await-in-loop
-        await pool.query(sql, [w.id, w.hours]);
-      }
+      const ids = batch.map((w) => w.id);
+      const hours = batch.map((w) => w.hours);
+      await pool.query(
+        `
+        UPDATE games AS g
+        SET how_long_to_beat = v.hours
+        FROM (
+          SELECT unnest($1::int[]) AS id, unnest($2::int[]) AS hours
+        ) AS v
+        WHERE g.id = v.id
+        `,
+        [ids, hours]
+      );
     }
 
     const agg = computeAggregates(accepted, weekly_hours);

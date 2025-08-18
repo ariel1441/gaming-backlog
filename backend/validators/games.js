@@ -60,9 +60,9 @@ export const upsertGame = celebrate(
 
       // numeric fields (coerced by convert:true). "" -> undefined, null allowed
       my_score: Joi.number()
-        .integer()
         .min(0)
         .max(10)
+        .precision(1)
         .empty("")
         .allow(null)
         .messages({
@@ -73,7 +73,6 @@ export const upsertGame = celebrate(
         }),
 
       how_long_to_beat: Joi.number()
-        .integer()
         .min(0)
         .max(1000)
         .empty("")

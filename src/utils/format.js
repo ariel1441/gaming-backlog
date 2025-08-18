@@ -1,9 +1,9 @@
 // src/utils/format.js
 
-// Cache formatters so we don't re-create on every call.
+// Cache formatters
 const NF_INT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
-/** Format integer-like values consistently; fallback to "0". */
+/** Format integer-like values; fallback to "0". */
 export function fmtInt(n, fallback = "0") {
   return Number.isFinite(n) ? NF_INT.format(Math.round(n)) : fallback;
 }
@@ -22,7 +22,7 @@ export function parseBool(v, d = false) {
   return s === "1" || s === "true" || s === "yes" || s === "y";
 }
 
-/** Clamp any numeric-ish value into [min, max]. Non-numeric -> min. */
+/** Clamp numeric-ish value into [min, max]. Non-numeric -> min. */
 export function clamp(v, min, max) {
   const n = Number(v);
   if (!Number.isFinite(n)) return min;

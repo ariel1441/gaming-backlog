@@ -4,14 +4,15 @@ import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 import { fetchGameData } from "../utils/fetchRAWG.js";
 import { upsertGame, reorderGame } from "../validators/games.js";
-import DOMPurify from "isomorphic-dompurify";
 import fs from "fs/promises";
 import path from "path";
 
 import { toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
-import { normStatus, DONE_FINISH_SET } from "../utils/status.js";
+import { normStatus } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
+import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
+import { roundHLTB, normalizeScore } from "../utils/normalize.js";
 
 const router = express.Router();
 
@@ -20,9 +21,6 @@ const DEFAULT_POSITION_SPACING = 1000;
 
 // retry failed/empty cache entries after this many ms (default 1h)
 const RAWG_FAIL_TTL_MS = Number(process.env.RAWG_FAIL_TTL_MS || 60 * 60 * 1000);
-
-const DEBUG =
-  process.env.DEBUG === "1" || process.env.NODE_ENV === "development";
 
 // Use DB local day (Israel) — avoids UTC "yesterday" issues.
 const TODAY_SQL = "(now() AT TIME ZONE 'Asia/Jerusalem')::date";
@@ -33,10 +31,8 @@ const loadCache = async (app) => {
   try {
     const data = await fs.readFile(CACHE_PATH, "utf-8");
     app.locals.rawgCache = JSON.parse(data);
-    if (DEBUG) console.log("[RAWG] cache loaded");
   } catch {
     app.locals.rawgCache = {};
-    if (DEBUG) console.log("[RAWG] new empty cache");
   }
 };
 
@@ -59,8 +55,6 @@ const saveCache = async (cache) => {
 
   // Atomic swap into place
   await fs.rename(tmp, CACHE_PATH);
-
-  if (DEBUG) console.log("[RAWG] cache saved");
 };
 
 const lowerKey = (s) =>
@@ -102,17 +96,10 @@ const isStaleMiss = (entry) => {
 const inflightRawg = new Map(); // key: lower(title) -> Promise<void>
 
 /**
- * Ensure a RAWG entry in cache for a *user-entered* title (single cache key).
- * Never re-key by canonical/official name — avoids duplicate cache entries.
- * - Uses original userTitle for the API query (better relevance)
- * - Uses lowercased/trimmed key for cache identity
- * - On failure, stores { __failedAt } to allow TTL-based retries
- * `persist=false` lets us batch many fetches and write once at the end.
- * Dedup: multiple callers for the same key share one outbound fetch.
+ * Ensure a RAWG entry; returns { rawg, canonicalName, changed }.
+ * If `persist` is true, writes immediately (for POST/PUT). For GET list use persist:false.
  */
-// coalesce concurrent RAWG fetches for the same title
-
-const ensureRawgEntry = async (cache, userTitle, { persist = true } = {}) => {
+async function ensureRawgEntry(cache, userTitle, { persist = true } = {}) {
   const key = lowerKey(userTitle);
   let entry = cache[key];
   let changed = false;
@@ -125,8 +112,6 @@ const ensureRawgEntry = async (cache, userTitle, { persist = true } = {}) => {
           const data = await fetchGameData(userTitle);
           cache[key] = data ?? {};
         } catch (e) {
-          if (DEBUG) console.warn("[RAWG] fetch error:", e.message);
-          // mark a timed miss to allow retry later
           cache[key] = { __failedAt: Date.now() };
         }
       })().finally(() => inflightRawg.delete(key));
@@ -135,9 +120,7 @@ const ensureRawgEntry = async (cache, userTitle, { persist = true } = {}) => {
     await p;
     changed = true;
 
-    // Immediate write for single-item callers (e.g. POST/PUT)
-    if (persist) await saveCache(cache);
-
+    if (persist) await saveCache(cache); // POST/PUT etc
     entry = cache[key];
   }
 
@@ -146,16 +129,21 @@ const ensureRawgEntry = async (cache, userTitle, { persist = true } = {}) => {
     .toString()
     .trim();
   return { rawg, canonicalName, changed };
-};
+}
 
 /* ------------------------------- Position helper ------------------------------ */
-
+/**
+ * Allocate the next position at the END of the **rank group** (not single status).
+ * This lets any statuses with the same `rank` share one manual ordering space.
+ */
 const getNextPosition = async (status, userId) => {
   const result = await pool.query(
     `
-      SELECT COALESCE(MAX(position), 0) AS max
-      FROM games
-      WHERE user_id = $1 AND status = $2
+      SELECT COALESCE(MAX(g.position), 0) AS max
+      FROM games g
+      JOIN statuses s2 ON s2.status = g.status
+      WHERE g.user_id = $1
+        AND s2.rank = (SELECT rank FROM statuses WHERE status = $2)
     `,
     [userId, status]
   );
@@ -181,10 +169,9 @@ const mapWithLimit = async (items, limit, fn) => {
 
 /* --------------------------- UI-safe game serializer -------------------------- */
 /**
- * Important: we return how_long_to_beat as the *display* value:
+ * We return how_long_to_beat as the *display* value:
  *   DB how_long_to_beat  OR  RAWG hours  OR  null
- * This preserves your existing frontend behavior while still never storing RAWG hours.
- * We also include displayHLTB and displayName for future UI migration (optional).
+ * We also include displayHLTB and displayName for future UI uses.
  */
 const decorateGameForClient = (game, rawg) => {
   const dbHours = toHourInt(game.how_long_to_beat);
@@ -204,21 +191,12 @@ const decorateGameForClient = (game, rawg) => {
 
   return {
     ...game,
-    // Back-compat for UI:
     how_long_to_beat: displayHLTB,
-    // Nice-to-have for future UI:
     displayHLTB,
     displayName: rawg?.name || game.name,
-    // RAWG fields normalized to primitives:
     cover: rawg?.cover ?? rawg?.background_image ?? null,
     releaseDate: rawg?.released ?? null,
-    // Sanitize HTML description to prevent XSS
-    description: rawg?.description
-      ? DOMPurify.sanitize(rawg.description, {
-          ALLOWED_TAGS: ["p", "br", "strong", "em", "ul", "ol", "li"],
-          ALLOWED_ATTR: [],
-        })
-      : null,
+    description: sanitizeGameHtml(rawg?.description),
     rating:
       rawg && typeof rawg.rating === "number" && rawg.rating > 0
         ? rawg.rating
@@ -261,18 +239,15 @@ router.get("/", verifyToken, async (req, res, next) => {
       if (!nameMap.has(lower)) nameMap.set(lower, orig);
     }
 
-    let dirty = false;
+    let cacheUpdated = false;
     await mapWithLimit([...nameMap.values()], 6, async (name) => {
       const { changed } = await ensureRawgEntry(cache, name, {
         persist: false,
       });
-      if (changed) dirty = true;
+      if (changed) cacheUpdated = true;
     });
     // Persist only if we actually touched the cache
-    if (dirty) await saveCache(cache);
-
-    // One write after the batch (huge win vs N writes)
-    await saveCache(cache);
+    if (cacheUpdated) await saveCache(cache);
 
     // Now decorate from cache (no extra network)
     const out = rows.map((game) => {
@@ -306,7 +281,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const userTitle = String(name).trim();
 
     // Optional score; stores null when omitted/empty
-    const score = toHourInt(my_score);
+    const score = normalizeScore(my_score);
 
     const cache = req.app.locals.rawgCache || {};
     // persist immediately on single-item routes
@@ -324,7 +299,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       // 1) try with user-entered title
       hours = lookupHLTBHoursByPref(req.app, userTitle, pref);
 
-      // 2) fallback to RAWG official name (for lookup only; do NOT change DB name)
+      // 2) fallback to RAWG official name (lookup only; do NOT change DB name)
       if (
         hours == null &&
         canonicalName &&
@@ -377,13 +352,13 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       statusNorm, // $3
       (my_genre || "").trim(), // $4
       (thoughts || "").trim(), // $5
-      score, // $6 (optional -> null when absent)
-      hours, // $7 (only user/HLTB hours; never RAWG)
+      score, // $6
+      hours, // $7
       position, // $8
-      startedProvided, // $9 (bool)
-      startedBody, // $10 (date or null)
-      finishedProvided, // $11 (bool)
-      finishedBody, // $12 (date or null)
+      startedProvided, // $9
+      startedBody, // $10
+      finishedProvided, // $11
+      finishedBody, // $12
     ];
 
     const { rows } = await pool.query(insertSql, params);
@@ -397,7 +372,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
   }
 });
 
-// PUT update a game
+// PUT update a game — position is preserved (never recalculated on edit)
 router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -432,11 +407,8 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
     const row = existing.rows[0];
     if (!row) return res.status(404).json({ error: "Not found" });
 
-    // If status changed, allocate a new position in the new status
-    let position = row.position;
-    if (row.status !== statusNorm) {
-      position = await getNextPosition(statusNorm, userId);
-    }
+    // NEVER change position on edit (even if status changes)
+    const position = row.position;
 
     // Respect rule: only store HLTB/user hours. If user didn't provide and name changed, retry HLTB.
     let newHLTB = toHourInt(how_long_to_beat);
@@ -465,7 +437,7 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       }
     }
 
-    const score = toHourInt(my_score);
+    const score = normalizeScore(my_score);
 
     // Date logic: explicit edits win; else one-time auto on qualifying transition
     const statusChanged = row.status !== statusNorm;
@@ -516,7 +488,7 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       (thoughts || "").trim(), // $4
       score, // $5
       hours_new, // $6
-      position, // $7
+      position, // $7  <-- preserve existing position always
       startedBody, // $8
       finishedBody, // $9
       gameId, // $10
@@ -589,13 +561,13 @@ router.get("/statuses-list", async (_req, res, next) => {
   }
 });
 
-// Reorder (position) within a rank (transactional)
+// Reorder (position) within a **rank** (transactional, cross-status within same rank)
 router.patch(
   "/:id/position",
   verifyToken,
   reorderGame,
   async (req, res, next) => {
-    let client; // SAFE: allow finally to release even if connect fails
+    let client;
     try {
       client = await pool.connect();
 
@@ -609,12 +581,11 @@ router.patch(
           .status(400)
           .json({ error: "status and targetIndex required" });
       }
-      // clamp to a safe integer once; we’ll bound to list length later
       const idx = Math.trunc(targetIndex);
 
       await client.query("BEGIN");
 
-      // Verify ownership (no lock needed here)
+      // Verify ownership
       const gameRes = await client.query(
         `
       SELECT g.id, g.status, g.name
@@ -629,16 +600,40 @@ router.patch(
         return res.status(404).json({ error: "Not found" });
       }
 
-      // Lock peers within the SAME status (index: user_id, status, position)
+      // Resolve ranks for current & target statuses
+      const { rows: trgRows } = await client.query(
+        `SELECT rank FROM statuses WHERE status = $1`,
+        [targetStatus]
+      );
+      const { rows: curRows } = await client.query(
+        `SELECT rank FROM statuses WHERE status = $1`,
+        [current.status]
+      );
+      const targetRank = trgRows[0]?.rank;
+      const currentRank = curRows[0]?.rank;
+
+      if (targetRank == null || currentRank == null) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "unknown status/rank" });
+      }
+      if (targetRank !== currentRank) {
+        await client.query("ROLLBACK");
+        return res
+          .status(400)
+          .json({ error: "Cross-rank reorder not allowed" });
+      }
+
+      // Lock peers across ALL statuses in the same rank group
       const peerRes = await client.query(
         `
       SELECT g.id, g.position
       FROM games g
-      WHERE g.user_id = $1 AND g.status = $2
+      JOIN statuses s2 ON s2.status = g.status
+      WHERE g.user_id = $1 AND s2.rank = $2
       ORDER BY g.position NULLS LAST, g.id
       FOR UPDATE OF g
       `,
-        [userId, targetStatus]
+        [userId, targetRank]
       );
 
       const list = peerRes.rows.map((r) => ({
@@ -648,17 +643,23 @@ router.patch(
       const fromIndex = list.findIndex((x) => x.id === gameId);
       if (fromIndex === -1) {
         await client.query("ROLLBACK");
-        return res
-          .status(404)
-          .json({ error: "Game not found in target status" });
+        return res.status(404).json({ error: "Game not in target rank group" });
       }
 
-      // Move within list (unchanged logic)
+      // Move within the rank group
       const [moved] = list.splice(fromIndex, 1);
       const clampedIndex = Math.max(0, Math.min(idx, list.length));
       list.splice(clampedIndex, 0, moved);
 
-      // Renumber all rows with your spacing (unchanged logic, one UPDATE round-trip)
+      // If dropping into a different status (same rank), update it now
+      if (current.status !== targetStatus) {
+        await client.query(
+          `UPDATE games SET status = $3 WHERE id = $1 AND user_id = $2`,
+          [gameId, userId, targetStatus]
+        );
+      }
+
+      // Renumber all rows in the rank group with your spacing
       if (list.length > 0) {
         const updateCases = list
           .map(

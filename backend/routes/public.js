@@ -2,7 +2,9 @@
 import express from "express";
 import { pool } from "../db.js";
 import { fetchGameData } from "../utils/fetchRAWG.js";
-
+import {
+  sanitizeGameHtml /* or sanitizeGameHtmlWithLinks */,
+} from "../utils/sanitizeHtml.js";
 const router = express.Router();
 
 // helper: sanitize usernames a bit (letters, digits, underscore, dash, dot)
@@ -24,7 +26,7 @@ async function hydrateGamesWithRAWG(app, games) {
         ...game,
         cover: rawgData?.background_image || "",
         releaseDate: rawgData?.released || "",
-        description: rawgData?.description || "",
+        description: sanitizeGameHtml(rawgData?.description),
         how_long_to_beat:
           typeof game.how_long_to_beat === "number" && game.how_long_to_beat > 0
             ? game.how_long_to_beat

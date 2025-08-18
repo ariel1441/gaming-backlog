@@ -21,8 +21,8 @@ function makeSets(defs) {
 }
 
 export function StatusGroupsProvider({ children }) {
-  const [defs, setDefs] = useState(null); // { planned:[...], playing:[...], done:[...] }
-  const [buckets, setBuckets] = useState(null); // { backlog:[...], done:[...] }
+  const [defs, setDefs] = useState(null);
+  const [buckets, setBuckets] = useState(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {

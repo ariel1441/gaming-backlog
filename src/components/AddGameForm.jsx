@@ -119,7 +119,7 @@ const AddGameForm = ({
             <input
               type="number"
               min="0"
-              step="1"
+              step="any"
               value={newGame.how_long_to_beat}
               onChange={(e) =>
                 setNewGame((g) => ({
@@ -176,7 +176,7 @@ const AddGameForm = ({
               type="number"
               min="0"
               max="10"
-              step="0.5"
+              step="any"
               value={newGame.my_score}
               onChange={(e) =>
                 setNewGame((g) => ({ ...g, my_score: e.target.value }))

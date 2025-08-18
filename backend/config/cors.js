@@ -1,33 +1,52 @@
 // backend/config/cors.js
+// Usage: import cors from "cors"; app.use(cors(corsOptions));
+const isProd = process.env.NODE_ENV === "production";
 
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? [ 'https://yourdomain.com','https://www.yourdomain.com',]: 
-  ['http://localhost:5173','http://127.0.0.1:5173',];
+function getAllowedOrigins() {
+  if (isProd) {
+    // Comma-separated, e.g. "https://app.example.com,https://www.example.com"
+    const raw = process.env.ALLOWED_ORIGINS || "";
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  // Dev defaults
+  return [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+  ];
+}
+
+const allowedOrigins = new Set(getAllowedOrigins());
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin && process.env.NODE_ENV !== 'production') {
+  origin(origin, callback) {
+    // Allow same-origin / server-to-server (no Origin header)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.has(origin)) {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
-    }
+    const err = new Error(`CORS: origin not allowed: ${origin}`);
+    // Tag for centralized error handler → returns 403 with uniform JSON
+    err.code = "origin_not_allowed";
+    return callback(err);
   },
-  credentials: true,  // Allow cookies if used in the future
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH','OPTIONS'],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: [
-    'Origin',
-    'X-Requested-With',
-    'Content-Type',
-    'Accept',
-    'Authorization',
-    'Cache-Control',
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "Authorization",
+    "Cache-Control",
   ],
-  exposedHeaders: ['X-Total-Count'],  // In case you paginate
-  maxAge: 86400,  // Cache CORS preflight for 24 hours
+  exposedHeaders: ["X-Total-Count"],
+  maxAge: 86_400, // 24h preflight cache
 };
 
 export default corsOptions;

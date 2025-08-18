@@ -30,5 +30,7 @@ CREATE TABLE games (
   how_long_to_beat INTEGER,
   my_score NUMERIC(3,1),           
   thoughts TEXT,
-  cover TEXT
+  cover TEXT,
+  COLUMN started_at DATE,
+  COLUMN finished_at DATE;
 );

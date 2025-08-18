@@ -12,10 +12,20 @@ if (!JWT_SECRET) {
   throw new Error("Missing JWT_SECRET");
 }
 const loginLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
+  windowMs: 5 * 60 * 1000,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res) => {
+    const requestId = req.requestId || null;
+    res.status(429).json({
+      error: {
+        code: "rate_limited",
+        message: "Too many login attempts, please try again later.",
+        requestId,
+      },
+    });
+  },
 });
 
 /**
