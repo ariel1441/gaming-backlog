@@ -6,7 +6,8 @@
     "node": ">=20 <21"
   },
 "scripts": {
-    "start": "concurrently -n \"BACK,FRONT\" -c \"cyan,magenta\" \"npm:dev:back\" \"npm:dev:front\"",
+    "start": "cross-env NODE_ENV=production node backend/index.js",
+    "dev": "concurrently -n \"BACK,FRONT\" -c \"cyan,magenta\" \"npm:dev:back\" \"npm:dev:front\"",
     "dev:back": "cross-env NODE_ENV=development nodemon --signal SIGTERM backend/index.js",
     "dev:front": "cross-env NODE_ENV=development vite",
     "serve": "cross-env NODE_ENV=production node backend/index.js",
@@ -21,13 +22,10 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@heroicons/react": "^2.2.0",
-    "axios": "^1.9.0",
     "bcrypt": "^6.0.0",
     "celebrate": "^15.0.3",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
-    "csv-parse": "^6.1.0",
-    "csv-stringify": "^6.6.0",
     "dotenv": "^16.5.0",
     "express": "^4.18.2",
     "express-rate-limit": "^8.0.1",
@@ -43,8 +41,7 @@
     "react-router-dom": "^7.8.0",
     "react-select": "^5.10.1",
     "recharts": "^3.1.2",
-    "string-similarity": "^4.0.4",
-    "xlsx": "^0.18.5"
+    "string-similarity": "^4.0.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.4.1",

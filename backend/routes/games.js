@@ -12,6 +12,7 @@ import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { normStatus } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
 import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
+import { normalizeScore } from "../utils/normalize.js";
 
 const router = express.Router();
 
@@ -296,8 +297,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const statusNorm = normStatus(status);
     const userTitle = String(name).trim();
 
-    // Optional score; stores null when omitted/empty
-    const score = toHourInt(my_score);
+    const score = normalizeScore(my_score);
 
     const cache = req.app.locals.rawgCache || {};
     // persist immediately on single-item routes
@@ -453,7 +453,7 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       }
     }
 
-    const score = toHourInt(my_score);
+    const score = normalizeScore(my_score);
 
     // Date logic: explicit edits win; else one-time auto on qualifying transition
     const statusChanged = row.status !== statusNorm;

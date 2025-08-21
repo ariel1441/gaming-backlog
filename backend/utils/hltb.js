@@ -1,6 +1,6 @@
+// backend/utils/hltb.js
 import fs from "fs/promises";
 import path from "path";
-import { fileURLToPath } from "url";
 import { toHourInt } from "./time.js";
 
 /**
@@ -9,6 +9,14 @@ import { toHourInt } from "./time.js";
  * Allowed values: "seconds" | "minutes" | "hours"
  */
 const HLTB_VALUE_UNITS = (process.env.HLTB_UNITS || "seconds").toLowerCase();
+
+/**
+ * Single, deterministic path (like RAWG cache), with optional env override.
+ * Example: HLTB_DATA_PATH=/absolute/or/relative/path/to/hltb_data.json
+ */
+export const HLTB_PATH = path.resolve(
+  process.env.HLTB_DATA_PATH || "backend/data/hltb_data.json"
+);
 
 /* -------------------- Title normalization -------------------- */
 
@@ -61,31 +69,6 @@ const toHoursFromConfiguredUnits = (v) => {
   return secondsToHoursInt(v);
 };
 
-/* -------------------- File resolution -------------------- */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const resolveHLTBPath = async () => {
-  const envPath =
-    process.env.HLTB_DATA_PATH && String(process.env.HLTB_DATA_PATH).trim();
-  const candidates = [
-    envPath, // explicit override
-    path.resolve("backend/data/hltb_data.json"), // repo root
-    path.join(__dirname, "../data/hltb_data.json"), // next to utils
-  ].filter(Boolean);
-
-  for (const p of candidates) {
-    try {
-      await fs.access(p);
-      return p;
-    } catch {
-      /* try next */
-    }
-  }
-  return null;
-};
-
 /* -------------------- Core loader -------------------- */
 
 const getTitle = (row) =>
@@ -120,14 +103,8 @@ const extractMapContainer = (parsed) => {
  * Units are controlled by HLTB_VALUE_UNITS (default "seconds").
  */
 export const loadHLTBLocal = async (app) => {
-  const chosen = await resolveHLTBPath();
-  if (!chosen) {
-    app.locals.hltbLookup = {};
-    return;
-  }
-
   try {
-    const txt = await fs.readFile(chosen, "utf8");
+    const txt = await fs.readFile(HLTB_PATH, "utf8");
     const parsed = JSON.parse(txt.replace(/^\uFEFF/, "")); // strip BOM if present
 
     const lookup = {};
@@ -180,6 +157,7 @@ export const loadHLTBLocal = async (app) => {
     // Fallback: unrecognized structure → empty lookup
     app.locals.hltbLookup = {};
   } catch {
+    // Non-fatal: missing/unreadable file → empty lookup
     app.locals.hltbLookup = {};
   }
 };
