@@ -1,5 +1,5 @@
 // src/hooks/useGames.js
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   listGames as listGamesApi,
@@ -50,19 +50,46 @@ function sortGames(arr) {
   });
 }
 
+// Apply authoritative rank order from the server payload after reorder
+function applyRankOrder(prevList, payload) {
+  const { game, rank_order } = payload || {};
+  if (!Array.isArray(prevList) || !game || !Array.isArray(rank_order)) {
+    return prevList;
+  }
+  const byId = new Map(prevList.map((g) => [g.id, g]));
+  // merge moved game fields
+  if (byId.has(game.id)) {
+    byId.set(game.id, { ...byId.get(game.id), ...game });
+  }
+  // apply authoritative status/position for all ids in the rank group
+  for (const { id, status, position } of rank_order) {
+    const g = byId.get(id);
+    if (g) {
+      // status_rank stays the same (shared rank group); keep existing sr
+      byId.set(id, { ...g, status, position });
+    }
+  }
+  return sortGames(Array.from(byId.values()));
+}
+
 export function useGames() {
   const { getAuthHeaders } = useAuth();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // latest-wins guard for list loads/refreshes
+  const reqSeq = useRef(0);
 
-  // Initial load
+  // Initial load (latest-wins + abort)
   useEffect(() => {
     const ac = new AbortController();
+    const seq = ++reqSeq.current;
+
     setLoading(true);
     setError(null);
     listGamesApi({ signal: ac.signal, auth: false, headers: getAuthHeaders() })
       .then((data) => {
+        if (seq !== reqSeq.current) return; // stale response, ignore
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data?.games)
@@ -77,14 +104,18 @@ export function useGames() {
       .catch((e) => {
         if (e.name !== "AbortError") setError(e);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (seq === reqSeq.current) setLoading(false);
+      });
     return () => ac.abort();
   }, [getAuthHeaders]);
 
-  // Refresh; can run "silent" so UI doesn't flicker
+  // Refresh; can run "silent" so UI doesn't flicker, and uses latest-wins
   const refresh = useCallback(
     async (opts = {}) => {
       const silent = !!opts.silent; // default false
+      const seq = ++reqSeq.current;
+
       if (!silent) setLoading(true);
       if (!silent) setError(null);
       try {
@@ -92,6 +123,8 @@ export function useGames() {
           auth: false,
           headers: getAuthHeaders(),
         });
+        if (seq !== reqSeq.current) return; // a newer refresh started → ignore
+
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data?.games)
@@ -116,7 +149,7 @@ export function useGames() {
       } catch (e) {
         if (!silent) setError(e);
       } finally {
-        if (!silent) setLoading(false);
+        if (!silent && seq === reqSeq.current) setLoading(false);
       }
     },
     [getAuthHeaders]
@@ -276,16 +309,23 @@ export function useGames() {
     [getAuthHeaders]
   );
 
-  // Reorder a single game on the server (no refresh on success to avoid flicker).
-  // GameGrid handles optimistic UI already.
+  // Reorder a single game:
+  // - apply server's authoritative rank_order immediately (no extra GET)
+  // - parent state becomes the source of truth, so modals/re-renders can't "snap back"
   const reorderGame = useCallback(
     async (id, targetIndex, status) => {
-      await reorderGamesApi(
+      const payload = await reorderGamesApi(
         { id, targetIndex, status },
         { auth: false, headers: getAuthHeaders() }
       );
+      if (payload && payload.rank_order) {
+        setGames((prev) => applyRankOrder(prev, payload));
+      } else {
+        // Fallback: rare older server without rank_order → silent revalidate
+        await refresh({ silent: true });
+      }
     },
-    [getAuthHeaders]
+    [getAuthHeaders, refresh]
   );
 
   return {

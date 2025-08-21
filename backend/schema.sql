@@ -31,6 +31,6 @@ CREATE TABLE games (
   my_score NUMERIC(3,1),           
   thoughts TEXT,
   cover TEXT,
-  COLUMN started_at DATE,
-  COLUMN finished_at DATE;
+  started_at DATE,
+  finished_at DATE
 );

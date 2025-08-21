@@ -8,7 +8,7 @@ export class ApiError extends Error {
   }
 }
 
-// ✅ unify with AuthContext storage key
+// Storage key unified with AuthContext
 const TOKEN_KEY = "token";
 
 export function getAuthToken() {
@@ -29,7 +29,7 @@ export function getAuthHeaders() {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-// ✅ support both env names; strip trailing slash
+// Support VITE_API_BASE_URL or VITE_API_BASE; strip trailing slash
 const API_BASE_RAW =
   (typeof import.meta !== "undefined" &&
     (import.meta.env?.VITE_API_BASE_URL || import.meta.env?.VITE_API_BASE)) ||
@@ -88,7 +88,7 @@ export async function apiFetch(
     res.statusText ||
     "Request failed";
 
-  // NEW: auto sign-out on auth failures so the app falls back to "guest"
+  // Auto sign-out on auth failures so the app falls back to "guest"
   if (res.status === 401 || res.status === 403) {
     setAuthToken(null);
   }
@@ -104,3 +104,44 @@ export const api = {
     apiFetch(path, { ...opts, method: "PATCH", body }),
   del: (path, opts) => apiFetch(path, { ...opts, method: "DELETE" }),
 };
+
+/**
+ * getLatest(path, opts, key=path)
+ * Cancels any in-flight request with the same key, ensuring only the latest response wins.
+ * - If caller provides `opts.signal`, we *propagate* its abort into our controller.
+ * Usage:
+ *   getLatest('/api/games', {}, 'games-list').then(...)
+ */
+const inflight = new Map(); // key -> AbortController
+
+export function getLatest(path, opts = {}, key = path) {
+  const { signal: externalSignal, ...rest } = opts || {};
+
+  // Cancel previous request with the same key
+  try {
+    inflight.get(key)?.abort();
+  } catch {}
+
+  const ac = new AbortController();
+  inflight.set(key, ac);
+
+  // Propagate caller abort to our controller (so unmounts still work)
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      ac.abort();
+    } else {
+      externalSignal.addEventListener("abort", () => ac.abort(), {
+        once: true,
+      });
+    }
+  }
+
+  return apiFetch(path, { ...rest, signal: ac.signal })
+    .catch((e) => {
+      if (e?.name === "AbortError") throw e;
+      throw e;
+    })
+    .finally(() => {
+      if (inflight.get(key) === ac) inflight.delete(key);
+    });
+}

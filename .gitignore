@@ -2,7 +2,6 @@
 # 📁 Node dependencies
 # -----------------------
 node_modules/
-package-lock.json
 pnpm-lock.yaml
 yarn.lock
 
@@ -23,7 +22,6 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.example
 
 # -----------------------
 # 🧠 RAWG API cache
@@ -76,8 +74,3 @@ Thumbs.db
 # 🧠 Local storage (in dev tools, optional)
 # -----------------------
 localStorage.json
-
-# -----------------------
-# 🗑️ Deprecated legacy rules (was used for Google Sheets)
-# -----------------------
-# service-account.json  # Removed since Sheets integration is gone

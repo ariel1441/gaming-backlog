@@ -1,11 +1,7 @@
 import dotenv from "dotenv";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
 import metaRouter from "./routes/meta.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-dotenv.config({ path: join(__dirname, "../.env") });
+dotenv.config();
 
 import express from "express";
 import { registerSecurity } from "./middleware/security.js";
@@ -14,7 +10,7 @@ import gamesRouter, { initCache } from "./routes/games.js";
 import authRouter from "./routes/auth.js";
 import publicRouter from "./routes/public.js";
 import insightsRouter from "./routes/insights.js";
-import { errorHandler } from "./middleware/errorHandler.js";
+import errorHandler from "./middleware/errorHandler.js";
 import { errors } from "celebrate";
 const app = express();
 

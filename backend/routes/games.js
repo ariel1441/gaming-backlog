@@ -12,7 +12,6 @@ import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { normStatus } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
 import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
-import { roundHLTB, normalizeScore } from "../utils/normalize.js";
 
 const router = express.Router();
 
@@ -31,7 +30,11 @@ const loadCache = async (app) => {
   try {
     const data = await fs.readFile(CACHE_PATH, "utf-8");
     app.locals.rawgCache = JSON.parse(data);
-  } catch {
+  } catch (e) {
+    console.warn(
+      "RAWG cache missing or unreadable, starting empty:",
+      e?.message || e
+    );
     app.locals.rawgCache = {};
   }
 };
@@ -120,7 +123,13 @@ async function ensureRawgEntry(cache, userTitle, { persist = true } = {}) {
     await p;
     changed = true;
 
-    if (persist) await saveCache(cache); // POST/PUT etc
+    if (persist) {
+      try {
+        await saveCache(cache); // POST/PUT etc
+      } catch (e) {
+        console.warn("saveCache(persist) failed:", e?.message || e);
+      }
+    }
     entry = cache[key];
   }
 
@@ -246,8 +255,14 @@ router.get("/", verifyToken, async (req, res, next) => {
       });
       if (changed) cacheUpdated = true;
     });
-    // Persist only if we actually touched the cache
-    if (cacheUpdated) await saveCache(cache);
+    // Persist only if we actually touched the cache (non-fatal)
+    if (cacheUpdated) {
+      try {
+        await saveCache(cache);
+      } catch (e) {
+        console.warn("saveCache(GET) failed:", e?.message || e);
+      }
+    }
 
     // Now decorate from cache (no extra network)
     const out = rows.map((game) => {
@@ -255,6 +270,7 @@ router.get("/", verifyToken, async (req, res, next) => {
       return decorateGameForClient(game, rawg);
     });
 
+    res.setHeader("Cache-Control", "no-store");
     res.json(out);
   } catch (err) {
     next(err);
@@ -281,7 +297,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const userTitle = String(name).trim();
 
     // Optional score; stores null when omitted/empty
-    const score = normalizeScore(my_score);
+    const score = toHourInt(my_score);
 
     const cache = req.app.locals.rawgCache || {};
     // persist immediately on single-item routes
@@ -437,7 +453,7 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       }
     }
 
-    const score = normalizeScore(my_score);
+    const score = toHourInt(my_score);
 
     // Date logic: explicit edits win; else one-time auto on qualifying transition
     const statusChanged = row.status !== statusNorm;
@@ -659,36 +675,53 @@ router.patch(
         );
       }
 
-      // Renumber all rows in the rank group with your spacing
+      // Renumber all rows in the rank group with your spacing (UNNEST = scalable)
       if (list.length > 0) {
-        const updateCases = list
-          .map(
-            (row, i) => `WHEN ${row.id} THEN ${i * DEFAULT_POSITION_SPACING}`
-          )
-          .join(" ");
-
+        const ids = list.map((r) => r.id);
+        const positions = list.map((_, i) => i * DEFAULT_POSITION_SPACING);
         await client.query(
           `
-        UPDATE games
-        SET position = CASE id ${updateCases} END
-        WHERE id = ANY($1) AND user_id = $2
-        `,
-          [list.map((u) => u.id), userId]
+            UPDATE games AS g
+            SET position = v.pos
+            FROM (
+              SELECT unnest($1::int[]) AS id, unnest($2::int[]) AS pos
+            ) AS v
+            WHERE g.user_id = $3 AND g.id = v.id
+          `,
+          [ids, positions, userId]
         );
       }
 
       await client.query("COMMIT");
 
-      // Return decorated row
-      const finalRes = await client.query(
+      // === Authoritative response ===
+      // Return the moved game and the full rank order so the client can apply it immediately
+      const movedRowRes = await pool.query(
         `SELECT * FROM games WHERE id = $1 AND user_id = $2`,
         [gameId, userId]
       );
       const cache = req.app.locals.rawgCache || {};
-      const { rawg } = await ensureRawgEntry(cache, finalRes.rows[0].name, {
+      const { rawg } = await ensureRawgEntry(cache, movedRowRes.rows[0].name, {
         persist: true,
       });
-      res.json(decorateGameForClient(finalRes.rows[0], rawg));
+
+      const rankOrderRes = await pool.query(
+        `
+        SELECT g.id, g.status, g.position
+        FROM games g
+        JOIN statuses s2 ON s2.status = g.status
+        WHERE g.user_id = $1 AND s2.rank = $2
+        ORDER BY g.position NULLS LAST, g.id
+        `,
+        [userId, targetRank]
+      );
+
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        game: decorateGameForClient(movedRowRes.rows[0], rawg),
+        rank: targetRank,
+        rank_order: rankOrderRes.rows, // [{id, status, position}, ...]
+      });
     } catch (err) {
       try {
         await client?.query("ROLLBACK");
