@@ -159,7 +159,7 @@ Provision a Node service for the API and a managed Postgres instance. Set:
       </a>
       <p align="center"><em>Drag-and-drop reordering (@dnd-kit)</em></p>
       <a href="docs/images/add_new_game.PNG">
-        <img src="docs/images/add_new_game.PNG" alt="Add Game form (admin)" width="100%" />
+        <img src="docs/images/add_new_game.PNG" alt="Add Game form ()" width="100%" />
       </a>
       <p align="center"><em>Add Game form (admin)</em></p>
     </td>
