@@ -150,7 +150,7 @@ Provision a Node service for the API and a managed Postgres instance. Set:
   </tr>
 </table>
 
-<!-- Motion + Mobile: wider space for the GIF, narrow for the phone view -->
+<!-- Motion + Mobile + Add Game: left column stacks GIF + Add form, right column is mobile -->
 <table>
   <tr>
     <td width="60%">
@@ -158,6 +158,10 @@ Provision a Node service for the API and a managed Postgres instance. Set:
         <img src="docs/images/reorder.gif" alt="Drag-and-drop reordering (@dnd-kit)" width="100%" />
       </a>
       <p align="center"><em>Drag-and-drop reordering (@dnd-kit)</em></p>
+      <a href="docs/images/add_new_game.PNG">
+        <img src="docs/images/add_new_game.PNG" alt="Add Game form (admin)" width="100%" />
+      </a>
+      <p align="center"><em>Add Game form (admin)</em></p>
     </td>
     <td width="40%">
       <p align="center">
@@ -171,6 +175,7 @@ Provision a Node service for the API and a managed Postgres instance. Set:
   </tr>
 </table>
 
+---
 
 ## Future Improvements
 - Multi-select genres & normalization
