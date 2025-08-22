@@ -34,8 +34,8 @@ const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
       style={style}
       {...attributes}
       {...listeners}
-      /* Mobile-only width cap + centering; no effect >= sm */
-      className="w-full max-w-[320px] sm:max-w-none mx-auto sm:mx-0"
+      // Phone: allow full shrink; >=sm keep your previous sizing
+      className="w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
     >
       <GameCard
         game={game}
@@ -124,11 +124,11 @@ const GameGrid = ({
 
   const filteredGames = list.filter((game) => game?.name?.trim());
 
-  // If exactly one result, center it and cap width (kept behavior you liked)
+  // If exactly one result, center it and cap width (phone-safe)
   if (filteredGames.length === 1) {
     const only = filteredGames[0];
     return (
-      <div className="grid place-items-center">
+      <div className="w-full px-2 sm:px-0 flex justify-center">
         <div className="w-full max-w-[420px]">
           <GameCard
             key={only.id}
@@ -142,22 +142,21 @@ const GameGrid = ({
     );
   }
 
-  // Read-only grid when no reorder handler is provided
+  // Read-only grid (mobile-friendly)
   if (!onReorder) {
     return (
       <div
         className="
           grid gap-4 
-          justify-items-center sm:justify-items-stretch
-          /* Mobile-only narrower min column to prevent horizontal scroll */
-          [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]
+          w-full max-w-[480px] px-2 sm:px-0 mx-auto sm:max-w-none
+          [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]
           sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]
         "
       >
         {filteredGames.map((game) => (
           <div
             key={game.id}
-            className="w-full max-w-[320px] sm:max-w-none mx-auto sm:mx-0"
+            className="w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
           >
             <GameCard
               game={game}
@@ -171,7 +170,7 @@ const GameGrid = ({
     );
   }
 
-  // Drag-and-drop grid when onReorder is provided
+  // Drag-and-drop grid (mobile-friendly)
   return (
     <DndContext
       sensors={sensors}
@@ -186,8 +185,8 @@ const GameGrid = ({
         <div
           className="
             grid gap-4 
-            justify-items-center sm:justify-items-stretch
-            [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]
+            w-full max-w-[480px] px-2 sm:px-0 mx-auto sm:max-w-none
+            [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]
             sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]
           "
         >

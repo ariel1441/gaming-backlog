@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 /* === Chart & UI color variables coming from Tailwind tokens === */
 @layer base {
   :root {
@@ -26,3 +27,19 @@
     --tooltip-text: theme(colors.content.primary);
   }
 }
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* === Utilities === */
+@layer utilities {
+  /* Disable the default gray tap overlay on touch devices (scoped utility) */
+  .no-tap-highlight { -webkit-tap-highlight-color: transparent; }
+  .no-tap-highlight * { -webkit-tap-highlight-color: transparent; }
+}
+
+/* Hard guarantee: kill tap highlight on all elements app-wide */
+* { -webkit-tap-highlight-color: transparent; }

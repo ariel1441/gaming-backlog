@@ -41,8 +41,9 @@ const GameCard = ({ game, onClick, onEdit, onDelete, readOnly = false }) => {
 
   return (
     <div
-      className="bg-surface-card/90 backdrop-blur-sm rounded-xl overflow-hidden cursor-pointer hover:bg-surface-elevated/90 transition-all duration-300 relative group border border-surface-border hover:border-primary/40 hover:shadow-glow-primary hover:scale-[1.02]"
+      className="bg-surface-card/90 backdrop-blur-sm rounded-xl max-w-full overflow-hidden cursor-pointer lg:hover:bg-surface-elevated/90 transition-all duration-300 relative group border border-surface-border lg:hover:border-primary/40 lg:hover:shadow-glow-primary lg:hover:scale-[1.02]"
       onClick={handleCardClick}
+      style={{ WebkitTapHighlightColor: "transparent" }}
     >
       {!readOnly &&
         canEdit && ( // hide actions in read-only
@@ -70,12 +71,12 @@ const GameCard = ({ game, onClick, onEdit, onDelete, readOnly = false }) => {
             src={game.cover}
             alt={game.name}
             loading="lazy"
-            className="w-full h-60 object-cover transition-transform duration-300 group-hover:scale-105"
+            className="w-full h-60 object-cover transition-transform duration-300 lg:group-hover:scale-105"
             onError={(e) => {
               e.target.style.display = "none";
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-surface-bg/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-surface-bg/80 via-transparent to-transparent opacity-0 lg:group-hover:opacity-100 transition-opacity duration-300" />
         </div>
       )}
 

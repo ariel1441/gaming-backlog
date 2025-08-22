@@ -367,7 +367,7 @@ const AppContent = () => {
     : listAfterSearch;
 
   return (
-    <div className="flex h-screen bg-surface-bg text-content-primary overflow-hidden">
+    <div className="flex h-screen bg-surface-bg text-content-primary overflow-hidden max-w-[100vw]">
       <Sidebar
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
@@ -384,7 +384,7 @@ const AppContent = () => {
         onShowPublicSettings={() => setShowPublicSettings(true)}
       />
 
-      <main className="flex-1 p-6 overflow-auto">
+      <main className="flex-1 px-2 py-6 sm:px-6 sm:py-6 pb-[env(safe-area-inset-bottom)] overflow-auto">
         {/* Search */}
         {searchVisible && (
           <div
@@ -442,15 +442,20 @@ const AppContent = () => {
                 ✕
               </button>
             </div>
-            <div className="flex gap-4 items-center flex-wrap">
-              <div className="flex gap-2 items-center">
-                <label className="text-sm text-content-muted">Sort by:</label>
+            {/* Controls: replace your current block with this */}
+            <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:flex-wrap max-w-full">
+              {/* Sort by */}
+              <div className="w-full sm:w-auto flex items-center gap-2">
+                <label className="text-sm text-content-muted whitespace-nowrap">
+                  Sort by:
+                </label>
                 <select
                   value={sortKey}
                   onChange={(e) => setSortKey(e.target.value)}
-                  className="px-3 py-2 bg-surface-elevated border border-surface-border rounded-lg text-content-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full sm:w-auto px-3 py-2 bg-surface-elevated border border-surface-border
+                 rounded-lg text-content-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 >
-                  <option value="">Default (Status & Position)</option>
+                  <option value="">Default (Status &amp; Position)</option>
                   <option value="name">Name</option>
                   <option value="hoursPlayed">Hours Played</option>
                   <option value="rawgRating">RAWG Rating</option>
@@ -459,25 +464,35 @@ const AppContent = () => {
                 </select>
               </div>
 
-              <div className="flex gap-2 items-center">
-                <input
-                  type="checkbox"
-                  id="reverse-sort"
-                  checked={isReversed}
-                  onChange={(e) => setIsReversed(e.target.checked)}
-                  className="w-4 h-4 text-primary bg-surface-elevated border-surface-border rounded focus:ring-primary"
-                />
-                <label
-                  htmlFor="reverse-sort"
-                  className="text-sm text-content-muted"
-                >
-                  Reverse Order
+              {/* Reverse toggle (renders only if your state exists) */}
+              {typeof reverse !== "undefined" &&
+              typeof setReverse === "function" ? (
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!reverse}
+                    onChange={(e) => setReverse(e.target.checked)}
+                    className="rounded border-surface-border text-primary focus:ring-primary"
+                  />
+                  <span className="text-content-primary">Reverse Order</span>
                 </label>
-              </div>
+              ) : typeof sortReverse !== "undefined" &&
+                typeof setSortReverse === "function" ? (
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!sortReverse}
+                    onChange={(e) => setSortReverse(e.target.checked)}
+                    className="rounded border-surface-border text-primary focus:ring-primary"
+                  />
+                  <span className="text-content-primary">Reverse Order</span>
+                </label>
+              ) : null}
 
+              {/* Clear */}
               <button
                 onClick={clearSort}
-                className="px-4 py-2 bg-action-danger hover:bg-action-danger-hover text-content-primary rounded-lg transition-colors"
+                className="w-full sm:w-auto bg-action-danger hover:bg-action-danger-hover text-white px-4 py-2 rounded-lg"
               >
                 Clear Sort
               </button>
