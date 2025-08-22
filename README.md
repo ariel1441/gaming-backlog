@@ -135,12 +135,15 @@ Provision a Node service for the API and a managed Postgres instance. Set:
       <p align="center"><em>Insights dashboard (hours, ETA, genres)</em></p>
     </td>
     <td width="50%">
-      <p align="center"><em>Add a short GIF of drag-and-drop reordering here (reorder.gif)</em></p>
+      <img src="docs/images/reorder.gif" alt="Drag-and-drop reordering (@dnd-kit)" />
+      <p align="center"><em>Drag-and-drop reordering (@dnd-kit)</em></p>
     </td>
   </tr>
 </table>
 
-_Optional: Add a mobile screenshot at `docs/images/mobile-view.png` to show responsive design._
+<p align="center">
+  <img src="docs/images/mobile-view.png" alt="Mobile responsive view" />
+</p>
 
 ---
 
