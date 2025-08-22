@@ -97,7 +97,7 @@ Other useful scripts:
 
 ### Frontend (Vercel)
 
-Deploy the React app and add a SPA rewrite:
+Deploy the React app and  a SPA rewrite:
 
 ```json
 {
@@ -161,7 +161,7 @@ Provision a Node service for the API and a managed Postgres instance. Set:
       <a href="docs/images/add_new_game.PNG">
         <img src="docs/images/add_new_game.PNG" alt="Add Game form ()" width="100%" />
       </a>
-      <p align="center"><em>Add Game form (admin)</em></p>
+      <p align="center"><em>Add Game form </em></p>
     </td>
     <td width="40%">
       <p align="center">
