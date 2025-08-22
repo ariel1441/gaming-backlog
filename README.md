@@ -142,7 +142,9 @@ Provision a Node service for the API and a managed Postgres instance. Set:
 </table>
 
 <p align="center">
-  <img src="docs/images/mobile-view.png" alt="Mobile responsive view" />
+  <img src="docs/images/mobile-view.png" alt="Mobile responsive view" width="320" />
+  <br />
+  <em>Mobile responsive view</em>
 </p>
 
 ---
