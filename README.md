@@ -118,29 +118,62 @@ Provision a Node service for the API and a managed Postgres instance. Set:
 
 ## Screenshots / Demo
 
+<!-- Desktop screens as a tidy 2×2 grid -->
 <table>
   <tr>
     <td width="50%">
-      <img src="docs/images/modal-display.png" alt="Game detail modal with RAWG data" />
+      <a href="docs/images/modal-display.png">
+        <img src="docs/images/modal-display.png" alt="Game detail modal with RAWG data" width="100%" />
+      </a>
       <p align="center"><em>Game detail modal with RAWG data</em></p>
     </td>
     <td width="50%">
-      <img src="docs/images/public-view.png" alt="Public profile read-only view" />
+      <a href="docs/images/public-view.png">
+        <img src="docs/images/public-view.png" alt="Public profile read-only view" width="100%" />
+      </a>
       <p align="center"><em>Public profile at /u/:username</em></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/images/insights.png" alt="Insights dashboard with charts" />
+      <a href="docs/images/insights.png">
+        <img src="docs/images/insights.png" alt="Insights dashboard with charts" width="100%" />
+      </a>
       <p align="center"><em>Insights dashboard (hours, ETA, genres)</em></p>
     </td>
     <td width="50%">
-      <p align="center"><em>Add a short GIF of drag-and-drop reordering here (reorder.gif)</em></p>
+      <a href="docs/images/hero-dashboard.png">
+        <img src="docs/images/hero-dashboard.png" alt="Main backlog grid" width="100%" />
+      </a>
+      <p align="center"><em>Main backlog grid</em></p>
     </td>
   </tr>
 </table>
 
-_Optional: Add a mobile screenshot at `docs/images/mobile-view.png` to show responsive design._
+<!-- Motion + Mobile + Add Game: left column stacks GIF + Add form, right column is mobile -->
+<table>
+  <tr>
+    <td width="60%">
+      <a href="docs/images/reorder.gif">
+        <img src="docs/images/reorder.gif" alt="Drag-and-drop reordering (@dnd-kit)" width="100%" />
+      </a>
+      <p align="center"><em>Drag-and-drop reordering (@dnd-kit)</em></p>
+      <a href="docs/images/add_new_game.PNG">
+        <img src="docs/images/add_new_game.PNG" alt="Add Game form (admin)" width="100%" />
+      </a>
+      <p align="center"><em>Add Game form (admin)</em></p>
+    </td>
+    <td width="40%">
+      <p align="center">
+        <a href="docs/images/mobile-view.png">
+          <img src="docs/images/mobile-view.png" alt="Mobile responsive view" width="320" />
+        </a>
+        <br />
+        <em>Mobile responsive view</em>
+      </p>
+    </td>
+  </tr>
+</table>
 
 ---
 
