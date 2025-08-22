@@ -12,6 +12,11 @@
 ## Overview
 **Gaming Backlog** is a full-stack app to organize your video game backlog, prioritize what to play next, and visualize progress. It supports secure multi-user accounts, drag-and-drop manual ordering per status, a public read-only profile, and an insights tab with charts. The app enriches entries with cover art and metadata via the RAWG API.
 
+<!-- Hero image -->
+<p align="center">
+  <img src="docs/images/hero-dashboard.png" alt="Main backlog grid with cards" />
+</p>
+
 ## Features
 - **Secure auth & isolation** — JWT authentication with strict per-user data access.
 - **Admin workflows** — Add, edit, delete, and reorder games (drag-and-drop via `@dnd-kit`).
@@ -24,9 +29,9 @@
 
 ## Tech Stack
 **Frontend:** React, Vite, Tailwind CSS, Recharts  
-**Backend:** Node.js, Express, (Joi/Celebrate), Helmet, CORS, Rate Limiter  
+**Backend:** Node.js, Express, Joi/Celebrate, Helmet, CORS, Rate Limiter  
 **Database:** PostgreSQL (SQL schema + seed), `pg` client  
-**Deploy:** Vercel (frontend), Railway (backend & Postgres)
+**Deploy:** Vercel (frontend) + Railway (backend & Postgres)
 
 ---
 
@@ -36,8 +41,116 @@
 - **Node.js 20+** and npm/pnpm/yarn
 - **PostgreSQL 14+** (local or managed)
 
-#### 1) Clone & Install
+### 1. Clone & Install
 ```bash
 git clone <your-repo-url>.git
 cd <repo>
 npm install
+```
+
+### 2. Environment Variables
+
+Create a `.env` in the project root (or copy from `.env.example`) and set:
+
+```dotenv
+NODE_ENV=development
+RAWG_API_KEY=your_rawg_api_key
+PORT=5000
+DATABASE_URL=postgres://postgres:password@localhost:5432/your_db_name
+PGSSL=false
+JWT_SECRET=your_jwt_secret
+VITE_API_BASE_URL=http://localhost:5000
+ALLOWED_ORIGINS=http://localhost:5173
+MICROCACHE_TTL_MS=300000
+```
+
+### 3. Database Setup
+
+Create your database and apply schema + seed (adjust paths to your files):
+
+```bash
+# Example with psql
+createdb your_db_name
+psql -d your_db_name -f backend/db/schema.sql
+psql -d your_db_name -f backend/db/seed.sql
+```
+
+_The schema defines `users`, `statuses(status, rank)`, and `games` with fields like `position`, `my_genre`, `my_score`, `how_long_to_beat`, `started_at`, `finished_at`, etc._
+
+### 4. Run Locally
+
+Start backend and frontend (dev mode):
+
+```bash
+npm run dev
+```
+
+Other useful scripts:
+
+- `npm run dev:back` / `npm run dev:front` — run backend or frontend only  
+- `npm run build` / `npm run preview` — frontend production build & preview  
+- `npm run start` — start the production server
+
+---
+
+## Deployment
+
+### Frontend (Vercel)
+
+Deploy the React app and add a SPA rewrite:
+
+```json
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+}
+```
+
+Set `VITE_API_BASE_URL` to the public URL of your Railway backend.
+
+### Backend & DB (Railway)
+
+Provision a Node service for the API and a managed Postgres instance. Set:
+
+- `DATABASE_URL`, `JWT_SECRET`, `RAWG_API_KEY`, `PGSSL`  
+- Ensure the server listens on `PORT` (defaults to `5000`)
+
+---
+
+## Screenshots / Demo
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/modal-display.png" alt="Game detail modal with RAWG data" />
+      <p align="center"><em>Game detail modal with RAWG data</em></p>
+    </td>
+    <td width="50%">
+      <img src="docs/images/public-view.png" alt="Public profile read-only view" />
+      <p align="center"><em>Public profile at /u/:username</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/insights.png" alt="Insights dashboard with charts" />
+      <p align="center"><em>Insights dashboard (hours, ETA, genres)</em></p>
+    </td>
+    <td width="50%">
+      <p align="center"><em>Add a short GIF of drag-and-drop reordering here (reorder.gif)</em></p>
+    </td>
+  </tr>
+</table>
+
+_Optional: Add a mobile screenshot at `docs/images/mobile-view.png` to show responsive design._
+
+---
+
+## Future Improvements
+- Multi-select genres & normalization
+- Smarter caching & invalidation
+- Stricter input validation and additional hardening
+- Import from Steam/CSV; richer social features (friends, reviews, chats)
+
+---
+
+## License
+MIT — see `LICENSE`.
