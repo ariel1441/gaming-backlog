@@ -1,0 +1,40 @@
+Personal‑Use, Non‑Commercial License (PUNCL) v1.0
+Copyright (c) 2025 ariel ben akiva
+
+1. Definitions
+   1.1 “Software” means the source code, object code, scripts, and documentation in this repository.
+   1.2 “Personal Use” means use by an individual natural person for private, non‑commercial purposes, including learning, experimentation, portfolio demos, and personal websites or apps that do not generate revenue.
+   1.3 “Non‑Commercial” means not intended for, or directed toward, commercial advantage or monetary compensation. Non‑profit, academic, or research use is permitted so long as no fee is charged and no commercial benefit is derived.
+   1.4 “Distribute” means to make the Software or derivative works available to any third party by any means.
+
+2. License Grant (Personal Use Only)
+   Subject to the terms below, the Licensor grants you a worldwide, royalty‑free, non‑exclusive, non‑transferable license to use, copy, modify, and create derivative works of the Software solely for Personal, Non‑Commercial purposes, and to Distribute such copies or derivative works solely for Personal, Non‑Commercial purposes.
+
+3. Conditions
+   3.1 Attribution. You must retain the above copyright notice and this license text in all copies and substantial portions of the Software and in any distributions or derivative works.
+   3.2 Notice of Changes. If you modify the Software, you must include a clear notice of your changes and the date of the change.
+   3.3 Third‑Party Content. This license covers only the Software. Third‑party content (e.g., game cover art, screenshots, RAWG data) remains subject to its own terms.
+   3.4 No Endorsement. You may not use the name, likeness, or trademarks of the Licensor to endorse or promote products derived from this Software without prior written permission.
+
+4. Restrictions (No Commercial Use)
+   You may NOT:
+     a) use the Software, or any derivative, to provide a product or service to others for a fee or other commercial advantage (including “software as a service” or hosted offerings);
+     b) monetize usage through ads, paywalls, sponsorships, affiliate links, or sales of the Software or derivative works;
+     c) incorporate the Software or derivatives into a product, app, or service that is offered by a company, client, or employer in the course of business;
+     d) sublicense, distribute, or deploy the Software or derivatives on app stores or marketplaces that facilitate paid or monetized distribution;
+     e) use the Software on behalf of an organization in a way that confers operational or competitive benefit to that organization (internal commercial use).
+
+5. Commercial Licensing
+   Commercial use of any kind requires a separate commercial license from the Licensor. To inquire, contact: <add your contact email or GitHub handle here>.
+
+6. No Warranty
+   THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON‑INFRINGEMENT.
+
+7. Limitation of Liability
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+8. Termination
+   This license terminates automatically upon any breach. Your rights may be reinstated if the breach is cured within 30 days of discovery. Provisions that by their nature should survive termination (e.g., Sections 3, 6, and 7) shall survive.
+
+9. Miscellaneous
+   This is a source‑available, non‑open‑source license. If any provision is held unenforceable, the remainder remains in effect.
