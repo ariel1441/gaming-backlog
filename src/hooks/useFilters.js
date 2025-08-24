@@ -1,18 +1,14 @@
-// src/hooks/useFilters.js
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useDebouncedValue } from "./useDebouncedValue";
-// (removed) this hook should be called by the list page component, not from inside useFilters
-// import useApplyFiltersFromQuery from "../hooks/useApplyFiltersFromQuery";
 
-/**
- * @param {Array} games
- * @param {object} opts
- *  - initialSearch
- *  - initialSortKey
- *  - initialReverse
- *  - statuses (optional) [{ status, rank }]
- */
+function toArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") return raw.split(",");
+  return [];
+}
+
 export function useFilters(games, opts = {}) {
+  // ----- basic state -----
   const [searchQuery, setSearchQuery] = useState(opts.initialSearch || "");
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [selectedGenres, setSelectedGenres] = useState([]);
@@ -22,6 +18,7 @@ export function useFilters(games, opts = {}) {
 
   const debouncedSearch = useDebouncedValue(searchQuery, 200);
 
+  // ----- togglers -----
   const toggleStatus = useCallback((status) => {
     setSelectedStatuses((prev) =>
       prev.includes(status)
@@ -39,32 +36,12 @@ export function useFilters(games, opts = {}) {
       prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
     );
   }, []);
-  const clearFilters = useCallback(() => {
-    setSelectedStatuses([]);
-    setSelectedGenres([]);
-    setSelectedMyGenres([]);
-    setSearchQuery("");
-  }, []);
 
-  // Build a status→rank map (if provided)
-  const statusRankMap = useMemo(() => {
-    const map = new Map();
-    (opts.statuses || []).forEach((s) =>
-      map.set(String(s.status), Number(s.rank) || 0)
-    );
-    return map;
-  }, [opts.statuses]);
-
-  // Options for checklists
+  // ----- option lists -----
   const allGenres = useMemo(() => {
     const set = new Set();
     for (const g of games) {
-      const raw = Array.isArray(g.genres)
-        ? g.genres
-        : typeof g.genres === "string"
-          ? g.genres.split(",")
-          : [];
-      for (const name of raw) {
+      for (const name of toArray(g.genres)) {
         const v = String(name).trim();
         if (v) set.add(v);
       }
@@ -75,12 +52,7 @@ export function useFilters(games, opts = {}) {
   const allMyGenres = useMemo(() => {
     const set = new Set();
     for (const g of games) {
-      const raw = Array.isArray(g.my_genre)
-        ? g.my_genre
-        : typeof g.my_genre === "string"
-          ? g.my_genre.split(",")
-          : [];
-      for (const name of raw) {
+      for (const name of toArray(g.my_genre)) {
         const v = String(name).trim();
         if (v) set.add(v);
       }
@@ -88,21 +60,89 @@ export function useFilters(games, opts = {}) {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [games]);
 
-  // Short-circuit: if nothing active, show raw games
+  // ===== hours filter =====
+  const hoursBounds = useMemo(() => {
+    let lo = Infinity,
+      hi = -Infinity;
+    for (const g of games) {
+      const h = Number(g?.how_long_to_beat);
+      if (Number.isFinite(h)) {
+        if (h < lo) lo = h;
+        if (h > hi) hi = h;
+      }
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { min: 0, max: 0 };
+    return { min: Math.max(0, Math.floor(lo)), max: Math.ceil(hi) };
+  }, [games]);
+
+  const [hoursRange, setHoursRange] = useState(null);
+  const [hoursInitialized, setHoursInitialized] = useState(false);
+
+  // one-time init to full span, then clamp on dataset changes
+  useEffect(() => {
+    if (!hoursInitialized && hoursBounds.max > hoursBounds.min) {
+      setHoursRange(hoursBounds);
+      setHoursInitialized(true);
+      return;
+    }
+    if (hoursInitialized && hoursRange) {
+      const nextMin = Math.max(
+        hoursBounds.min,
+        Math.min(hoursRange.min, hoursBounds.max)
+      );
+      const nextMax = Math.min(
+        hoursBounds.max,
+        Math.max(hoursRange.max, hoursBounds.min)
+      );
+      if (nextMin !== hoursRange.min || nextMax !== hoursRange.max) {
+        setHoursRange({ min: nextMin, max: nextMax });
+      }
+    }
+  }, [hoursBounds, hoursInitialized, hoursRange]);
+
+  // debounce hours so filtering is smooth while dragging
+  const debouncedHoursRange = useDebouncedValue(hoursRange, 120);
+
+  const isHoursActive =
+    hoursBounds.max > hoursBounds.min &&
+    !!debouncedHoursRange &&
+    (debouncedHoursRange.min > hoursBounds.min ||
+      debouncedHoursRange.max < hoursBounds.max);
+
+  // reset filters
+  const clearFilters = useCallback(() => {
+    setSelectedStatuses([]);
+    setSelectedGenres([]);
+    setSelectedMyGenres([]);
+    setSearchQuery("");
+    if (hoursBounds.max > hoursBounds.min) setHoursRange(hoursBounds);
+  }, [hoursBounds]);
+
+  // fast path when nothing active
   const noFiltersActive =
     !debouncedSearch &&
     selectedStatuses.length === 0 &&
     selectedGenres.length === 0 &&
     selectedMyGenres.length === 0 &&
+    !isHoursActive &&
     !sortKey;
 
+  // status rank map for fast default sorting
+  const statusRankMap = useMemo(() => {
+    const map = new Map();
+    for (const s of opts.statuses || []) {
+      map.set(String(s.status), Number.isFinite(s.rank) ? s.rank : 1e9);
+    }
+    return map;
+  }, [opts.statuses]);
+
+  // compute filtered + sorted list
   const filteredGames = useMemo(() => {
     if (!games?.length) return [];
     if (noFiltersActive) return games;
 
     const q = (debouncedSearch || "").trim().toLowerCase();
 
-    // ✅ Normalize filter values to ensure URL-driven values (Title Case) match stored values (any case)
     const statusesFilter = selectedStatuses.length
       ? new Set(selectedStatuses.map((s) => String(s).trim().toLowerCase()))
       : null;
@@ -118,32 +158,27 @@ export function useFilters(games, opts = {}) {
         const s = String(g.status).trim().toLowerCase();
         if (!statusesFilter.has(s)) return false;
       }
-
       if (genresFilter) {
-        const raw = Array.isArray(g.genres)
-          ? g.genres
-          : typeof g.genres === "string"
-            ? g.genres.split(",")
-            : [];
+        const raw = toArray(g.genres);
         if (!raw.some((x) => genresFilter.has(String(x).trim().toLowerCase())))
           return false;
       }
-
       if (myGenresFilter) {
-        const raw = Array.isArray(g.my_genre)
-          ? g.my_genre
-          : typeof g.my_genre === "string"
-            ? g.my_genre.split(",")
-            : [];
+        const raw = toArray(g.my_genre);
         if (
           !raw.some((x) => myGenresFilter.has(String(x).trim().toLowerCase()))
         )
           return false;
       }
-
       if (q) {
         const name = String(g.name || "").toLowerCase();
         if (!name.includes(q)) return false;
+      }
+      if (isHoursActive) {
+        const h = Number(g?.how_long_to_beat);
+        if (!Number.isFinite(h)) return false;
+        if (h < debouncedHoursRange.min || h > debouncedHoursRange.max)
+          return false;
       }
       return true;
     };
@@ -153,8 +188,7 @@ export function useFilters(games, opts = {}) {
     const byNum = (v) =>
       v == null || Number.isNaN(Number(v)) ? -Infinity : Number(v);
     const byDate = (v) => (v ? Date.parse(v) || 0 : 0);
-    const rankOf = (s) =>
-      statusRankMap.size ? (statusRankMap.get(String(s)) ?? 1e9) : 0;
+    const rankOf = (s) => statusRankMap.get(String(s)) ?? 1e9;
 
     const sorter = (a, b) => {
       switch (sortKey) {
@@ -181,7 +215,6 @@ export function useFilters(games, opts = {}) {
             byDate(b.releaseDate ?? b.released)
           );
         default: {
-          // Default: status rank, then position, then name
           const r = rankOf(a.status) - rankOf(b.status);
           if (r !== 0) return r;
           const pa = byNum(a.position);
@@ -208,6 +241,8 @@ export function useFilters(games, opts = {}) {
     selectedMyGenres,
     sortKey,
     isReversed,
+    isHoursActive,
+    debouncedHoursRange,
     statusRankMap,
   ]);
 
@@ -237,5 +272,10 @@ export function useFilters(games, opts = {}) {
     allGenres,
     allMyGenres,
     noFiltersActive,
+
+    // hours API
+    hoursBounds,
+    hoursRange,
+    setHoursRange,
   };
 }

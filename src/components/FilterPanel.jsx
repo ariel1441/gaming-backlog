@@ -1,4 +1,6 @@
-import React from "react";
+import React, { memo } from "react";
+import HoursRangeFilter from "./HoursRangeFilter";
+
 const FilterPanel = ({
   allStatuses,
   allGenres,
@@ -12,6 +14,10 @@ const FilterPanel = ({
   setSelectedMyGenres,
   resetFilters,
   filterRef,
+  // hours props
+  hoursBounds,
+  hoursRange,
+  setHoursRange,
 }) => (
   <div
     ref={filterRef}
@@ -57,7 +63,7 @@ const FilterPanel = ({
     <h3 className="font-semibold mb-2 text-content-primary">
       Filter by My Genre
     </h3>
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2 mb-4">
       {allMyGenres.map((genre) => (
         <FilterTag
           key={genre}
@@ -69,19 +75,35 @@ const FilterPanel = ({
         />
       ))}
     </div>
+
+    {/* Hours Slider */}
+    <h3 className="font-semibold mb-2 text-content-primary">Filter by Hours</h3>
+    <div className="mb-2">
+      <HoursRangeFilter
+        min={hoursBounds?.min ?? 0}
+        max={hoursBounds?.max ?? 0}
+        step={1}
+        value={hoursRange || hoursBounds}
+        onChange={setHoursRange}
+        disabled={!hoursBounds || hoursBounds.max <= hoursBounds.min}
+      />
+    </div>
   </div>
 );
-const FilterTag = ({ label, selected, onToggle }) => (
-  <label
-    onClick={onToggle}
-    className={`px-3 py-1 rounded cursor-pointer transition ${
-      selected
-        ? "bg-action-primary hover:bg-action-primary-hover text-content-primary"
-        : "bg-surface-elevated hover:bg-surface-border text-content-muted hover:text-content-secondary"
-    }`}
-  >
-    {label}
-  </label>
-);
 
-export default FilterPanel;
+const FilterTag = memo(function FilterTag({ label, selected, onToggle }) {
+  return (
+    <label
+      onClick={onToggle}
+      className={`px-3 py-1 rounded cursor-pointer transition ${
+        selected
+          ? "bg-action-primary hover:bg-action-primary-hover text-content-primary"
+          : "bg-surface-elevated hover:bg-surface-border text-content-muted hover:text-content-secondary"
+      }`}
+    >
+      {label}
+    </label>
+  );
+});
+
+export default memo(FilterPanel);

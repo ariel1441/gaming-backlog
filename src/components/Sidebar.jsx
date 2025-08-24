@@ -14,6 +14,7 @@ import {
   LogOut as IconLogout,
   User2 as IconUser,
   BarChart3 as IconInsights,
+  CheckCircle2 as IconCompleted,
 } from "lucide-react";
 
 const Sidebar = ({
@@ -31,6 +32,8 @@ const Sidebar = ({
   isAdmin,
   onShowAdminLogin,
   onShowPublicSettings,
+  onToggleCompleted,
+  completedActive,
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const authed = isAuthenticated ?? !!isAdmin;
@@ -240,6 +243,13 @@ const Sidebar = ({
             expanded={sidebarOpen}
           />
         )}
+        <SidebarRow
+          label="Completed games"
+          icon={IconCompleted}
+          active={completedActive}
+          onClick={onToggleCompleted}
+          expanded={sidebarOpen}
+        />
       </nav>
 
       {/* FOOTER TIP */}

@@ -1,8 +1,11 @@
-use the chartempty jsx - easy (not important)
+add a filter option by hours: make a bar the user can chnage the minimum and maximum hours for a game - easy/medium
+add a quick filter for finished and played a lot but didint finish games - easy
+change the entire project to typescript - veryhard
+add an option to import staem libary(or csv file or even maybe console libary) - medium/hard
 make the my genre selection be multi selction(used to be) - easy/medium
 make the my genre lowercase always (to avoid having action and Action for example) - easy
+
 smarter cache usage and logic - medium
-input validation, my forms are pretty strict so its not that usefull but still  - easy/medium
 making everything more secured: a lot of smal steps that im not even sure 100% what they are/what the do - medium
-add an option to import staem libary(or csv file or even maybe console libary) - medium/hard
-add socail meida features like: freinds list, reviews profile stats, chats and more - very hard, will be last if even happens
+use the chartempty jsx - easy (not important)
+

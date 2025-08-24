@@ -68,11 +68,35 @@ const AppContent = () => {
     allGenres,
     allMyGenres,
     noFiltersActive,
+    hoursBounds,
+    hoursRange,
+    setHoursRange,
   } = useFilters(games, {
     initialSortKey: "",
     initialReverse: false,
     statuses: allStatuses,
   });
+
+  // Quick filter: Completed (finished + played alot but didnt finish)
+  const COMPLETED_STATUSES = ["finished", "played alot but didnt finish"];
+
+  const completedActive = React.useMemo(() => {
+    const set = new Set(
+      (selectedStatuses || []).map((s) => String(s).toLowerCase())
+    );
+    return (
+      set.size === COMPLETED_STATUSES.length &&
+      COMPLETED_STATUSES.every((s) => set.has(s))
+    );
+  }, [selectedStatuses]);
+
+  const toggleCompleted = React.useCallback(() => {
+    if (completedActive) {
+      setSelectedStatuses([]);
+    } else {
+      setSelectedStatuses(COMPLETED_STATUSES);
+    }
+  }, [completedActive, setSelectedStatuses]);
 
   // Apply URL → filters (group/status/genreType/genre)
   useApplyFiltersFromQuery({
@@ -382,6 +406,8 @@ const AppContent = () => {
         handleSurpriseMe={handleSurpriseMe}
         onShowAdminLogin={() => setShowAdminLogin(true)}
         onShowPublicSettings={() => setShowPublicSettings(true)}
+        onToggleCompleted={toggleCompleted}
+        completedActive={completedActive}
       />
 
       <main className="flex-1 px-2 py-6 sm:px-6 sm:py-6 pb-[env(safe-area-inset-bottom)] overflow-auto">
@@ -517,6 +543,9 @@ const AppContent = () => {
             selectedStatuses={selectedStatuses}
             selectedGenres={selectedGenres}
             selectedMyGenres={selectedMyGenres}
+            hoursBounds={hoursBounds}
+            hoursRange={hoursRange}
+            setHoursRange={setHoursRange}
             handleCheckboxToggle={(v, list, setList) =>
               handleCheckboxToggle(v, setList, list)
             }
