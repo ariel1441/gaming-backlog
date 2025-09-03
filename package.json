@@ -5,7 +5,7 @@
   "engines": {
     "node": ">=20 <21"
   },
-"scripts": {
+  "scripts": {
     "start": "cross-env NODE_ENV=production node backend/index.js",
     "dev": "concurrently -n \"BACK,FRONT\" -c \"cyan,magenta\" \"npm:dev:back\" \"npm:dev:front\"",
     "dev:back": "cross-env NODE_ENV=development nodemon --signal SIGTERM backend/index.js",
@@ -22,6 +22,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@heroicons/react": "^2.2.0",
+    "@vercel/analytics": "^1.5.0",
     "bcrypt": "^6.0.0",
     "celebrate": "^15.0.3",
     "compression": "^1.8.1",
