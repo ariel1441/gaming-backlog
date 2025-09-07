@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom"; // ← added useNavigate, useLocation
 import { AuthProvider } from "./contexts/AuthContext";
 import { useAuth } from "./contexts/AuthContext";
@@ -13,6 +13,9 @@ import EditGameForm from "./components/EditGameForm";
 import AdminLoginForm from "./components/AdminLoginForm";
 import PublicSettingsModal from "./components/PublicSettingsModal";
 import PublicProfile from "./pages/PublicProfile";
+import OnboardingModal from "./components/OnboardingModal";
+import DemoBanner from "./components/DemoBanner";
+import KeepDemoModal from "./components/KeepDemoModal";
 import { smartFuzzySearch } from "./utils/fuzzySearch";
 import InsightsTab from "./pages/Insights/InsightsPage";
 import {
@@ -28,7 +31,12 @@ import { useUI } from "./hooks/useUI";
 import { useDebouncedValue } from "./hooks/useDebouncedValue";
 
 const AppContent = () => {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const {
+    isAuthenticated,
+    loading: authLoading,
+    isGuest,
+    discardDemo,
+  } = useAuth();
 
   // ← added: for clearing URL when resetting filters
   const nav = useNavigate();
@@ -128,11 +136,15 @@ const AppContent = () => {
   const [selectedGame, setSelectedGame] = useState(null);
   const [surpriseGame, setSurpriseGame] = useState(null);
   const [editingGame, setEditingGame] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showKeepDemo, setShowKeepDemo] = useState(false);
 
   const filterRef = useRef(null);
   const addFormRef = useRef(null);
   const searchRef = useRef(null);
   const sortRef = useRef(null);
+  const bannerRef = useRef(null);
+  const mainRef = useRef(null);
 
   const [newGame, setNewGame] = useState({
     name: "",
@@ -155,6 +167,30 @@ const AppContent = () => {
   useEffect(() => {
     if (sortVisible) scrollIntoView(sortRef);
   }, [sortVisible, scrollIntoView]);
+  useEffect(() => {
+    let seen = false;
+    try {
+      seen = !!localStorage.getItem("seen_onboarding_v1");
+    } catch {}
+    setShowOnboarding(!isAuthenticated && loc.pathname === "/" && !seen);
+  }, [isAuthenticated, loc.pathname]);
+  useLayoutEffect(() => {
+    const setVar = (px) =>
+      document.documentElement.style.setProperty("--demo-banner-h", `${px}px`);
+    if (!isGuest) {
+      setVar(0);
+      return;
+    }
+    if (!bannerRef.current) {
+      setVar(0);
+      return;
+    }
+    const ro = new ResizeObserver(([entry]) =>
+      setVar(entry?.contentRect?.height || 0)
+    );
+    ro.observe(bannerRef.current);
+    return () => ro.disconnect();
+  }, [isGuest]);
 
   const handleDeleteGame = async (gameId) => {
     if (!isAuthenticated) {
@@ -201,6 +237,8 @@ const AppContent = () => {
     e.preventDefault();
     try {
       const created = await addGame(newGame);
+
+      // reset form + close
       setNewGame({
         name: "",
         status: "",
@@ -210,7 +248,14 @@ const AppContent = () => {
         my_score: "",
       });
       setShowAddForm(false);
-      if (!created) await refresh();
+
+      // In demo mode, force a quick re-sync/hydration even if addGame returned a row
+      if (isGuest) {
+        await refresh();
+      } else if (!created) {
+        // fallback for non-demo paths that didn't return a row
+        await refresh();
+      }
     } catch (err) {
       console.error("Error adding game:", err);
       alert("Failed to add game. Please try again.");
@@ -390,245 +435,284 @@ const AppContent = () => {
     ? [...listAfterSearch].sort(sortByDefault)
     : listAfterSearch;
 
+  // removed guest-only extra top padding; wrapper handles it now
+  const mainClass =
+    "flex-1 px-2 py-6 sm:px-6 sm:py-6 pb-[env(safe-area-inset-bottom)] overflow-auto";
+
   return (
-    <div className="flex h-screen bg-surface-bg text-content-primary overflow-hidden max-w-[100vw]">
-      <Sidebar
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        searchVisible={searchVisible}
-        setSearchVisible={setSearchVisible}
-        sortVisible={sortVisible}
-        setSortVisible={setSortVisible}
-        filterVisible={filterVisible}
-        setFilterVisible={setFilterVisible}
-        showAddForm={showAddForm}
-        setShowAddForm={setShowAddForm}
-        handleSurpriseMe={handleSurpriseMe}
-        onShowAdminLogin={() => setShowAdminLogin(true)}
-        onShowPublicSettings={() => setShowPublicSettings(true)}
-        onToggleCompleted={toggleCompleted}
-        completedActive={completedActive}
-      />
+    <>
+      {/* Fixed banner outside the flex row; measured by ResizeObserver */}
+      {isGuest && (
+        <div ref={bannerRef} className="fixed inset-x-0 top-0 z-[60]">
+          <DemoBanner
+            onSave={() => setShowKeepDemo(true)}
+            onDiscard={discardDemo}
+          />
+        </div>
+      )}
 
-      <main className="flex-1 px-2 py-6 sm:px-6 sm:py-6 pb-[env(safe-area-inset-bottom)] overflow-auto">
-        {/* Search */}
-        {searchVisible && (
-          <div
-            ref={searchRef}
-            className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-primary">
-                Search Games
-              </h3>
-              <button
-                onClick={() => setSearchVisible(false)}
-                className="text-content-muted hover:text-content-primary transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex gap-4 items-center">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search by game name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 bg-surface-elevated border border-surface-border rounded-lg text-content-primary placeholder-content-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <button
-                onClick={clearSearch}
-                className="px-4 py-2 bg-action-danger hover:bg-action-danger-hover text-content-primary rounded-lg transition-colors"
-              >
-                Clear
-              </button>
-            </div>
-            {searchQuery && (
-              <p className="mt-2 text-sm text-content-muted">
-                Searching for: "{searchQuery}" ({displayGames.length} results)
-              </p>
-            )}
-          </div>
-        )}
+      {/* Single wrapper that applies top padding equal to the banner height */}
+      <div
+        className={
+          "flex h-screen bg-surface-bg text-content-primary overflow-hidden max-w-[100vw] " +
+          (isGuest ? "pt-[var(--demo-banner-h,0px)]" : "")
+        }
+      >
+        <Sidebar
+          sidebarOpen={sidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          searchVisible={searchVisible}
+          setSearchVisible={setSearchVisible}
+          sortVisible={sortVisible}
+          setSortVisible={setSortVisible}
+          filterVisible={filterVisible}
+          setFilterVisible={setFilterVisible}
+          showAddForm={showAddForm}
+          setShowAddForm={setShowAddForm}
+          handleSurpriseMe={handleSurpriseMe}
+          onShowAdminLogin={() => setShowAdminLogin(true)}
+          onShowPublicSettings={() => setShowPublicSettings(true)}
+          onToggleCompleted={toggleCompleted}
+          completedActive={completedActive}
+        />
 
-        {/* Sort */}
-        {sortVisible && (
-          <div
-            ref={sortRef}
-            className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-primary">Sort Games</h3>
-              <button
-                onClick={() => setSortVisible(false)}
-                className="text-content-muted hover:text-content-primary transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-            {/* Controls: replace your current block with this */}
-            <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:flex-wrap max-w-full">
-              {/* Sort by */}
-              <div className="w-full sm:w-auto flex items-center gap-2">
-                <label className="text-sm text-content-muted whitespace-nowrap">
-                  Sort by:
-                </label>
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value)}
-                  className="w-full sm:w-auto px-3 py-2 bg-surface-elevated border border-surface-border
-                 rounded-lg text-content-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+        <main className={mainClass}>
+          {/* Search */}
+          {searchVisible && (
+            <div
+              ref={searchRef}
+              className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-primary">
+                  Search Games
+                </h3>
+                <button
+                  onClick={() => setSearchVisible(false)}
+                  className="text-content-muted hover:text-content-primary transition-colors"
                 >
-                  <option value="">Default (Status &amp; Position)</option>
-                  <option value="name">Name</option>
-                  <option value="hoursPlayed">Hours Played</option>
-                  <option value="rawgRating">RAWG Rating</option>
-                  <option value="metacritic">Metacritic Score</option>
-                  <option value="releaseDate">Release Date</option>
-                </select>
+                  ✕
+                </button>
+              </div>
+              <div className="flex gap-4 items-center">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    placeholder="Search by game name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-2 bg-surface-elevated border border-surface-border rounded-lg text-content-primary placeholder-content-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <button
+                  onClick={clearSearch}
+                  className="px-4 py-2 bg-action-danger hover:bg-action-danger-hover text-content-primary rounded-lg transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+              {searchQuery && (
+                <p className="mt-2 text-sm text-content-muted">
+                  Searching for: "{searchQuery}" ({displayGames.length} results)
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Sort */}
+          {sortVisible && (
+            <div
+              ref={sortRef}
+              className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-primary">
+                  Sort Games
+                </h3>
+                <button
+                  onClick={() => setSortVisible(false)}
+                  className="text-content-muted hover:text-content-primary transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              {/* Controls: replace your current block with this */}
+              <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-center sm:flex-wrap max-w-full">
+                {/* Sort by */}
+                <div className="w-full sm:w-auto flex items-center gap-2">
+                  <label className="text-sm text-content-muted whitespace-nowrap">
+                    Sort by:
+                  </label>
+                  <select
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value)}
+                    className="w-full sm:w-auto px-3 py-2 bg-surface-elevated border border-surface-border
+                 rounded-lg text-content-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Default (Status &amp; Position)</option>
+                    <option value="name">Name</option>
+                    <option value="hoursPlayed">Hours Played</option>
+                    <option value="rawgRating">RAWG Rating</option>
+                    <option value="metacritic">Metacritic Score</option>
+                    <option value="releaseDate">Release Date</option>
+                  </select>
+                </div>
+
+                {/* Reverse toggle (renders only if your state exists) */}
+                {typeof reverse !== "undefined" &&
+                typeof setReverse === "function" ? (
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!reverse}
+                      onChange={(e) => setReverse(e.target.checked)}
+                      className="rounded border-surface-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-content-primary">Reverse Order</span>
+                  </label>
+                ) : typeof sortReverse !== "undefined" &&
+                  typeof setSortReverse === "function" ? (
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!sortReverse}
+                      onChange={(e) => setSortReverse(e.target.checked)}
+                      className="rounded border-surface-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-content-primary">Reverse Order</span>
+                  </label>
+                ) : null}
+
+                {/* Clear */}
+                <button
+                  onClick={clearSort}
+                  className="w-full sm:w-auto bg-action-danger hover:bg-action-danger-hover text-white px-4 py-2 rounded-lg"
+                >
+                  Clear Sort
+                </button>
               </div>
 
-              {/* Reverse toggle (renders only if your state exists) */}
-              {typeof reverse !== "undefined" &&
-              typeof setReverse === "function" ? (
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={!!reverse}
-                    onChange={(e) => setReverse(e.target.checked)}
-                    className="rounded border-surface-border text-primary focus:ring-primary"
-                  />
-                  <span className="text-content-primary">Reverse Order</span>
-                </label>
-              ) : typeof sortReverse !== "undefined" &&
-                typeof setSortReverse === "function" ? (
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={!!sortReverse}
-                    onChange={(e) => setSortReverse(e.target.checked)}
-                    className="rounded border-surface-border text-primary focus:ring-primary"
-                  />
-                  <span className="text-content-primary">Reverse Order</span>
-                </label>
-              ) : null}
-
-              {/* Clear */}
-              <button
-                onClick={clearSort}
-                className="w-full sm:w-auto bg-action-danger hover:bg-action-danger-hover text-white px-4 py-2 rounded-lg"
-              >
-                Clear Sort
-              </button>
+              {sortKey && (
+                <p className="mt-2 text-sm text-content-muted">
+                  Sorted by: {sortKey}{" "}
+                  {isReversed ? "(descending)" : "(ascending)"}
+                </p>
+              )}
             </div>
+          )}
 
-            {sortKey && (
-              <p className="mt-2 text-sm text-content-muted">
-                Sorted by: {sortKey}{" "}
-                {isReversed ? "(descending)" : "(ascending)"}
-              </p>
-            )}
-          </div>
-        )}
+          {/* Filters */}
+          {filterVisible && (
+            <FilterPanel
+              filterRef={filterRef}
+              allStatuses={allStatuses}
+              allGenres={allGenres}
+              allMyGenres={allMyGenres}
+              selectedStatuses={selectedStatuses}
+              selectedGenres={selectedGenres}
+              selectedMyGenres={selectedMyGenres}
+              hoursBounds={hoursBounds}
+              hoursRange={hoursRange}
+              setHoursRange={setHoursRange}
+              handleCheckboxToggle={(v, list, setList) =>
+                handleCheckboxToggle(v, setList, list)
+              }
+              setSelectedStatuses={setSelectedStatuses}
+              setSelectedGenres={setSelectedGenres}
+              setSelectedMyGenres={setSelectedMyGenres}
+              resetFilters={resetFilters}
+              toggleStatus={toggleStatus}
+              toggleGenre={toggleGenre}
+              toggleMyGenre={toggleMyGenre}
+            />
+          )}
 
-        {/* Filters */}
-        {filterVisible && (
-          <FilterPanel
-            filterRef={filterRef}
-            allStatuses={allStatuses}
-            allGenres={allGenres}
-            allMyGenres={allMyGenres}
-            selectedStatuses={selectedStatuses}
-            selectedGenres={selectedGenres}
-            selectedMyGenres={selectedMyGenres}
-            hoursBounds={hoursBounds}
-            hoursRange={hoursRange}
-            setHoursRange={setHoursRange}
-            handleCheckboxToggle={(v, list, setList) =>
-              handleCheckboxToggle(v, setList, list)
-            }
-            setSelectedStatuses={setSelectedStatuses}
-            setSelectedGenres={setSelectedGenres}
-            setSelectedMyGenres={setSelectedMyGenres}
-            resetFilters={resetFilters}
-            toggleStatus={toggleStatus}
-            toggleGenre={toggleGenre}
-            toggleMyGenre={toggleMyGenre}
-          />
-        )}
+          {/* Add Game */}
+          {showAddForm && (
+            <AddGameForm
+              addFormRef={addFormRef}
+              newGame={newGame}
+              setNewGame={setNewGame}
+              handleAddGame={handleAddGame}
+              allStatuses={allStatuses}
+              allMyGenres={allMyGenres}
+              onClose={() => setShowAddForm(false)}
+            />
+          )}
 
-        {/* Add Game */}
-        {showAddForm && (
-          <AddGameForm
-            addFormRef={addFormRef}
-            newGame={newGame}
-            setNewGame={setNewGame}
-            handleAddGame={handleAddGame}
-            allStatuses={allStatuses}
-            allMyGenres={allMyGenres}
-            onClose={() => setShowAddForm(false)}
-          />
-        )}
+          {/* Main content */}
+          {displayGames.length ? (
+            <GameGrid
+              games={displayGames}
+              onSelectGame={setSelectedGame}
+              onEditGame={startEditing}
+              onDeleteGame={handleDeleteGame}
+              onReorder={isAuthenticated ? handleReorderGames : null}
+            />
+          ) : (
+            <div className="text-center py-10 text-content-muted">
+              {searchQuery ||
+              selectedStatuses.length ||
+              selectedGenres.length ||
+              selectedMyGenres.length
+                ? "No games match your filters."
+                : "No games yet. Add your first game!"}
+            </div>
+          )}
 
-        {/* Main content */}
-        {displayGames.length ? (
-          <GameGrid
-            games={displayGames}
-            onSelectGame={setSelectedGame}
-            onEditGame={startEditing}
-            onDeleteGame={handleDeleteGame}
-            onReorder={isAuthenticated ? handleReorderGames : null}
-          />
-        ) : (
-          <div className="text-center py-10 text-content-muted">
-            {searchQuery ||
-            selectedStatuses.length ||
-            selectedGenres.length ||
-            selectedMyGenres.length
-              ? "No games match your filters."
-              : "No games yet. Add your first game!"}
-          </div>
-        )}
+          {/* Modals */}
+          {selectedGame && (
+            <GameModal
+              game={selectedGame}
+              onClose={() => setSelectedGame(null)}
+            />
+          )}
 
-        {/* Modals */}
-        {selectedGame && (
-          <GameModal
-            game={selectedGame}
-            onClose={() => setSelectedGame(null)}
-          />
-        )}
+          {surpriseGame && (
+            <GameModal
+              game={surpriseGame}
+              onClose={() => setSurpriseGame(null)}
+              onRefresh={handleSurpriseMe}
+            />
+          )}
 
-        {surpriseGame && (
-          <GameModal
-            game={surpriseGame}
-            onClose={() => setSurpriseGame(null)}
-            onRefresh={handleSurpriseMe}
-          />
-        )}
+          {editingGame && (
+            <EditGameForm
+              game={editingGame}
+              onSubmit={handleEditGame}
+              onCancel={() => setEditingGame(null)}
+              statuses={allStatuses}
+            />
+          )}
 
-        {editingGame && (
-          <EditGameForm
-            game={editingGame}
-            onSubmit={handleEditGame}
-            onCancel={() => setEditingGame(null)}
-            statuses={allStatuses}
-          />
-        )}
+          {showAdminLogin && (
+            <AdminLoginForm onClose={() => setShowAdminLogin(false)} />
+          )}
 
-        {showAdminLogin && (
-          <AdminLoginForm onClose={() => setShowAdminLogin(false)} />
-        )}
+          {showPublicSettings && (
+            <PublicSettingsModal
+              open={showPublicSettings}
+              onClose={() => setShowPublicSettings(false)}
+            />
+          )}
 
-        {showPublicSettings && (
-          <PublicSettingsModal
-            open={showPublicSettings}
-            onClose={() => setShowPublicSettings(false)}
-          />
-        )}
-      </main>
-    </div>
+          {showOnboarding && (
+            <OnboardingModal
+              open={showOnboarding}
+              onClose={() => setShowOnboarding(false)}
+              onShowAuth={() => setShowAdminLogin(true)}
+            />
+          )}
+
+          {showKeepDemo && (
+            <KeepDemoModal
+              open={showKeepDemo}
+              onClose={() => setShowKeepDemo(false)}
+            />
+          )}
+        </main>
+      </div>
+    </>
   );
 };
 

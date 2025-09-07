@@ -14,6 +14,8 @@ import metaRouter from "./routes/meta.js";
 import errorHandler from "./middleware/errorHandler.js";
 import { errors as celebrateErrors } from "celebrate";
 import corsOptions from "./config/cors.js";
+import demoRouter from "./routes/demo.js";
+import { pool } from "./db.js";
 
 const app = express();
 
@@ -32,6 +34,7 @@ app.use("/api/public", publicLimiter, publicRouter);
 app.use("/api/games", gamesRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/meta", metaRouter);
+app.use("/api/demo", publicLimiter, demoRouter);
 
 // 404 for any unmatched route (forward to error handler)
 app.use((req, _res, next) => {
@@ -59,4 +62,23 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {
     server.close(() => process.exit(0));
   });
+}
+
+const DEMO_ENABLED = String(process.env.DEMO_ENABLED ?? "true") === "true";
+if (DEMO_ENABLED) {
+  setInterval(
+    async () => {
+      try {
+        await pool.query(`
+        DELETE FROM users
+         WHERE is_guest = TRUE
+           AND guest_expires_at IS NOT NULL
+           AND guest_expires_at < NOW()
+      `);
+      } catch (e) {
+        console.error("Guest cleanup failed:", e?.message || e);
+      }
+    },
+    60 * 60 * 1000
+  );
 }

@@ -15,6 +15,7 @@ import {
   User2 as IconUser,
   BarChart3 as IconInsights,
   CheckCircle2 as IconCompleted,
+  Sparkles as IconDemo,
 } from "lucide-react";
 
 const Sidebar = ({
@@ -35,7 +36,7 @@ const Sidebar = ({
   onToggleCompleted,
   completedActive,
 }) => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, isGuest, startDemo } = useAuth();
   const authed = isAuthenticated ?? !!isAdmin;
 
   const navigate = useNavigate();
@@ -83,6 +84,10 @@ const Sidebar = ({
     if (window.innerWidth < 1024) return;
     setSidebarOpen(!sidebarOpen);
     if (sidebarOpen) closeAllPanels();
+  };
+  const startLiveDemo = async () => {
+    closeAllPanels();
+    await startDemo();
   };
 
   return (
@@ -243,6 +248,12 @@ const Sidebar = ({
             expanded={sidebarOpen}
           />
         )}
+        <SidebarRow
+          label="Try Live Demo"
+          icon={IconDemo}
+          onClick={startLiveDemo}
+          expanded={sidebarOpen}
+        />
         <SidebarRow
           label="Completed games"
           icon={IconCompleted}

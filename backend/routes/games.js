@@ -249,19 +249,24 @@ router.get("/", verifyToken, async (req, res, next) => {
       if (!nameMap.has(lower)) nameMap.set(lower, orig);
     }
 
-    let cacheUpdated = false;
-    await mapWithLimit([...nameMap.values()], 6, async (name) => {
-      const { changed } = await ensureRawgEntry(cache, name, {
-        persist: false,
+    const isGuest = !!req.user?.is_guest;
+
+    // Warm RAWG cache ONLY for non-guest users (protect quotas in demo)
+    if (!isGuest) {
+      let cacheUpdated = false;
+      await mapWithLimit([...nameMap.values()], 6, async (name) => {
+        const { changed } = await ensureRawgEntry(cache, name, {
+          persist: false,
+        });
+        if (changed) cacheUpdated = true;
       });
-      if (changed) cacheUpdated = true;
-    });
-    // Persist only if we actually touched the cache (non-fatal)
-    if (cacheUpdated) {
-      try {
-        await saveCache(cache);
-      } catch (e) {
-        console.warn("saveCache(GET) failed:", e?.message || e);
+      // Persist only if we actually touched the cache (non-fatal)
+      if (cacheUpdated) {
+        try {
+          await saveCache(cache);
+        } catch (e) {
+          console.warn("saveCache(GET) failed:", e?.message || e);
+        }
       }
     }
 
@@ -300,10 +305,24 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const score = normalizeScore(my_score);
 
     const cache = req.app.locals.rawgCache || {};
-    // persist immediately on single-item routes
-    const { rawg, canonicalName } = await ensureRawgEntry(cache, userTitle, {
-      persist: true,
-    });
+    const isGuest = !!req.user?.is_guest;
+
+    // For guests: NEVER fetch RAWG; read from cache only.
+    // For real users: persist immediately on single-item routes.
+    let rawg, canonicalName;
+    if (!isGuest) {
+      const ensured = await ensureRawgEntry(cache, userTitle, {
+        persist: true,
+      });
+      rawg = ensured.rawg;
+      canonicalName = ensured.canonicalName;
+    } else {
+      const cached = cache[lowerKey(userTitle)] || {};
+      rawg = cached;
+      canonicalName = (cached?.name || cached?.slug || userTitle)
+        .toString()
+        .trim();
+    }
 
     // HLTB write-once logic (user value wins; else user name; else RAWG official name)
     let hours = toHourInt(how_long_to_beat);
@@ -430,11 +449,22 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
     let newHLTB = toHourInt(how_long_to_beat);
     const nameChanged = userTitle !== row.name;
 
+    const isGuest = !!req.user?.is_guest;
+
     if (newHLTB == null && nameChanged) {
       const cache = req.app.locals.rawgCache || {};
-      const { canonicalName } = await ensureRawgEntry(cache, userTitle, {
-        persist: true,
-      });
+      let canonicalName;
+      if (!isGuest) {
+        const ensured = await ensureRawgEntry(cache, userTitle, {
+          persist: true,
+        });
+        canonicalName = ensured.canonicalName;
+      } else {
+        const cached = cache[lowerKey(userTitle)] || {};
+        canonicalName = (cached?.name || cached?.slug || userTitle)
+          .toString()
+          .trim();
+      }
 
       const pref = ["main", "plus", "comp"].includes(hltb_pref)
         ? hltb_pref
@@ -530,9 +560,15 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
 
     // Ensure RAWG for (possibly updated) name, then decorate
     const cache = req.app.locals.rawgCache || {};
-    const { rawg } = await ensureRawgEntry(cache, nextRow.name, {
-      persist: true,
-    });
+    let rawg;
+    if (!isGuest) {
+      const ensured = await ensureRawgEntry(cache, nextRow.name, {
+        persist: true,
+      });
+      rawg = ensured.rawg;
+    } else {
+      rawg = cache[lowerKey(nextRow.name)] || {};
+    }
 
     res.json(decorateGameForClient(nextRow, rawg));
   } catch (err) {
@@ -701,9 +737,16 @@ router.patch(
         [gameId, userId]
       );
       const cache = req.app.locals.rawgCache || {};
-      const { rawg } = await ensureRawgEntry(cache, movedRowRes.rows[0].name, {
-        persist: true,
-      });
+      const isGuest = !!req.user?.is_guest;
+      let rawg;
+      if (!isGuest) {
+        const ensured = await ensureRawgEntry(cache, movedRowRes.rows[0].name, {
+          persist: true,
+        });
+        rawg = ensured.rawg;
+      } else {
+        rawg = cache[lowerKey(movedRowRes.rows[0].name)] || {};
+      }
 
       const rankOrderRes = await pool.query(
         `

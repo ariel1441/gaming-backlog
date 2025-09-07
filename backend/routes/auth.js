@@ -136,7 +136,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
 router.get("/me", verifyToken, async (req, res, next) => {
   try {
     const me = await pool.query(
-      "SELECT id, username, is_public, created_at FROM users WHERE id = $1",
+      "SELECT id, username, is_public, is_guest, guest_expires_at, created_at FROM users WHERE id = $1",
       [req.user.id]
     );
     if (me.rows.length === 0) {
