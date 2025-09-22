@@ -6,11 +6,11 @@
     "node": ">=20 <21"
   },
   "scripts": {
-    "start": "cross-env NODE_ENV=production node backend/index.js",
+    "start": "node backend/index.js",
     "dev": "concurrently -n \"BACK,FRONT\" -c \"cyan,magenta\" \"npm:dev:back\" \"npm:dev:front\"",
     "dev:back": "cross-env NODE_ENV=development nodemon --signal SIGTERM backend/index.js",
     "dev:front": "cross-env NODE_ENV=development vite",
-    "serve": "cross-env NODE_ENV=production node backend/index.js",
+    "serve": "node backend/index.js",
     "build": "vite build",
     "preview": "cross-env NODE_ENV=production vite preview --port 5173",
     "lint": "eslint .",
