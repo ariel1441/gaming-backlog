@@ -126,7 +126,7 @@ router.get("/:username/games", async (req, res, next) => {
     const hydrated = await hydrateGamesWithRAWG(req.app, gamesRes.rows);
 
     // 4) For public response you may omit sensitive columns
-    const scrubbed = hydrated.map(({ user_id, ...rest }) => rest);
+    const scrubbed = hydrated.map(({ user_id: _user_id, ...rest }) => rest);
     res.json(scrubbed);
   } catch (err) {
     next(err);

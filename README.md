@@ -64,6 +64,8 @@ ALLOWED_ORIGINS=http://localhost:5173
 MICROCACHE_TTL_MS=300000
 ```
 
+For a clearer local-vs-production workflow, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ### 3. Database Setup
 
 Create your database and apply schema + seed (adjust paths to your files):
@@ -71,8 +73,14 @@ Create your database and apply schema + seed (adjust paths to your files):
 ```bash
 # Example with psql
 createdb your_db_name
-psql -d your_db_name -f backend/db/schema.sql
-psql -d your_db_name -f backend/db/seed.sql
+psql -d your_db_name -f backend/schema.sql
+psql -d your_db_name -f backend/seed.sql
+```
+
+For the standard guarded local reset, use:
+
+```bash
+npm run db:reset:local
 ```
 
 _The schema defines `users`, `statuses(status, rank)`, and `games` with fields like `position`, `my_genre`, `my_score`, `how_long_to_beat`, `started_at`, `finished_at`, etc._
@@ -88,6 +96,9 @@ npm run dev
 Other useful scripts:
 
 - `npm run dev:back` / `npm run dev:front` — run backend or frontend only  
+- `npm run check` — lint, test, and build before pushing
+- `npm run env:check` — print a redacted env summary and catch unsafe local DB config
+- `npm run db:reset:local` — reset only a localhost database from schema + seed
 - `npm run build` / `npm run preview` — frontend production build & preview  
 - `npm run start` — start the production server
 

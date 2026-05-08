@@ -294,8 +294,6 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       thoughts,
       my_score,
       how_long_to_beat,
-      started_at,
-      finished_at,
       hltb_pref, // 'main' | 'plus' | 'comp' (default 'main')
     } = req.body || {};
 
@@ -422,8 +420,6 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       thoughts,
       my_score,
       how_long_to_beat,
-      started_at,
-      finished_at,
       hltb_pref,
     } = req.body || {};
 
