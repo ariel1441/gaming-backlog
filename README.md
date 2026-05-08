@@ -98,6 +98,8 @@ Other useful scripts:
 - `npm run dev:back` / `npm run dev:front` — run backend or frontend only  
 - `npm run check` — lint, test, and build before pushing
 - `npm run env:check` — print a redacted env summary and catch unsafe local DB config
+- `npm run db:migrate:local` — apply tracked schema migrations to localhost
+- `npm run db:copy-prod-to-local` — overwrite localhost DB with a Railway dump
 - `npm run db:reset:local` — reset only a localhost database from schema + seed
 - `npm run build` / `npm run preview` — frontend production build & preview  
 - `npm run start` — start the production server

@@ -32,3 +32,34 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  migrate-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Apply production migrations
+        if: env.PROD_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          CONFIRM_PROD_MIGRATIONS: "true"
+        run: node scripts/db-migrate.js --production
+
+      - name: Skip production migrations
+        if: env.PROD_DATABASE_URL == ''
+        run: echo "PROD_DATABASE_URL secret is not configured; skipping production migrations."

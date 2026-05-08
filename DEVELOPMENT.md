@@ -120,12 +120,16 @@ npm run check
 
 This repo has GitHub Actions at `.github/workflows/ci.yml`.
 
-It runs on pushes to `main` and `Dev`, and on pull requests:
+The check job runs on pushes to `main` and `Dev`, and on pull requests:
 
 - `npm ci`
 - `npm run lint`
 - `npm test`
 - `npm run build`
+
+The production migration job runs only on pushes to `main`, after checks pass.
+It applies SQL files from `backend/migrations/` only if the GitHub secret
+`PROD_DATABASE_URL` is configured.
 
 Vercel and Railway are still expected to handle deployment from GitHub. Check
 their dashboards and make sure production deploys are connected to `main`, not a
@@ -146,10 +150,25 @@ tests unless you are comfortable resetting it.
 
 Recommended data-copy flow:
 
-1. Export production with `pg_dump` from Railway.
-2. Restore into local or staging with `pg_restore` or `psql`.
-3. Change passwords/API secrets if needed.
-4. Keep production credentials out of committed files.
+1. Make sure `.env` points to your local database.
+2. Make sure `.env.production.local` points to your Railway database.
+3. Stop the dev server.
+4. Run:
+
+```bash
+npm run db:copy-prod-to-local
+```
+
+This overwrites only a localhost database. The script refuses to run unless the
+target is local and the source is remote.
+
+After the copy, run:
+
+```bash
+npm run db:migrate:local
+```
+
+That records/applies any migrations that are newer than the production dump.
 
 Because this project stores account data, treat production exports as sensitive.
 Avoid committing dumps, screenshots of secrets, or `.env` files.
@@ -162,10 +181,26 @@ Use this order for schema work:
 2. Update `backend/schema.sql` so fresh installs match the latest shape.
 3. Test locally with `npm run db:migrate:local` for existing DBs, or
    `npm run db:reset:local` for fresh disposable DBs.
-4. Apply the migration intentionally to staging/production.
+4. Run `npm run check`.
+5. Merge through `Dev`.
+6. Merge to `main` when ready; GitHub Actions applies production migrations if
+   `PROD_DATABASE_URL` is configured.
 
 `backend/schema.sql` currently drops and recreates tables, so it is for local
 fresh installs only.
+
+Production migrations must be schema-only and safe to run once:
+
+- Good: `CREATE TABLE`, `ALTER TABLE ADD COLUMN`, indexes, constraints added
+  after data is valid.
+- Risky: dropping columns, renaming columns, changing meanings of existing data.
+- Never put seed/demo/user data changes in production migrations unless the
+  release explicitly calls for it.
+
+Because Vercel/Railway deployment can happen near the same time as GitHub
+Actions, prefer backward-compatible migrations: old code should keep working
+briefly after the migration, and new code should tolerate the migration already
+being applied.
 
 ## Feature workflow
 
