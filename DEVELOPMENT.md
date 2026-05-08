@@ -81,7 +81,14 @@ npm run db:reset:local
 npm run env:check
 ```
 
-4. Start the app:
+4. If you are using an existing local database, apply non-destructive local
+   migrations:
+
+```bash
+npm run db:migrate:local
+```
+
+5. Start the app:
 
 ```bash
 npm run dev
@@ -153,7 +160,8 @@ Use this order for schema work:
 
 1. Add a SQL file under `backend/migrations/`.
 2. Update `backend/schema.sql` so fresh installs match the latest shape.
-3. Test locally with `npm run db:reset:local`.
+3. Test locally with `npm run db:migrate:local` for existing DBs, or
+   `npm run db:reset:local` for fresh disposable DBs.
 4. Apply the migration intentionally to staging/production.
 
 `backend/schema.sql` currently drops and recreates tables, so it is for local

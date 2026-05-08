@@ -17,6 +17,7 @@
     "test": "vitest run --passWithNoTests",
     "check": "npm run lint && npm test && npm run build",
     "env:check": "node scripts/check-env.js",
+    "db:migrate:local": "node scripts/apply-local-migrations.js",
     "db:reset:local": "node scripts/reset-local-db.js"
   },
   "dependencies": {
