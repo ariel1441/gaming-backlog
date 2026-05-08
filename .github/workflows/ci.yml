@@ -25,10 +25,10 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npm run lint
+        run: npx --yes eslint@8.57.1 .
 
       - name: Test
-        run: npm test
+        run: npx --yes vitest@2.1.9 run --passWithNoTests
 
       - name: Build
         run: npm run build

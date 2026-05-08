@@ -94,6 +94,113 @@ npm run db:migrate:local
 npm run check
 ```
 
+## Codex-Specific Setup
+
+This repo has an `AGENTS.md` file at the root. Codex-style agents should read it
+automatically or can be told:
+
+```text
+Read AGENTS.md first and follow it for this task.
+```
+
+Keep durable project rules in `AGENTS.md`, not in random chat history:
+
+- branch model
+- database rules
+- required commands
+- files that should not be touched casually
+- review expectations
+
+Use `docs/AI_WORKFLOW.md` for human workflow guidance and `AGENTS.md` for rules
+the agent should obey every time.
+
+## Skills And Reusable Agent Rules
+
+Good reusable skills/rules for this project:
+
+- **Frontend UI skill**: React/Tailwind patterns, responsive checks, public/demo/admin states.
+- **Backend API skill**: Express route style, auth rules, validation, error shape.
+- **Database migration skill**: migration + `schema.sql` updates, backward-compatible releases.
+- **Code review skill**: findings first, file/line references, regression and test focus.
+- **Release skill**: `Dev` to `main`, CI, Vercel/Railway, production migration caution.
+
+If your Codex environment supports custom skills, create small focused skills
+instead of one huge project skill. A good skill includes:
+
+- when to use it
+- files/folders it applies to
+- commands to run
+- risks to watch for
+- examples of good output
+
+Example request:
+
+```text
+Use the database migration skill. Add a nullable column for Steam app id.
+Update backend/schema.sql, add a migration, update API validation if needed,
+run npm run db:migrate:local and npm run check.
+```
+
+## Agent Task Briefs
+
+For bigger work, create or paste a short task brief:
+
+```text
+Branch: feature/import-csv
+Goal: Import games from a CSV file.
+User flow: admin opens import modal, uploads CSV, previews rows, confirms import.
+DB: schema changes allowed if needed.
+UI style: match current local UI refresh.
+Must not touch: production data, unrelated public profile styling.
+Checks: npm run check, manual import flow.
+```
+
+This makes agents much better because it removes guessing.
+
+## Recommended Coding/AI Tools
+
+Useful AI/coding tools, beyond editor extensions:
+
+- **Codex CLI / Codex in IDE** for repo-aware implementation.
+- **GitHub Copilot Chat** for quick inline questions and small edits.
+- **Continue** or similar local-agent IDE tools if you want model/provider choice.
+- **Aider** for terminal-based patch work on focused branches.
+- **GitHub Actions** as the objective check after AI edits.
+- **pgAdmin plus local Postgres** for DB inspection after migrations.
+
+Do not run multiple agents editing the same files unless each agent has a clear,
+non-overlapping ownership area.
+
+## Good Agent Prompts
+
+For implementation:
+
+```text
+Implement this end to end. Keep the diff focused. Do not modify unrelated files.
+Run npm run check and explain any warnings.
+```
+
+For debugging:
+
+```text
+Reproduce the error first. Identify root cause. Make the smallest fix.
+Add a regression test if practical.
+```
+
+For UI:
+
+```text
+Check desktop and mobile layouts. Long titles and missing cover art must still look good.
+Do not introduce a new visual language unless asked.
+```
+
+For database:
+
+```text
+Use a migration. Make it backward-compatible. Update schema.sql.
+Do not change production data.
+```
+
 ## Good Habits
 
 - Never paste real secrets into chat.
