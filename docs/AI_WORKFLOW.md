@@ -1,5 +1,8 @@
 # Working With AI On This Project
 
+Status: maintained human workflow guide. For instructions that an AI agent
+should follow every time, use the root [`AGENTS.md`](../AGENTS.md).
+
 Use this as the default playbook when asking Codex or another AI assistant to work on the repo.
 
 ## Start Every Task With Context
@@ -103,7 +106,8 @@ automatically or can be told:
 Read AGENTS.md first and follow it for this task.
 ```
 
-Keep durable project rules in `AGENTS.md`, not in random chat history:
+Keep durable project rules in `AGENTS.md`, not in random chat history or
+stale planning notes:
 
 - branch model
 - database rules

@@ -12,6 +12,11 @@ export function createGame(payload, opts = {}) {
   return api.post("/api/games", payload, opts);
 }
 
+export function searchGames(query, opts = {}) {
+  const q = encodeURIComponent(String(query || "").trim());
+  return api.get(`/api/games/search?q=${q}`, opts);
+}
+
 // Update a game
 export function updateGame(id, put, opts = {}) {
   return api.put(`/api/games/${id}`, put, opts);
@@ -22,7 +27,8 @@ export function deleteGame(id, opts = {}) {
   return api.del(`/api/games/${id}`, opts);
 }
 
-// Reorder a single game within a rank (or move across same-rank statuses)
+// Reorder a single game within a rank. Include status only for an explicit
+// same-rank status move; plain drag reorder should leave status unchanged.
 export function reorderGames({ id, targetIndex, status, toIndex }, opts = {}) {
   const idx =
     typeof targetIndex === "number"
@@ -31,9 +37,8 @@ export function reorderGames({ id, targetIndex, status, toIndex }, opts = {}) {
         ? toIndex
         : undefined;
 
-  return api.patch(
-    `/api/games/${id}/position`,
-    { targetIndex: idx, status },
-    opts
-  );
+  const body = { targetIndex: idx };
+  if (status !== undefined) body.status = status;
+
+  return api.patch(`/api/games/${id}/position`, body, opts);
 }

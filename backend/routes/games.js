@@ -2,8 +2,12 @@
 import express from "express";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
-import { fetchGameData } from "../utils/fetchRAWG.js";
-import { upsertGame, reorderGame } from "../validators/games.js";
+import {
+  fetchGameData,
+  fetchGameDataByIdOrSlug,
+  searchRAWGGames,
+} from "../utils/fetchRAWG.js";
+import { gameIdParam, upsertGame, reorderGame } from "../validators/games.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -13,6 +17,20 @@ import { normStatus } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
 import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
 import { normalizeScore } from "../utils/normalize.js";
+import { badRequest, notFound, conflict } from "../utils/httpError.js";
+import { findDuplicateGameTitle } from "../utils/gameTitle.js";
+import {
+  assertSameRank,
+  buildReorderedRankList,
+  resolveTargetStatus,
+} from "../utils/reorder.js";
+import {
+  deleteOwnedGameQuery,
+  listOwnedGamesQuery,
+  listOwnedGameTitlesQuery,
+  selectOwnedGameQuery,
+  updateOwnedGameStatusQuery,
+} from "../utils/gameAccess.js";
 
 const router = express.Router();
 
@@ -22,7 +40,7 @@ const DEFAULT_POSITION_SPACING = 1000;
 // retry failed/empty cache entries after this many ms (default 1h)
 const RAWG_FAIL_TTL_MS = Number(process.env.RAWG_FAIL_TTL_MS || 60 * 60 * 1000);
 
-// Use DB local day (Israel) — avoids UTC "yesterday" issues.
+// Use DB local day (Israel) to avoid UTC "yesterday" issues.
 const TODAY_SQL = "(now() AT TIME ZONE 'Asia/Jerusalem')::date";
 
 /* -------------------------------- RAWG cache -------------------------------- */
@@ -65,6 +83,11 @@ const lowerKey = (s) =>
   String(s || "")
     .trim()
     .toLowerCase();
+
+const rawgIdentityKey = (rawgId) => {
+  const value = String(rawgId || "").trim();
+  return value ? `rawg:${value}` : "";
+};
 
 /** Read a reasonable RAWG hours value from a few likely places (do NOT store to DB). */
 const getRawgHours = (rawg) => {
@@ -139,6 +162,80 @@ async function ensureRawgEntry(cache, userTitle, { persist = true } = {}) {
     .toString()
     .trim();
   return { rawg, canonicalName, changed };
+}
+
+async function ensureRawgIdentityEntry(
+  cache,
+  { rawgId, rawgSlug, fallbackTitle },
+  { persist = true } = {}
+) {
+  const identityKey = rawgIdentityKey(rawgId);
+  if (!identityKey) {
+    return ensureRawgEntry(cache, fallbackTitle, { persist });
+  }
+
+  let entry = cache[identityKey];
+  let changed = false;
+
+  if (isStaleMiss(entry)) {
+    try {
+      const data = await fetchGameDataByIdOrSlug(rawgId || rawgSlug);
+      cache[identityKey] = data ?? {};
+    } catch (e) {
+      cache[identityKey] = { __failedAt: Date.now() };
+    }
+    changed = true;
+
+    if (persist) {
+      try {
+        await saveCache(cache);
+      } catch (e) {
+        console.warn("saveCache(identity) failed:", e?.message || e);
+      }
+    }
+    entry = cache[identityKey];
+  }
+
+  const rawg = entry || {};
+  const titleKey = lowerKey(fallbackTitle);
+  if (titleKey && rawg && !isEmptyObject(rawg) && !cache[titleKey]) {
+    cache[titleKey] = rawg;
+    changed = true;
+    if (persist) {
+      try {
+        await saveCache(cache);
+      } catch (e) {
+        console.warn("saveCache(identity alias) failed:", e?.message || e);
+      }
+    }
+  }
+
+  const canonicalName = (rawg?.name || rawg?.slug || fallbackTitle || "")
+    .toString()
+    .trim();
+  return { rawg, canonicalName, changed };
+}
+
+async function ensureRawgForGame(cache, game, options) {
+  if (game?.rawg_id) {
+    return ensureRawgIdentityEntry(
+      cache,
+      {
+        rawgId: game.rawg_id,
+        rawgSlug: game.rawg_slug,
+        fallbackTitle: game.name,
+      },
+      options
+    );
+  }
+  return ensureRawgEntry(cache, game?.name, options);
+}
+
+function cachedRawgForGame(cache, game) {
+  if (game?.rawg_id) {
+    return cache[rawgIdentityKey(game.rawg_id)] || cache[lowerKey(game.name)] || {};
+  }
+  return cache[lowerKey(game?.name)] || {};
 }
 
 /* ------------------------------- Position helper ------------------------------ */
@@ -228,34 +325,23 @@ router.get("/", verifyToken, async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    const { rows } = await pool.query(
-      `
-      SELECT g.*, s.rank AS status_rank
-      FROM games g
-      LEFT JOIN statuses s ON s.status = g.status
-      WHERE g.user_id = $1
-      ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
-      `,
-      [userId]
-    );
+    const { text, values } = listOwnedGamesQuery(userId);
+    const { rows } = await pool.query(text, values);
 
     const cache = req.app.locals.rawgCache || {};
-
-    // Case-insensitive dedupe: keep one original name per lowercased key
-    const nameMap = new Map(); // lowerName -> originalName
-    for (const r of rows) {
-      const orig = String(r.name || "").trim();
-      const lower = lowerKey(orig);
-      if (!nameMap.has(lower)) nameMap.set(lower, orig);
-    }
 
     const isGuest = !!req.user?.is_guest;
 
     // Warm RAWG cache ONLY for non-guest users (protect quotas in demo)
     if (!isGuest) {
       let cacheUpdated = false;
-      await mapWithLimit([...nameMap.values()], 6, async (name) => {
-        const { changed } = await ensureRawgEntry(cache, name, {
+      const uniqueGames = new Map();
+      for (const row of rows) {
+        const key = row.rawg_id ? rawgIdentityKey(row.rawg_id) : lowerKey(row.name);
+        if (!uniqueGames.has(key)) uniqueGames.set(key, row);
+      }
+      await mapWithLimit([...uniqueGames.values()], 6, async (game) => {
+        const { changed } = await ensureRawgForGame(cache, game, {
           persist: false,
         });
         if (changed) cacheUpdated = true;
@@ -272,12 +358,33 @@ router.get("/", verifyToken, async (req, res, next) => {
 
     // Now decorate from cache (no extra network)
     const out = rows.map((game) => {
-      const rawg = cache[lowerKey(game.name)] || {};
+      const rawg = cachedRawgForGame(cache, game);
       return decorateGameForClient(game, rawg);
     });
 
     res.setHeader("Cache-Control", "no-store");
     res.json(out);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Search RAWG so users can choose the exact external game identity before add.
+router.get("/search", verifyToken, async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) {
+      return next(badRequest("Search query must be at least 2 characters."));
+    }
+
+    if (req.user?.is_guest) {
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ results: [] });
+    }
+
+    const results = await searchRAWGGames(q, { pageSize: 8 });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ results });
   } catch (err) {
     next(err);
   }
@@ -295,10 +402,24 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       my_score,
       how_long_to_beat,
       hltb_pref, // 'main' | 'plus' | 'comp' (default 'main')
+      rawg_id,
+      rawg_slug,
     } = req.body || {};
 
     const statusNorm = normStatus(status);
     const userTitle = String(name).trim();
+
+    const duplicateQuery = listOwnedGameTitlesQuery(userId);
+    const duplicateRes = await pool.query(
+      duplicateQuery.text,
+      duplicateQuery.values
+    );
+    const duplicate = findDuplicateGameTitle(userTitle, duplicateRes.rows);
+    if (duplicate) {
+      return next(
+        conflict(`"${duplicate.name}" is already in your backlog.`)
+      );
+    }
 
     const score = normalizeScore(my_score);
 
@@ -309,9 +430,15 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     // For real users: persist immediately on single-item routes.
     let rawg, canonicalName;
     if (!isGuest) {
-      const ensured = await ensureRawgEntry(cache, userTitle, {
-        persist: true,
-      });
+      const ensured = rawg_id
+        ? await ensureRawgIdentityEntry(
+            cache,
+            { rawgId: rawg_id, rawgSlug: rawg_slug, fallbackTitle: userTitle },
+            { persist: true }
+          )
+        : await ensureRawgEntry(cache, userTitle, {
+            persist: true,
+          });
       rawg = ensured.rawg;
       canonicalName = ensured.canonicalName;
     } else {
@@ -360,7 +487,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const insertSql = `
       INSERT INTO games
         (user_id, name, status, my_genre, thoughts, my_score,
-         how_long_to_beat, position, started_at, finished_at)
+         how_long_to_beat, position, started_at, finished_at, rawg_id, rawg_slug)
       VALUES
         (
           $1, $2, $3, $4, $5, $6,
@@ -374,7 +501,9 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
             WHEN $11 THEN $12
             WHEN $3 IN ('finished','played alot but didnt finish') THEN ${TODAY_SQL}
             ELSE NULL
-          END
+          END,
+          $13,
+          $14
         )
       RETURNING *;
     `;
@@ -392,6 +521,8 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       startedBody, // $10
       finishedProvided, // $11
       finishedBody, // $12
+      rawg_id || null, // $13
+      (rawg_slug || rawg?.slug || "").trim() || null, // $14
     ];
 
     const { rows } = await pool.query(insertSql, params);
@@ -405,14 +536,11 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
   }
 });
 
-// PUT update a game — position is preserved (never recalculated on edit)
-router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
+// PUT update a game; position is preserved and never recalculated on edit.
+router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const gameId = Number(req.params.id);
-    if (!Number.isFinite(gameId)) {
-      return res.status(400).json({ error: "Invalid id" });
-    }
     const {
       name,
       status,
@@ -421,22 +549,32 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       my_score,
       how_long_to_beat,
       hltb_pref,
+      rawg_id,
+      rawg_slug,
     } = req.body || {};
-
-    if (!name || !status) {
-      return res.status(400).json({ error: "name and status are required" });
-    }
 
     const statusNorm = normStatus(status);
     const userTitle = String(name || "").trim();
 
     // ensure ownership and get current row
-    const existing = await pool.query(
-      `SELECT * FROM games WHERE id = $1 AND user_id = $2`,
-      [gameId, userId]
-    );
+    const existingQuery = selectOwnedGameQuery(gameId, userId);
+    const existing = await pool.query(existingQuery.text, existingQuery.values);
     const row = existing.rows[0];
-    if (!row) return res.status(404).json({ error: "Not found" });
+    if (!row) return next(notFound("Not found"));
+
+    const duplicateQuery = listOwnedGameTitlesQuery(userId);
+    const duplicateRes = await pool.query(
+      duplicateQuery.text,
+      duplicateQuery.values
+    );
+    const duplicate = findDuplicateGameTitle(userTitle, duplicateRes.rows, {
+      excludeId: gameId,
+    });
+    if (duplicate) {
+      return next(
+        conflict(`"${duplicate.name}" is already in your backlog.`)
+      );
+    }
 
     // NEVER change position on edit (even if status changes)
     const position = row.position;
@@ -451,9 +589,15 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       const cache = req.app.locals.rawgCache || {};
       let canonicalName;
       if (!isGuest) {
-        const ensured = await ensureRawgEntry(cache, userTitle, {
-          persist: true,
-        });
+        const ensured = rawg_id
+          ? await ensureRawgIdentityEntry(
+              cache,
+              { rawgId: rawg_id, rawgSlug: rawg_slug, fallbackTitle: userTitle },
+              { persist: true }
+            )
+          : await ensureRawgEntry(cache, userTitle, {
+              persist: true,
+            });
         canonicalName = ensured.canonicalName;
       } else {
         const cached = cache[lowerKey(userTitle)] || {};
@@ -506,6 +650,8 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
          my_score = $5,
          how_long_to_beat = $6,
          position = $7,
+         rawg_id = $15,
+         rawg_slug = $16,
 
          started_at = CASE
            WHEN $11 THEN $8
@@ -538,6 +684,8 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
       finishedProvided, // $12
       statusChanged, // $13
       userId, // $14
+      rawg_id || null, // $15
+      (rawg_slug || "").trim() || null, // $16
     ];
 
     const { rows } = await pool.query(updateSql, params);
@@ -558,12 +706,12 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
     const cache = req.app.locals.rawgCache || {};
     let rawg;
     if (!isGuest) {
-      const ensured = await ensureRawgEntry(cache, nextRow.name, {
+      const ensured = await ensureRawgForGame(cache, nextRow, {
         persist: true,
       });
       rawg = ensured.rawg;
     } else {
-      rawg = cache[lowerKey(nextRow.name)] || {};
+      rawg = cachedRawgForGame(cache, nextRow);
     }
 
     res.json(decorateGameForClient(nextRow, rawg));
@@ -573,24 +721,22 @@ router.put("/:id", verifyToken, upsertGame, async (req, res, next) => {
 });
 
 // DELETE a game
-router.delete("/:id", verifyToken, async (req, res, next) => {
+router.delete("/:id", verifyToken, gameIdParam, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const gameId = Number(req.params.id);
 
-    const result = await pool.query(
-      `DELETE FROM games WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [gameId, userId]
-    );
+    const deleteQuery = deleteOwnedGameQuery(gameId, userId);
+    const result = await pool.query(deleteQuery.text, deleteQuery.values);
 
-    if (!result.rows[0]) return res.status(404).json({ error: "Not found" });
+    if (!result.rows[0]) return next(notFound("Not found"));
 
     // Invalidate Insights micro-cache for this user (deletion affects analytics)
     cacheClear(userId);
 
     // Decorate for consistency (harmless even if UI doesn't use it)
     const cache = req.app.locals.rawgCache || {};
-    const rawg = cache[lowerKey(result.rows[0].name)] || {};
+    const rawg = cachedRawgForGame(cache, result.rows[0]);
     res.json(decorateGameForClient(result.rows[0], rawg));
   } catch (err) {
     next(err);
@@ -609,7 +755,8 @@ router.get("/statuses-list", async (_req, res, next) => {
   }
 });
 
-// Reorder (position) within a **rank** (transactional, cross-status within same rank)
+// Reorder (position) within a **rank**. Status only changes when the client
+// explicitly sends a same-rank target status.
 router.patch(
   "/:id/position",
   verifyToken,
@@ -622,31 +769,21 @@ router.patch(
       const userId = req.user.id;
       const gameId = Number(req.params.id);
       const { status, targetIndex } = req.body || {};
-      const targetStatus = normStatus(status);
 
-      if (typeof targetIndex !== "number" || !targetStatus) {
-        return res
-          .status(400)
-          .json({ error: "status and targetIndex required" });
-      }
       const idx = Math.trunc(targetIndex);
 
       await client.query("BEGIN");
 
       // Verify ownership
-      const gameRes = await client.query(
-        `
-      SELECT g.id, g.status, g.name
-      FROM games g
-      WHERE g.id = $1 AND g.user_id = $2
-      `,
-        [gameId, userId]
-      );
+      const gameQuery = selectOwnedGameQuery(gameId, userId, "id, status, name");
+      const gameRes = await client.query(gameQuery.text, gameQuery.values);
       const current = gameRes.rows[0];
       if (!current) {
         await client.query("ROLLBACK");
-        return res.status(404).json({ error: "Not found" });
+        return next(notFound("Not found"));
       }
+
+      const targetStatus = resolveTargetStatus(current.status, status);
 
       // Resolve ranks for current & target statuses
       const { rows: trgRows } = await client.query(
@@ -660,15 +797,11 @@ router.patch(
       const targetRank = trgRows[0]?.rank;
       const currentRank = curRows[0]?.rank;
 
-      if (targetRank == null || currentRank == null) {
+      try {
+        assertSameRank(currentRank, targetRank);
+      } catch (err) {
         await client.query("ROLLBACK");
-        return res.status(400).json({ error: "unknown status/rank" });
-      }
-      if (targetRank !== currentRank) {
-        await client.query("ROLLBACK");
-        return res
-          .status(400)
-          .json({ error: "Cross-rank reorder not allowed" });
+        return next(err);
       }
 
       // Lock peers across ALL statuses in the same rank group
@@ -684,27 +817,22 @@ router.patch(
         [userId, targetRank]
       );
 
-      const list = peerRes.rows.map((r) => ({
-        id: r.id,
-        position: r.position ?? 0,
-      }));
-      const fromIndex = list.findIndex((x) => x.id === gameId);
-      if (fromIndex === -1) {
+      let list;
+      try {
+        list = buildReorderedRankList(peerRes.rows, gameId, idx);
+      } catch (err) {
         await client.query("ROLLBACK");
-        return res.status(404).json({ error: "Game not in target rank group" });
+        return next(err);
       }
-
-      // Move within the rank group
-      const [moved] = list.splice(fromIndex, 1);
-      const clampedIndex = Math.max(0, Math.min(idx, list.length));
-      list.splice(clampedIndex, 0, moved);
 
       // If dropping into a different status (same rank), update it now
       if (current.status !== targetStatus) {
-        await client.query(
-          `UPDATE games SET status = $3 WHERE id = $1 AND user_id = $2`,
-          [gameId, userId, targetStatus]
+        const statusQuery = updateOwnedGameStatusQuery(
+          gameId,
+          userId,
+          targetStatus
         );
+        await client.query(statusQuery.text, statusQuery.values);
       }
 
       // Renumber all rows in the rank group with your spacing (UNNEST = scalable)
@@ -728,20 +856,18 @@ router.patch(
 
       // === Authoritative response ===
       // Return the moved game and the full rank order so the client can apply it immediately
-      const movedRowRes = await pool.query(
-        `SELECT * FROM games WHERE id = $1 AND user_id = $2`,
-        [gameId, userId]
-      );
+      const movedQuery = selectOwnedGameQuery(gameId, userId);
+      const movedRowRes = await pool.query(movedQuery.text, movedQuery.values);
       const cache = req.app.locals.rawgCache || {};
       const isGuest = !!req.user?.is_guest;
       let rawg;
       if (!isGuest) {
-        const ensured = await ensureRawgEntry(cache, movedRowRes.rows[0].name, {
+        const ensured = await ensureRawgForGame(cache, movedRowRes.rows[0], {
           persist: true,
         });
         rawg = ensured.rawg;
       } else {
-        rawg = cache[lowerKey(movedRowRes.rows[0].name)] || {};
+        rawg = cachedRawgForGame(cache, movedRowRes.rows[0]);
       }
 
       const rankOrderRes = await pool.query(
@@ -776,7 +902,7 @@ router.patch(
 
 export const initCache = async (app) => {
   await loadCache(app); // RAWG cache JSON
-  await loadHLTBLocal(app); // HLTB local JSON (uses your dataset’s keys)
+  await loadHLTBLocal(app); // HLTB local JSON (uses your dataset keys)
 };
 
 export default router;

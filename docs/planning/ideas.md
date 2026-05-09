@@ -1,5 +1,8 @@
 # Ideas
 
+Status: unverified planning notes. Check the current code before implementing
+any item here.
+
 - Add a filter option by hours: make a range control where the user can change the minimum and maximum hours for a game. Difficulty: easy/medium.
 - Add a quick filter for finished and "played a lot but didn't finish" games. Difficulty: easy.
 - Change the project to TypeScript. Difficulty: very hard.

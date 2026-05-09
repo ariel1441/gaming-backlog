@@ -1,5 +1,7 @@
 # Feature Request Template
 
+Status: reusable template.
+
 ## Goal
 
 What should the user be able to do?

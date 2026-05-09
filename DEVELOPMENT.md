@@ -8,15 +8,14 @@ This project is deployed to:
 For day-to-day development, run the app locally against a local Postgres
 database. Production data should only be touched intentionally.
 
-## Current repo model
+## Branch model
 
 - `main`: production deploy branch candidate.
 - `Dev`: integration branch for tested work before production.
 - `feature/...` or `fix/...`: short-lived branches for actual changes.
 
-At the moment `main` and `Dev` point at the same commit. Keep production
-platforms connected to `main` where possible, then merge `Dev` into `main` only
-after checks pass.
+Keep production platforms connected to `main` where possible, then merge `Dev`
+into `main` only after checks pass.
 
 ## Environments
 
@@ -40,7 +39,7 @@ Recommended local behavior:
 - Backend: Railway domain
 - Database: Railway Postgres
 
-## Recommended local `.env`
+## Recommended Local `.env`
 
 Use the project root `.env` for local development:
 
@@ -60,7 +59,7 @@ DEMO_GUEST_TTL_HOURS=36
 ALLOW_REMOTE_DB_IN_DEV=false
 ```
 
-## Local setup
+## Local Setup
 
 1. Install dependencies:
 
@@ -86,6 +85,7 @@ npm run env:check
 
 ```bash
 npm run db:migrate:local
+npm run db:migrate:status
 ```
 
 5. Start the app:
@@ -94,7 +94,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-## Daily workflow
+## Daily Workflow
 
 1. Update `Dev` from GitHub.
 2. Create a feature/fix branch from `Dev`.
@@ -135,7 +135,7 @@ Vercel and Railway are still expected to handle deployment from GitHub. Check
 their dashboards and make sure production deploys are connected to `main`, not a
 feature branch.
 
-## Local vs production database
+## Local vs Production Database
 
 Use three mental buckets:
 
@@ -173,7 +173,7 @@ That records/applies any migrations that are newer than the production dump.
 Because this project stores account data, treat production exports as sensitive.
 Avoid committing dumps, screenshots of secrets, or `.env` files.
 
-## Database changes
+## Database Changes
 
 Use this order for schema work:
 
@@ -202,7 +202,7 @@ Actions, prefer backward-compatible migrations: old code should keep working
 briefly after the migration, and new code should tolerate the migration already
 being applied.
 
-## Feature workflow
+## Feature Workflow
 
 For each new feature or bug fix:
 
@@ -220,7 +220,7 @@ Good examples of feature branches:
 - `feature/ui-polish`
 - `fix/sort-search-behavior`
 
-## AI-friendly work habits
+## AI-Friendly Work Habits
 
 - Keep each branch focused on one feature or bug.
 - Write down the exact user flow to test before editing.

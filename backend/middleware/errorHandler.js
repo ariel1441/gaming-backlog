@@ -1,27 +1,27 @@
 import { isCelebrateError } from "celebrate";
 
-// Map common Postgres SQLSTATE codes to HTTP + our error codes
+// Map common Postgres SQLSTATE codes to HTTP status and app error codes.
 function pgToHttp(err) {
   switch (err.code) {
-    case "23505": // unique_violation
+    case "23505":
       return {
         status: 409,
         code: "conflict",
         message: "Resource already exists",
       };
-    case "23503": // foreign_key_violation
+    case "23503":
       return {
         status: 409,
         code: "conflict",
         message: "Related resource constraint",
       };
-    case "23514": // check_violation
+    case "23514":
       return {
         status: 422,
         code: "constraint_violation",
         message: "Constraint violated",
       };
-    case "22P02": // invalid_text_representation (bad UUID/number)
+    case "22P02":
       return {
         status: 400,
         code: "bad_request",
@@ -55,7 +55,6 @@ export default function errorHandler(err, req, res, _next) {
   let message = "Internal server error";
   let body;
 
-  // 0) JSON parse errors from express.json()
   if (
     err?.type === "entity.parse.failed" ||
     (err instanceof SyntaxError && "body" in err)
@@ -63,52 +62,48 @@ export default function errorHandler(err, req, res, _next) {
     status = 400;
     code = "invalid_json";
     message = "Request body must be valid JSON";
-  }
-  // 1) Celebrate/Joi validation → 422
-  else if (isCelebrateError(err)) {
+  } else if (isCelebrateError(err)) {
     status = 422;
     code = "validation_error";
     message = "Validation failed";
     body = {
       error: { code, message, details: toValidationDetails(err), requestId },
     };
-  }
-  // 2) CORS origin not allowed (we’ll tag it in the CORS middleware)
-  else if (err?.code === "origin_not_allowed") {
+  } else if (err?.code === "origin_not_allowed") {
     status = 403;
     code = "forbidden";
     message = "Origin not allowed";
-  }
-  // 3) Postgres known errors
-  else if (err?.code && typeof err.code === "string") {
+  } else if (
+    err?.code &&
+    typeof err.code === "string" &&
+    !(err?.status || err?.statusCode)
+  ) {
     const mapped = pgToHttp(err);
     if (mapped) {
       ({ status, code, message } = mapped);
     } else {
-      // Unknown DB error → 500 with generic message
       status = 500;
       code = "internal";
       message = "Database error";
     }
-  }
-  // 4) Standard HTTP-ish errors
-  else if (err?.status || err?.statusCode) {
+  } else if (err?.status || err?.statusCode) {
     const s = err.status || err.statusCode;
     status = s;
+    if (typeof err.code === "string") code = err.code;
     if (s === 401) {
-      code = "unauthorized";
+      if (!err.code) code = "unauthorized";
       message = err.message || "Unauthorized";
     } else if (s === 403) {
-      code = "forbidden";
+      if (!err.code) code = "forbidden";
       message = err.message || "Forbidden";
     } else if (s === 404) {
-      code = "not_found";
+      if (!err.code) code = "not_found";
       message = err.message || "Not found";
     } else if (s >= 400 && s < 500) {
-      code = "bad_request";
+      if (!err.code) code = "bad_request";
       message = err.message || "Bad request";
     } else {
-      code = "internal";
+      if (!err.code) code = "internal";
       message = err.message || "Internal server error";
     }
   }
@@ -116,7 +111,6 @@ export default function errorHandler(err, req, res, _next) {
   if (!body) body = { error: { code, message, requestId } };
   if (!isProd && err?.stack) body.error.stack = err.stack;
 
-  // Minimal safe log (no headers/tokens)
   if (!isProd) {
     console.error(
       `[${requestId}] ${req.method} ${req.originalUrl} -> ${status} ${code}: ${message}\n${err.stack || err}`

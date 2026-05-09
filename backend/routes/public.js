@@ -5,10 +5,9 @@ import { fetchGameData } from "../utils/fetchRAWG.js";
 import {
   sanitizeGameHtml /* or sanitizeGameHtmlWithLinks */,
 } from "../utils/sanitizeHtml.js";
+import { usernameParam } from "../validators/public.js";
+import { forbidden, notFound } from "../utils/httpError.js";
 const router = express.Router();
-
-// helper: sanitize usernames a bit (letters, digits, underscore, dash, dot)
-const USERNAME_RE = /^[\w.-]{3,30}$/;
 
 // DRY-ish: hydrate with RAWG, mirroring /api/games behavior
 async function hydrateGamesWithRAWG(app, games) {
@@ -53,24 +52,21 @@ async function hydrateGamesWithRAWG(app, games) {
 }
 
 // GET /api/public/:username (profile header info)
-router.get("/:username", async (req, res, next) => {
+router.get("/:username", usernameParam, async (req, res, next) => {
   try {
     const { username } = req.params;
-    if (!USERNAME_RE.test(username)) {
-      return res.status(400).json({ error: "Invalid username" });
-    }
 
     const userRes = await pool.query(
       "SELECT id, username, is_public, created_at FROM users WHERE username = $1",
       [username]
     );
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      return next(notFound("User not found"));
     }
     const user = userRes.rows[0];
 
     if (!user.is_public) {
-      return res.status(403).json({ error: "This profile is not public" });
+      return next(forbidden("This profile is not public"));
     }
 
     const countRes = await pool.query(
@@ -90,12 +86,9 @@ router.get("/:username", async (req, res, next) => {
 });
 
 // GET /api/public/:username/games (read-only games)
-router.get("/:username/games", async (req, res, next) => {
+router.get("/:username/games", usernameParam, async (req, res, next) => {
   try {
     const { username } = req.params;
-    if (!USERNAME_RE.test(username)) {
-      return res.status(400).json({ error: "Invalid username" });
-    }
 
     // 1) Find user & verify they opted in to public
     const userRes = await pool.query(
@@ -103,11 +96,11 @@ router.get("/:username/games", async (req, res, next) => {
       [username]
     );
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      return next(notFound("User not found"));
     }
     const user = userRes.rows[0];
     if (!user.is_public) {
-      return res.status(403).json({ error: "This profile is not public" });
+      return next(forbidden("This profile is not public"));
     }
 
     // 2) Fetch games like your private route does (rank + position)

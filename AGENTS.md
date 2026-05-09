@@ -1,46 +1,127 @@
 # Agent Instructions
 
-This repo is a Vite/React frontend with an Express/Postgres backend.
+Durable instructions for AI agents working in this repository. Prefer the code,
+scripts, and current git state over older notes in markdown files.
+
+## Project Shape
+
+- Full-stack JavaScript app for tracking a gaming backlog.
+- Frontend: React 18, Vite, Tailwind CSS, React Router, Recharts, dnd-kit.
+- Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
+- Main app routes: `/`, `/insights`, and public profiles at `/u/:username`.
+- API routes live under `backend/routes/`; shared frontend API calls live under
+  `src/services/`.
 
 ## Core Commands
 
 - `npm run dev` starts backend and frontend locally.
+- `npm run dev:back` starts only Express on `PORT` defaulting to `5000`.
+- `npm run dev:front` starts only Vite on `http://localhost:5173`.
 - `npm run check` runs lint, tests, and build.
 - `npm run env:check` prints a redacted environment summary.
-- `npm run db:migrate:local` applies tracked migrations to localhost.
-- `npm run db:copy-prod-to-local` overwrites the local DB with a production dump.
+- `npm run db:migrate:local` applies tracked migrations to a localhost DB.
+- `npm run db:reset:local` rebuilds a localhost DB from schema and seed.
+- `npm run db:copy-prod-to-local` overwrites a localhost DB with a production
+  dump. Use only when explicitly requested.
 
-## Branches
+## Git And Branches
 
 - `main` is production.
 - `Dev` is the integration branch.
-- Use short-lived `feature/...`, `fix/...`, or `chore/...` branches for work.
+- Prefer short-lived `feature/...`, `fix/...`, or `chore/...` branches from
+  `Dev`.
+- Before editing, run `git status --short --branch`.
+- Do not overwrite, revert, format, or "clean up" uncommitted changes you did
+  not make.
+- Keep diffs focused on the user request. Avoid unrelated refactors.
+
+## Environment Rules
+
+- Local development must use a localhost Postgres database.
+- The backend is expected to reject remote `DATABASE_URL` in development unless
+  `ALLOW_REMOTE_DB_IN_DEV=true` is deliberately set.
+- Never commit `.env`, dumps, real secrets, tokens, or production data.
+- Use `npm run env:check` when environment behavior is relevant.
 
 ## Database Rules
 
-- Local development must use a localhost database.
 - Production schema changes must go through `backend/migrations/*.sql`.
-- Keep `backend/schema.sql` updated for fresh installs.
-- Migrations should be schema-only and backward-compatible.
-- Do not put production data changes in migrations unless explicitly requested.
+- Keep `backend/schema.sql` updated so fresh local installs match the latest
+  schema.
+- Migrations should be schema-only, idempotent where practical, and
+  backward-compatible with the currently deployed app.
+- Do not put seed/demo/user data changes in migrations unless explicitly
+  requested.
+- Test schema work with `npm run db:migrate:local`; use
+  `npm run db:reset:local` only for disposable local databases.
 
-## Before Editing
+## Frontend Rules
 
-- Check `git status --short --branch`.
-- Do not overwrite or revert uncommitted user changes.
-- If existing local changes are unrelated, leave them alone.
-- For feature work, prefer creating a short-lived branch from `Dev`.
-- For larger tasks, state the plan before making broad changes.
+- Match the existing React component/hook/service patterns before adding new
+  abstractions.
+- Read `docs/SYSTEM_CONTEXT.md` early in a new session for the current
+  architecture handoff. Use `docs/ROADMAP.md` for plans and priorities.
+- Preserve admin, guest/demo, and public read-only flows when changing shared
+  UI.
+- Check responsive behavior for desktop and mobile when touching layout.
+- Long game titles, missing cover art, empty states, and auth errors should
+  remain graceful.
+- Use existing design tokens/classes in `src/index.css` and Tailwind config
+  before inventing new styling conventions.
+- Use shared UI primitives from `src/components/ui/` before creating one-off
+  buttons, icon buttons, modals, fields, inputs, selects, badges, empty states,
+  skeletons, toasts, or confirm dialogs.
+- Use `useToast` for user feedback and `useConfirm` for destructive
+  confirmation. Do not add browser `alert()` or native `confirm()`.
+- Keep private backlog route code under `src/pages/Backlog/`. `src/App.jsx`
+  should stay focused on app providers and routes.
+- Use `src/utils/gameList.js` for game filtering, searching, sorting, CSV genre
+  parsing, and hours-range display lists. Do not duplicate list logic in pages.
+- Use `src/utils/permissions.js` for frontend edit/delete/reorder/read-only and
+  public-toggle affordances. Backend authorization remains the security
+  boundary.
+- Route frontend network calls through `src/services/*` and
+  `src/services/apiClient.js`. Auth, demo, `/me`, and public-toggle requests
+  should go through `src/services/authService.js`.
+
+## Backend Rules
+
+- Keep route handlers in `backend/routes/`, validation in `backend/validators/`,
+  and cross-cutting concerns in `backend/middleware/` or `backend/utils/`.
+- Preserve per-user data isolation. Authenticated game data should be scoped to
+  the current user.
+- Keep API errors compatible with the central error handler shape:
+  `{ error: { code, message, requestId } }`.
+- Prefer Celebrate/Joi validators in `backend/validators/` for params and body
+  validation instead of hand-rolled route checks.
+- Use `backend/utils/httpError.js` helpers and `next(err)` for intentional API
+  errors. Avoid direct route responses like `res.status(404).json({ error })`.
+- New endpoints should follow this shape: route declaration, auth/guard,
+  validation, request normalization, query/service work, response serialization,
+  centralized error forwarding.
+- Request IDs are assigned by `backend/middleware/requestId.js`; keep error
+  responses and logs compatible with that flow.
+- Be careful with cache changes in RAWG, HLTB, public, and insights flows.
+
+## Documentation Rules
+
+- Treat `README.md`, `DEVELOPMENT.md`, and this file as maintained docs.
+- Treat `docs/planning/ideas.md` as unverified planning notes until the code is
+  checked.
+- Templates under `docs/templates/` are reusable prompts, not product docs.
+- If documentation is updated, prefer clearly marking unverified or historical
+  material instead of presenting it as current fact.
 
 ## Before Finishing
 
 - Run `npm run check` when code changed.
+- For documentation-only changes, at least proofread changed markdown and run a
+  narrower command if useful.
 - Mention if tests are absent or only `--passWithNoTests` succeeded.
-- Summarize changed files and any remaining local modifications.
+- Summarize changed files and call out any pre-existing local modifications.
 
-## AI Collaboration
+## Review Mode
 
-- Keep changes focused on the user request.
-- Ask whether UI should match live, current local refresh, or a new direction.
-- For schema changes, always add a migration and update `backend/schema.sql`.
-- For reviews, lead with bugs and risks before summaries.
+When asked for a review, lead with bugs, regressions, database risks, security
+risks, and missing tests. Include file and line references. Keep summaries
+secondary.

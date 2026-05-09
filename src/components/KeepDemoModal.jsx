@@ -1,6 +1,7 @@
-// src/components/KeepDemoModal.jsx
 import React, { useState } from "react";
+import { Save } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { Button, Field, Modal, TextInput } from "./ui";
 
 export default function KeepDemoModal({ open, onClose }) {
   const { keepDemo } = useAuth();
@@ -10,6 +11,10 @@ export default function KeepDemoModal({ open, onClose }) {
   const [loading, setLoading] = useState(false);
 
   if (!open) return null;
+
+  const close = () => {
+    if (!loading) onClose?.();
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -26,70 +31,66 @@ export default function KeepDemoModal({ open, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-modal">
-      <div className="bg-surface-card border border-surface-border rounded-lg p-6 w-full max-w-md mx-4">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-content-primary">
-            Save your demo
-          </h2>
-          <button
-            onClick={() => !loading && onClose?.()}
-            className="text-content-muted hover:text-content-primary transition-colors text-2xl"
-            disabled={loading}
-            aria-label="Close"
-            title="Close"
-          >
-            ×
-          </button>
-        </div>
+    <Modal
+      title="Save your demo"
+      description="Turn this demo session into your own account without losing the changes you made."
+      onClose={close}
+      closeDisabled={loading}
+      maxWidth="max-w-lg"
+      bodyClassName="p-0"
+    >
+      <form onSubmit={submit}>
+        <div className="space-y-4 p-5">
+          <div className="rounded-2xl border border-surface-border bg-surface-bg/35 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/35 bg-primary/10 text-primary-light">
+                <Save className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <p className="text-sm leading-6 text-content-muted">
+                Your current demo backlog, edits, and ordering will move into
+                this account.
+              </p>
+            </div>
+          </div>
 
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-content-secondary mb-2">
-              Username
-            </label>
-            <input
-              className="w-full rounded border border-surface-border bg-surface-elevated px-3 py-2 text-content-primary placeholder:text-content-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          <Field id="keep-demo-username" label="Username">
+            <TextInput
+              id="keep-demo-username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoFocus
               disabled={loading}
+              autoComplete="username"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-content-secondary mb-2">
-              Password
-            </label>
-            <input
+          </Field>
+
+          <Field id="keep-demo-password" label="Password">
+            <TextInput
+              id="keep-demo-password"
               type="password"
-              className="w-full rounded border border-surface-border bg-surface-elevated px-3 py-2 text-content-primary placeholder:text-content-muted focus:outline-none focus:ring-2 focus:ring-primary"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
+              autoComplete="new-password"
             />
-          </div>
+          </Field>
 
-          {err ? <p className="text-sm text-state.error">{err}</p> : null}
+          {err ? (
+            <div className="rounded-xl border border-state-error/50 bg-state-error/10 p-3 text-sm leading-6 text-state-error">
+              {err}
+            </div>
+          ) : null}
+        </div>
 
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => !loading && onClose?.()}
-              className="px-3 py-2 rounded border border-surface-border"
-              disabled={loading}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded bg-action-primary text-white hover:bg-action-primary-hover"
-              disabled={loading}
-            >
-              {loading ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex justify-end gap-2 border-t border-surface-border bg-surface-bg/35 p-4">
+          <Button type="button" onClick={close} disabled={loading}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={loading}>
+            {loading ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

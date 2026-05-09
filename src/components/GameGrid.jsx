@@ -1,5 +1,5 @@
 import React from "react";
-import GameCard from "./GameCard";
+import { Gamepad2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -9,15 +9,24 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import GameCard from "./GameCard";
+import { EmptyState } from "./ui";
+import { buildRankReorderRequest } from "../utils/reorder";
 
-const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
+const SortableGameCard = ({
+  game,
+  onClick,
+  onEdit,
+  onDelete,
+  isDragging,
+  viewMode,
+}) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: String(game.id) });
 
@@ -34,7 +43,6 @@ const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
       style={style}
       {...attributes}
       {...listeners}
-      // Phone: allow full shrink; >=sm keep your previous sizing
       className="w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
     >
       <GameCard
@@ -42,9 +50,17 @@ const SortableGameCard = ({ game, onClick, onEdit, onDelete, isDragging }) => {
         onClick={onClick}
         onEdit={onEdit}
         onDelete={onDelete}
+        variant={viewMode}
       />
     </div>
   );
+};
+
+const gridClasses = {
+  grid: "grid gap-4 w-full max-w-[480px] px-2 sm:px-0 mx-auto sm:max-w-none [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]",
+  compact:
+    "grid gap-3 w-full max-w-[420px] px-2 sm:px-0 mx-auto sm:max-w-none [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(250px,1fr))]",
+  list: "grid gap-3 w-full px-2 sm:px-0 lg:grid-cols-2",
 };
 
 const GameGrid = ({
@@ -52,7 +68,9 @@ const GameGrid = ({
   onSelectGame,
   onEditGame,
   onDeleteGame,
-  onReorder, // if present, enables drag-and-drop
+  onReorder,
+  emptyState,
+  viewMode = "grid",
 }) => {
   const initial = Array.isArray(games) ? games : [];
   const [localGames, setLocalGames] = React.useState(initial);
@@ -78,53 +96,34 @@ const GameGrid = ({
     const overKey = String(over.id);
     if (activeKey === overKey) return;
 
-    const current = Array.isArray(localGames) ? localGames : [];
-    const oldIndex = current.findIndex((g) => String(g.id) === activeKey);
-    const newIndex = current.findIndex((g) => String(g.id) === overKey);
-    if (oldIndex === -1 || newIndex === -1) return;
+    const request = buildRankReorderRequest(localGames, activeKey, overKey);
+    if (!request) return;
 
-    const draggedGame = current[oldIndex];
-    const targetGame = current[newIndex];
-
-    // Keep your rule: no moving across different ranks
-    if (draggedGame?.status_rank !== targetGame?.status_rank) {
-      return;
-    }
-
-    // Optimistic UI reorder
-    const newOrder = arrayMove(current, oldIndex, newIndex);
+    const { gameId, targetIndex, newOrder } = request;
     setLocalGames(newOrder);
 
     if (onReorder) {
-      // Recompute index within this rank only
-      const sameRankGames = newOrder.filter(
-        (g) => g.status_rank === draggedGame.status_rank
-      );
-      const targetIndexInRank = sameRankGames.findIndex(
-        (g) => String(g.id) === activeKey
-      );
-
-      // Destination status = target card’s status
-      const destStatus = targetGame.status;
-
-      await onReorder(draggedGame.id, targetIndexInRank, destStatus);
+      await onReorder(gameId, targetIndex);
     }
   };
 
   const list = Array.isArray(localGames) ? localGames : [];
   if (list.length === 0) {
     return (
-      <div className="text-center py-10 text-content-muted">
-        <div className="text-6xl mb-4">🎮</div>
-        <p className="text-xl">No games found.</p>
-        <p className="text-sm mt-2">Try adjusting your search or filters.</p>
-      </div>
+      <EmptyState
+        icon={emptyState?.icon || Gamepad2}
+        title={emptyState?.title || "No games found."}
+        description={
+          emptyState?.description || "Try adjusting your search or filters."
+        }
+        action={emptyState?.action}
+        className="py-10"
+      />
     );
   }
 
   const filteredGames = list.filter((game) => game?.name?.trim());
 
-  // If exactly one result, center it and cap width (phone-safe)
   if (filteredGames.length === 1) {
     const only = filteredGames[0];
     return (
@@ -134,25 +133,19 @@ const GameGrid = ({
             key={only.id}
             game={only}
             onClick={() => onSelectGame?.(only)}
+            readOnly={!onReorder}
             onEdit={onReorder ? () => onEditGame?.(only) : undefined}
             onDelete={onReorder ? () => onDeleteGame?.(only.id) : undefined}
+            variant={viewMode}
           />
         </div>
       </div>
     );
   }
 
-  // Read-only grid (mobile-friendly)
   if (!onReorder) {
     return (
-      <div
-        className="
-          grid gap-4 
-          w-full max-w-[480px] px-2 sm:px-0 mx-auto sm:max-w-none
-          [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]
-          sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]
-        "
-      >
+      <div className={gridClasses[viewMode] || gridClasses.grid}>
         {filteredGames.map((game) => (
           <div
             key={game.id}
@@ -161,8 +154,8 @@ const GameGrid = ({
             <GameCard
               game={game}
               onClick={() => onSelectGame?.(game)}
-              onEdit={undefined}
-              onDelete={undefined}
+              readOnly
+              variant={viewMode}
             />
           </div>
         ))}
@@ -170,7 +163,6 @@ const GameGrid = ({
     );
   }
 
-  // Drag-and-drop grid (mobile-friendly)
   return (
     <DndContext
       sensors={sensors}
@@ -182,14 +174,7 @@ const GameGrid = ({
         items={filteredGames.map((g) => String(g.id))}
         strategy={rectSortingStrategy}
       >
-        <div
-          className="
-            grid gap-4 
-            w-full max-w-[480px] px-2 sm:px-0 mx-auto sm:max-w-none
-            [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]
-            sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]
-          "
-        >
+        <div className={gridClasses[viewMode] || gridClasses.grid}>
           {filteredGames.map((game) => (
             <SortableGameCard
               key={game.id}
@@ -198,6 +183,7 @@ const GameGrid = ({
               onEdit={() => onEditGame?.(game)}
               onDelete={() => onDeleteGame?.(game.id)}
               isDragging={activeId === String(game.id)}
+              viewMode={viewMode}
             />
           ))}
         </div>

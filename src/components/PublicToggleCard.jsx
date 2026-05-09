@@ -1,18 +1,14 @@
 import React, { useEffect, useState } from "react";
+import { Copy, ExternalLink, Share2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
+import { canTogglePublicProfile } from "../utils/permissions";
+import { Badge, Button, Switch } from "./ui";
 
 const PublicToggleCard = () => {
-  const { user, setPublic } = useAuth();
+  const { user, isAuthenticated, isGuest, setPublic } = useAuth();
   const [pending, setPending] = useState(false);
   const [statusMsg, setStatusMsg] = useState(""); // ephemeral feedback (copy/share)
   const [statusTone, setStatusTone] = useState("success"); // "success" | "error"
-
-  if (!user) return null;
-
-  const shareUrl = `${window.location.origin}/u/${user.username}`;
-  const isPublic = !!user.is_public;
 
   // Auto-clear status after a short delay
   useEffect(() => {
@@ -20,6 +16,11 @@ const PublicToggleCard = () => {
     const id = setTimeout(() => setStatusMsg(""), 2200);
     return () => clearTimeout(id);
   }, [statusMsg]);
+
+  if (!canTogglePublicProfile({ user, isAuthenticated, isGuest })) return null;
+
+  const shareUrl = `${window.location.origin}/u/${user.username}`;
+  const isPublic = !!user.is_public;
 
   const save = async (next) => {
     if (pending) return;
@@ -65,132 +66,87 @@ const PublicToggleCard = () => {
 
   return (
     <section
-      className={`rounded-2xl border border-surface-border bg-surface-card p-4 shadow-sm ${
+      className={`rounded-2xl border border-surface-border bg-surface-card/95 shadow-panel ${
         pending ? "opacity-75" : ""
       }`}
       aria-busy={pending ? "true" : "false"}
     >
-      {/* Top row: description + switch (no inner heading) */}
-      <div className="flex items-start justify-between gap-4">
-        <p className="mt-0.5 text-sm text-content-muted">
-          Share a read-only view of your backlog.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-surface-border bg-surface-bg/30 p-5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-content-primary">
+              Public profile
+            </h3>
+            <Badge variant={isPublic ? "success" : "default"}>
+              {isPublic ? "Public" : "Private"}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm leading-6 text-content-muted">
+            Share a read-only view of your backlog.
+          </p>
+        </div>
 
-        {/* Switch */}
-        <label
-          className={`inline-flex select-none items-center gap-2 ${
-            pending ? "pointer-events-none" : ""
-          }`}
-        >
-          <span className="text-sm text-content-secondary">
-            {isPublic ? "On" : "Off"}
-          </span>
-          <input
-            type="checkbox"
-            className="sr-only"
-            checked={isPublic}
-            onChange={(e) => save(e.target.checked)}
-            disabled={pending}
-            aria-label="Toggle public profile"
-          />
-          <span
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              isPublic ? "bg-primary" : "bg-surface-elevated"
-            }`}
-          >
-            <span
-              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-content-primary transition-transform ${
-                isPublic ? "translate-x-5" : ""
-              }`}
-            />
-          </span>
-        </label>
+        <Switch
+          checked={isPublic}
+          onChange={save}
+          disabled={pending}
+          label={isPublic ? "On" : "Off"}
+          className="w-full sm:w-auto sm:min-w-44"
+        />
       </div>
 
-      {/* Body (only when public) */}
-      {isPublic && (
-        <div className="mt-4 space-y-3">
-          {/* Link chip + copy */}
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="p-5">
+        {isPublic ? (
+          <div className="space-y-4">
             <a
               href={shareUrl}
               target="_blank"
               rel="noopener noreferrer"
               title="Open public link in a new tab"
-              className="group inline-flex max-w-full items-center gap-2 truncate rounded-lg bg-surface-elevated px-3 py-1.5 text-sm text-content-secondary ring-1 ring-surface-border transition hover:underline focus:outline-none focus:ring-2 focus:ring-action-secondary"
+              className="group flex max-w-full items-center gap-2 rounded-xl border border-surface-border bg-surface-bg/45 px-3 py-2.5 text-sm text-content-secondary transition-colors hover:border-secondary/50 hover:text-content-primary focus:outline-none focus:ring-2 focus:ring-secondary/30"
             >
-              {/* external link icon */}
-              <svg
-                className="h-4 w-4 shrink-0 opacity-80 group-hover:opacity-100"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3ZM5 5h6v2H7v10h10v-4h2v6H5V5Z" />
-              </svg>
+              <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="truncate">{shareUrl}</span>
             </a>
 
-            <button
-              type="button"
-              onClick={copy}
-              className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-content-secondary ring-1 ring-surface-border transition hover:bg-surface-elevated focus:outline-none focus:ring-2 focus:ring-action-secondary"
-              aria-label="Copy link to clipboard"
-              title="Copy link"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1Zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 16H8V7h11v14Z" />
-              </svg>
-              <span className="sr-only sm:not-sr-only sm:inline">Copy</span>
-            </button>
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={share}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-action-primary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-action-primary-hover focus:outline-none focus:ring-2 focus:ring-action-secondary"
-            >
-              <svg
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="primary" onClick={share}>
+                <Share2 className="h-4 w-4" aria-hidden="true" />
+                Share link
+              </Button>
+              <Button type="button" variant="secondary" onClick={copy}>
+                <Copy className="h-4 w-4" aria-hidden="true" />
+                Copy
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  window.open(shareUrl, "_blank", "noopener,noreferrer")
+                }
               >
-                <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.23 3.23 0 0 0 0-1.39l7.02-4.11A2.99 2.99 0 1 0 15 5a3 3 0 0 0 .04.49L8.02 9.6A3 3 0 1 0 9 15a3 3 0 0 0-.04-.49l7.02 4.11c.05.12.02.27.02.38A3 3 0 1 0 18 16.08Z" />
-              </svg>
-              Share link
-            </button>
+                <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                Open
+              </Button>
+            </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                window.open(shareUrl, "_blank", "noopener,noreferrer")
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-action-secondary px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-action-secondary-hover focus:outline-none focus:ring-2 focus:ring-action-secondary"
-            >
-              <svg
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3ZM5 5h6v2H7v10h10v-4h2v6H5V5Z" />
-              </svg>
-              Open link
-            </button>
+            <p className="text-xs leading-5 text-content-muted">
+              Visitors can view your backlog but cannot edit or delete games.
+            </p>
           </div>
+        ) : (
+          <div className="rounded-xl border border-surface-border bg-surface-bg/35 p-4">
+            <p className="text-sm leading-6 text-content-muted">
+              Your profile is private. Turn this on when you want a shareable
+              read-only page.
+            </p>
+          </div>
+        )}
 
-          {/* Note */}
-          <p className="text-xs text-content-muted">
-            Visitors can view your backlog but cannot edit or delete games.
-          </p>
-
-          {/* Inline status (ARIA live) */}
+        <div className="mt-3 min-h-5">
           <div
             className={`text-xs ${
-              statusTone === "error" ? "text-state.error" : "text-state.success"
+              statusTone === "error" ? "text-state-error" : "text-state-success"
             }`}
             role="status"
             aria-live="polite"
@@ -198,7 +154,7 @@ const PublicToggleCard = () => {
             {statusMsg}
           </div>
         </div>
-      )}
+      </div>
     </section>
   );
 };

@@ -1,5 +1,7 @@
 # Bug Report Template
 
+Status: reusable template.
+
 ## Problem
 
 What is broken?
