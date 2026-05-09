@@ -46,6 +46,7 @@ jobs:
       cancel-in-progress: false
     env:
       PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      PGSSL: "true"
 
     steps:
       - name: Checkout
@@ -65,6 +66,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
           CONFIRM_PROD_MIGRATIONS: "true"
+          PGSSL: "true"
         run: npm run db:migrate:prod:status
 
       - name: Apply production migrations
@@ -72,6 +74,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
           CONFIRM_PROD_MIGRATIONS: "true"
+          PGSSL: "true"
         run: npm run db:migrate:prod
 
       - name: Skip production migrations

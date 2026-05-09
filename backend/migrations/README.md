@@ -25,7 +25,8 @@ npm run db:migrate:status
 
 Production migrations are run by GitHub Actions on pushes to `main` when the
 `PROD_DATABASE_URL` repository secret is configured. The workflow runs after CI
-passes, shows pending migrations, then applies them through:
+passes, connects with SSL enabled through `PGSSL=true`, shows pending
+migrations, then applies them through:
 
 ```bash
 npm run db:migrate:prod
