@@ -4,7 +4,8 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -43,7 +44,7 @@ const SortableGameCard = ({
       style={style}
       {...attributes}
       {...listeners}
-      className="w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
+      className="h-full w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
     >
       <GameCard
         game={game}
@@ -77,7 +78,10 @@ const GameGrid = ({
   const [activeId, setActiveId] = React.useState(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 180, tolerance: 8 },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -149,7 +153,7 @@ const GameGrid = ({
         {filteredGames.map((game) => (
           <div
             key={game.id}
-            className="w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
+            className="h-full w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
           >
             <GameCard
               game={game}

@@ -81,27 +81,37 @@ Recommended first bundle:
   - [x] clearer status, HLTB/hours, RAWG rating, Metacritic, date, and My Genre
     display in card grid
   - [x] better missing-cover fallback
-  - [ ] decide and implement final compact/dense/grid display modes; an
-    attempted library-view experiment was reverted, so this should be treated
-    as a fresh design pass
-  - [ ] make card density responsive so large libraries scan well
+  - [x] decide and implement baseline compact/grid/list display modes. Done
+    2026-05-09: toolbar view controls now switch between grid, compact grid,
+    and list layouts for private and public backlogs.
+  - [x] make card density responsive enough for the current library size. Done
+    2026-05-09: grid column widths, compact cards, and list mode give better
+    scanning options; very large-library virtualization remains a Phase 5
+    performance topic.
 - Improve add/edit game forms:
-  - better validation messages
-  - submit/loading/disabled states
-  - server-error display
+  - [x] better validation messages. Done 2026-05-09: add/edit forms show field
+    errors and duplicate-title messages from shared payload validation.
+  - [x] submit/loading/disabled states. Done 2026-05-09: add/edit submits
+    disable fields and show adding/saving labels while requests are pending.
+  - [x] server-error display. Done 2026-05-09: add/edit modals render API
+    errors in an inline alert area.
   - [x] date fields in the add flow, not only edit. Done 2026-05-08: add-game
     accepts optional started/finished dates while preserving backend auto-date
     behavior when fields are blank.
   - [x] focused payload validation tests. Done 2026-05-08: add/edit payload
     construction and API error message extraction are covered by
     `backlogForm.test.js`.
-  - clearer distinction between user-entered fields and metadata fields
+  - [x] clearer distinction between user-entered fields and metadata fields.
+    Done 2026-05-09: RAWG matching is shown separately from personal progress,
+    genre, score, and notes, with a collapsed change-metadata action in edit.
 - [x] Add duplicate detection when adding a game. Done 2026-05-08: the add flow
   blocks exact normalized title matches using shared `gameList` helpers, and the
   backend repeats the per-user duplicate check before insert and edit/name
   changes.
-- Improve drag-and-drop affordances, especially on mobile. Deferred to Phase 5
-  quality/browser testing unless a specific issue appears in use.
+- Improve drag-and-drop affordances, especially on mobile. Baseline is good
+  enough for now after the card/grid responsive pass and same-rank reorder bug
+  fix; deeper touch-device QA remains a Phase 5 quality task unless a specific
+  issue appears in use.
 - Improve demo flow:
   - clearer "save this demo" CTA
   - clearer expiration/temporary-session messaging
@@ -115,6 +125,9 @@ Recommended first bundle:
   - Done 2026-05-08: added transient GET retry and friendly status-0 network
     errors in `apiClient`, plus a private backlog retry action for fatal loads.
 - Add smoke tests for core flows once the UI stabilizes:
+  - manual checklist added at
+    [`testing/manual-smoke-checklist.md`](testing/manual-smoke-checklist.md)
+    as an interim safety net
   - open app after cold load
   - start demo
   - add game
@@ -132,10 +145,10 @@ Phase 1 status:
 
 Known follow-up from the styling pass:
 
-- Investigate unauthenticated `/api/games` requests after login or initial app
-  load. Current log symptom: `GET /api/games -> 401 unauthorized: No token
-  provided`. Determine whether this is expected guest-load noise, token storage
-  timing, or a real login refresh bug.
+- [x] Investigate unauthenticated `/api/games` requests after login or initial
+  app load. Done 2026-05-09: `useGames` now waits for auth initialization and
+  skips the private games request when there is no authenticated session, which
+  avoids expected guest-load 401 noise.
 
 ### Phase 2: Metadata, Caching, And Game Discovery
 
@@ -217,6 +230,15 @@ Account/auth:
   - email field if password reset requires it
   - account settings page
   - optional stronger auth/session storage later
+- Account settings should eventually become a broader settings area rather than
+  a one-off password screen:
+  - profile/account basics: username, password, email if needed for recovery
+  - a signed-in "my profile" view that reuses the public profile overview
+    sections for the owner, even before or without public sharing
+  - public profile controls and privacy defaults
+  - default view, sort, and filter preferences
+  - manage saved My Genre options and future custom statuses
+  - data export/delete account controls
 
 Steam integration:
 
@@ -231,7 +253,7 @@ Steam integration:
   - app id/platform/source
   - owned/not-started/completed hints if possible
 - Allow re-sync and conflict review.
-- Consider other imports later:
+- Consider other imports later, but keep these behind the Steam/import work:
   - CSV/JSON import/export
   - Epic/GOG/PlayStation/Xbox/Nintendo/manual sources if feasible
 
@@ -240,7 +262,9 @@ Library management:
 - Priority field.
 - "Next up" queue.
 - Pinned games.
-- Platforms owned or intended platform.
+- Platforms owned or intended platform. Lower priority for this project because
+  the primary personal use case is Steam-only; revisit if non-Steam tracking or
+  public-profile detail becomes important.
 - Ownership source:
   - Steam
   - Epic
@@ -273,6 +297,11 @@ Library management:
   - platform
   - priority
   - ownership source
+- Later customization/settings ideas:
+  - user-managed status labels and ordering
+  - user-managed My Genre presets for add/edit forms
+  - optional tag/mood presets for more flexible personal organization
+  - safeguards for existing games before deleting/renaming a custom status
 
 ### Phase 4: Dates, Insights, Public Profiles, Social, And Recommendations
 
@@ -280,23 +309,29 @@ Goal: make the app more useful after the library data is richer.
 
 Started/finished date integration:
 
-- Add date fields to add-game flow.
-- Add date filters:
+- [x] Add date fields to add-game flow.
+- [x] Add date sorting:
+  - started date
+  - finished date
+- [x] Use dates in cards and modals more clearly.
+- [x] Add first date-based insights:
+  - started vs finished games per year
+  - started/finished this year
+  - currently active games
+  - average start-to-finish duration
+  - oldest active unfinished game
+- Add date filters and click-throughs:
   - started before/after
   - finished before/after
   - finished this year/month
   - currently playing since
-- Add date sorting:
-  - started date
-  - finished date
+  - click a year in Insights to filter the backlog by started/finished year
+  - active games older than 6 months
+- Add date sorting later if schema supports it:
   - recently added/updated if schema supports it later
-- Use dates in cards and modals more clearly.
-- Use dates in insights:
-  - completion timeline
-  - yearly/monthly finished-game stats
-  - average completion pace
-  - active backlog aging
-  - currently playing duration
+- Optional later date analytics:
+  - monthly finished-game stats if yearly becomes too coarse
+  - currently playing duration and active backlog aging buckets
 
 Insights improvements:
 
@@ -309,14 +344,23 @@ Insights improvements:
 - Missing-hours resolution dashboard.
 - Click-through filters from insight widgets back to backlog.
 - ETA improvements using real pace/history when enough data exists.
+- Score distribution and "favorite/highest rated" summaries. This pairs well
+  with public-profile polish and completion review work.
 
 Public profile:
 
-- Stronger public profile header:
+- Stronger public profile header. A share link already exists, so focus on
+  making the profile feel useful and presentable:
   - stats
-  - share/copy action
+  - clearer share/copy action placement
   - currently playing
   - favorites/top rated
+- Public profile sections:
+  - currently playing
+  - recently finished
+  - top rated/favorites
+  - completed
+  - wishlist/next up if public
 - Privacy controls:
   - thoughts
   - scores
@@ -324,12 +368,14 @@ Public profile:
   - abandoned games
   - specific fields or sections
 - Public profile filtered URLs for sharing subsets.
-- Public profile sections:
-  - favorites
-  - currently playing
-  - completed
-  - top rated
-  - wishlist/next up if public
+
+Completion review:
+
+- Make finished games feel more like a personal log entry:
+  - prompt for score, thoughts, and finished date when moving to finished
+  - show a cleaner "My review" block in the game modal
+  - optionally surface public reviews on the public profile when privacy allows
+  - keep this lightweight; comments/social reviews are a later feature
 
 Social/friends, later:
 
@@ -395,14 +441,17 @@ Goal: keep the app reliable as features grow.
 
 If another agent starts now, recommended order:
 
-1. Improve global styling and game cards using existing shared UI primitives.
-2. Improve add/edit forms, including started/finished dates and duplicate
-   detection.
-3. Redesign metadata caching/refresh around RAWG/HLTB/Metacritic.
-4. Add forgot-password/account settings basics.
-5. Add Steam import/sync.
-6. Expand insights and date-based analytics.
-7. Improve public profile, then consider friends/social/recommendations.
+1. Finish the date-filter/click-through slice now that date sorting and first
+   date insights exist.
+2. Improve public profile presentation with stats, currently playing, recently
+   finished, and top-rated sections while keeping the existing share link.
+3. Add a lightweight browser smoke-test pass for the core flows.
+4. Add lightweight completion-review polish around finished games.
+5. Do small demo-flow copy/CTA refinements as they come up in use.
+6. Plan the settings area: account basics, public/privacy controls, future
+   custom statuses, and My Genre presets.
+7. Redesign metadata caching/refresh around RAWG/HLTB/Metacritic.
+8. Add Steam import/sync, including import/export decisions.
 
 ## Phase 0: Codebase Foundation
 

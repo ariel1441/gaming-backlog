@@ -3,6 +3,7 @@ import {
   ArrowDownAZ,
   ArrowUpAZ,
   BarChart3,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -16,6 +17,7 @@ import {
   LogOut,
   Plus,
   Search,
+  SlidersHorizontal,
   Sparkles,
   User2,
   X,
@@ -35,6 +37,8 @@ const sortOptions = [
   { value: "rawgRating", label: "RAWG rating" },
   { value: "metacritic", label: "Metacritic" },
   { value: "releaseDate", label: "Release date" },
+  { value: "startedDate", label: "Started date" },
+  { value: "finishedDate", label: "Finished date" },
 ];
 
 const viewOptions = [
@@ -61,12 +65,13 @@ export default function BacklogToolbar({
   const subtitle =
     identity?.subtitle || `${resultCount} of ${totalCount} games`;
   const IdentityIcon = identity?.icon || LibraryBig;
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 -mx-2 mb-5 border-b border-surface-border bg-surface-bg/95 px-2 backdrop-blur-xl sm:-mx-6 sm:px-6">
       <div className="py-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex min-w-0 shrink-0 items-center gap-3">
+          <div className="order-1 flex min-w-0 shrink-0 items-center gap-3 md:order-none">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-surface-border bg-surface-elevated/70 text-content-secondary shadow-inner shadow-black/10">
               <IdentityIcon className="h-5 w-5" aria-hidden="true" />
             </div>
@@ -89,13 +94,13 @@ export default function BacklogToolbar({
             onSelectGame={onSelectGame}
           />
 
-          <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2">
+          <div className="order-2 ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2 md:order-none">
             {actions?.surprise ? (
               <Button
                 type="button"
                 variant="secondary"
                 onClick={actions.surprise}
-                className="h-10"
+                className="hidden h-10 md:inline-flex"
               >
                 <Dice5 className="h-4 w-4" aria-hidden="true" />
                 Surprise
@@ -106,7 +111,7 @@ export default function BacklogToolbar({
                 type="button"
                 variant="primary"
                 onClick={actions.add}
-                className="h-10"
+                className="hidden h-10 md:inline-flex"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Add game
@@ -117,7 +122,54 @@ export default function BacklogToolbar({
           </div>
         </div>
 
-        <div className="mt-3 grid gap-2 border-t border-surface-border/70 pt-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+        <div className="mt-3 flex items-center gap-2 border-t border-surface-border/70 pt-3 md:hidden">
+          <Button
+            type="button"
+            variant={mobileControlsOpen ? "primary" : "secondary"}
+            onClick={() => setMobileControlsOpen((value) => !value)}
+            className="h-10 flex-1 justify-center"
+            aria-expanded={mobileControlsOpen}
+          >
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            Controls
+            {filters.count ? (
+              <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
+                {filters.count}
+              </span>
+            ) : null}
+          </Button>
+          {actions?.add ? (
+            <IconButton
+              icon={Plus}
+              onClick={actions.add}
+              label="Add game"
+              title="Add game"
+              variant="primary"
+              className="h-10 w-10"
+            />
+          ) : null}
+        </div>
+
+        <div
+          className={[
+            "mt-3 gap-2 border-t border-surface-border/70 pt-3 md:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center",
+            mobileControlsOpen ? "grid" : "hidden",
+          ].join(" ")}
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-2 md:hidden">
+            {actions?.surprise ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={actions.surprise}
+                className="h-10 flex-1 justify-center"
+              >
+                <Dice5 className="h-4 w-4" aria-hidden="true" />
+                Surprise
+              </Button>
+            ) : null}
+          </div>
+
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <FilterDropdown
               label="Status"
@@ -147,6 +199,12 @@ export default function BacklogToolbar({
               hoursRange={filters.hoursRange}
               setHoursRange={filters.setHoursRange}
             />
+            {filters.setDateFilter ? (
+              <DateDropdown
+                dateFilter={filters.dateFilter}
+                setDateFilter={filters.setDateFilter}
+              />
+            ) : null}
             {actions?.toggleCompleted ? (
               <Button
                 type="button"
@@ -192,7 +250,16 @@ export default function BacklogToolbar({
           </div>
         </div>
 
-        {filters.count ? <ActiveFilterSummary filters={filters} /> : null}
+        {filters.count ? (
+          <div
+            className={[
+              "mt-3 md:block",
+              mobileControlsOpen ? "block" : "hidden",
+            ].join(" ")}
+          >
+            <ActiveFilterSummary filters={filters} />
+          </div>
+        ) : null}
       </div>
     </header>
   );
@@ -251,7 +318,7 @@ function SearchBox({
   return (
     <div
       ref={wrapperRef}
-      className="relative min-w-[280px] flex-1 basis-[420px] lg:max-w-[760px]"
+      className="order-3 relative w-full min-w-[280px] flex-1 basis-full md:order-none md:w-auto md:basis-[420px] lg:max-w-[760px]"
     >
       <Search
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted"
@@ -527,6 +594,110 @@ function HoursDropdown({ hoursBounds, hoursRange, setHoursRange }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function DateDropdown({ dateFilter, setDateFilter }) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+  const year = new Date().getFullYear();
+  const options = [
+    {
+      label: `Started ${year}`,
+      value: { type: "startedYear", year },
+    },
+    {
+      label: `Finished ${year}`,
+      value: { type: "finishedYear", year },
+    },
+    {
+      label: "Active games",
+      value: { type: "activeUnfinished" },
+    },
+    {
+      label: "Active 6+ months",
+      value: { type: "activeOlderThanMonths", months: 6 },
+    },
+  ];
+  const activeLabel =
+    options.find((option) => isSameDateFilter(option.value, dateFilter))
+      ?.label || "Any date";
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (!wrapperRef.current?.contains(event.target)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
+  const select = (value) => {
+    setDateFilter(value);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative max-sm:static">
+      <Button
+        type="button"
+        variant={dateFilter ? "primary" : "secondary"}
+        onClick={() => setOpen((value) => !value)}
+        className="h-10 rounded-xl"
+        aria-expanded={open}
+      >
+        <CalendarDays className="h-4 w-4" aria-hidden="true" />
+        Dates
+        <span className="text-xs opacity-80">{activeLabel}</span>
+        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+      </Button>
+
+      {open ? (
+        <div className="absolute left-2 right-2 top-[calc(100%+0.5rem)] z-50 rounded-2xl border border-surface-border bg-surface-card p-3 shadow-2xl shadow-black/45 sm:left-0 sm:right-auto sm:w-64">
+          <div className="mb-2 text-sm font-semibold text-content-primary">
+            Dates
+          </div>
+          <div className="space-y-1">
+            {options.map((option) => {
+              const active = isSameDateFilter(option.value, dateFilter);
+              return (
+                <button
+                  type="button"
+                  key={option.label}
+                  onClick={() => select(option.value)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                    active
+                      ? "bg-primary/10 text-content-primary"
+                      : "text-content-secondary hover:bg-surface-elevated hover:text-content-primary"
+                  }`}
+                >
+                  {option.label}
+                  {active ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          {dateFilter ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => select(null)}
+              className="mt-2"
+            >
+              Clear dates
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function isSameDateFilter(a, b) {
+  return (
+    a?.type === b?.type &&
+    Number(a?.year || 0) === Number(b?.year || 0) &&
+    Number(a?.months || 0) === Number(b?.months || 0)
   );
 }
 

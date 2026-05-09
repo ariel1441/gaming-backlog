@@ -11,19 +11,16 @@ export default function DemoBanner({ onSave, onDiscard }) {
           flex-wrap sm:flex-nowrap
         "
       >
-        {/* left: message */}
         <div className="min-w-0 pl-2 sm:pl-6">
           <span className="font-semibold">
-            You're exploring a demo workspace.
+            This is a temporary demo workspace.
           </span>
           <span className="hidden sm:inline text-sm opacity-90 ml-2">
-            Add games, reorder, and view insights freely.
+            Save it to keep your games, order, and edits.
           </span>
         </div>
 
-        {/* right: actions */}
         <div className="flex items-center gap-2 shrink-0 pr-2 sm:pr-6">
-          {/* solid blue */}
           <button
             onClick={onSave}
             className="rounded-md px-3 py-1.5 text-sm
@@ -33,10 +30,9 @@ export default function DemoBanner({ onSave, onDiscard }) {
                        focus:outline-none focus:ring-2 focus:ring-primary/30
                        transition-colors"
           >
-            Save as my account
+            Keep changes
           </button>
 
-          {/* blue outline */}
           <button
             onClick={onDiscard}
             className="rounded-md px-3 py-1.5 text-sm
@@ -46,7 +42,7 @@ export default function DemoBanner({ onSave, onDiscard }) {
                        focus:outline-none focus:ring-2 focus:ring-primary/30
                        transition-colors"
           >
-            Discard
+            Discard demo
           </button>
         </div>
       </div>

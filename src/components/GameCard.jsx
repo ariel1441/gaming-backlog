@@ -84,6 +84,14 @@ function TimelineRow({ startedAt, finishedAt }) {
   );
 }
 
+function TimelineSlot({ startedAt, finishedAt, reserve = false }) {
+  if (!startedAt && !finishedAt) {
+    return reserve ? <div className="h-[30px]" aria-hidden="true" /> : null;
+  }
+
+  return <TimelineRow startedAt={startedAt} finishedAt={finishedAt} />;
+}
+
 function ReleaseBadge({ value }) {
   if (!value) return null;
 
@@ -256,27 +264,31 @@ export default function GameCard({
           compact
         />
         <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 p-4 pr-14 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-          <div className="min-w-0 self-center">
+          <div className="grid min-w-0 content-center gap-3">
             <h3 className="line-clamp-2 text-lg font-semibold text-content-primary">
               {game.name}
             </h3>
-            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-              {game.status ? <StatusBadge status={game.status} /> : null}
-              {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
-              {visibleMyGenres.map((genre) => (
-                <span
-                  key={genre}
-                  className="max-w-full truncate rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-medium text-content-secondary"
-                  title={genre}
-                >
-                  {genre}
-                </span>
-              ))}
-              {hiddenMyGenres ? (
-                <span className="rounded-full border border-surface-border bg-surface-elevated/60 px-2.5 py-1 text-xs font-medium text-content-muted">
-                  +{hiddenMyGenres}
-                </span>
-              ) : null}
+            <div className="grid min-h-[66px] min-w-0 content-start gap-2">
+              <div className="flex min-h-[30px] min-w-0 flex-wrap items-center gap-2">
+                {game.status ? <StatusBadge status={game.status} /> : null}
+                {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
+              </div>
+              <div className="flex min-h-[30px] min-w-0 flex-wrap items-center gap-2">
+                {visibleMyGenres.map((genre) => (
+                  <span
+                    key={genre}
+                    className="max-w-full truncate rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-medium text-content-secondary"
+                    title={genre}
+                  >
+                    {genre}
+                  </span>
+                ))}
+                {hiddenMyGenres ? (
+                  <span className="rounded-full border border-surface-border bg-surface-elevated/60 px-2.5 py-1 text-xs font-medium text-content-muted">
+                    +{hiddenMyGenres}
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 xl:justify-end">
@@ -289,7 +301,7 @@ export default function GameCard({
                 tone={stat.tone}
               />
             ))}
-            <TimelineRow startedAt={startedAt} finishedAt={finishedAt} />
+            <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
           </div>
         </div>
       </article>
@@ -298,7 +310,7 @@ export default function GameCard({
 
   return (
     <article
-      className="group relative overflow-hidden rounded-2xl border border-surface-border bg-surface-card/95 shadow-sm transition-all duration-300 hover:border-primary/30 hover:bg-surface-card hover:shadow-glow-primary hover:-translate-y-0.5"
+      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-surface-border bg-surface-card/95 shadow-sm transition-all duration-300 hover:border-primary/30 hover:bg-surface-card hover:shadow-glow-primary hover:-translate-y-0.5"
       onClick={handleCardClick}
       style={{ WebkitTapHighlightColor: "transparent" }}
     >
@@ -332,23 +344,44 @@ export default function GameCard({
         </div>
       </div>
 
-      <div className="space-y-4 p-4">
-        <div className="flex flex-wrap gap-2">
-          {cardStats.map((stat) => (
-            <MiniStat
-              key={stat.label}
-              icon={stat.icon}
-              label={stat.label}
-              value={stat.value}
-              tone={stat.tone}
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        {isCompact ? (
+          <div className="grid min-h-[68px] content-start gap-2">
+            <div className="flex min-h-[30px] flex-wrap gap-2">
+              {cardStats.map((stat) => (
+                <MiniStat
+                  key={stat.label}
+                  icon={stat.icon}
+                  label={stat.label}
+                  value={stat.value}
+                  tone={stat.tone}
+                />
+              ))}
+            </div>
+            <TimelineSlot
+              startedAt={startedAt}
+              finishedAt={finishedAt}
+              reserve
             />
-          ))}
-          <TimelineRow startedAt={startedAt} finishedAt={finishedAt} />
-        </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {cardStats.map((stat) => (
+              <MiniStat
+                key={stat.label}
+                icon={stat.icon}
+                label={stat.label}
+                value={stat.value}
+                tone={stat.tone}
+              />
+            ))}
+            <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
+          </div>
+        )}
 
         {visibleMyGenres.length ? (
           <div
-            className={`flex min-h-[30px] items-center gap-2 border-t border-surface-border/70 pt-4 ${
+            className={`mt-auto flex min-h-[46px] items-start gap-2 border-t border-surface-border/70 pt-4 ${
               isCompact ? "flex-nowrap overflow-hidden" : "flex-wrap"
             }`}
           >

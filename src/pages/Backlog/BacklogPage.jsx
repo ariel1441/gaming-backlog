@@ -59,6 +59,8 @@ export default function BacklogPage() {
     setSelectedGenres,
     selectedMyGenres,
     setSelectedMyGenres,
+    dateFilter,
+    setDateFilter,
     sortKey,
     setSortKey,
     isReversed,
@@ -104,6 +106,7 @@ export default function BacklogPage() {
     setSelectedStatuses,
     setSelectedGenres,
     setSelectedMyGenres,
+    setDateFilter,
   });
 
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
@@ -240,6 +243,7 @@ export default function BacklogPage() {
         selectedMyGenres,
         hoursRange,
         hoursBounds,
+        dateFilter,
         sortKey,
         isReversed,
       });
@@ -254,12 +258,14 @@ export default function BacklogPage() {
     selectedStatuses.length +
     selectedGenres.length +
     selectedMyGenres.length +
+    (dateFilter ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveFilters = Boolean(
     searchQuery ||
       selectedStatuses.length ||
       selectedGenres.length ||
       selectedMyGenres.length ||
+      dateFilter ||
       hasHoursFilter
   );
 
@@ -303,6 +309,8 @@ export default function BacklogPage() {
               selectedStatuses,
               selectedGenres,
               selectedMyGenres,
+              dateFilter,
+              setDateFilter,
               setSelectedStatuses,
               setSelectedGenres,
               setSelectedMyGenres,
@@ -367,6 +375,8 @@ export default function BacklogPage() {
               selectedStatuses,
               selectedGenres,
               selectedMyGenres,
+              dateFilter,
+              setDateFilter,
               hoursBounds,
               hoursRange,
               setHoursRange,
