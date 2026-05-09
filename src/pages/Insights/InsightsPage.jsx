@@ -20,6 +20,7 @@ import Tile from "../../components/insights/Tile";
 import HoursByStatusChart from "../../components/insights/HoursByStatusChart";
 import GenresChart from "../../components/insights/GenresChart";
 import EtaDonut from "../../components/insights/EtaDonut";
+import DateTimelineChart from "../../components/insights/DateTimelineChart";
 
 import {
   KPISkeleton,
@@ -33,6 +34,7 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 
 // utils
 import { useChartTheme } from "../../utils/chartTheme";
+import { computeGameDateInsights } from "../../utils/gameDateInsights";
 import {
   fmtInt,
   parseBool,
@@ -123,6 +125,9 @@ export default function InsightsPage() {
               ? x.how_long_to_beat
               : null,
             status: x.status || null,
+            name: x.name || null,
+            started_at: x.started_at || null,
+            finished_at: x.finished_at || null,
           }))
         : [];
       setGames(normalizedGames);
@@ -262,6 +267,11 @@ export default function InsightsPage() {
   const genreAccessor = genreMetric === "hours" ? "hoursRounded" : "count";
   const genreData = genreType === "my" ? myGenreDisplay : rawgGenreDisplay;
 
+  const dateInsights = useMemo(
+    () => computeGameDateInsights(games),
+    [games]
+  );
+
   const onStatusClick = useCallback(
     (status) => nav(`${GAMES_ROUTE}${toQP({ status })}`),
     [nav]
@@ -278,6 +288,19 @@ export default function InsightsPage() {
         })}`
       ),
     [nav, genreType, genreStatus, genreMetric]
+  );
+
+  const onDateYearClick = useCallback(
+    (dateType, year) => {
+      if (!dateType || !year) return;
+      nav(`${GAMES_ROUTE}${toQP({ dateType, year })}`);
+    },
+    [nav]
+  );
+
+  const onActiveClick = useCallback(
+    (active) => nav(`${GAMES_ROUTE}${toQP({ active })}`),
+    [nav]
   );
 
   const allHoursFallback = useMemo(
@@ -379,6 +402,61 @@ export default function InsightsPage() {
             <Tile label="Avg hours" value={`${fmtInt(totals.avg_hours)} h`} />
           </section>
 
+          <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="font-semibold text-content-primary">
+                  Started and finished over time
+                </h2>
+                <p className="mt-1 text-sm text-content-muted">
+                  Yearly progress from the dates saved on your games.
+                </p>
+              </div>
+            </div>
+
+            <DateTimelineChart
+              data={dateInsights.yearly}
+              axisTick={axisTick}
+              gridStroke={gridStroke}
+              tooltipColors={tooltipColors}
+              onBarClick={onDateYearClick}
+            />
+
+            <div className="grid gap-3 border-t border-surface-border pt-4 sm:grid-cols-2 lg:grid-cols-5">
+              <InsightStat
+                label="Started this year"
+                value={fmtInt(dateInsights.startedThisYear)}
+              />
+              <InsightStat
+                label="Finished this year"
+                value={fmtInt(dateInsights.finishedThisYear)}
+              />
+              <InsightStat
+                label="Currently active"
+                value={fmtInt(dateInsights.activeCount)}
+                onClick={() => onActiveClick("unfinished")}
+              />
+              <InsightStat
+                label="Avg start to finish"
+                value={
+                  dateInsights.averageCompletionDays == null
+                    ? "N/A"
+                    : `${fmtInt(dateInsights.averageCompletionDays)} days`
+                }
+              />
+              <InsightStat
+                label="Oldest active"
+                value={
+                  dateInsights.oldestActive
+                    ? dateInsights.oldestActive.name
+                    : "N/A"
+                }
+                detail={dateInsights.oldestActive?.started_at}
+                onClick={() => onActiveClick("unfinished")}
+              />
+            </div>
+          </section>
+
           {/* Hours by status + ETA */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             <HoursByStatusChart
@@ -435,5 +513,30 @@ export default function InsightsPage() {
         <div className="text-sm text-content-muted">No insights available.</div>
       )}
     </div>
+  );
+}
+
+function InsightStat({ label, value, detail, onClick }) {
+  const Element = onClick ? "button" : "div";
+  return (
+    <Element
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`min-w-0 text-left ${
+        onClick
+          ? "rounded-xl p-2 -m-2 transition-colors hover:bg-surface-elevated/60"
+          : ""
+      }`}
+    >
+      <div className="text-xs uppercase tracking-wide text-content-muted">
+        {label}
+      </div>
+      <div className="mt-1 truncate text-lg font-semibold text-content-primary">
+        {value}
+      </div>
+      {detail ? (
+        <div className="mt-1 text-xs text-content-muted">{detail}</div>
+      ) : null}
+    </Element>
   );
 }

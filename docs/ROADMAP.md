@@ -230,6 +230,15 @@ Account/auth:
   - email field if password reset requires it
   - account settings page
   - optional stronger auth/session storage later
+- Account settings should eventually become a broader settings area rather than
+  a one-off password screen:
+  - profile/account basics: username, password, email if needed for recovery
+  - a signed-in "my profile" view that reuses the public profile overview
+    sections for the owner, even before or without public sharing
+  - public profile controls and privacy defaults
+  - default view, sort, and filter preferences
+  - manage saved My Genre options and future custom statuses
+  - data export/delete account controls
 
 Steam integration:
 
@@ -244,7 +253,7 @@ Steam integration:
   - app id/platform/source
   - owned/not-started/completed hints if possible
 - Allow re-sync and conflict review.
-- Consider other imports later:
+- Consider other imports later, but keep these behind the Steam/import work:
   - CSV/JSON import/export
   - Epic/GOG/PlayStation/Xbox/Nintendo/manual sources if feasible
 
@@ -253,7 +262,9 @@ Library management:
 - Priority field.
 - "Next up" queue.
 - Pinned games.
-- Platforms owned or intended platform.
+- Platforms owned or intended platform. Lower priority for this project because
+  the primary personal use case is Steam-only; revisit if non-Steam tracking or
+  public-profile detail becomes important.
 - Ownership source:
   - Steam
   - Epic
@@ -286,6 +297,11 @@ Library management:
   - platform
   - priority
   - ownership source
+- Later customization/settings ideas:
+  - user-managed status labels and ordering
+  - user-managed My Genre presets for add/edit forms
+  - optional tag/mood presets for more flexible personal organization
+  - safeguards for existing games before deleting/renaming a custom status
 
 ### Phase 4: Dates, Insights, Public Profiles, Social, And Recommendations
 
@@ -293,23 +309,29 @@ Goal: make the app more useful after the library data is richer.
 
 Started/finished date integration:
 
-- Add date fields to add-game flow.
-- Add date filters:
+- [x] Add date fields to add-game flow.
+- [x] Add date sorting:
+  - started date
+  - finished date
+- [x] Use dates in cards and modals more clearly.
+- [x] Add first date-based insights:
+  - started vs finished games per year
+  - started/finished this year
+  - currently active games
+  - average start-to-finish duration
+  - oldest active unfinished game
+- Add date filters and click-throughs:
   - started before/after
   - finished before/after
   - finished this year/month
   - currently playing since
-- Add date sorting:
-  - started date
-  - finished date
+  - click a year in Insights to filter the backlog by started/finished year
+  - active games older than 6 months
+- Add date sorting later if schema supports it:
   - recently added/updated if schema supports it later
-- Use dates in cards and modals more clearly.
-- Use dates in insights:
-  - completion timeline
-  - yearly/monthly finished-game stats
-  - average completion pace
-  - active backlog aging
-  - currently playing duration
+- Optional later date analytics:
+  - monthly finished-game stats if yearly becomes too coarse
+  - currently playing duration and active backlog aging buckets
 
 Insights improvements:
 
@@ -322,14 +344,23 @@ Insights improvements:
 - Missing-hours resolution dashboard.
 - Click-through filters from insight widgets back to backlog.
 - ETA improvements using real pace/history when enough data exists.
+- Score distribution and "favorite/highest rated" summaries. This pairs well
+  with public-profile polish and completion review work.
 
 Public profile:
 
-- Stronger public profile header:
+- Stronger public profile header. A share link already exists, so focus on
+  making the profile feel useful and presentable:
   - stats
-  - share/copy action
+  - clearer share/copy action placement
   - currently playing
   - favorites/top rated
+- Public profile sections:
+  - currently playing
+  - recently finished
+  - top rated/favorites
+  - completed
+  - wishlist/next up if public
 - Privacy controls:
   - thoughts
   - scores
@@ -337,12 +368,14 @@ Public profile:
   - abandoned games
   - specific fields or sections
 - Public profile filtered URLs for sharing subsets.
-- Public profile sections:
-  - favorites
-  - currently playing
-  - completed
-  - top rated
-  - wishlist/next up if public
+
+Completion review:
+
+- Make finished games feel more like a personal log entry:
+  - prompt for score, thoughts, and finished date when moving to finished
+  - show a cleaner "My review" block in the game modal
+  - optionally surface public reviews on the public profile when privacy allows
+  - keep this lightweight; comments/social reviews are a later feature
 
 Social/friends, later:
 
@@ -408,13 +441,17 @@ Goal: keep the app reliable as features grow.
 
 If another agent starts now, recommended order:
 
-1. Add a lightweight browser smoke-test pass for the core flows.
-2. Do small demo-flow copy/CTA refinements as they come up in use.
-3. Redesign metadata caching/refresh around RAWG/HLTB/Metacritic.
-4. Add forgot-password/account settings basics.
-5. Add Steam import/sync.
-6. Expand insights and date-based analytics.
-7. Improve public profile, then consider friends/social/recommendations.
+1. Finish the date-filter/click-through slice now that date sorting and first
+   date insights exist.
+2. Improve public profile presentation with stats, currently playing, recently
+   finished, and top-rated sections while keeping the existing share link.
+3. Add a lightweight browser smoke-test pass for the core flows.
+4. Add lightweight completion-review polish around finished games.
+5. Do small demo-flow copy/CTA refinements as they come up in use.
+6. Plan the settings area: account basics, public/privacy controls, future
+   custom statuses, and My Genre presets.
+7. Redesign metadata caching/refresh around RAWG/HLTB/Metacritic.
+8. Add Steam import/sync, including import/export decisions.
 
 ## Phase 0: Codebase Foundation
 

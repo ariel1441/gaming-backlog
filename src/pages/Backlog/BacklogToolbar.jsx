@@ -3,6 +3,7 @@ import {
   ArrowDownAZ,
   ArrowUpAZ,
   BarChart3,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -36,6 +37,8 @@ const sortOptions = [
   { value: "rawgRating", label: "RAWG rating" },
   { value: "metacritic", label: "Metacritic" },
   { value: "releaseDate", label: "Release date" },
+  { value: "startedDate", label: "Started date" },
+  { value: "finishedDate", label: "Finished date" },
 ];
 
 const viewOptions = [
@@ -196,6 +199,12 @@ export default function BacklogToolbar({
               hoursRange={filters.hoursRange}
               setHoursRange={filters.setHoursRange}
             />
+            {filters.setDateFilter ? (
+              <DateDropdown
+                dateFilter={filters.dateFilter}
+                setDateFilter={filters.setDateFilter}
+              />
+            ) : null}
             {actions?.toggleCompleted ? (
               <Button
                 type="button"
@@ -585,6 +594,110 @@ function HoursDropdown({ hoursBounds, hoursRange, setHoursRange }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function DateDropdown({ dateFilter, setDateFilter }) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+  const year = new Date().getFullYear();
+  const options = [
+    {
+      label: `Started ${year}`,
+      value: { type: "startedYear", year },
+    },
+    {
+      label: `Finished ${year}`,
+      value: { type: "finishedYear", year },
+    },
+    {
+      label: "Active games",
+      value: { type: "activeUnfinished" },
+    },
+    {
+      label: "Active 6+ months",
+      value: { type: "activeOlderThanMonths", months: 6 },
+    },
+  ];
+  const activeLabel =
+    options.find((option) => isSameDateFilter(option.value, dateFilter))
+      ?.label || "Any date";
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (!wrapperRef.current?.contains(event.target)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
+  const select = (value) => {
+    setDateFilter(value);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative max-sm:static">
+      <Button
+        type="button"
+        variant={dateFilter ? "primary" : "secondary"}
+        onClick={() => setOpen((value) => !value)}
+        className="h-10 rounded-xl"
+        aria-expanded={open}
+      >
+        <CalendarDays className="h-4 w-4" aria-hidden="true" />
+        Dates
+        <span className="text-xs opacity-80">{activeLabel}</span>
+        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+      </Button>
+
+      {open ? (
+        <div className="absolute left-2 right-2 top-[calc(100%+0.5rem)] z-50 rounded-2xl border border-surface-border bg-surface-card p-3 shadow-2xl shadow-black/45 sm:left-0 sm:right-auto sm:w-64">
+          <div className="mb-2 text-sm font-semibold text-content-primary">
+            Dates
+          </div>
+          <div className="space-y-1">
+            {options.map((option) => {
+              const active = isSameDateFilter(option.value, dateFilter);
+              return (
+                <button
+                  type="button"
+                  key={option.label}
+                  onClick={() => select(option.value)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                    active
+                      ? "bg-primary/10 text-content-primary"
+                      : "text-content-secondary hover:bg-surface-elevated hover:text-content-primary"
+                  }`}
+                >
+                  {option.label}
+                  {active ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          {dateFilter ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => select(null)}
+              className="mt-2"
+            >
+              Clear dates
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function isSameDateFilter(a, b) {
+  return (
+    a?.type === b?.type &&
+    Number(a?.year || 0) === Number(b?.year || 0) &&
+    Number(a?.months || 0) === Number(b?.months || 0)
   );
 }
 

@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { useDebouncedValue } from "./useDebouncedValue";
+import { matchesDateFilter } from "../utils/gameList";
 
 function toArray(raw) {
   if (Array.isArray(raw)) return raw;
@@ -13,6 +14,7 @@ export function useFilters(games, opts = {}) {
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [selectedMyGenres, setSelectedMyGenres] = useState([]);
+  const [dateFilter, setDateFilter] = useState(null);
   const [sortKey, setSortKey] = useState(opts.initialSortKey || "");
   const [isReversed, setIsReversed] = useState(!!opts.initialReverse);
 
@@ -114,6 +116,7 @@ export function useFilters(games, opts = {}) {
     setSelectedStatuses([]);
     setSelectedGenres([]);
     setSelectedMyGenres([]);
+    setDateFilter(null);
     setSearchQuery("");
     if (hoursBounds.max > hoursBounds.min) setHoursRange(hoursBounds);
   }, [hoursBounds]);
@@ -124,6 +127,7 @@ export function useFilters(games, opts = {}) {
     selectedStatuses.length === 0 &&
     selectedGenres.length === 0 &&
     selectedMyGenres.length === 0 &&
+    !dateFilter &&
     !isHoursActive &&
     !sortKey;
 
@@ -179,6 +183,9 @@ export function useFilters(games, opts = {}) {
         if (!Number.isFinite(h)) return false;
         if (h < debouncedHoursRange.min || h > debouncedHoursRange.max)
           return false;
+      }
+      if (dateFilter) {
+        if (!matchesDateFilter(g, dateFilter)) return false;
       }
       return true;
     };
@@ -239,6 +246,7 @@ export function useFilters(games, opts = {}) {
     selectedStatuses,
     selectedGenres,
     selectedMyGenres,
+    dateFilter,
     sortKey,
     isReversed,
     isHoursActive,
@@ -256,6 +264,8 @@ export function useFilters(games, opts = {}) {
     setSelectedGenres,
     selectedMyGenres,
     setSelectedMyGenres,
+    dateFilter,
+    setDateFilter,
     sortKey,
     setSortKey,
     isReversed,

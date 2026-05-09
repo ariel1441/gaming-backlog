@@ -6,6 +6,7 @@ export default function useApplyFiltersFromQuery({
   setSelectedStatuses,
   setSelectedGenres,
   setSelectedMyGenres,
+  setDateFilter,
 }) {
   const [sp] = useSearchParams();
   const { rawStatusesForGroup, toGroup } = useStatusGroups();
@@ -15,6 +16,9 @@ export default function useApplyFiltersFromQuery({
     const status = sp.get("status");
     const genreType = sp.get("genreType");
     const genre = sp.get("genre");
+    const dateType = sp.get("dateType");
+    const year = sp.get("year");
+    const active = sp.get("active");
 
     if (group) {
       const g = toGroup(group); // normalize "playing"/"Playing"/etc
@@ -26,6 +30,22 @@ export default function useApplyFiltersFromQuery({
 
     if (genre && genreType === "rawg") setSelectedGenres([genre]);
     if (genre && genreType === "my") setSelectedMyGenres([genre]);
+
+    if (setDateFilter) {
+      if (
+        (dateType === "started" || dateType === "finished") &&
+        /^\d{4}$/.test(year || "")
+      ) {
+        setDateFilter({
+          type: dateType === "started" ? "startedYear" : "finishedYear",
+          year: Number(year),
+        });
+      } else if (active === "unfinished") {
+        setDateFilter({ type: "activeUnfinished" });
+      } else if (active === "olderThan6Months") {
+        setDateFilter({ type: "activeOlderThanMonths", months: 6 });
+      }
+    }
   }, [
     sp,
     rawStatusesForGroup,
@@ -33,5 +53,6 @@ export default function useApplyFiltersFromQuery({
     setSelectedStatuses,
     setSelectedGenres,
     setSelectedMyGenres,
+    setDateFilter,
   ]);
 }

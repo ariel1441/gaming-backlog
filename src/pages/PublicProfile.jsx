@@ -2,24 +2,31 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Copy,
   Gamepad2,
   LibraryBig,
   LockKeyhole,
+  PlayCircle,
+  Star,
 } from "lucide-react";
 import GameGrid from "../components/GameGrid";
 import GameModal from "../components/GameModal";
 import BacklogToolbar from "./Backlog/BacklogToolbar";
-import { Button, EmptyState } from "../components/ui";
+import { Button, EmptyState, StatusBadge, useToast } from "../components/ui";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useFilters } from "../hooks/useFilters";
 import { useStatuses } from "../hooks/useStatuses";
 import { getPublicProfile, listPublicGames } from "../services/publicService";
 import { buildDisplayGames } from "../utils/gameList";
+import { parseGameDate } from "../utils/gameDateInsights";
 
 const COMPLETED_STATUSES = ["finished", "played alot but didnt finish"];
 
 export default function PublicProfile() {
   const { username } = useParams();
+  const toast = useToast();
   const [profile, setProfile] = useState(null);
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +85,8 @@ export default function PublicProfile() {
     setSelectedGenres,
     selectedMyGenres,
     setSelectedMyGenres,
+    dateFilter,
+    setDateFilter,
     sortKey,
     setSortKey,
     isReversed,
@@ -103,6 +112,7 @@ export default function PublicProfile() {
     selectedMyGenres,
     hoursRange,
     hoursBounds,
+    dateFilter,
     sortKey,
     isReversed,
   });
@@ -115,8 +125,27 @@ export default function PublicProfile() {
     selectedStatuses.length +
     selectedGenres.length +
     selectedMyGenres.length +
+    (dateFilter ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveView = Boolean(searchQuery || activeFilterCount);
+  const publicUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/u/${profile?.username || username}`
+      : `/u/${profile?.username || username}`;
+
+  const showcase = useMemo(() => buildPublicShowcase(games), [games]);
+
+  const copyPublicUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      toast.success("Public profile link copied.");
+    } catch {
+      toast.info(publicUrl, {
+        title: "Copy this public profile link",
+        duration: 7000,
+      });
+    }
+  };
   const joinedAt = profile?.joined_at
     ? new Date(profile.joined_at).toLocaleDateString(undefined, {
         year: "numeric",
@@ -207,9 +236,20 @@ export default function PublicProfile() {
             }`,
             icon: LibraryBig,
             action: (
-              <Button as={Link} to="/" variant="ghost" className="shrink-0">
-                Back to app
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="shrink-0"
+                  onClick={copyPublicUrl}
+                >
+                  <Copy className="h-4 w-4" aria-hidden="true" />
+                  Share
+                </Button>
+                <Button as={Link} to="/" variant="ghost" className="shrink-0">
+                  Back to app
+                </Button>
+              </div>
             ),
           }}
           search={{
@@ -232,6 +272,8 @@ export default function PublicProfile() {
             selectedStatuses,
             selectedGenres,
             selectedMyGenres,
+            dateFilter,
+            setDateFilter,
             setSelectedStatuses,
             setSelectedGenres,
             setSelectedMyGenres,
@@ -257,6 +299,15 @@ export default function PublicProfile() {
           resultCount={displayGames.length}
           totalCount={games.length}
           games={games}
+          onSelectGame={setSelectedGame}
+        />
+
+        <PublicProfileOverview
+          profile={profile}
+          joinedAt={joinedAt}
+          publicUrl={publicUrl}
+          showcase={showcase}
+          onCopy={copyPublicUrl}
           onSelectGame={setSelectedGame}
         />
 
@@ -286,5 +337,227 @@ export default function PublicProfile() {
         )}
       </main>
     </div>
+  );
+}
+
+function buildPublicShowcase(games = []) {
+  const list = Array.isArray(games) ? games : [];
+  const isCompleted = (game) =>
+    COMPLETED_STATUSES.includes(String(game?.status || "").toLowerCase());
+  const isPlaying = (game) => {
+    const status = String(game?.status || "").toLowerCase();
+    return (
+      status.includes("playing") ||
+      (parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at))
+    );
+  };
+  const scoreOf = (game) => {
+    const value = Number(game?.my_score);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+  const finishedTime = (game) =>
+    parseGameDate(game?.finished_at)?.timestamp || 0;
+  const hoursTotal = list.reduce((sum, game) => {
+    const hours = Number(game?.how_long_to_beat);
+    return Number.isFinite(hours) ? sum + hours : sum;
+  }, 0);
+  const scored = list.filter((game) => scoreOf(game) != null);
+
+  return {
+    stats: {
+      total: list.length,
+      playing: list.filter(isPlaying).length,
+      completed: list.filter(isCompleted).length,
+      hours: hoursTotal,
+      avgScore: scored.length
+        ? scored.reduce((sum, game) => sum + scoreOf(game), 0) / scored.length
+        : null,
+    },
+    playing: list.filter(isPlaying).slice(0, 4),
+    recentlyFinished: list
+      .filter((game) => finishedTime(game) > 0)
+      .sort((a, b) => finishedTime(b) - finishedTime(a))
+      .slice(0, 4),
+    topRated: scored
+      .sort(
+        (a, b) =>
+          scoreOf(b) - scoreOf(a) ||
+          String(a.name || "").localeCompare(String(b.name || ""))
+      )
+      .slice(0, 4),
+  };
+}
+
+function PublicProfileOverview({
+  profile,
+  joinedAt,
+  publicUrl,
+  showcase,
+  onCopy,
+  onSelectGame,
+}) {
+  return (
+    <section className="mb-5 space-y-4 px-2 sm:px-0">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-xs uppercase tracking-wide text-content-muted">
+                Public profile
+              </div>
+              <h1 className="mt-1 truncate text-2xl font-semibold text-content-primary">
+                @{profile.username}
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-content-secondary">
+                {joinedAt
+                  ? `Tracking games since ${joinedAt}.`
+                  : "A public snapshot of this backlog."}
+              </p>
+            </div>
+            <Button type="button" variant="secondary" onClick={onCopy}>
+              <Copy className="h-4 w-4" aria-hidden="true" />
+              Copy link
+            </Button>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <ProfileStat
+              icon={LibraryBig}
+              label="Public games"
+              value={showcase.stats.total}
+            />
+            <ProfileStat
+              icon={PlayCircle}
+              label="Playing"
+              value={showcase.stats.playing}
+            />
+            <ProfileStat
+              icon={CheckCircle2}
+              label="Completed"
+              value={showcase.stats.completed}
+            />
+            <ProfileStat
+              icon={Star}
+              label="Avg score"
+              value={
+                showcase.stats.avgScore == null
+                  ? "N/A"
+                  : `${showcase.stats.avgScore.toFixed(1)}/10`
+              }
+            />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5">
+          <div className="text-xs uppercase tracking-wide text-content-muted">
+            Share
+          </div>
+          <div className="mt-2 break-all text-sm font-medium text-content-primary">
+            {publicUrl}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <ShowcaseSection
+          title="Currently playing"
+          games={showcase.playing}
+          empty="No active games shown."
+          onSelectGame={onSelectGame}
+        />
+        <ShowcaseSection
+          title="Recently finished"
+          games={showcase.recentlyFinished}
+          empty="No finished dates yet."
+          onSelectGame={onSelectGame}
+        />
+        <ShowcaseSection
+          title="Top rated"
+          games={showcase.topRated}
+          empty="No personal scores yet."
+          onSelectGame={onSelectGame}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ProfileStat({ icon: Icon, label, value }) {
+  return (
+    <div className="min-w-0 border-l border-surface-border pl-3">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-content-muted">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {label}
+      </div>
+      <div className="mt-2 text-xl font-semibold text-content-primary">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ShowcaseSection({ title, games, empty, onSelectGame }) {
+  return (
+    <section className="rounded-2xl border border-surface-border bg-surface-card p-4">
+      <h2 className="text-sm font-semibold text-content-primary">{title}</h2>
+      <div className="mt-3 space-y-2">
+        {games.length ? (
+          games.map((game) => (
+            <ShowcaseGame
+              key={game.id || game.name}
+              game={game}
+              onClick={() => onSelectGame(game)}
+            />
+          ))
+        ) : (
+          <div className="rounded-xl border border-surface-border bg-surface-elevated/40 px-3 py-4 text-sm text-content-muted">
+            {empty}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ShowcaseGame({ game, onClick }) {
+  const score = Number(game?.my_score);
+  const hours = Number(game?.how_long_to_beat);
+  const finished = parseGameDate(game?.finished_at)?.value;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-transparent p-2 text-left transition-colors hover:border-surface-border hover:bg-surface-elevated/70"
+    >
+      {game.cover ? (
+        <img
+          src={game.cover}
+          alt=""
+          loading="lazy"
+          className="h-14 w-10 shrink-0 rounded object-cover"
+        />
+      ) : (
+        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-surface-elevated text-xs font-semibold text-content-muted">
+          {String(game.name || "?").charAt(0)}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-content-primary">
+          {game.name}
+        </div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-content-muted">
+          {game.status ? <StatusBadge status={game.status} /> : null}
+          {Number.isFinite(score) ? <span>{score}/10</span> : null}
+          {finished ? <span>{finished}</span> : null}
+          {Number.isFinite(hours) && hours > 0 ? (
+            <span className="inline-flex items-center gap-1">
+              <Clock3 className="h-3 w-3" aria-hidden="true" />
+              {hours}h
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </button>
   );
 }

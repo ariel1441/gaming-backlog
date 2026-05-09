@@ -1,4 +1,5 @@
 import { smartFuzzySearch } from "./fuzzySearch.js";
+import { parseGameDate } from "./gameDateInsights.js";
 
 const normalize = (value = "") => String(value).toLowerCase().trim();
 
@@ -52,6 +53,24 @@ const numberOrNegativeInfinity = (value) =>
 
 const dateValue = (value) => (value ? Date.parse(value) || 0 : 0);
 
+const validDateValue = (value) => {
+  const parsed = parseGameDate(value);
+  return parsed ? parsed.timestamp : null;
+};
+
+const compareOptionalDates = (a, b, field, isReversed) => {
+  const valueA = validDateValue(a?.[field]);
+  const valueB = validDateValue(b?.[field]);
+  const hasA = valueA != null;
+  const hasB = valueB != null;
+
+  if (hasA && hasB && valueA !== valueB) {
+    return isReversed ? valueB - valueA : valueA - valueB;
+  }
+  if (hasA !== hasB) return hasA ? -1 : 1;
+  return sortByDefaultOrder(a, b);
+};
+
 export function sortByDefaultOrder(a, b) {
   const rankA = a?.status_rank ?? 999;
   const rankB = b?.status_rank ?? 999;
@@ -68,6 +87,8 @@ export function sortGames(
   games = [],
   { sortKey = "", isReversed = false } = {}
 ) {
+  const dateSortKey =
+    sortKey === "startedDate" || sortKey === "finishedDate" ? sortKey : "";
   const sorted = [...(Array.isArray(games) ? games : [])].sort((a, b) => {
     switch (sortKey) {
       case "name":
@@ -96,12 +117,16 @@ export function sortGames(
           dateValue(a?.releaseDate ?? a?.released) -
           dateValue(b?.releaseDate ?? b?.released)
         );
+      case "startedDate":
+        return compareOptionalDates(a, b, "started_at", isReversed);
+      case "finishedDate":
+        return compareOptionalDates(a, b, "finished_at", isReversed);
       default:
         return sortByDefaultOrder(a, b);
     }
   });
 
-  if (isReversed) sorted.reverse();
+  if (isReversed && !dateSortKey) sorted.reverse();
   return sorted;
 }
 
@@ -113,6 +138,41 @@ export function isHoursFilterActive(hoursRange, hoursBounds) {
   );
 }
 
+function subtractMonths(date, months) {
+  return new Date(
+    Date.UTC(
+      date.getFullYear(),
+      date.getMonth() - months,
+      date.getDate()
+    )
+  );
+}
+
+export function matchesDateFilter(game, dateFilter, now = new Date()) {
+  if (!dateFilter?.type) return true;
+
+  const started = parseGameDate(game?.started_at);
+  const finished = parseGameDate(game?.finished_at);
+
+  switch (dateFilter.type) {
+    case "startedYear":
+      return started?.year === Number(dateFilter.year);
+    case "finishedYear":
+      return finished?.year === Number(dateFilter.year);
+    case "activeUnfinished":
+      return !!started && !finished;
+    case "activeOlderThanMonths": {
+      if (!started || finished) return false;
+      const months = Number.isFinite(Number(dateFilter.months))
+        ? Math.max(0, Number(dateFilter.months))
+        : 6;
+      return started.timestamp <= subtractMonths(now, months).getTime();
+    }
+    default:
+      return true;
+  }
+}
+
 export function applyGameFilters(
   games = [],
   {
@@ -121,6 +181,8 @@ export function applyGameFilters(
     selectedMyGenres = [],
     hoursRange = null,
     hoursBounds = null,
+    dateFilter = null,
+    now = new Date(),
   } = {}
 ) {
   const statuses = selectedStatuses.length
@@ -155,6 +217,8 @@ export function applyGameFilters(
       if (hours < hoursRange.min || hours > hoursRange.max) return false;
     }
 
+    if (!matchesDateFilter(game, dateFilter, now)) return false;
+
     return true;
   });
 }
@@ -167,6 +231,7 @@ export function buildDisplayGames({
   selectedMyGenres = [],
   hoursRange = null,
   hoursBounds = null,
+  dateFilter = null,
   sortKey = "",
   isReversed = false,
 } = {}) {
@@ -176,6 +241,7 @@ export function buildDisplayGames({
     selectedMyGenres,
     hoursRange,
     hoursBounds,
+    dateFilter,
   });
 
   const searched = searchQuery?.trim()
