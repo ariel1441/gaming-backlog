@@ -73,7 +73,11 @@ function applyRankOrder(prevList, payload) {
 }
 
 export function useGames() {
-  const { getAuthHeaders } = useAuth();
+  const {
+    getAuthHeaders,
+    isAuthenticated,
+    loading: authLoading,
+  } = useAuth();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -82,6 +86,16 @@ export function useGames() {
 
   // Initial load (latest-wins + abort)
   useEffect(() => {
+    if (authLoading) return undefined;
+
+    if (!isAuthenticated) {
+      reqSeq.current += 1;
+      setGames([]);
+      setError(null);
+      setLoading(false);
+      return undefined;
+    }
+
     const ac = new AbortController();
     const seq = ++reqSeq.current;
 
@@ -108,11 +122,19 @@ export function useGames() {
         if (seq === reqSeq.current) setLoading(false);
       });
     return () => ac.abort();
-  }, [getAuthHeaders]);
+  }, [authLoading, getAuthHeaders, isAuthenticated]);
 
   // Refresh; can run "silent" so UI doesn't flicker, and uses latest-wins
   const refresh = useCallback(
     async (opts = {}) => {
+      if (!isAuthenticated) {
+        reqSeq.current += 1;
+        setGames([]);
+        setError(null);
+        setLoading(false);
+        return [];
+      }
+
       const silent = !!opts.silent; // default false
       const seq = ++reqSeq.current;
 
@@ -152,7 +174,7 @@ export function useGames() {
         if (!silent && seq === reqSeq.current) setLoading(false);
       }
     },
-    [getAuthHeaders]
+    [getAuthHeaders, isAuthenticated]
   );
 
   // --- Add (optimistic): insert immediately at end of the target status group

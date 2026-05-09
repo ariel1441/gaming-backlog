@@ -81,27 +81,37 @@ Recommended first bundle:
   - [x] clearer status, HLTB/hours, RAWG rating, Metacritic, date, and My Genre
     display in card grid
   - [x] better missing-cover fallback
-  - [ ] decide and implement final compact/dense/grid display modes; an
-    attempted library-view experiment was reverted, so this should be treated
-    as a fresh design pass
-  - [ ] make card density responsive so large libraries scan well
+  - [x] decide and implement baseline compact/grid/list display modes. Done
+    2026-05-09: toolbar view controls now switch between grid, compact grid,
+    and list layouts for private and public backlogs.
+  - [x] make card density responsive enough for the current library size. Done
+    2026-05-09: grid column widths, compact cards, and list mode give better
+    scanning options; very large-library virtualization remains a Phase 5
+    performance topic.
 - Improve add/edit game forms:
-  - better validation messages
-  - submit/loading/disabled states
-  - server-error display
+  - [x] better validation messages. Done 2026-05-09: add/edit forms show field
+    errors and duplicate-title messages from shared payload validation.
+  - [x] submit/loading/disabled states. Done 2026-05-09: add/edit submits
+    disable fields and show adding/saving labels while requests are pending.
+  - [x] server-error display. Done 2026-05-09: add/edit modals render API
+    errors in an inline alert area.
   - [x] date fields in the add flow, not only edit. Done 2026-05-08: add-game
     accepts optional started/finished dates while preserving backend auto-date
     behavior when fields are blank.
   - [x] focused payload validation tests. Done 2026-05-08: add/edit payload
     construction and API error message extraction are covered by
     `backlogForm.test.js`.
-  - clearer distinction between user-entered fields and metadata fields
+  - [x] clearer distinction between user-entered fields and metadata fields.
+    Done 2026-05-09: RAWG matching is shown separately from personal progress,
+    genre, score, and notes, with a collapsed change-metadata action in edit.
 - [x] Add duplicate detection when adding a game. Done 2026-05-08: the add flow
   blocks exact normalized title matches using shared `gameList` helpers, and the
   backend repeats the per-user duplicate check before insert and edit/name
   changes.
-- Improve drag-and-drop affordances, especially on mobile. Deferred to Phase 5
-  quality/browser testing unless a specific issue appears in use.
+- Improve drag-and-drop affordances, especially on mobile. Baseline is good
+  enough for now after the card/grid responsive pass and same-rank reorder bug
+  fix; deeper touch-device QA remains a Phase 5 quality task unless a specific
+  issue appears in use.
 - Improve demo flow:
   - clearer "save this demo" CTA
   - clearer expiration/temporary-session messaging
@@ -115,6 +125,9 @@ Recommended first bundle:
   - Done 2026-05-08: added transient GET retry and friendly status-0 network
     errors in `apiClient`, plus a private backlog retry action for fatal loads.
 - Add smoke tests for core flows once the UI stabilizes:
+  - manual checklist added at
+    [`testing/manual-smoke-checklist.md`](testing/manual-smoke-checklist.md)
+    as an interim safety net
   - open app after cold load
   - start demo
   - add game
@@ -132,10 +145,10 @@ Phase 1 status:
 
 Known follow-up from the styling pass:
 
-- Investigate unauthenticated `/api/games` requests after login or initial app
-  load. Current log symptom: `GET /api/games -> 401 unauthorized: No token
-  provided`. Determine whether this is expected guest-load noise, token storage
-  timing, or a real login refresh bug.
+- [x] Investigate unauthenticated `/api/games` requests after login or initial
+  app load. Done 2026-05-09: `useGames` now waits for auth initialization and
+  skips the private games request when there is no authenticated session, which
+  avoids expected guest-load 401 noise.
 
 ### Phase 2: Metadata, Caching, And Game Discovery
 
@@ -395,9 +408,8 @@ Goal: keep the app reliable as features grow.
 
 If another agent starts now, recommended order:
 
-1. Improve global styling and game cards using existing shared UI primitives.
-2. Improve add/edit forms, including started/finished dates and duplicate
-   detection.
+1. Add a lightweight browser smoke-test pass for the core flows.
+2. Do small demo-flow copy/CTA refinements as they come up in use.
 3. Redesign metadata caching/refresh around RAWG/HLTB/Metacritic.
 4. Add forgot-password/account settings basics.
 5. Add Steam import/sync.
