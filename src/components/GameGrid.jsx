@@ -44,7 +44,7 @@ const SortableGameCard = ({
       style={style}
       {...attributes}
       {...listeners}
-      className="w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
+      className="h-full w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
     >
       <GameCard
         game={game}
@@ -153,7 +153,7 @@ const GameGrid = ({
         {filteredGames.map((game) => (
           <div
             key={game.id}
-            className="w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
+            className="h-full w-full max-w-full sm:max-w-none min-w-0 mx-auto sm:mx-0"
           >
             <GameCard
               game={game}

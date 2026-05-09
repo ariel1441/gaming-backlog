@@ -114,9 +114,19 @@ scripts, and current git state over older notes in markdown files.
 
 ## Before Finishing
 
-- Run `npm run check` when code changed.
-- For documentation-only changes, at least proofread changed markdown and run a
-  narrower command if useful.
+- Choose verification based on the risk and scope of the change instead of
+  always running the full suite:
+  - Documentation-only changes: proofread changed markdown and run
+    `git diff --check` if useful.
+  - Small styling-only frontend changes: run `npm run lint` when practical.
+  - Shared frontend logic, hooks, services, forms, routing, backend routes,
+    validators, auth, permissions, database work, migrations, or shared
+    utilities: run `npm run check` when practical.
+  - Schema changes: also run `npm run db:migrate:local` against a localhost DB.
+  - Dependency changes: inspect package and lockfile changes, then run
+    `npm run check`.
+- Mention which checks were actually run. If a relevant check was skipped,
+  briefly say why.
 - Mention if tests are absent or only `--passWithNoTests` succeeded.
 - Summarize changed files and call out any pre-existing local modifications.
 
