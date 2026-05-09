@@ -50,3 +50,6 @@ data copies or seed data here.
 For safe deploys, prefer additive changes first, deploy code that tolerates both
 old and new schema when practical, then clean up obsolete schema in a later
 migration.
+
+Future automation notes live in
+`docs/planning/production-migration-automation.md`.
