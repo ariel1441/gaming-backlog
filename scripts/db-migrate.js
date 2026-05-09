@@ -59,14 +59,17 @@ function describeDbUrl(value) {
 }
 
 function buildPgConfig(connectionString) {
+  const forceEnableSSL =
+    String(process.env.PGSSL || "").toLowerCase() === "true";
   const forceDisableSSL =
     String(process.env.PGSSL || "").toLowerCase() === "false";
   const needSSL =
-    !forceDisableSSL &&
+    forceEnableSSL ||
+    (!forceDisableSSL &&
     (/sslmode=require/i.test(connectionString || "") ||
       /(railway|heroku|neon|supabase|render|azure|amazonaws|cockroach|gcp)/i.test(
         connectionString || ""
-      ));
+      )));
 
   return {
     connectionString,
