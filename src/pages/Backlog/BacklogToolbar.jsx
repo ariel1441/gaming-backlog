@@ -16,6 +16,7 @@ import {
   LogOut,
   Plus,
   Search,
+  SlidersHorizontal,
   Sparkles,
   User2,
   X,
@@ -61,12 +62,13 @@ export default function BacklogToolbar({
   const subtitle =
     identity?.subtitle || `${resultCount} of ${totalCount} games`;
   const IdentityIcon = identity?.icon || LibraryBig;
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 -mx-2 mb-5 border-b border-surface-border bg-surface-bg/95 px-2 backdrop-blur-xl sm:-mx-6 sm:px-6">
       <div className="py-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex min-w-0 shrink-0 items-center gap-3">
+          <div className="order-1 flex min-w-0 shrink-0 items-center gap-3 md:order-none">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-surface-border bg-surface-elevated/70 text-content-secondary shadow-inner shadow-black/10">
               <IdentityIcon className="h-5 w-5" aria-hidden="true" />
             </div>
@@ -89,13 +91,13 @@ export default function BacklogToolbar({
             onSelectGame={onSelectGame}
           />
 
-          <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2">
+          <div className="order-2 ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2 md:order-none">
             {actions?.surprise ? (
               <Button
                 type="button"
                 variant="secondary"
                 onClick={actions.surprise}
-                className="h-10"
+                className="hidden h-10 md:inline-flex"
               >
                 <Dice5 className="h-4 w-4" aria-hidden="true" />
                 Surprise
@@ -106,7 +108,7 @@ export default function BacklogToolbar({
                 type="button"
                 variant="primary"
                 onClick={actions.add}
-                className="h-10"
+                className="hidden h-10 md:inline-flex"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Add game
@@ -117,7 +119,54 @@ export default function BacklogToolbar({
           </div>
         </div>
 
-        <div className="mt-3 grid gap-2 border-t border-surface-border/70 pt-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+        <div className="mt-3 flex items-center gap-2 border-t border-surface-border/70 pt-3 md:hidden">
+          <Button
+            type="button"
+            variant={mobileControlsOpen ? "primary" : "secondary"}
+            onClick={() => setMobileControlsOpen((value) => !value)}
+            className="h-10 flex-1 justify-center"
+            aria-expanded={mobileControlsOpen}
+          >
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            Controls
+            {filters.count ? (
+              <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
+                {filters.count}
+              </span>
+            ) : null}
+          </Button>
+          {actions?.add ? (
+            <IconButton
+              icon={Plus}
+              onClick={actions.add}
+              label="Add game"
+              title="Add game"
+              variant="primary"
+              className="h-10 w-10"
+            />
+          ) : null}
+        </div>
+
+        <div
+          className={[
+            "mt-3 gap-2 border-t border-surface-border/70 pt-3 md:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center",
+            mobileControlsOpen ? "grid" : "hidden",
+          ].join(" ")}
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-2 md:hidden">
+            {actions?.surprise ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={actions.surprise}
+                className="h-10 flex-1 justify-center"
+              >
+                <Dice5 className="h-4 w-4" aria-hidden="true" />
+                Surprise
+              </Button>
+            ) : null}
+          </div>
+
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <FilterDropdown
               label="Status"
@@ -192,7 +241,16 @@ export default function BacklogToolbar({
           </div>
         </div>
 
-        {filters.count ? <ActiveFilterSummary filters={filters} /> : null}
+        {filters.count ? (
+          <div
+            className={[
+              "mt-3 md:block",
+              mobileControlsOpen ? "block" : "hidden",
+            ].join(" ")}
+          >
+            <ActiveFilterSummary filters={filters} />
+          </div>
+        ) : null}
       </div>
     </header>
   );
@@ -251,7 +309,7 @@ function SearchBox({
   return (
     <div
       ref={wrapperRef}
-      className="relative min-w-[280px] flex-1 basis-[420px] lg:max-w-[760px]"
+      className="order-3 relative w-full min-w-[280px] flex-1 basis-full md:order-none md:w-auto md:basis-[420px] lg:max-w-[760px]"
     >
       <Search
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted"
