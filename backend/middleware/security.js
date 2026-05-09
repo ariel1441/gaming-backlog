@@ -4,6 +4,7 @@ import cors from "cors";
 import compression from "compression";
 import express from "express";
 import corsOptions from "../config/cors.js";
+import requestId from "./requestId.js";
 
 /**
  * Registers core, app-wide middleware in a single place.
@@ -11,6 +12,8 @@ import corsOptions from "../config/cors.js";
  */
 export function registerSecurity(app) {
   app.set("trust proxy", 1);
+
+  app.use(requestId);
 
   app.use(
     helmet({

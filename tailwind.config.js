@@ -10,20 +10,20 @@ export default {
           darker: "#c2410c", // Orange 700
         },
         secondary: {
-          DEFAULT: "#3b82f6", // Blue 500
-          light: "#60a5fa", // Blue 400
-          dark: "#2563eb", // Blue 600
+          DEFAULT: "#38bdf8", // Sky 400
+          light: "#7dd3fc", // Sky 300
+          dark: "#0284c7", // Sky 600
         },
         surface: {
-          bg: "#0B1220", // Gray 900
-          card: "#162235", // Gray 800
-          elevated: "#1B2B45", // Gray 700
-          border: "#2A3B55", // Gray 600
+          bg: "#0A0F18",
+          card: "#121A27",
+          elevated: "#182235",
+          border: "#263448",
         },
         content: {
           primary: "#f9fafb", // Gray 50
-          secondary: "#e5e7eb", // Gray 200
-          muted: "#9ca3af", // Gray 400
+          secondary: "#d8dee8",
+          muted: "#94a3b8",
         },
         state: {
           success: "#22c55e", // Green 500
@@ -40,9 +40,10 @@ export default {
         },
       },
       boxShadow: {
-        "glow-primary": "0 0 20px rgba(249, 115, 22, 0.4)",
-        "glow-secondary": "0 0 20px rgba(59, 130, 246, 0.4)",
+        "glow-primary": "0 18px 45px rgba(249, 115, 22, 0.18)",
+        "glow-secondary": "0 18px 45px rgba(56, 189, 248, 0.16)",
         "glow-error": "0 0 20px rgba(239, 68, 68, 0.4)",
+        panel: "0 18px 55px rgba(0, 0, 0, 0.28)",
       },
       spacing: { 18: "4.5rem" },
       zIndex: { modal: "9999", tooltip: "99999" },

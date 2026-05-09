@@ -1,64 +1,59 @@
-// src/pages/PublicProfile.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import {
+  AlertTriangle,
+  Gamepad2,
+  LibraryBig,
+  LockKeyhole,
+} from "lucide-react";
 import GameGrid from "../components/GameGrid";
 import GameModal from "../components/GameModal";
-import FilterPanel from "../components/FilterPanel";
-import { smartFuzzySearch } from "../utils/fuzzySearch";
-
-import { listPublicGames, getPublicProfile } from "../services/publicService";
-import { useStatuses } from "../hooks/useStatuses";
-import { useFilters } from "../hooks/useFilters";
+import BacklogToolbar from "./Backlog/BacklogToolbar";
+import { Button, EmptyState } from "../components/ui";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useFilters } from "../hooks/useFilters";
+import { useStatuses } from "../hooks/useStatuses";
+import { getPublicProfile, listPublicGames } from "../services/publicService";
+import { buildDisplayGames } from "../utils/gameList";
+
+const COMPLETED_STATUSES = ["finished", "played alot but didnt finish"];
 
 export default function PublicProfile() {
   const { username } = useParams();
-
-  // profile + games
   const [profile, setProfile] = useState(null);
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  // modal
   const [selectedGame, setSelectedGame] = useState(null);
+  const [viewMode, setViewMode] = useState("grid");
 
-  // visibility controls (keep UI unchanged)
-  const [filterVisible, setFilterVisible] = useState(false);
-  const [searchVisible, setSearchVisible] = useState(false);
-  const [sortVisible, setSortVisible] = useState(false);
-
-  // refs (for smooth scroll; unchanged)
-  const filterRef = useRef(null);
-  const searchRef = useRef(null);
-  const sortRef = useRef(null);
-
-  // Load public profile + games via services
   useEffect(() => {
     const ac = new AbortController();
     (async () => {
       try {
         setLoading(true);
         setError("");
-
-        const [p, g] = await Promise.all([
+        const [profileData, gameData] = await Promise.all([
           getPublicProfile(username, { signal: ac.signal, auth: false }),
           listPublicGames(username, { signal: ac.signal, auth: false }),
         ]);
 
-        setProfile(p || null);
-
-        // normalize RAWG rating key like private view
+        setProfile(profileData || null);
         const list = (
-          Array.isArray(g) ? g : Array.isArray(g?.games) ? g.games : []
-        )?.map((x) => ({
-          ...x,
-          rawgRating: x.rating ?? x.rawgRating ?? 0,
+          Array.isArray(gameData)
+            ? gameData
+            : Array.isArray(gameData?.games)
+              ? gameData.games
+              : []
+        ).map((game) => ({
+          ...game,
+          rawgRating: game.rating ?? game.rawgRating ?? 0,
         }));
-        setGames(list || []);
-      } catch (e) {
-        if (e.name !== "AbortError") setError(e.message || "Failed to load");
+        setGames(list);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setError(err.message || "Failed to load");
+        }
       } finally {
         setLoading(false);
       }
@@ -66,16 +61,14 @@ export default function PublicProfile() {
     return () => ac.abort();
   }, [username]);
 
-  // Global statuses (cached). If none available publicly, derive simple string list from games.
   const { statuses: apiStatuses } = useStatuses();
   const derivedStatuses = useMemo(() => {
     if (!games?.length) return [];
-    const set = new Set(games.map((g) => String(g.status)).filter(Boolean));
-    return Array.from(set).sort(); // strings (FilterPanel expects strings)
+    const set = new Set(games.map((game) => String(game.status)).filter(Boolean));
+    return Array.from(set).sort();
   }, [games]);
   const allStatuses = apiStatuses?.length ? apiStatuses : derivedStatuses;
 
-  // Shared filter/search/sort logic (exact same hook as private view)
   const {
     searchQuery,
     setSearchQuery,
@@ -93,306 +86,196 @@ export default function PublicProfile() {
     toggleGenre,
     toggleMyGenre,
     clearFilters,
-    filteredGames,
     allGenres,
     allMyGenres,
-    noFiltersActive,
+    hoursBounds,
+    hoursRange,
+    setHoursRange,
   } = useFilters(games, { statuses: allStatuses });
 
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
 
-  // mirror private scrolling UX
-  useEffect(() => {
-    if (filterVisible && filterRef.current) {
-      filterRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [filterVisible]);
-  useEffect(() => {
-    if (searchVisible && searchRef.current) {
-      searchRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [searchVisible]);
-  useEffect(() => {
-    if (sortVisible && sortRef.current) {
-      sortRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [sortVisible]);
-
-  // IMPORTANT: same helper signature that App.jsx passes to FilterPanel
-  const handleCheckboxToggle = (value, listSetter, currentList) => {
-    listSetter(
-      currentList.includes(value)
-        ? currentList.filter((v) => v !== value)
-        : [...currentList, value]
+  const displayGames = buildDisplayGames({
+    games,
+    searchQuery: debouncedQuery,
+    selectedStatuses,
+    selectedGenres,
+    selectedMyGenres,
+    hoursRange,
+    hoursBounds,
+    sortKey,
+    isReversed,
+  });
+  const hasHoursFilter = Boolean(
+    hoursBounds?.max > hoursBounds?.min &&
+      hoursRange &&
+      (hoursRange.min > hoursBounds.min || hoursRange.max < hoursBounds.max)
+  );
+  const activeFilterCount =
+    selectedStatuses.length +
+    selectedGenres.length +
+    selectedMyGenres.length +
+    (hasHoursFilter ? 1 : 0);
+  const hasActiveView = Boolean(searchQuery || activeFilterCount);
+  const joinedAt = profile?.joined_at
+    ? new Date(profile.joined_at).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+  const completedActive = useMemo(() => {
+    const set = new Set(
+      (selectedStatuses || []).map((status) => String(status).toLowerCase())
     );
+    return (
+      set.size === COMPLETED_STATUSES.length &&
+      COMPLETED_STATUSES.every((status) => set.has(status))
+    );
+  }, [selectedStatuses]);
+  const toggleCompleted = () => {
+    setSelectedStatuses(completedActive ? [] : COMPLETED_STATUSES);
   };
 
-  const resetFilters = () => clearFilters();
-  const clearSearch = () => setSearchQuery("");
-  const clearSort = () => {
-    setSortKey("");
-    setIsReversed(false);
-  };
-
-  // When searching, apply ONLY non-search filters, then fuzzy search
-  const normalize = (s = "") => s.toLowerCase().trim();
-
-  const applyNonSearchFilters = (items) => {
-    return (items || []).filter((g) => {
-      // Status
-      if (selectedStatuses?.length && !selectedStatuses.includes(g.status))
-        return false;
-
-      // Genre (CSV like "Action, RPG")
-      if (selectedGenres?.length) {
-        const gameGenres = (g.genres || "")
-          .toLowerCase()
-          .split(",")
-          .map((x) => x.trim())
-          .filter(Boolean);
-        const wanted = new Set(selectedGenres.map(normalize));
-        if (!gameGenres.some((gg) => wanted.has(gg))) return false;
-      }
-
-      // My genre (single string)
-      if (selectedMyGenres?.length) {
-        const myg = normalize(g.my_genre || "");
-        if (!selectedMyGenres.map(normalize).includes(myg)) return false;
-      }
-
-      return true;
-    });
-  };
-
-  const basePublicGames = debouncedQuery?.trim()
-    ? applyNonSearchFilters(games)
-    : noFiltersActive
-      ? games
-      : filteredGames || [];
-
-  // Default order comparator: status_rank → position → id
-  const sortByDefault = (a, b) => {
-    const sr = (g) => g?.status_rank ?? 999;
-    const pos = (g) => g?.position ?? Number.POSITIVE_INFINITY;
-    const num = (v) => (Number.isFinite(+v) ? +v : Number.MAX_SAFE_INTEGER);
-    if (sr(a) !== sr(b)) return sr(a) - sr(b);
-    if (pos(a) !== pos(b)) return pos(a) - pos(b);
-    return num(a?.id) - num(b?.id);
-  };
-
-  const listAfterSearch = debouncedQuery?.trim()
-    ? smartFuzzySearch(basePublicGames, debouncedQuery)
-    : basePublicGames;
-
-  const displayGames = [...listAfterSearch].sort(sortByDefault);
-
-  // ---------- UI below unchanged ----------
   if (loading) {
     return (
-      <div className="flex h-screen bg-surface-bg text-content-primary items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary"></div>
+      <div className="min-h-screen bg-surface-bg p-6 text-content-primary">
+        <div className="mx-auto flex min-h-[70vh] max-w-5xl items-center justify-center">
+          <div className="w-full max-w-xl rounded-2xl border border-surface-border bg-surface-card p-6 shadow-panel">
+            <div className="flex items-center gap-4">
+              <div className="h-14 w-14 animate-pulse rounded-2xl bg-surface-elevated" />
+              <div className="flex-1 space-y-3">
+                <div className="h-5 w-44 animate-pulse rounded bg-surface-elevated" />
+                <div className="h-3 w-64 animate-pulse rounded bg-surface-elevated/70" />
+              </div>
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="h-24 animate-pulse rounded-xl bg-surface-elevated/70" />
+              <div className="h-24 animate-pulse rounded-xl bg-surface-elevated/70" />
+              <div className="h-24 animate-pulse rounded-xl bg-surface-elevated/70" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6 text-state-error">
-        Error: {error} –{" "}
-        <Link to="/" className="underline">
-          Go home
-        </Link>
+      <div className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
+        <EmptyState
+          icon={AlertTriangle}
+          title="Could not load this profile."
+          description={error}
+          action={
+            <Button as={Link} to="/" variant="secondary">
+              Back to app
+            </Button>
+          }
+          className="w-full max-w-lg"
+        />
       </div>
     );
   }
 
   if (!profile?.is_public) {
     return (
-      <div className="p-6">
-        <h1 className="text-xl font-semibold">This profile is not public.</h1>
-        <Link to="/" className="underline">
-          Back to app
-        </Link>
+      <div className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
+        <EmptyState
+          icon={LockKeyhole}
+          title="This profile is private."
+          description="The owner has not made this backlog public."
+          action={
+            <Button as={Link} to="/" variant="secondary">
+              Back to app
+            </Button>
+          }
+          className="w-full max-w-lg"
+        />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-surface-bg text-content-primary">
-      <header className="px-4 sm:px-6 py-3 border-b border-surface-border">
-        <div className="w-full flex items-center justify-between">
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold truncate">
-              @{profile.username}
-            </h1>
-            <p className="text-content-muted text-xs sm:text-sm whitespace-nowrap">
-              {profile.game_count} games · joined{" "}
-              {new Date(profile.joined_at).toLocaleDateString()}
-            </p>
-          </div>
-          <Link to="/" className="shrink-0 text-primary hover:underline">
-            Back to app
-          </Link>
-        </div>
-      </header>
+      <main className="h-screen max-w-[100vw] overflow-auto bg-surface-bg px-2 py-0 pb-[env(safe-area-inset-bottom)] text-content-primary sm:px-6">
+        <BacklogToolbar
+          identity={{
+            title: `@${profile.username}`,
+            subtitle: `${profile.game_count} public games${
+              joinedAt ? ` - joined ${joinedAt}` : ""
+            }`,
+            icon: LibraryBig,
+            action: (
+              <Button as={Link} to="/" variant="ghost" className="shrink-0">
+                Back to app
+              </Button>
+            ),
+          }}
+          search={{
+            query: searchQuery,
+            setQuery: setSearchQuery,
+            clear: () => setSearchQuery(""),
+            placeholder: "Search this public backlog...",
+          }}
+          sort={{
+            key: sortKey,
+            setKey: setSortKey,
+            isReversed,
+            setIsReversed,
+          }}
+          filters={{
+            count: activeFilterCount,
+            allStatuses,
+            allGenres,
+            allMyGenres,
+            selectedStatuses,
+            selectedGenres,
+            selectedMyGenres,
+            setSelectedStatuses,
+            setSelectedGenres,
+            setSelectedMyGenres,
+            toggleStatus,
+            toggleGenre,
+            toggleMyGenre,
+            hoursBounds,
+            hoursRange,
+            setHoursRange,
+            clear: () => {
+              setSearchQuery("");
+              clearFilters();
+              setSortKey("");
+              setIsReversed(false);
+            },
+          }}
+          actions={{
+            completedActive,
+            toggleCompleted,
+          }}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          resultCount={displayGames.length}
+          totalCount={games.length}
+          games={games}
+          onSelectGame={setSelectedGame}
+        />
 
-      <main className="w-full max-w-none p-6">
-        {/* Toolbar */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setSearchVisible((v) => !v)}
-            className="px-3 py-1.5 rounded bg-surface-card border border-surface-border hover:border-primary transition"
-            aria-expanded={searchVisible}
-          >
-            {searchVisible ? "Hide Search" : "Show Search"}
-          </button>
-          <button
-            onClick={() => setSortVisible((v) => !v)}
-            className="px-3 py-1.5 rounded bg-surface-card border border-surface-border hover:border-primary transition"
-            aria-expanded={sortVisible}
-          >
-            {sortVisible ? "Hide Sort" : "Show Sort"}
-          </button>
-          <button
-            onClick={() => setFilterVisible((v) => !v)}
-            className="px-3 py-1.5 rounded bg-surface-card border border-surface-border hover:border-primary transition"
-            aria-expanded={filterVisible}
-          >
-            {filterVisible ? "Hide Filters" : "Show Filters"}
-          </button>
-        </div>
-
-        {/* Search */}
-        {searchVisible && (
-          <div
-            ref={searchRef}
-            className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-primary">
-                Search Games
-              </h3>
-              <button
-                onClick={() => setSearchVisible(false)}
-                className="text-content-muted hover:text-content-primary transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex gap-4 items-center">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search by game name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 bg-surface-elevated border border-surface-border rounded-lg text-content-primary placeholder-content-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <button
-                onClick={clearSearch}
-                className="px-4 py-2 bg-action-danger hover:bg-action-danger-hover text-content-primary rounded-lg transition-colors"
-              >
-                Clear
-              </button>
-            </div>
-            {searchQuery && (
-              <p className="mt-2 text-sm text-content-muted">
-                Searching for: "{searchQuery}" ({displayGames.length} results)
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Sort */}
-        {sortVisible && (
-          <div
-            ref={sortRef}
-            className="mb-6 p-6 bg-surface-card rounded-lg border border-surface-border"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-primary">Sort Games</h3>
-              <button
-                onClick={() => setSortVisible(false)}
-                className="text-content-muted hover:text-content-primary transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex gap-4 items-center flex-wrap">
-              <div className="flex gap-2 items-center">
-                <label className="text-sm text-content-muted">Sort by:</label>
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value)}
-                  className="px-3 py-2 bg-surface-elevated border border-surface-border rounded-lg text-content-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                >
-                  <option value="">Default (Status & Position)</option>
-                  <option value="name">Name</option>
-                  <option value="hoursPlayed">Hours Played</option>
-                  <option value="rawgRating">RAWG Rating</option>
-                  <option value="metacritic">Metacritic Score</option>
-                  <option value="releaseDate">Release Date</option>
-                </select>
-              </div>
-
-              <div className="flex gap-2 items-center">
-                <input
-                  type="checkbox"
-                  id="reverse-sort"
-                  checked={isReversed}
-                  onChange={(e) => setIsReversed(e.target.checked)}
-                  className="w-4 h-4 text-primary bg-surface-elevated border-surface-border rounded focus:ring-primary"
-                />
-                <label
-                  htmlFor="reverse-sort"
-                  className="text-sm text-content-muted"
-                >
-                  Reverse Order
-                </label>
-              </div>
-
-              <button
-                onClick={clearSort}
-                className="px-4 py-2 bg-action-danger hover:bg-action-danger-hover text-content-primary rounded-lg transition-colors"
-              >
-                Clear Sort
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Filters */}
-        {filterVisible && (
-          <FilterPanel
-            filterRef={filterRef}
-            allStatuses={allStatuses}
-            allGenres={allGenres}
-            allMyGenres={allMyGenres}
-            selectedStatuses={selectedStatuses}
-            selectedGenres={selectedGenres}
-            selectedMyGenres={selectedMyGenres}
-            // IMPORTANT: same signature App.jsx passes
-            handleCheckboxToggle={(v, list, setList) =>
-              handleCheckboxToggle(v, setList, list)
-            }
-            setSelectedStatuses={setSelectedStatuses}
-            setSelectedGenres={setSelectedGenres}
-            setSelectedMyGenres={setSelectedMyGenres}
-            resetFilters={resetFilters}
-            toggleStatus={toggleStatus}
-            toggleGenre={toggleGenre}
-            toggleMyGenre={toggleMyGenre}
-          />
-        )}
-
-        {/* Read-only grid (unchanged) */}
         <GameGrid
           games={displayGames}
           onSelectGame={setSelectedGame}
-          onEditGame={() => {}}
-          onDeleteGame={() => {}}
           onReorder={null}
+          viewMode={viewMode}
+          emptyState={{
+            icon: Gamepad2,
+            title:
+              hasActiveView
+                ? "No public games match this view."
+                : "No public games yet.",
+            description:
+              hasActiveView
+                ? "Try changing the public filters or clearing the search."
+                : "When this player shares games publicly, they will appear here.",
+          }}
         />
 
         {selectedGame && (

@@ -9,6 +9,8 @@ CREATE TABLE users (
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   is_public BOOLEAN NOT NULL DEFAULT FALSE,
+  is_guest BOOLEAN NOT NULL DEFAULT FALSE,
+  guest_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -31,6 +33,8 @@ CREATE TABLE games (
   my_score NUMERIC(3,1),           
   thoughts TEXT,
   cover TEXT,
+  rawg_id INTEGER,
+  rawg_slug TEXT,
   started_at DATE,
   finished_at DATE
 );

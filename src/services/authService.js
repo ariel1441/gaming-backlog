@@ -1,8 +1,5 @@
-// src/services/authService.js
-import { api } from "./apiClient";
-import { setAuthToken } from "./apiClient";
+import { api, setAuthToken } from "./apiClient";
 
-// POST /api/auth/register  { username, password }
 export function register({ username, password }) {
   return api.post(
     "/api/auth/register",
@@ -11,24 +8,38 @@ export function register({ username, password }) {
   );
 }
 
-// POST /api/auth/login  { username, password } -> { token, user }
-export async function login({ username, password }) {
-  const res = await api.post(
+export function login({ username, password }) {
+  return api.post(
     "/api/auth/login",
     { username, password },
     { auth: false }
   );
-  if (res?.token) setAuthToken(res.token);
-  return res;
 }
 
-// GET /api/auth/me -> { user }
 export function me() {
   return api.get("/api/auth/me");
 }
 
-// POST /api/auth/logout (if you have it)
+export function setPublic(isPublic) {
+  return api.patch("/api/auth/me/is-public", { is_public: isPublic });
+}
+
+export function startDemo() {
+  return api.post("/api/demo/start");
+}
+
+export function keepDemo({ username, password }) {
+  return api.post("/api/demo/keep", { username, password });
+}
+
+export function discardDemo(options) {
+  return api.post("/api/demo/discard", null, options);
+}
+
+export function heartbeatDemo() {
+  return api.post("/api/demo/heartbeat");
+}
+
 export function logout() {
   setAuthToken(null);
-  // optionally call backend logout if exists
 }

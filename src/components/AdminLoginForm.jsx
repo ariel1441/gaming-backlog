@@ -1,10 +1,12 @@
 import React, { useState } from "react";
+import { LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { Button, Field, Modal, TextInput } from "./ui";
 
 const AuthModal = ({ onClose }) => {
   const { login, register } = useAuth();
 
-  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,7 +16,7 @@ const AuthModal = ({ onClose }) => {
     setError("");
     setUsername("");
     setPassword("");
-    setMode((m) => (m === "login" ? "register" : "login"));
+    setMode((current) => (current === "login" ? "register" : "login"));
   };
 
   const handleSubmit = async (e) => {
@@ -28,16 +30,14 @@ const AuthModal = ({ onClose }) => {
 
     setLoading(true);
     try {
-      if (mode === "login") {
-        const res = await login(username.trim(), password);
-        if (!res?.success && res?.error) setError(res.error);
-        else onClose();
-      } else {
-        const res = await register(username.trim(), password);
-        if (!res?.success && res?.error) setError(res.error);
-        else onClose();
-      }
-    } catch (err) {
+      const res =
+        mode === "login"
+          ? await login(username.trim(), password)
+          : await register(username.trim(), password);
+
+      if (!res?.success && res?.error) setError(res.error);
+      else onClose();
+    } catch {
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -53,105 +53,123 @@ const AuthModal = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-modal">
-      <div className="bg-surface-card border border-surface-border rounded-lg p-6 w-full max-w-md mx-4">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-content-primary">
-            {mode === "login" ? "Sign in" : "Create your account"}
-          </h2>
+    <Modal
+      title={mode === "login" ? "Sign in" : "Create your account"}
+      description={
+        mode === "login"
+          ? "Pick up your backlog where you left off."
+          : "Save your backlog, demo changes, and public profile settings."
+      }
+      onClose={handleClose}
+      closeDisabled={loading}
+      maxWidth="max-w-md"
+      bodyClassName="p-0"
+    >
+      <div className="p-5">
+        <div className="mb-5 grid grid-cols-2 rounded-xl border border-surface-border bg-surface-bg/35 p-1">
           <button
-            onClick={handleClose}
-            className="text-content-muted hover:text-content-primary transition-colors text-2xl"
+            type="button"
+            onClick={() => {
+              setError("");
+              setMode("login");
+            }}
             disabled={loading}
-            aria-label="Close authentication modal"
-            title="Close"
+            className={[
+              "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors",
+              mode === "login"
+                ? "bg-surface-elevated text-content-primary shadow-sm"
+                : "text-content-muted hover:text-content-primary",
+            ].join(" ")}
           >
-            ×
+            <LogIn className="h-4 w-4" aria-hidden="true" />
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              setMode("register");
+            }}
+            disabled={loading}
+            className={[
+              "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors",
+              mode === "register"
+                ? "bg-surface-elevated text-content-primary shadow-sm"
+                : "text-content-muted hover:text-content-primary",
+            ].join(" ")}
+          >
+            <UserPlus className="h-4 w-4" aria-hidden="true" />
+            Create
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="username"
-              className="block text-sm font-medium text-content-secondary mb-2"
-            >
-              Username
-            </label>
-            <input
+          <Field id="username" label="Username">
+            <TextInput
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-elevated border border-surface-border rounded-md text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="Your username"
               autoFocus
               disabled={loading}
               autoComplete="username"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-content-secondary mb-2"
-            >
-              Password
-            </label>
-            <input
+          <Field id="password" label="Password">
+            <TextInput
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-elevated border border-surface-border rounded-md text-content-primary placeholder-content-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="••••••••"
+              placeholder="Password"
               disabled={loading}
               autoComplete={
                 mode === "login" ? "current-password" : "new-password"
               }
             />
-          </div>
+          </Field>
 
-          {error && (
-            <div className="text-state-error text-sm bg-state-error/20 border border-state-error rounded-md p-2">
+          {error ? (
+            <div className="rounded-xl border border-state-error/50 bg-state-error/10 p-3 text-sm leading-6 text-state-error">
               {error}
             </div>
-          )}
+          ) : null}
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={loading}
-            className="w-full bg-action-primary hover:bg-action-primary-hover disabled:bg-primary-dark disabled:cursor-not-allowed text-content-primary font-medium py-2 px-4 rounded-md transition-colors flex items-center justify-center"
+            className="w-full"
           >
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                {mode === "login" ? "Signing in..." : "Creating account..."}
-              </>
-            ) : mode === "login" ? (
-              "Sign in"
-            ) : (
-              "Create account"
-            )}
-          </button>
+            {loading
+              ? mode === "login"
+                ? "Signing in..."
+                : "Creating account..."
+              : mode === "login"
+                ? "Sign in"
+                : "Create account"}
+          </Button>
         </form>
 
-        <div className="mt-4 text-xs text-content-muted flex items-center justify-between">
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-surface-border bg-surface-bg/35 px-3 py-2 text-xs text-content-muted">
           <span>
             {mode === "login"
               ? "Don't have an account?"
               : "Already have an account?"}
           </span>
           <button
+            type="button"
             onClick={switchMode}
-            className="text-primary hover:underline font-medium"
+            className="font-medium text-primary hover:underline"
             disabled={loading}
           >
             {mode === "login" ? "Create one" : "Sign in"}
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

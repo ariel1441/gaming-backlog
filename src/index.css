@@ -32,6 +32,21 @@ html, body {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  background: theme(colors.surface.bg);
+  color: theme(colors.content.primary);
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: theme(colors.primary.DEFAULT / 28%);
+  color: theme(colors.content.primary);
+}
+
+* {
+  scrollbar-color: theme(colors.surface.border) transparent;
 }
 
 /* === Utilities === */

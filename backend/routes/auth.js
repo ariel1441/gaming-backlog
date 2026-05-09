@@ -5,6 +5,12 @@ import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
+import {
+  badRequest,
+  conflict,
+  notFound,
+  unauthorized,
+} from "../utils/httpError.js";
 
 const router = express.Router();
 const { JWT_SECRET } = process.env;
@@ -37,14 +43,12 @@ router.post("/register", async (req, res, next) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
-      return res
-        .status(400)
-        .json({ error: "username and password are required" });
+      return next(badRequest("username and password are required"));
     }
 
     // basic username guard
     if (!/^[\w.-]{3,30}$/.test(username)) {
-      return res.status(400).json({ error: "invalid username format" });
+      return next(badRequest("invalid username format"));
     }
 
     const existing = await pool.query(
@@ -52,7 +56,7 @@ router.post("/register", async (req, res, next) => {
       [username]
     );
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: "username already taken" });
+      return next(conflict("username already taken"));
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -87,9 +91,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
-      return res
-        .status(400)
-        .json({ error: "username and password are required" });
+      return next(badRequest("username and password are required"));
     }
 
     const result = await pool.query(
@@ -98,13 +100,13 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: "invalid credentials" });
+      return next(unauthorized("invalid credentials"));
     }
 
     const user = result.rows[0];
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
-      return res.status(401).json({ error: "invalid credentials" });
+      return next(unauthorized("invalid credentials"));
     }
 
     const token = jwt.sign(
@@ -140,7 +142,7 @@ router.get("/me", verifyToken, async (req, res, next) => {
       [req.user.id]
     );
     if (me.rows.length === 0) {
-      return res.status(404).json({ error: "user not found" });
+      return next(notFound("user not found"));
     }
     res.json(me.rows[0]);
   } catch (err) {
@@ -157,7 +159,7 @@ router.patch("/me/is-public", verifyToken, async (req, res, next) => {
   try {
     const { is_public } = req.body || {};
     if (typeof is_public !== "boolean") {
-      return res.status(400).json({ error: "is_public must be boolean" });
+      return next(badRequest("is_public must be boolean"));
     }
 
     const updated = await pool.query(

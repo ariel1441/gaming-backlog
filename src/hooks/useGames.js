@@ -171,7 +171,10 @@ export function useGames() {
         my_score: payload?.my_score ?? null,
         how_long_to_beat: payload?.how_long_to_beat ?? null,
         thoughts: payload?.thoughts ?? null,
-        cover: null, // hydration fills later
+        cover: payload?.rawg_cover ?? null,
+        releaseDate: payload?.rawg_released ?? null,
+        rawg_id: payload?.rawg_id ?? null,
+        rawg_slug: payload?.rawg_slug ?? null,
         started_at: payload?.started_at ?? null,
         finished_at: payload?.finished_at ?? null,
         _optimistic: true,

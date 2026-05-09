@@ -14,8 +14,15 @@
     "build": "vite build",
     "preview": "cross-env NODE_ENV=production vite preview --port 5173",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests",
-    "check": "npm run lint && npm test"
+    "test": "node --test",
+    "check": "npm run lint && npm test && npm run build",
+    "env:check": "node scripts/check-env.js",
+    "db:migrate:local": "node scripts/db-migrate.js",
+    "db:migrate:status": "node scripts/db-migrate.js --status",
+    "db:migrate:prod": "node scripts/db-migrate.js --production --confirm-production",
+    "db:migrate:prod:status": "node scripts/db-migrate.js --production --confirm-production --status",
+    "db:copy-prod-to-local": "node scripts/copy-prod-to-local.js --confirm-local-overwrite",
+    "db:reset:local": "node scripts/reset-local-db.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

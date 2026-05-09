@@ -1,0 +1,82 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - Dev
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npx --yes eslint@8.57.1 .
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  migrate-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-database-migrations
+      cancel-in-progress: false
+    env:
+      PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      PGSSL: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Show pending production migrations
+        if: env.PROD_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          CONFIRM_PROD_MIGRATIONS: "true"
+          PGSSL: "true"
+        run: npm run db:migrate:prod:status
+
+      - name: Apply production migrations
+        if: env.PROD_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          CONFIRM_PROD_MIGRATIONS: "true"
+          PGSSL: "true"
+        run: npm run db:migrate:prod
+
+      - name: Skip production migrations
+        if: env.PROD_DATABASE_URL == ''
+        run: echo "PROD_DATABASE_URL secret is not configured; skipping production migrations."

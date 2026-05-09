@@ -5,36 +5,20 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 import {
   Menu,
-  Search as IconSearch,
-  ArrowUpDown as IconSort,
-  SlidersHorizontal as IconFilter,
-  Plus as IconPlus,
-  Dice5 as IconDice,
   Globe as IconGlobe,
   LogOut as IconLogout,
   User2 as IconUser,
   BarChart3 as IconInsights,
-  CheckCircle2 as IconCompleted,
   Sparkles as IconDemo,
 } from "lucide-react";
 
 const Sidebar = ({
   sidebarOpen,
   setSidebarOpen,
-  searchVisible,
-  setSearchVisible,
-  sortVisible,
-  setSortVisible,
-  filterVisible,
-  setFilterVisible,
-  showAddForm,
   setShowAddForm,
-  handleSurpriseMe,
   isAdmin,
   onShowAdminLogin,
   onShowPublicSettings,
-  onToggleCompleted,
-  completedActive,
 }) => {
   const { user, isAuthenticated, logout, isGuest, startDemo } = useAuth();
   const authed = isAuthenticated ?? !!isAdmin;
@@ -48,36 +32,7 @@ const Sidebar = ({
   };
 
   const closeAllPanels = () => {
-    setSearchVisible(false);
-    setSortVisible(false);
-    setFilterVisible(false);
     setShowAddForm(false);
-  };
-
-  const toggleSearch = () => {
-    setSearchVisible((v) => !v);
-    setSortVisible(false);
-    setFilterVisible(false);
-    setShowAddForm(false);
-  };
-  const toggleSort = () => {
-    setSortVisible((v) => !v);
-    setSearchVisible(false);
-    setFilterVisible(false);
-    setShowAddForm(false);
-  };
-  const toggleFilter = () => {
-    setFilterVisible((v) => !v);
-    setSearchVisible(false);
-    setSortVisible(false);
-    setShowAddForm(false);
-  };
-  const toggleAdd = () => {
-    if (!authed) return onShowAdminLogin?.();
-    setShowAddForm((v) => !v);
-    setSearchVisible(false);
-    setSortVisible(false);
-    setFilterVisible(false);
   };
 
   const tryToggleSidebar = () => {
@@ -96,20 +51,20 @@ const Sidebar = ({
         "relative",
         "w-16 lg:transition-[width] lg:duration-300 lg:ease-out",
         sidebarOpen ? "lg:w-72" : "lg:w-16",
-        "bg-surface-card border-r border-surface-border text-content-primary",
+        "bg-surface-card/95 border-r border-surface-border text-content-primary",
         "h-screen shrink-0 flex flex-col overflow-hidden",
       ].join(" ")}
     >
       {/* HEADER */}
-      <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
+      <div className="border-b border-surface-border px-2 py-3 lg:px-3">
         <button
           type="button"
           onClick={tryToggleSidebar}
-          className="w-full h-11 flex items-center justify-center lg:justify-start rounded-lg bg-transparent hover:bg-primary-darker hover:text-white transition-colors"
+          className="flex h-11 w-full items-center justify-center rounded-lg bg-transparent transition-colors hover:bg-surface-elevated hover:text-content-primary lg:justify-start"
           title={sidebarOpen ? "Collapse" : "Expand"}
           aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
-          <div className="w-10 h-11 flex justify-center items-center">
+          <div className="flex h-11 w-10 items-center justify-center">
             <Menu className="w-5 h-5" />
           </div>
           <div
@@ -123,7 +78,7 @@ const Sidebar = ({
             ].join(" ")}
           >
             {sidebarOpen && (
-              <span className="hidden lg:inline truncate font-semibold">
+              <span className="hidden truncate font-semibold lg:inline">
                 Gaming Backlog
               </span>
             )}
@@ -132,11 +87,11 @@ const Sidebar = ({
       </div>
 
       {/* AUTH BOX */}
-      <div className="px-2 lg:px-3 py-3 border-b border-surface-border">
+      <div className="border-b border-surface-border px-2 py-3 lg:px-3">
         {authed ? (
           sidebarOpen ? (
-            <div className="hidden lg:flex items-center h-11">
-              <div className="w-10 h-11 flex justify-center items-center">
+            <div className="hidden h-11 items-center rounded-lg bg-surface-bg/35 pr-2 lg:flex">
+              <div className="flex h-11 w-10 items-center justify-center">
                 <IconUser className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
@@ -150,7 +105,7 @@ const Sidebar = ({
               <button
                 type="button"
                 onClick={logout}
-                className="ml-auto h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded bg-transparent hover:bg-primary-darker hover:text-white text-xs transition-colors"
+                className="ml-auto inline-flex h-8 items-center justify-center gap-1 rounded-md bg-transparent px-2.5 text-xs transition-colors hover:bg-surface-elevated hover:text-content-primary"
                 title="Sign out"
               >
                 <IconLogout className="w-4 h-4" />
@@ -161,7 +116,7 @@ const Sidebar = ({
             <button
               type="button"
               onClick={logout}
-              className="w-full h-11 flex items-center justify-center rounded-lg bg-transparent hover:bg-primary-darker hover:text-white transition-colors"
+              className="flex h-11 w-full items-center justify-center rounded-lg bg-transparent transition-colors hover:bg-surface-elevated hover:text-content-primary"
               title="Sign out"
               aria-label="Sign out"
             >
@@ -172,10 +127,10 @@ const Sidebar = ({
           <button
             type="button"
             onClick={onShowAdminLogin}
-            className="w-full h-11 flex items-center justify-center lg:justify-start px-3 rounded-lg bg-transparent hover:bg-primary-darker hover:text-white transition-colors"
+            className="flex h-11 w-full items-center justify-center rounded-lg bg-transparent px-3 transition-colors hover:bg-surface-elevated hover:text-content-primary lg:justify-start"
             title="Sign in / Create account"
           >
-            <div className="w-10 h-11 flex justify-center items-center">
+            <div className="flex h-11 w-10 items-center justify-center">
               <IconUser className="w-5 h-5" />
             </div>
             <div
@@ -198,41 +153,7 @@ const Sidebar = ({
       </div>
 
       {/* ACTIONS */}
-      <nav className="p-2 lg:p-3 flex-1 overflow-auto space-y-2">
-        <SidebarRow
-          label="Search"
-          icon={IconSearch}
-          active={searchVisible}
-          onClick={toggleSearch}
-          expanded={sidebarOpen}
-        />
-        <SidebarRow
-          label="Sort"
-          icon={IconSort}
-          active={sortVisible}
-          onClick={toggleSort}
-          expanded={sidebarOpen}
-        />
-        <SidebarRow
-          label="Filter"
-          icon={IconFilter}
-          active={filterVisible}
-          onClick={toggleFilter}
-          expanded={sidebarOpen}
-        />
-        <SidebarRow
-          label={authed ? "Add Game" : "Add (sign in)"}
-          icon={IconPlus}
-          active={showAddForm}
-          onClick={toggleAdd}
-          expanded={sidebarOpen}
-        />
-        <SidebarRow
-          label="Surprise Me"
-          icon={IconDice}
-          onClick={handleSurpriseMe}
-          expanded={sidebarOpen}
-        />
+      <nav className="flex-1 space-y-1.5 overflow-auto p-2 lg:p-3">
         <SidebarRow
           label="Insights"
           icon={IconInsights}
@@ -254,17 +175,10 @@ const Sidebar = ({
           onClick={startLiveDemo}
           expanded={sidebarOpen}
         />
-        <SidebarRow
-          label="Completed games"
-          icon={IconCompleted}
-          active={completedActive}
-          onClick={onToggleCompleted}
-          expanded={sidebarOpen}
-        />
       </nav>
 
       {/* FOOTER TIP */}
-      <div className="px-2 lg:px-3 py-3 border-t border-surface-border text-xs text-content-muted">
+      <div className="border-t border-surface-border px-2 py-3 text-xs text-content-muted lg:px-3">
         <div
           className={[
             "transition-all duration-300 text-center lg:text-left",
@@ -276,10 +190,10 @@ const Sidebar = ({
         >
           {sidebarOpen ? (
             <span className="hidden lg:inline">
-              Tip: drag &amp; drop to reorder within a status.
+              Drag cards to reorder games within a status.
             </span>
           ) : (
-            <span>ℹ️</span>
+            <span className="sr-only">Backlog tip</span>
           )}
         </div>
       </div>
@@ -295,10 +209,10 @@ const SidebarRow = ({ label, icon, active, onClick, expanded }) => {
       type="button"
       onClick={onClick}
       className={[
-        "w-full h-11 flex items-center justify-center lg:justify-start rounded-lg transition-colors",
+        "flex h-11 w-full items-center justify-center rounded-lg border text-sm transition-colors lg:justify-start",
         active
-          ? "bg-primary-darker text-white"
-          : "bg-transparent text-content-primary hover:bg-primary-darker hover:text-white",
+          ? "border-primary/45 bg-primary/15 text-primary-light"
+          : "border-transparent bg-transparent text-content-secondary hover:border-surface-border hover:bg-surface-elevated/70 hover:text-content-primary",
       ].join(" ")}
       title={label}
     >

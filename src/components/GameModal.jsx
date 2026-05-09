@@ -1,253 +1,302 @@
 import React, { useState } from "react";
-import { statusClassMap } from "../utils/statusClassMap";
+import {
+  CalendarDays,
+  Clock3,
+  Layers3,
+  Sparkles,
+  Star,
+  Tag,
+  Trophy,
+  X,
+} from "lucide-react";
+import { Button, IconButton, StatusBadge } from "./ui";
 
-const featureIconsMap = {
-  multiplayer: "🎮",
-  singleplayer: "👤",
-  "co-op": "🤝",
-  vr: "🕶️",
-  "controller support": "🕹️",
-  achievements: "🏆",
-};
+function fmtDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
-const GameModal = ({ game, onClose }) => {
+function DetailStat({ icon: Icon, label, value, tone = "default" }) {
+  const toneClass =
+    tone === "warning"
+      ? "text-state-warning"
+      : tone === "success"
+        ? "text-state-success"
+        : tone === "primary"
+          ? "text-primary"
+          : tone === "muted"
+            ? "text-content-muted"
+            : "text-content-primary";
+
+  return (
+    <div className="rounded-xl border border-surface-border bg-surface-elevated/60 p-4">
+      <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-content-muted">
+        <Icon className="h-4 w-4" />
+        <span>{label}</span>
+      </div>
+      <div className={`text-lg font-semibold ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function DetailSection({ icon: Icon, label, children, className = "" }) {
+  return (
+    <section
+      className={[
+        "rounded-2xl border border-surface-border bg-surface-card/70 p-4 md:p-5",
+        className,
+      ].join(" ")}
+    >
+      <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-content-muted">
+        <Icon className="h-4 w-4" />
+        <span>{label}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SectionContent({ children }) {
+  return <div className="space-y-4">{children}</div>;
+}
+
+function TimelineRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-border bg-surface-elevated/40 px-4 py-3">
+      <span className="text-sm text-content-secondary">{label}</span>
+      <span className="text-sm font-medium text-content-primary">{value}</span>
+    </div>
+  );
+}
+
+export default function GameModal({ game, onClose, onRefresh }) {
   const [showDescription, setShowDescription] = useState(false);
   if (!game) return null;
 
   const invalidValues = ["#N/A", "N/A", "null", "", null, undefined];
 
   const cover =
-    game.cover || "https://via.placeholder.com/300x180?text=No+Image";
-  const metacritic =
-    game.metacritic && !invalidValues.includes(game.metacritic)
-      ? game.metacritic
-      : "N/A";
-  const my_genre = game.my_genre || "Unknown";
+    game.cover || "https://via.placeholder.com/900x1200?text=No+Cover";
   const status = game.status || "Unknown";
-  const rating = game.rating || "N/A";
-  const releaseDate = game.releaseDate || "Unknown";
-  const genres = game.genres || "N/A";
-  const thoughts = game.thoughts ?? game.thoughts ?? "";
-  const my_score = game.my_score || "";
-  const description = game.description || "N/A";
-
-  let features = game.features || [];
-  if (typeof features === "string") {
-    features = features
-      .split(",")
-      .map((f) => f.trim())
-      .filter(Boolean);
-  }
-
-  const toggleDescription = () => {
-    setShowDescription((prev) => !prev);
-  };
-
-  const getStatusColor = (status) => {
-    if (!status || typeof status !== "string")
-      return "bg-content-muted/20 text-content-muted border-content-muted/30";
-    const normalized = status.toLowerCase().trim().replaceAll("-", " ");
-    return (
-      statusClassMap[normalized] ||
-      "bg-content-muted/20 text-content-muted border-content-muted/30"
-    );
-  };
-
-  const renderFeatureIcons = (features) => {
-    if (!Array.isArray(features) || features.length === 0) return null;
-    return (
-      <div className="flex flex-wrap gap-3 mt-6">
-        <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2 w-full">
-          Features
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {features.map((feat, i) => {
-            const key = feat.toLowerCase();
-            if (!featureIconsMap[key]) return null;
-            return (
-              <span
-                key={i}
-                title={feat}
-                className="text-lg bg-surface-elevated/40 px-3 py-2 rounded-lg border border-surface-border/50 hover:border-primary/50 transition-colors"
-                role="img"
-                aria-label={feat}
-              >
-                {featureIconsMap[key]}
-              </span>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  const myGenre = game.my_genre || null;
+  const genres = game.genres || null;
+  const thoughts = game.thoughts?.trim() || null;
+  const description = game.description || "";
+  const releaseDate = fmtDate(game.releaseDate);
+  const startedAt = fmtDate(game.started_at);
+  const finishedAt = fmtDate(game.finished_at);
+  const rating =
+    !invalidValues.includes(game.rating) && game.rating != null
+      ? `${game.rating}/5`
+      : null;
+  const myScore =
+    !invalidValues.includes(game.my_score) && game.my_score != null
+      ? `${game.my_score}/10`
+      : null;
+  const metacritic =
+    !invalidValues.includes(game.metacritic) && game.metacritic != null
+      ? String(game.metacritic)
+      : null;
+  const metricStats = [
+    {
+      icon: Clock3,
+      label: "How long to beat",
+      value: game.how_long_to_beat ? `${game.how_long_to_beat}h` : "TBD",
+      tone: game.how_long_to_beat ? "success" : "muted",
+    },
+    {
+      icon: Star,
+      label: "RAWG rating",
+      value: rating || "N/A",
+      tone: rating ? "warning" : "muted",
+    },
+    {
+      icon: Trophy,
+      label: "Metacritic",
+      value: metacritic || "N/A",
+      tone: metacritic ? "default" : "muted",
+    },
+    {
+      icon: Trophy,
+      label: "My score",
+      value: myScore || "Not scored",
+      tone: myScore ? "primary" : "muted",
+    },
+  ];
 
   return (
     <div
-      className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-modal p-4 overflow-auto"
+      className="fixed inset-0 z-modal overflow-y-auto bg-black/80 p-4 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="game-modal-title"
     >
       <div
-        className="bg-surface-bg/95 backdrop-blur-md text-content-primary rounded-3xl p-8 w-full max-w-6xl
-             border border-surface-border shadow-glow-primary relative max-h-[90vh] overflow-y-auto 
-             flex flex-col lg:flex-row gap-8 transition-all duration-500"
-        onClick={(e) => e.stopPropagation()}
+        className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-6xl items-center"
+        onClick={(event) => event.stopPropagation()}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 text-4xl font-bold leading-none text-content-muted hover:text-action-danger transition-colors duration-300 focus:outline-none hover:scale-110 transform z-10"
-          aria-label="Close modal"
-        >
-          &times;
-        </button>
-
-        {/* Left side - Image */}
-        <div className="lg:w-2/5 flex-shrink-0">
-          <img
-            src={cover}
-            alt={game.name || "Game cover image"}
-            className="w-full rounded-2xl object-cover h-full max-h-[80vh] shadow-glow-primary border border-surface-border/20"
-            loading="lazy"
+        <div className="relative w-full overflow-hidden rounded-2xl border border-surface-border bg-surface-bg shadow-glow-primary">
+          <IconButton
+            icon={X}
+            onClick={onClose}
+            className="absolute right-4 top-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-surface-border bg-surface-card/85 text-content-primary transition-colors hover:border-primary hover:text-primary"
+            label="Close modal"
+            title="Close"
           />
-        </div>
 
-        {/* Right side - Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Title */}
-          <h2
-            id="game-modal-title"
-            className="text-4xl font-bold mb-6 bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent tracking-wide pb-1 decoration-clone"
-          >
-            {game.name}
-          </h2>
-
-          {/* Status Badge - Most Important */}
-          <div className="mb-6">
-            <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">
-              Status
-            </div>
-            <span
-              className={`inline-block px-4 py-2 rounded-full text-sm font-semibold border ${getStatusColor(status)}`}
-            >
-              {status}
-            </span>
-          </div>
-
-          {/* Key Stats Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div>
-              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
-                How Long to Beat
-              </div>
-              <div className="text-state-success font-bold text-xl">
-                {game.how_long_to_beat != null
-                  ? `🕒 ${game.how_long_to_beat}h`
-                  : "N/A"}
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(320px,40%)_1fr]">
+            <div className="relative overflow-hidden border-b border-surface-border bg-surface-bg lg:h-[calc(100vh-3rem)] lg:max-h-[760px] lg:min-h-[620px] lg:self-start lg:border-b-0 lg:border-r">
+              <img
+                src={cover}
+                alt={game.name || "Game cover"}
+                className="h-[300px] w-full object-cover sm:h-[380px] lg:h-full"
+                loading="lazy"
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface-bg/70 via-transparent to-surface-bg/10 lg:bg-gradient-to-r lg:from-transparent lg:via-surface-bg/5 lg:to-surface-bg/20" />
             </div>
 
-            <div>
-              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
-                RAWG Rating
+            <div className="flex flex-col">
+              <div className="border-b border-surface-border px-5 pb-5 pt-6 md:px-7 md:pr-20">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2
+                      id="game-modal-title"
+                      className="break-words pr-10 text-3xl font-semibold leading-tight text-content-primary md:pr-0 md:text-4xl"
+                    >
+                      {game.name}
+                    </h2>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <StatusBadge status={status} />
+                      {releaseDate ? (
+                        <span className="rounded-full border border-surface-border bg-surface-card/80 px-3 py-1 text-xs text-content-secondary">
+                          Released {releaseDate}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {onRefresh ? (
+                    <Button
+                      type="button"
+                      onClick={onRefresh}
+                      variant="secondary"
+                      className="pr-4"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Surprise me again
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-              <div className="text-state-warning font-bold text-xl">
-                ⭐ {rating}
+
+              <div className="space-y-5 p-5 md:p-7">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {metricStats.map((stat) => (
+                    <DetailStat
+                      key={stat.label}
+                      icon={stat.icon}
+                      label={stat.label}
+                      value={stat.value}
+                      tone={stat.tone}
+                    />
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.85fr)]">
+                  <div className="space-y-5">
+                    {(myGenre || genres) && (
+                      <DetailSection icon={Tag} label="Genres">
+                        <SectionContent>
+                          {myGenre ? (
+                            <div>
+                              <div className="mb-1 text-sm font-medium text-content-secondary">
+                                My genre
+                              </div>
+                              <div className="text-base text-content-primary">
+                                {myGenre}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {genres ? (
+                            <div>
+                              <div className="mb-1 text-sm font-medium text-content-secondary">
+                                RAWG genres
+                              </div>
+                              <div className="text-base text-content-primary">
+                                {genres}
+                              </div>
+                            </div>
+                          ) : null}
+                        </SectionContent>
+                      </DetailSection>
+                    )}
+
+                    {thoughts ? (
+                      <DetailSection icon={Sparkles} label="Your thoughts">
+                        <p className="whitespace-pre-wrap leading-7 text-content-primary">
+                          {thoughts}
+                        </p>
+                      </DetailSection>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-5">
+                    {(startedAt || finishedAt || releaseDate) && (
+                      <DetailSection icon={CalendarDays} label="Timeline">
+                        <div className="space-y-3">
+                          {releaseDate ? (
+                            <TimelineRow label="Release date" value={releaseDate} />
+                          ) : null}
+                          {startedAt ? (
+                            <TimelineRow label="Started" value={startedAt} />
+                          ) : null}
+                          {finishedAt ? (
+                            <TimelineRow label="Finished" value={finishedAt} />
+                          ) : null}
+                        </div>
+                      </DetailSection>
+                    )}
+                  </div>
+
+                  {description ? (
+                    <DetailSection
+                      icon={Layers3}
+                      label="About the game"
+                      className="xl:col-span-2"
+                    >
+                      <Button
+                        type="button"
+                        onClick={() => setShowDescription((prev) => !prev)}
+                        variant="primary"
+                        aria-expanded={showDescription}
+                        aria-controls="game-description"
+                      >
+                        {showDescription ? "Hide description" : "Show description"}
+                      </Button>
+
+                      {showDescription ? (
+                        <div
+                          id="game-description"
+                          className="prose prose-invert mt-4 max-w-3xl rounded-xl border border-surface-border bg-surface-elevated/35 p-5 leading-7 text-content-primary"
+                          dangerouslySetInnerHTML={{ __html: description }}
+                        />
+                      ) : null}
+                    </DetailSection>
+                  ) : null}
+                </div>
               </div>
             </div>
-
-            <div>
-              <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
-                Metacritic
-              </div>
-              <div className="text-primary font-bold text-xl">
-                🎯 {metacritic}
-              </div>
-            </div>
-
-            {my_score && (
-              <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
-                  My Score
-                </div>
-                <div className="text-secondary font-bold text-xl">
-                  💯 {my_score}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Secondary Info */}
-          <div className="space-y-6 pt-6 border-t border-surface-border/50">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
-                  My Genre
-                </div>
-                <div className="text-content-primary text-lg">{my_genre}</div>
-              </div>
-
-              <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
-                  Genres
-                </div>
-                <div className="text-content-primary text-lg">{genres}</div>
-              </div>
-
-              <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-2">
-                  Release Date
-                </div>
-                <div className="text-content-primary text-lg">
-                  {releaseDate}
-                </div>
-              </div>
-            </div>
-
-            {/* My Thoughts */}
-            {thoughts && thoughts.trim() && (
-              <div>
-                <div className="text-xs font-medium text-content-secondary uppercase tracking-wider mb-3">
-                  My Thoughts / Expectation
-                </div>
-                <div className="bg-surface-card/30 border border-surface-border/30 p-4 rounded-xl">
-                  <span className="text-content-primary whitespace-pre-wrap leading-relaxed">
-                    {thoughts}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Description Toggle */}
-            <div>
-              <button
-                onClick={toggleDescription}
-                className="px-6 py-3 bg-gradient-to-r from-action-primary to-action-primary-hover hover:from-primary-light hover:to-primary rounded-xl text-content-primary font-semibold transition-all duration-300 hover:shadow-glow-primary hover:scale-105"
-                aria-expanded={showDescription}
-                aria-controls="game-description"
-              >
-                {showDescription
-                  ? "🙈 Hide Description"
-                  : "📖 Show Description"}
-              </button>
-
-              {showDescription && (
-                <div
-                  id="game-description"
-                  className="mt-4 p-4 bg-surface-card/30 border border-surface-border/30 rounded-xl text-content-primary leading-relaxed backdrop-blur-sm"
-                  dangerouslySetInnerHTML={{ __html: description }}
-                />
-              )}
-            </div>
-
-            {/* Features */}
-            {renderFeatureIcons(features)}
           </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default GameModal;
+}

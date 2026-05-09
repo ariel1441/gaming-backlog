@@ -1,11 +1,12 @@
 // backend/middleware/auth.js
 import jwt from "jsonwebtoken";
+import { forbidden, unauthorized } from "../utils/httpError.js";
 
 export function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "No token provided" });
+    return next(unauthorized("No token provided"));
   }
 
   const token = authHeader.split(" ")[1];
@@ -15,6 +16,6 @@ export function verifyToken(req, res, next) {
     req.user = decoded; // contains { id, username }
     next();
   } catch (error) {
-    return res.status(403).json({ error: "Invalid or expired token" });
+    return next(forbidden("Invalid or expired token"));
   }
 }

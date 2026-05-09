@@ -1,0 +1,36 @@
+# Documentation Index
+
+This folder is for supporting project notes. Prefer the running app and source
+code when a note appears stale.
+
+## Maintained Docs
+
+- [`../README.md`](../README.md) - project overview, setup, and command map.
+- [`../DEVELOPMENT.md`](../DEVELOPMENT.md) - local workflow, environments,
+  deployment, and database process.
+- [`../AGENTS.md`](../AGENTS.md) - durable AI-agent instructions for this repo.
+- [`AI_WORKFLOW.md`](AI_WORKFLOW.md) - human-facing guide for asking AI tools to
+  work on this codebase.
+- [`../backend/migrations/README.md`](../backend/migrations/README.md) -
+  database migration conventions.
+
+## Templates
+
+- [`templates/bug-report.md`](templates/bug-report.md) - issue/debugging brief.
+- [`templates/feature-request.md`](templates/feature-request.md) - feature task
+  brief.
+
+These templates are prompts/checklists. They are not authoritative product
+documentation.
+
+## Planning Notes
+
+- [`planning/ideas.md`](planning/ideas.md) - rough backlog ideas.
+
+Planning notes are intentionally unverified. Before implementing one, inspect
+the current code and confirm the idea still makes sense.
+
+## Images
+
+`images/` contains screenshots and a reorder GIF used by older README versions.
+Treat them as visual references only; they may not exactly match the current UI.

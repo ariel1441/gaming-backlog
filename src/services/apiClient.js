@@ -8,6 +8,11 @@ export class ApiError extends Error {
   }
 }
 
+const DEFAULT_GET_RETRIES = 3;
+const DEFAULT_RETRY_DELAYS_MS = [700, 1600, 3200];
+const NETWORK_ERROR_MESSAGE =
+  "Unable to reach the server. It may still be waking up, so please try again.";
+
 // Storage key unified with AuthContext
 const TOKEN_KEY = "token";
 
@@ -29,10 +34,13 @@ export function getAuthHeaders() {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-// Support VITE_API_BASE_URL or VITE_API_BASE; strip trailing slash
+// Support VITE_API_BASE_URL or VITE_API_BASE; strip trailing slash.
+// In local Vite dev, default to the Express port used by npm run dev:back.
 const API_BASE_RAW =
   (typeof import.meta !== "undefined" &&
-    (import.meta.env?.VITE_API_BASE_URL || import.meta.env?.VITE_API_BASE)) ||
+    (import.meta.env?.VITE_API_BASE_URL ||
+      import.meta.env?.VITE_API_BASE ||
+      (import.meta.env?.DEV ? "http://localhost:5000" : ""))) ||
   "";
 const API_BASE = API_BASE_RAW.replace(/\/+$/, "");
 
@@ -51,14 +59,45 @@ async function parseJsonSafe(res) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function isNetworkFetchError(error) {
+  if (!error || error.name === "AbortError") return false;
+  if (error instanceof TypeError) return true;
+  const message = String(error.message || "").toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("load failed")
+  );
+}
+
+function retryDelayForAttempt(attempt, retryDelayMs) {
+  if (typeof retryDelayMs === "function") return retryDelayMs(attempt);
+  if (typeof retryDelayMs === "number") return retryDelayMs;
+  return DEFAULT_RETRY_DELAYS_MS[attempt - 1] ?? DEFAULT_RETRY_DELAYS_MS.at(-1);
+}
+
 /**
  * apiFetch(path, { method, body, headers, signal, auth })
  * - auth (default true): include Authorization header from local storage.
  */
 export async function apiFetch(
   path,
-  { method = "GET", body, headers, signal, auth = true } = {}
+  {
+    method = "GET",
+    body,
+    headers,
+    signal,
+    auth = true,
+    keepalive,
+    retries,
+    retryDelayMs,
+  } = {}
 ) {
+  const requestMethod = String(method || "GET").toUpperCase();
   const isFormData =
     typeof FormData !== "undefined" && body instanceof FormData;
 
@@ -67,7 +106,7 @@ export async function apiFetch(
     ...(headers || {}),
   };
 
-  const init = { method, headers: reqHeaders, signal };
+  const init = { method: requestMethod, headers: reqHeaders, signal, keepalive };
 
   if (body != null) {
     if (isFormData) {
@@ -78,13 +117,41 @@ export async function apiFetch(
     }
   }
 
-  const res = await fetch(buildUrl(path), init);
+  const maxRetries =
+    retries ??
+    (requestMethod === "GET" || requestMethod === "HEAD"
+      ? DEFAULT_GET_RETRIES
+      : 0);
+  let attempt = 0;
+  let res;
+
+  while (attempt <= maxRetries) {
+    try {
+      res = await fetch(buildUrl(path), init);
+      break;
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      if (!isNetworkFetchError(error) || attempt >= maxRetries) {
+        throw new ApiError(NETWORK_ERROR_MESSAGE, {
+          status: 0,
+          details: { cause: error?.message || String(error) },
+        });
+      }
+
+      attempt += 1;
+      if (signal?.aborted) throw error;
+      await sleep(retryDelayForAttempt(attempt, retryDelayMs));
+    }
+  }
 
   if (res.ok) return await parseJsonSafe(res);
 
   const payload = await parseJsonSafe(res);
+  const apiError = payload && payload.error;
   const message =
-    (payload && (payload.error || payload.message)) ||
+    (apiError && typeof apiError === "object" && apiError.message) ||
+    (typeof apiError === "string" && apiError) ||
+    (payload && payload.message) ||
     res.statusText ||
     "Request failed";
 

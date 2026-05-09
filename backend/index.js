@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import cors from "cors";
 import { registerSecurity } from "./middleware/security.js";
 import { authLimiter, publicLimiter } from "./middleware/rateLimit.js";
 import gamesRouter, { initCache } from "./routes/games.js";
@@ -13,15 +12,12 @@ import insightsRouter from "./routes/insights.js";
 import metaRouter from "./routes/meta.js";
 import errorHandler from "./middleware/errorHandler.js";
 import { errors as celebrateErrors } from "celebrate";
-import corsOptions from "./config/cors.js";
 import demoRouter from "./routes/demo.js";
 import { pool } from "./db.js";
 
 const app = express();
 
 registerSecurity(app);
-
-app.use(cors(corsOptions));
 
 await initCache(app); // sets app.locals.rawgCache
 

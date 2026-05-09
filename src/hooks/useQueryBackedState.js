@@ -28,7 +28,6 @@ export default function useQueryBackedState({
     next.set(key, serialize ? serialize(value) : String(value));
     setSp(next, { replace: true });
     if (storageKey) localStorage.setItem(storageKey, String(value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   return [value, setValue];
