@@ -1,6 +1,6 @@
 # Roadmap And Improvement Plan
 
-Last updated: 2026-05-09
+Last updated: 2026-05-16
 
 This is the planning document for improvements, feature ideas, cleanup, and
 future work. It is intentionally editable. Add your own ideas, reorder items,
@@ -53,9 +53,9 @@ Recommended first bundle:
     and panel surfaces
   - [x] private backlog top toolbar with inline search, sort, filters, view
     switch, account menu, and primary actions
-  - [x] public profile now reuses the same `BacklogToolbar`, filter dropdowns,
-    sort controls, completed shortcut, view switch, and game grid behavior as
-    the private backlog, with read-only differences only
+  - [x] public profile has a focused dashboard-style profile surface, plus a
+    separate "View all games" mode that reuses the private backlog toolbar and
+    grid in read-only form
   - [x] card baseline pass: image-first cards, four compact stat pills, My
     Genre chips, no duplicate release date over the image, no RAWG genre noise
     in cards, neutral stat colors, and cleaner hover/image boundary
@@ -320,13 +320,16 @@ Started/finished date integration:
   - currently active games
   - average start-to-finish duration
   - oldest active unfinished game
-- Add date filters and click-throughs:
-  - started before/after
-  - finished before/after
-  - finished this year/month
-  - currently playing since
-  - click a year in Insights to filter the backlog by started/finished year
-  - active games older than 6 months
+- [x] Add the core date filters and click-throughs. Done 2026-05-12:
+  Insights year bars link back to started/finished year backlog filters, active
+  stats link back to unfinished games, the backlog toolbar includes current-year
+  started/finished filters, active games, and active 6+ months, and the shared
+  game-list date filtering is covered by tests.
+- Optional later date filter polish:
+  - arbitrary started before/after
+  - arbitrary finished before/after
+  - finished this month
+  - currently playing since a chosen date
 - Add date sorting later if schema supports it:
   - recently added/updated if schema supports it later
 - Optional later date analytics:
@@ -349,25 +352,65 @@ Insights improvements:
 
 Public profile:
 
-- Stronger public profile header. A share link already exists, so focus on
-  making the profile feel useful and presentable:
-  - stats
-  - clearer share/copy action placement
-  - currently playing
-  - favorites/top rated
-- Public profile sections:
-  - currently playing
-  - recently finished
-  - top rated/favorites
-  - completed
+- [x] Stronger public profile header and showcase. Done 2026-05-12: the public
+  profile now has a stats header, share/copy placement, currently playing,
+  recently finished, and a read-only full-library view that reuses the shared
+  backlog toolbar/grid controls.
+- Reuse the successful public profile overview as a larger profile snapshot in
+  account/settings and/or insights:
+  - [x] owner preview of how the public profile looks. Done 2026-05-16:
+    `ProfileSnapshot` is shared by public profile and the public settings modal.
+  - [x] bigger stats and showcase treatment. Done 2026-05-16: public profiles
+    now start with a larger profile snapshot, a full-width favorite-games poster
+    shelf, currently playing, recently finished, and an up-next queue. The
+    separate View all games mode opens the normal backlog-style list in
+    read-only mode.
+  - [x] user-selected favorite games. Done 2026-05-16: games now support a
+    per-user `favorite_rank` from 1-5, settings includes a searchable favorite
+    picker/reorder flow, and public/settings profile snapshots show the ranked
+    poster shelf from the user's own backlog.
+  - optional shareable "my backlog" summary card later
+- Later public profile sections after the underlying fields exist:
+  - completed highlights
   - wishlist/next up if public
+  - favorite-game polish: drag-and-drop reordering, quick "add to favorites"
+    from game cards/modals, and replace-slot actions when all five favorites
+    are full
+  - profile bio and taste summary: short bio, favorite genres/tags, favorite
+    platform/source, and "what I usually play" style fields
+  - avatar and banner image, with simple cropping/fallbacks and privacy-aware
+    defaults
+  - recent activity: started, finished, rated, reviewed, added to wishlist, and
+    favorite changes
+  - recent reviews/completion notes once review fields exist
+  - custom user lists, such as favorites by genre, best short games, 2026
+    completions, recommendations, and "play next"
+  - pinned list or pinned profile module, so the user can spotlight one custom
+    list or activity area
+  - badges/profile showcases inspired by Steam-style profiles: completion
+    streaks, genre specialist, backlog clearer, short-game finisher, long-game
+    survivor, collector milestones, and yearly recap badges
+  - profile modules the user can reorder later: favorites, activity, reviews,
+    lists, badges, stats, currently playing, and library snapshot
 - Privacy controls:
   - thoughts
   - scores
   - started/finished dates
   - abandoned games
   - specific fields or sections
-- Public profile filtered URLs for sharing subsets.
+- Public profile filtered URLs for sharing subsets in the full-library view.
+- Styling/profile customization ideas:
+  - favorite-games poster shelf first, profile stats second, activity/reviews
+    below
+  - module-based profile layout inspired by media catalog apps: favorites,
+    activity, reviews, lists, badges, stats, and library snapshot
+  - profile accent color and optional banner image
+  - selectable profile density or layout later, such as compact, poster-heavy,
+    or activity-first
+  - prettier empty states for favorites/reviews/lists instead of generic blank
+    panels
+  - "share profile card" or exported image summary later, useful for yearly
+    recap and social sharing
 
 Completion review:
 
@@ -376,14 +419,53 @@ Completion review:
   - show a cleaner "My review" block in the game modal
   - optionally surface public reviews on the public profile when privacy allows
   - keep this lightweight; comments/social reviews are a later feature
+- Later review ideas:
+  - spoiler flag on reviews/notes
+  - short review plus optional longer notes
+  - review privacy: private, friends, public
+  - reactions/comments after the friends/social layer exists
+  - review search/filter on a user's profile once enough reviews exist
 
 Social/friends, later:
 
 - Friend system or following.
-- View friends' public/shared backlogs.
+- View friends' public/shared backlogs. The current public profile dashboard can
+  evolve into the friend-visible profile surface later, so this does not need to
+  remain a separate "public link" concept forever.
+- Replace the standalone public-link mental model with normal profile
+  visibility:
+  - profile visibility: private, friends-only, public
+  - game field visibility: scores, notes/reviews, dates, abandoned games,
+    wishlist, favorite games
+  - full-library visibility can be controlled separately from the profile
+    dashboard
+  - public URLs can remain as deep links, but the product model should be
+    "view a player's profile", not "visit a special public page"
 - Compare libraries.
+- Friend profile affordances:
+  - follow/friend button
+  - mutual games
+  - compare completion/rating overlap
+  - compatibility or taste overlap score, based on shared ratings/favorites
+  - friend activity feed
+  - "recommend me one game from this profile" or random pick from a friend's
+    favorites/library
+  - comments/reactions on reviews or completions, only after privacy/moderation
+    decisions are clear
 - Recommendations based on friends/shared tags.
-- Activity feed only if it stays lightweight and useful.
+- Activity feed only if it stays lightweight and useful:
+  - friend finished a game
+  - friend started a game
+  - friend rated/reviewed a game
+  - friend created or updated a list
+  - friend added a favorite
+- Social discovery ideas:
+  - mutual backlog view
+  - "friends who liked this also liked"
+  - friends' highest-rated short games
+  - compare a friend's completed games against your backlog
+  - follow people without requiring mutual friendship if that fits the product
+    later
 
 Recommendations, later:
 
@@ -392,6 +474,11 @@ Recommendations, later:
   - "what should I play next?"
   - short-game recommendations
   - backlog priority suggestions
+- Friend/social recommendation angles:
+  - recommendations from friends' favorites and high ratings
+  - games many friends completed but the user has not started
+  - compatibility-weighted recommendations from people with similar taste
+  - "hidden gems" from users with small but high-signal libraries
 - Optional small AI-assisted recommendation feature:
   - explain why a game fits
   - suggest next games based on mood/time/platform
@@ -401,7 +488,12 @@ Recommendations, later:
 
 Goal: keep the app reliable as features grow.
 
-- Browser smoke tests with Playwright or similar.
+- Browser smoke tests with Playwright or similar. Partial progress 2026-05-12:
+  Playwright is installed with a first mocked smoke suite covering demo start,
+  public profile read-only rendering, and an Insights active-games link back to
+  the filtered backlog. Manual smoke checklist remains at
+  [`testing/manual-smoke-checklist.md`](testing/manual-smoke-checklist.md) for
+  deeper flows.
 - Backend API tests:
   - auth/register/login/failure
   - forgot-password flow
@@ -441,11 +533,12 @@ Goal: keep the app reliable as features grow.
 
 If another agent starts now, recommended order:
 
-1. Finish the date-filter/click-through slice now that date sorting and first
-   date insights exist.
-2. Improve public profile presentation with stats, currently playing, recently
-   finished, and top-rated sections while keeping the existing share link.
-3. Add a lightweight browser smoke-test pass for the core flows.
+1. Expand automated Playwright smoke tests to cover add/edit/delete and reorder
+   once stable selectors or fixtures are in place.
+2. Plan the social/profile model before deeper profile work: friends/following,
+   profile visibility, field privacy, and the future activity feed shape.
+3. Add favorite-game polish: drag reorder, quick favorite actions in game
+   modal/card overflow, and optional slot replacement.
 4. Add lightweight completion-review polish around finished games.
 5. Do small demo-flow copy/CTA refinements as they come up in use.
 6. Plan the settings area: account basics, public/privacy controls, future
@@ -890,7 +983,8 @@ Deferred non-blocking cleanup:
 - Bulk edit for status, genre, platform, tags, visibility, or archive state.
 - Archive/hide games.
 - Custom per-user statuses and per-user status order.
-- Public profile sections: favorites, currently playing, completed, top rated.
+- Public profile sections: user-selected favorites, currently playing,
+  recently finished, completed, wishlist/next-up later.
 - Admin/dev tools page for cache status, environment summary, demo template
   health, and DB connectivity.
 

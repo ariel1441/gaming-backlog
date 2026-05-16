@@ -5,6 +5,7 @@ import {
   listGames as listGamesApi,
   createGame as createGameApi,
   updateGame as updateGameApi,
+  updateFavoriteGames as updateFavoriteGamesApi,
   deleteGame as deleteGameApi,
   reorderGames as reorderGamesApi, // PATCH /api/games/:id/position
 } from "../services/gameService";
@@ -308,6 +309,19 @@ export function useGames() {
     [getAuthHeaders]
   );
 
+  const updateFavorites = useCallback(
+    async (favoriteIds) => {
+      const updatedGames = await updateFavoriteGamesApi(favoriteIds, {
+        auth: false,
+        headers: getAuthHeaders(),
+      });
+      const list = Array.isArray(updatedGames) ? updatedGames : [];
+      setGames(sortGames(list));
+      return list;
+    },
+    [getAuthHeaders]
+  );
+
   // Reorder a single game:
   // - apply server's authoritative rank_order immediately (no extra GET)
   // - parent state becomes the source of truth, so modals/re-renders can't "snap back"
@@ -335,6 +349,7 @@ export function useGames() {
     addGame,
     editGame,
     removeGame,
+    updateFavorites,
     reorderGame,
     setGames, // kept for rare advanced flows
   };

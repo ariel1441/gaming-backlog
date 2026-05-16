@@ -1,6 +1,14 @@
 # Manual Smoke Checklist
 
-Status: lightweight checklist until automated browser smoke tests exist.
+Status: manual checklist for deeper flows. A lightweight automated Playwright
+smoke suite now covers demo start, public profile read-only rendering, and an
+Insights-to-backlog filter link.
+
+Run the automated smoke tests with:
+
+```bash
+npm run test:e2e
+```
 
 Run this before merging a larger UI/data branch to `main`.
 
@@ -50,4 +58,3 @@ Run this before merging a larger UI/data branch to `main`.
 - Confirm `backend/schema.sql` includes the same final schema.
 - After merging to `main`, check GitHub Actions for the production migration
   result.
-
