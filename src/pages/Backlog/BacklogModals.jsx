@@ -20,6 +20,8 @@ export default function BacklogModals({
   isEditing,
   statuses,
   allMyGenres,
+  games,
+  onUpdateFavorites,
   showAdminLogin,
   onCloseAdminLogin,
   showPublicSettings,
@@ -63,6 +65,8 @@ export default function BacklogModals({
         <PublicSettingsModal
           open={showPublicSettings}
           onClose={onClosePublicSettings}
+          games={games}
+          onUpdateFavorites={onUpdateFavorites}
         />
       )}
 

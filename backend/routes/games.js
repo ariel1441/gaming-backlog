@@ -7,7 +7,12 @@ import {
   fetchGameDataByIdOrSlug,
   searchRAWGGames,
 } from "../utils/fetchRAWG.js";
-import { gameIdParam, upsertGame, reorderGame } from "../validators/games.js";
+import {
+  favoriteGames,
+  gameIdParam,
+  upsertGame,
+  reorderGame,
+} from "../validators/games.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -387,6 +392,83 @@ router.get("/search", verifyToken, async (req, res, next) => {
     res.json({ results });
   } catch (err) {
     next(err);
+  }
+});
+
+router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
+  let client;
+  try {
+    const userId = req.user.id;
+    const favoriteIds = req.body.favoriteIds || [];
+
+    client = await pool.connect();
+    await client.query("BEGIN");
+
+    if (favoriteIds.length) {
+      const owned = await client.query(
+        `
+        SELECT id
+        FROM games
+        WHERE user_id = $1 AND id = ANY($2::int[])
+        FOR UPDATE
+        `,
+        [userId, favoriteIds]
+      );
+      if (owned.rows.length !== favoriteIds.length) {
+        await client.query("ROLLBACK");
+        return next(badRequest("Favorite games must belong to your backlog."));
+      }
+    }
+
+    await client.query(
+      "UPDATE games SET favorite_rank = NULL WHERE user_id = $1",
+      [userId]
+    );
+
+    if (favoriteIds.length) {
+      await client.query(
+        `
+        UPDATE games AS g
+           SET favorite_rank = v.rank
+          FROM (
+            SELECT unnest($1::int[]) AS id, unnest($2::int[]) AS rank
+          ) AS v
+         WHERE g.id = v.id AND g.user_id = $3
+        `,
+        [favoriteIds, favoriteIds.map((_, index) => index + 1), userId]
+      );
+    }
+
+    const { rows } = await client.query(
+      `
+      SELECT g.*, s.rank AS status_rank
+      FROM games g
+      LEFT JOIN statuses s ON s.status = g.status
+      WHERE g.user_id = $1
+      ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
+      `,
+      [userId]
+    );
+
+    await client.query("COMMIT");
+
+    const cache = req.app.locals.rawgCache || {};
+    const out = rows.map((game) => {
+      const rawg = cachedRawgForGame(cache, game);
+      return decorateGameForClient(game, rawg);
+    });
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json(out);
+  } catch (err) {
+    try {
+      await client?.query("ROLLBACK");
+    } catch {
+      // ignore rollback failures; the original error is more useful
+    }
+    next(err);
+  } finally {
+    client?.release();
   }
 });
 

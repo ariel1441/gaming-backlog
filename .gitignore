@@ -43,6 +43,8 @@ yarn-error.log*
 # -----------------------
 coverage/
 *.lcov
+test-results/
+playwright-report/
 
 # -----------------------
 # 🧼 OS-specific files

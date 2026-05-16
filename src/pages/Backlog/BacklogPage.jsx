@@ -39,6 +39,7 @@ export default function BacklogPage() {
     addGame,
     editGame,
     removeGame,
+    updateFavorites,
     refresh,
     reorderGame,
   } = useGames();
@@ -153,6 +154,7 @@ export default function BacklogPage() {
     addGame,
     editGame,
     removeGame,
+    updateFavorites,
     refresh,
     reorderGame,
     setShowAddForm,
@@ -165,6 +167,13 @@ export default function BacklogPage() {
     } catch {}
     setShowOnboarding(!isAuthenticated && loc.pathname === "/" && !seen);
   }, [isAuthenticated, loc.pathname]);
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated && loc.pathname === "/") {
+      setShowAdminLogin(true);
+    }
+  }, [authLoading, isAuthenticated, loc.pathname, setShowAdminLogin]);
+
   useLayoutEffect(() => {
     const setVar = (px) =>
       document.documentElement.style.setProperty("--demo-banner-h", `${px}px`);
@@ -435,10 +444,14 @@ export default function BacklogPage() {
                   <Button
                     type="button"
                     variant="primary"
-                    onClick={() => setShowAddForm(true)}
+                    onClick={() =>
+                      isAuthenticated
+                        ? setShowAddForm(true)
+                        : setShowAdminLogin(true)
+                    }
                   >
                     <PlusCircle className="h-4 w-4" aria-hidden="true" />
-                    Add game
+                    {isAuthenticated ? "Add game" : "Sign in to add games"}
                   </Button>
                 )
               }
@@ -460,6 +473,8 @@ export default function BacklogPage() {
             isEditing={isEditing}
             statuses={allStatuses}
             allMyGenres={allMyGenres}
+            games={games}
+            onUpdateFavorites={updateFavorites}
             showAdminLogin={showAdminLogin}
             onCloseAdminLogin={() => setShowAdminLogin(false)}
             showPublicSettings={showPublicSettings}

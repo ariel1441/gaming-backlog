@@ -51,6 +51,22 @@ export const gameSchemas = {
       "number.min": "targetIndex must be >= 0",
     }),
   }),
+  favoritesBody: Joi.object({
+    favoriteIds: Joi.array()
+      .items(Joi.number().integer().positive())
+      .max(5)
+      .unique()
+      .required()
+      .messages({
+        "any.required": "favoriteIds is required",
+        "array.base": "favoriteIds must be an array",
+        "array.max": "favoriteIds must contain at most 5 games",
+        "array.unique": "favoriteIds cannot contain duplicate games",
+        "number.base": "favoriteIds must contain game ids",
+        "number.integer": "favoriteIds must contain integer game ids",
+        "number.positive": "favoriteIds must contain positive game ids",
+      }),
+  }),
   upsertBody: Joi.object({
     name: Joi.string().trim().min(1).max(200).required().messages({
       "any.required": "name is required",
@@ -121,6 +137,13 @@ export const reorderGame = celebrate(
   {
     ...idParamSchema,
     [Segments.BODY]: gameSchemas.reorderBody,
+  },
+  opts
+);
+
+export const favoriteGames = celebrate(
+  {
+    [Segments.BODY]: gameSchemas.favoritesBody,
   },
   opts
 );

@@ -35,6 +35,11 @@ CREATE TABLE games (
   cover TEXT,
   rawg_id INTEGER,
   rawg_slug TEXT,
+  favorite_rank INTEGER CHECK (favorite_rank IS NULL OR favorite_rank BETWEEN 1 AND 5),
   started_at DATE,
   finished_at DATE
 );
+
+CREATE UNIQUE INDEX games_user_favorite_rank_unique
+  ON games (user_id, favorite_rank)
+  WHERE favorite_rank IS NOT NULL;

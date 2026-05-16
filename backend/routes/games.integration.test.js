@@ -13,9 +13,11 @@ function makeToken(payload = {}) {
   return jwt.sign({ id: 7, username: "tester", ...payload }, process.env.JWT_SECRET);
 }
 
-async function withServer(queryImpl, fn) {
+async function withServer(queryImpl, fn, connectImpl) {
   const originalQuery = pool.query;
+  const originalConnect = pool.connect;
   pool.query = queryImpl;
+  if (connectImpl) pool.connect = connectImpl;
 
   const app = express();
   app.locals.rawgCache = {};
@@ -33,6 +35,7 @@ async function withServer(queryImpl, fn) {
   } finally {
     await new Promise((resolve) => server.close(resolve));
     pool.query = originalQuery;
+    pool.connect = originalConnect;
   }
 }
 
@@ -126,4 +129,84 @@ test("POST /api/games rejects invalid date order before DB writes", async () => 
       /finished_at cannot be before started_at/
     );
   });
+});
+
+test("PUT /api/games/favorites replaces favorite ranks for owned games", async () => {
+  const calls = [];
+  const client = {
+    query: async (text, values) => {
+      calls.push({ text, values });
+      const sql = String(text);
+      if (sql.includes("SELECT id") && sql.includes("FOR UPDATE")) {
+        return { rows: [{ id: 3 }, { id: 8 }] };
+      }
+      if (sql.includes("SELECT g.*, s.rank AS status_rank")) {
+        return {
+          rows: [
+            { id: 3, user_id: 7, name: "Hades", favorite_rank: 1 },
+            { id: 8, user_id: 7, name: "Celeste", favorite_rank: 2 },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+
+  await withServer(
+    async () => ({ rows: [] }),
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/favorites", {
+        method: "PUT",
+        body: { favoriteIds: [3, 8] },
+      });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(
+        res.body.map((game) => [game.id, game.favorite_rank]),
+        [
+          [3, 1],
+          [8, 2],
+        ]
+      );
+      assert.match(String(calls[0].text), /BEGIN/);
+      assert.match(
+        String(calls.find((call) => String(call.text).includes("favorite_rank = NULL")).text),
+        /WHERE user_id = \$1/
+      );
+      assert.deepEqual(
+        calls.find((call) => String(call.text).includes("unnest")).values,
+        [[3, 8], [1, 2], 7]
+      );
+      assert.match(String(calls.at(-1).text), /COMMIT/);
+    },
+    async () => client
+  );
+});
+
+test("PUT /api/games/favorites rejects games outside the user backlog", async () => {
+  const client = {
+    query: async (text) => {
+      const sql = String(text);
+      if (sql.includes("SELECT id") && sql.includes("FOR UPDATE")) {
+        return { rows: [{ id: 3 }] };
+      }
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+
+  await withServer(
+    async () => ({ rows: [] }),
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/favorites", {
+        method: "PUT",
+        body: { favoriteIds: [3, 99] },
+      });
+
+      assert.equal(res.status, 400);
+      assert.match(res.body.error.message, /must belong to your backlog/);
+    },
+    async () => client
+  );
 });

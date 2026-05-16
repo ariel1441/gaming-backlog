@@ -73,3 +73,23 @@ test("reorder body requires target index and optional normalized status", () => 
     /targetIndex is required/
   );
 });
+
+test("favorites body accepts up to five unique game ids", () => {
+  assert.equal(
+    gameSchemas.favoritesBody.validate({ favoriteIds: [1, 2, 3, 4, 5] }).error,
+    undefined
+  );
+  assert.equal(
+    gameSchemas.favoritesBody.validate({ favoriteIds: [] }).error,
+    undefined
+  );
+  assert.match(
+    gameSchemas.favoritesBody.validate({ favoriteIds: [1, 2, 3, 4, 5, 6] })
+      .error.message,
+    /at most 5/
+  );
+  assert.match(
+    gameSchemas.favoritesBody.validate({ favoriteIds: [1, 1] }).error.message,
+    /duplicate/
+  );
+});
