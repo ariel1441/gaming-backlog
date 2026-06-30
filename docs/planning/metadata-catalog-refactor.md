@@ -1,13 +1,39 @@
 # Metadata And Catalog Refactor Notes
 
-Last updated: 2026-05-09
+Last updated: 2026-06-30
 
-This is a planning handoff for a future large refactor. It should not be read as
-a final implementation plan. The goal is to preserve the thinking so a future
-chat can help design the feature carefully instead of bolting metadata changes
-onto the current app too quickly.
+This began as a planning handoff for the large metadata/catalog refactor.
+Catalog/Discover V1 now exists, so treat this file as historical design context
+plus future extension guidance. For current architecture, read
+[`../SYSTEM_CONTEXT.md`](../SYSTEM_CONTEXT.md).
 
-## Current Context
+## Implemented V1 Summary
+
+Catalog/Discover V1 chose the hybrid transitional model:
+
+- `catalog_games` stores shared game metadata.
+- `external_game_ids` attaches provider ids such as RAWG now and Steam later.
+- `catalog_search_cache` stores RAWG search result id lists.
+- `catalog_collections` and `catalog_collection_games` store curated Discover
+  shelves.
+- `games.catalog_game_id` links personal backlog rows to shared catalog
+  metadata while keeping `games.rawg_id` and `games.rawg_slug` for compatibility.
+- `/api/catalog` exposes search, browse, detail, manual refresh, shelf load-more,
+  and add-to-backlog.
+- `/discover` exposes cached shelves, local catalog filtering/sorting, debounced
+  RAWG search, detail metadata, refresh, and add-to-backlog.
+- RAWG calls are limited to meaningful search/detail/refresh/load-more/seeding
+  actions. Page load uses local Postgres cache.
+- The backend prefers stale cached data over fatal errors if RAWG is down or
+  quota-limited.
+- Curated shelf refresh is optional through `CATALOG_AUTO_SEED=true`; manual
+  seeding uses `npm run catalog:seed -- --limit=24`.
+
+The sections below still explain tradeoffs and future decisions for Steam,
+wishlist/owned states, deeper hours precedence, privacy, admin/debug tools, and
+automatic metadata jobs beyond the current shelf seeding.
+
+## Original Context
 
 The app currently stores user backlog rows in `games`. Those rows include
 personal fields such as status, thoughts, score, started/finished dates, and
@@ -20,12 +46,11 @@ added a RAWG search picker in the add/edit flows and stores:
 - `games.rawg_id`
 - `games.rawg_slug`
 
-That makes matching more accurate, but it is still not a full catalog model.
+That made matching more accurate, but it was not a full catalog model.
 
-The current RAWG cache is mostly a JSON cache under `backend/data/`, with logic
-inside/near `backend/routes/games.js`. Public profile hydration and private game
-hydration are not fully unified. This is acceptable for now, but it is not the
-ideal long-term model.
+Catalog/Discover V1 now stores new metadata in Postgres catalog tables. Some
+legacy RAWG JSON-cache behavior can still exist for add/edit compatibility and
+older unlinked game rows.
 
 ## Why This Matters
 
@@ -491,15 +516,15 @@ Useful future tools:
 
 These can start as simple backend/debug endpoints or admin-only UI later.
 
-## Decisions To Make Before The Big Refactor
+## Future Decisions After V1
 
-Before implementing the large refactor, decide:
+Before extending V1, decide:
 
-1. Should there be a first-class `catalog_games` table?
-2. Should `games` be renamed/split into `user_games` or `collection_items`?
-3. What external sources matter long-term: RAWG only, Steam, IGDB, others?
-4. Is a game identity source-specific or unified across sources?
-5. Can one user add the same catalog game more than once?
+1. Should `games` eventually be renamed/split into `user_games` or
+   `collection_items`?
+2. What external sources matter long-term after RAWG and Steam: IGDB, others?
+3. Can one user add the same catalog game more than once for different
+   platforms/editions?
 6. How should editions, remasters, DLC, bundles, and platform variants work?
 7. Are wishlist and backlog the same table with different status, or separate concepts?
 8. Should ownership/source/platform be part of the first refactor?
@@ -517,13 +542,13 @@ Before implementing the large refactor, decide:
 20. What privacy controls are required for Steam/user-specific data?
 21. What migration path preserves existing user games safely?
 22. What tests are required before changing the data model?
-23. How will production migrations be run automatically and safely?
+23. How will production migrations and background metadata jobs be monitored?
 
 ## Suggested Future Process
 
-For the future chat that works on this:
+For a future chat that extends this:
 
-1. Re-read current `docs/SYSTEM_CONTEXT.md` and this file.
+1. Re-read current `docs/SYSTEM_CONTEXT.md`, `docs/ROADMAP.md`, and this file.
 2. Inspect current `games` schema, routes, serializers, public profile route,
    insights route, and frontend services.
 3. Sketch the target data model before coding.
@@ -534,13 +559,15 @@ For the future chat that works on this:
 
 Possible phases:
 
-1. Add catalog table and serializer while keeping current frontend shape.
+1. Add catalog table and serializer while keeping current frontend shape. Done.
 2. Backfill catalog records from existing games using `rawg_id` when available.
-3. Link user games to catalog records.
-4. Move RAWG fetch/cache/refresh logic into a metadata service.
-5. Update add/edit flows to use catalog records.
-6. Add browse/search catalog page.
-7. Add manual metadata refresh with cooldown.
+   Done.
+3. Link user games to catalog records. Done.
+4. Move RAWG fetch/cache/refresh logic into a metadata service. Done baseline.
+5. Update add/edit flows to use catalog records. Partially done: Discover adds
+   linked games; legacy add/edit still support RAWG ids.
+6. Add browse/search catalog page. Done.
+7. Add manual metadata refresh with cooldown. Done.
 8. Add hours-source modeling and update insights carefully.
 9. Add Steam-compatible external id/user-source tables, even if Steam sync is
    implemented later.
@@ -550,19 +577,16 @@ Possible phases:
 
 ## Current Recommendation
 
-Do not implement broad automatic metadata refresh on the current JSON cache.
+Do not add broad automatic metadata refresh beyond the current opt-in curated
+shelf seeding until there is quota monitoring or an admin/background-job story.
 
-The recently added RAWG picker is a useful stepping stone. The next serious
-metadata work should be designed as part of the catalog/collection split, because
-that same model will support browsing external games, Steam import, wishlist,
-and future recommendations.
+Recommended next implementation directions:
 
-Recommended first implementation direction:
-
-1. Design `catalog_games`, external ids, and user-game relationship tables.
-2. Keep the existing API response shape compatible while internally linking to
-   catalog records.
-3. Implement manual refresh and stale/failure tracking before automatic refresh.
-4. Model estimated hours, actual hours, source, and user override deliberately.
-5. Let Steam influence the schema now, but consider implementing full Steam sync
-   as the next major branch after the catalog foundation is stable.
+1. Stabilize and deploy Catalog/Discover V1 with production migrations and RAWG
+   env/seeding configured.
+2. Add Steam import/sync as the next large metadata-adjacent feature if the app
+   needs actual owned-library/playtime data.
+3. Add wishlist/owned relationships only after deciding whether they belong in
+   `games`, a new relationship table, or a broader library/import model.
+4. Model estimated hours, actual hours, source, and user override deliberately
+   before changing insights hour calculations.

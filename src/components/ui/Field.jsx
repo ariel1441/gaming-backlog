@@ -1,8 +1,16 @@
 import React from "react";
 
-export default function Field({ id, label, error, help, required, children }) {
+export default function Field({
+  id,
+  label,
+  error,
+  help,
+  required,
+  children,
+  className = "",
+}) {
   return (
-    <div className="space-y-1.5">
+    <div className={["space-y-1.5", className].join(" ")}>
       {label ? (
         <label
           htmlFor={id}

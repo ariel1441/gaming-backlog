@@ -10,6 +10,7 @@ import {
   User2 as IconUser,
   BarChart3 as IconInsights,
   Sparkles as IconDemo,
+  Compass as IconDiscover,
 } from "lucide-react";
 
 const Sidebar = ({
@@ -29,6 +30,11 @@ const Sidebar = ({
   const goInsights = () => {
     closeAllPanels();
     navigate("/insights");
+  };
+  const isDiscover = location.pathname.startsWith("/discover");
+  const goDiscover = () => {
+    closeAllPanels();
+    navigate("/discover");
   };
 
   const closeAllPanels = () => {
@@ -161,6 +167,15 @@ const Sidebar = ({
           onClick={goInsights}
           expanded={sidebarOpen}
         />
+        {authed && (
+          <SidebarRow
+            label="Discover"
+            icon={IconDiscover}
+            active={isDiscover}
+            onClick={goDiscover}
+            expanded={sidebarOpen}
+          />
+        )}
         {authed && (
           <SidebarRow
             label="Public Profile"

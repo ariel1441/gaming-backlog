@@ -1,8 +1,9 @@
 # Manual Smoke Checklist
 
-Status: manual checklist for deeper flows. A lightweight automated Playwright
-smoke suite now covers demo start, public profile read-only rendering, and an
-Insights-to-backlog filter link.
+Status: manual checklist for deeper flows. A mocked automated Playwright smoke
+suite now covers demo start, public profile read-only rendering, an
+Insights-to-backlog filter link, add/edit/delete, same-rank reorder payload
+behavior, public profile favorite settings, and a Discover add-to-backlog flow.
 
 Run the automated smoke tests with:
 
@@ -30,6 +31,19 @@ Run this before merging a larger UI/data branch to `main`.
 - Delete a game only after the confirmation dialog appears.
 - Reorder games within the same rank/status group.
 
+## Discover And Catalog
+
+- Open `/discover` and confirm the page does not call RAWG just from loading.
+- Confirm curated shelves render from cached catalog data when available.
+- Use shelf arrows and Load more on one shelf.
+- Search with fewer than 3 characters and confirm no live search runs.
+- Search a specific game, open the detail modal, and refresh metadata.
+- Add a catalog game to the backlog and confirm it appears on `/`.
+- Confirm games already in the backlog are not suggested in default shelves, and
+  show an already-in-backlog state if opened through search/filter results.
+- Temporarily simulate RAWG unavailable or quota-limited behavior and confirm
+  cached/stale data is shown without a fatal UI error.
+
 ## Demo Flow
 
 - Start the demo from the logged-out UI.
@@ -56,5 +70,7 @@ Run this before merging a larger UI/data branch to `main`.
 
 - For schema changes, confirm there is a migration in `backend/migrations/`.
 - Confirm `backend/schema.sql` includes the same final schema.
+- For catalog releases, confirm `RAWG_API_KEY` and optional
+  `CATALOG_AUTO_SEED=true` / `CATALOG_SEED_LIMIT=24` are configured on Railway.
 - After merging to `main`, check GitHub Actions for the production migration
   result.

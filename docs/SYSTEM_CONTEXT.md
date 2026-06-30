@@ -1,6 +1,6 @@
 # System Context
 
-Last updated: 2026-05-09
+Last updated: 2026-06-30
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
@@ -18,7 +18,7 @@ Tech stack:
 - Frontend: React 18, Vite, React Router, Tailwind CSS, Recharts, dnd-kit.
 - Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
 - Deployment model: Vercel frontend, Railway backend/Postgres.
-- Main app routes: `/`, `/insights`, `/u/:username`.
+- Main app routes: `/`, `/discover`, `/insights`, `/u/:username`.
 
 ## Commands
 
@@ -32,6 +32,7 @@ npm run env:check
 npm run db:migrate:local
 npm run db:migrate:status
 npm run db:reset:local
+npm run catalog:seed -- --limit=24
 ```
 
 Before editing:
@@ -65,7 +66,12 @@ deliberately set.
   continue auto-setting dates for eligible statuses when date fields are omitted.
 - Search RAWG from the add/edit game forms and save or replace a selected RAWG
   identity when the user chooses a match.
-- Enrich games from RAWG metadata and local HLTB data.
+- Browse the Discover catalog at `/discover`, search RAWG on demand, inspect
+  catalog metadata, and add catalog games into the personal backlog.
+- Enrich games from Postgres catalog metadata, RAWG metadata, and local HLTB
+  data while preserving user-entered fields.
+- Cache catalog search results, curated Discover shelves, external ids, and
+  full metadata in Postgres with stale/failure fallback behavior.
 - Search, filter, sort, and drag-reorder games.
 - Detect obvious duplicate titles before adding a game. The backend repeats the
   duplicate check per user before insert.
@@ -86,6 +92,8 @@ Routes:
 - `backend/routes/auth.js` - register, login, `/me`, public-profile toggle.
 - `backend/routes/demo.js` - guest session start, keep, discard, heartbeat.
 - `backend/routes/games.js` - authenticated game CRUD, enrichment, reorder.
+- `backend/routes/catalog.js` - authenticated catalog browse/search/detail,
+  manual metadata refresh, collection load-more, and add-to-backlog.
 - `backend/routes/insights.js` - analytics aggregation and micro-cache.
 - `backend/routes/public.js` - public profile metadata and read-only games.
 - `backend/routes/meta.js` - status group definitions with ETag caching.
@@ -118,15 +126,25 @@ Middleware and utilities:
 - `backend/utils/hltb.js` - local HLTB lookup.
 - `backend/utils/sanitizeHtml.js` - safe RAWG description HTML.
 - `backend/utils/normalize.js` and `backend/utils/time.js` - value cleanup.
+- `backend/services/catalogService.js` - Postgres catalog/cache layer,
+  RAWG search/detail coalescing, curated shelf seeding, stale/failure handling,
+  and catalog serialization helpers shared by private/public/insights flows.
 
 Database:
 
 - `users`: username, password hash, public flag, guest flag, guest expiry,
   created timestamp.
 - `statuses`: global status label and rank.
+- `catalog_games`: app-level game identity and shared external metadata.
+- `external_game_ids`: provider ids attached to catalog games; RAWG is used now,
+  Steam can attach later.
+- `catalog_search_cache`: cached RAWG search result id lists.
+- `catalog_collections` and `catalog_collection_games`: curated Discover
+  shelves such as trending, highly rated, new releases, upcoming, and popular
+  genres.
 - `games`: user-owned game rows with status, position, custom fields, HLTB
-  hours, score, notes, cover, RAWG identity fields, started date, and finished
-  date.
+  hours, score, notes, cover, RAWG identity fields, optional `catalog_game_id`,
+  started date, and finished date.
 
 Schema workflow:
 
@@ -162,6 +180,7 @@ Entry points:
 Routes:
 
 - `/` - private backlog app.
+- `/discover` - catalog browse/search/add flow.
 - `/insights` - analytics dashboard.
 - `/u/:username` - public read-only profile.
 
@@ -198,6 +217,7 @@ Services:
   defaults API requests to `http://localhost:5000` when no API base env var is
   set.
 - `src/services/gameService.js` - game API wrapper.
+- `src/services/catalogService.js` - Discover/catalog API wrapper.
 - `src/services/publicService.js` - public profile API wrapper.
 - `src/services/insightsService.js` - insights API wrapper.
 - `src/services/statusService.js` - status API wrapper.
@@ -208,6 +228,8 @@ Important components/pages:
 
 - `src/pages/Backlog/BacklogPage.jsx` - private backlog route and state/action
   coordinator.
+- `src/pages/DiscoverPage.jsx` - Discover catalog route, curated shelves,
+  search, filters, detail modal, metadata refresh, and add-to-backlog flow.
 - `src/pages/Backlog/BacklogPanels.jsx` - private backlog panel rendering.
 - `src/pages/Backlog/BacklogModals.jsx` - private backlog modal rendering.
 - `src/pages/Backlog/useBacklogActions.js` - private backlog mutation/action
@@ -240,9 +262,15 @@ Styling:
 - All authenticated game data must be scoped by `req.user.id`.
 - Frontend edit/delete/reorder affordances should use `src/utils/permissions.js`;
   backend authorization remains the real security boundary.
-- Private game routes enrich with RAWG/HLTB data.
-- Guest users intentionally avoid RAWG fetches on private game routes to protect
-  API quota.
+- Private game routes enrich with catalog metadata first when `catalog_game_id`
+  exists, then fall back to legacy RAWG/HLTB behavior for older rows.
+- Guest users intentionally avoid live RAWG catalog/search/detail fetches to
+  protect API quota.
+- RAWG calls should happen only for meaningful search/detail/refresh/load-more
+  or catalog seeding actions, never simply because the Discover page opened.
+- Discover shelves are cached in Postgres. Automatic shelf refresh is opt-in via
+  `CATALOG_AUTO_SEED=true`; `CATALOG_SEED_LIMIT` controls the per-shelf seed
+  size. The scheduler checks daily and only refreshes missing/expired shelves.
 - Manual ordering is based on status rank groups. Reordering across different
   ranks is rejected. Plain drag reorder updates positions only; the reorder API
   changes a game's status only when the client explicitly sends a same-rank
@@ -253,7 +281,8 @@ Styling:
   them.
 - Dates are SQL `DATE` fields and are parsed as `YYYY-MM-DD` strings to avoid
   timezone drift.
-- Public profile hydration has separate RAWG logic from the private game route.
+- Public profile and insights should read catalog metadata when a game is linked
+  to `catalog_game_id`, with legacy fallbacks for unlinked rows.
 
 ## Known Current Risks
 
@@ -273,7 +302,8 @@ Styling:
 - Browser `alert` and `confirm` have been removed from reviewed frontend code.
   Use `useToast` for user feedback and `useConfirm` for destructive
   confirmation.
-- RAWG cache behavior differs between private and public routes.
+- Legacy RAWG cache behavior still exists for unlinked rows and add/edit form
+  compatibility. New Discover/catalog metadata lives in Postgres.
 - Same-rank reorder no longer infers a status change from the card being
   hovered. This protects `finished` and `played alot but didnt finish`, which
   can share an ordering rank, from accidental status overwrites.
@@ -294,14 +324,19 @@ Styling:
 - `backend/routes/games.integration.test.js` exercises the games router through
   Express with a mocked `pool.query`, covering duplicate create/edit handling,
   delete user scoping, and date-order validation before DB writes.
-- RAWG identity matching now exists, but the larger metadata/catalog refactor is
-  intentionally deferred. Read `docs/planning/metadata-catalog-refactor.md`
-  before implementing metadata refresh, game catalog browsing, Steam import
-  matching, or automatic metadata jobs.
+- The Playwright smoke suite in `tests/e2e/smoke.spec.js` uses mocked API
+  routes and currently covers demo start, public profile read-only rendering,
+  Insights-to-backlog filter navigation, add/edit/delete, same-rank reorder
+  payload behavior, and public profile favorite settings.
+- Catalog/metadata V1 exists, including migrations `004` and `005`, Discover,
+  Postgres catalog cache, manual refresh, curated shelves, and Steam-compatible
+  external ids. Read `docs/planning/metadata-catalog-refactor.md` before
+  extending wishlist/owned/import, deeper hours precedence, Steam sync, or
+  automatic metadata jobs beyond the current opt-in shelf seeding.
 
 ## Working Notes
 
-- At the time this file was created, the worktree already had many modified
-  files. Treat existing uncommitted changes as user work unless confirmed.
+- Always check current git status before editing. Older handoff notes may refer
+  to worktree state from a previous session.
 - Keep this file factual and compact. Put future ideas, priorities, and planning
   in `docs/ROADMAP.md`.

@@ -23,6 +23,15 @@ export function serializeRawgSearchResult(game) {
       typeof game.metacritic === "number" && game.metacritic > 0
         ? game.metacritic
         : null,
+    added: typeof game.added === "number" ? game.added : 0,
+    ratings_count:
+      typeof game.ratings_count === "number" ? game.ratings_count : 0,
+    reviews_count:
+      typeof game.reviews_count === "number" ? game.reviews_count : 0,
+    playtime: typeof game.playtime === "number" ? game.playtime : null,
+    genres: Array.isArray(game.genres)
+      ? game.genres.map((genre) => ({ name: genre?.name })).filter((genre) => genre.name)
+      : [],
   };
 }
 
@@ -52,6 +61,36 @@ export async function searchRAWGGames(query, { pageSize = 8 } = {}) {
       .filter((game) => game?.rawg_id && game?.name);
   } catch (err) {
     console.error(`Error searching RAWG for "${query}":`, err);
+    return [];
+  }
+}
+
+export async function fetchRAWGGames(params = {}, { pageSize = 20 } = {}) {
+  try {
+    const key = apiKey();
+    if (!key) return [];
+
+    const searchParams = new URLSearchParams();
+    searchParams.set("key", key);
+    searchParams.set("page_size", String(Math.min(Math.max(Number(pageSize) || 20, 1), 40)));
+    Object.entries(params).forEach(([paramKey, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        searchParams.set(paramKey, String(value));
+      }
+    });
+
+    const listRes = await fetch(`${BASE_URL}?${searchParams.toString()}`);
+    if (!listRes.ok) {
+      console.error(`RAWG list failed: ${listRes.status} ${listRes.statusText}`);
+      return [];
+    }
+
+    const listData = await listRes.json();
+    return (listData.results || [])
+      .map(serializeRawgSearchResult)
+      .filter((game) => game?.rawg_id && game?.name);
+  } catch (err) {
+    console.error("Error fetching RAWG game list:", err);
     return [];
   }
 }

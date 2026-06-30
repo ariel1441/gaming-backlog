@@ -23,6 +23,7 @@
     "db:migrate:status": "node scripts/db-migrate.js --status",
     "db:migrate:prod": "node scripts/db-migrate.js --production --confirm-production",
     "db:migrate:prod:status": "node scripts/db-migrate.js --production --confirm-production --status",
+    "catalog:seed": "node scripts/seed-catalog-collections.js",
     "db:copy-prod-to-local": "node scripts/copy-prod-to-local.js --confirm-local-overwrite",
     "db:reset:local": "node scripts/reset-local-db.js"
   },

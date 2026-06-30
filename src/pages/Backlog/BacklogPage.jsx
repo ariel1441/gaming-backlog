@@ -204,6 +204,7 @@ export default function BacklogPage() {
     setIsReversed(false);
   };
   const goInsights = () => nav("/insights");
+  const goDiscover = () => nav("/discover");
   const startLiveDemo = async () => {
     await startDemo();
   };
@@ -346,6 +347,7 @@ export default function BacklogPage() {
               showLogin: () => setShowAdminLogin(true),
               showPublicSettings: () => setShowPublicSettings(true),
               goInsights,
+              goDiscover,
               startDemo: startLiveDemo,
               logout,
             }}

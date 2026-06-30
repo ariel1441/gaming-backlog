@@ -11,7 +11,10 @@ play next, and sharing a read-only public profile.
 - Use authenticated private collections with public profile sharing.
 - Offer guest/demo flows for trying the app without keeping an account.
 - Show insight charts for backlog composition and playtime.
-- Enrich games with external metadata such as cover art and ratings.
+- Discover cached catalog games, search RAWG on demand, and add selected games
+  to the backlog.
+- Enrich games with cached catalog/external metadata such as cover art, ratings,
+  release dates, genres, and playtime estimates.
 
 ## Tech Stack
 
@@ -50,6 +53,8 @@ DEMO_ENABLED=true
 DEMO_TEMPLATE_USERNAME=demo_template
 DEMO_GUEST_TTL_HOURS=36
 ALLOW_REMOTE_DB_IN_DEV=false
+CATALOG_AUTO_SEED=false
+CATALOG_SEED_LIMIT=24
 ```
 
 Create/reset the local database, check the environment, then start the app:
@@ -77,6 +82,8 @@ Local URLs:
 - `npm run db:migrate:local` - apply tracked migrations to localhost.
 - `npm run db:reset:local` - rebuild a local database from schema and seed.
 - `npm run db:copy-prod-to-local` - copy production data into a local database.
+- `npm run catalog:seed -- --limit=24` - seed cached Discover shelves from
+  RAWG for local/manual refresh.
 
 ## Repository Map
 
@@ -99,6 +106,11 @@ For schema changes:
 
 Production migrations are applied by GitHub Actions on pushes to `main` when
 the `PROD_DATABASE_URL` repository secret is configured.
+
+Discover shelves are stored in Postgres. In production, set
+`CATALOG_AUTO_SEED=true` if the backend should refresh missing/expired shelves
+automatically after startup and then once per day. Leave it false if you prefer
+manual seeding with `npm run catalog:seed`.
 
 ## Documentation
 

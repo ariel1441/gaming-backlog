@@ -140,7 +140,7 @@ test("PUT /api/games/favorites replaces favorite ranks for owned games", async (
       if (sql.includes("SELECT id") && sql.includes("FOR UPDATE")) {
         return { rows: [{ id: 3 }, { id: 8 }] };
       }
-      if (sql.includes("SELECT g.*, s.rank AS status_rank")) {
+      if (sql.includes("FROM games g") && sql.includes("LEFT JOIN catalog_games")) {
         return {
           rows: [
             { id: 3, user_id: 7, name: "Hades", favorite_rank: 1 },

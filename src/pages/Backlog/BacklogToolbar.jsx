@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Compass,
   Dice5,
   Globe,
   Grid2X2,
@@ -798,6 +799,9 @@ function ProfileMenu({ account }) {
             </div>
           </div>
           <MenuItem icon={BarChart3} label="Insights" onClick={account.goInsights} />
+          {account.isAuthenticated ? (
+            <MenuItem icon={Compass} label="Discover" onClick={account.goDiscover} />
+          ) : null}
           {account.isAuthenticated ? (
             <MenuItem
               icon={Globe}

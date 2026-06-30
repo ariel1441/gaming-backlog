@@ -11,8 +11,14 @@ code when a note appears stale.
 - [`../AGENTS.md`](../AGENTS.md) - durable AI-agent instructions for this repo.
 - [`AI_WORKFLOW.md`](AI_WORKFLOW.md) - human-facing guide for asking AI tools to
   work on this codebase.
+- [`ROADMAP.md`](ROADMAP.md) - current improvement plan, priorities, and future
+  feature tracks.
+- [`SYSTEM_CONTEXT.md`](SYSTEM_CONTEXT.md) - compact architecture and current
+  status handoff for new sessions.
 - [`../backend/migrations/README.md`](../backend/migrations/README.md) -
   database migration conventions.
+- [`testing/manual-smoke-checklist.md`](testing/manual-smoke-checklist.md) -
+  manual QA checklist for flows beyond the mocked Playwright smoke suite.
 
 ## Templates
 
@@ -26,6 +32,11 @@ documentation.
 ## Planning Notes
 
 - [`planning/ideas.md`](planning/ideas.md) - rough backlog ideas.
+- [`planning/metadata-catalog-refactor.md`](planning/metadata-catalog-refactor.md) -
+  historical V1 design notes and future extension guidance for metadata
+  refresh, catalog browsing, Steam import, wishlist, and ownership work.
+- [`planning/production-migration-automation.md`](planning/production-migration-automation.md) -
+  future improvements for production migration safety.
 
 Planning notes are intentionally unverified. Before implementing one, inspect
 the current code and confirm the idea still makes sense.
