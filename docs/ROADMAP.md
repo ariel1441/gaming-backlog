@@ -1,6 +1,6 @@
 # Roadmap And Improvement Plan
 
-Last updated: 2026-05-16
+Last updated: 2026-06-30
 
 This is the planning document for improvements, feature ideas, cleanup, and
 future work. It is intentionally editable. Add your own ideas, reorder items,
@@ -23,7 +23,7 @@ Current direction:
 - [x] Phase 0: organize the codebase and standardize patterns before adding
   features.
 - [x] Phase 1: fix known bugs and improve the core backlog experience.
-- [ ] Phase 2: rebuild metadata, caching, and game discovery/add flows.
+- [x] Phase 2: rebuild metadata, caching, and game discovery/add flows.
 - [ ] Phase 3: add account, Steam, and larger library-management features.
 - [ ] Phase 4: improve insights, public/social features, and recommendations.
 - [ ] Phase 5: add deeper polish, tests, ops, and long-term product features.
@@ -157,30 +157,27 @@ real game-discovery and metadata system.
 
 Core metadata/cache work:
 
-- Before the large metadata/catalog refactor, read
-  [`planning/metadata-catalog-refactor.md`](planning/metadata-catalog-refactor.md)
-  for the current design notes, tradeoffs, and open decisions.
-- Redesign RAWG/HLTB/Metacritic caching rules:
-  - support refresh/expiry so stale cache entries do not stay forever
-  - track failed lookups separately from real empty data
-  - allow manual refresh for a game's metadata
-  - avoid locking a game to old data when newer metadata appears
-  - handle newly released games whose metadata is incomplete at first
-  - make private/public hydration consistent where practical
-  - preserve API quota with coalescing/rate limits
-- Consider storing metadata source details:
-  - RAWG id/slug
-  - selected external game identity
-  - HLTB source/title match
-  - Metacritic source/platform if available
-  - last fetched timestamp
-  - failed fetch timestamp/reason
-- Show hour/source labels:
-  - manual/user estimate
-  - HLTB
-  - RAWG playtime
-  - unknown/missing
-- Let users override and lock preferred hour estimates.
+- [x] Add Postgres catalog/cache tables for `catalog_games`,
+  `external_game_ids`, `catalog_search_cache`, `catalog_collections`, and
+  `catalog_collection_games`, while keeping legacy `games.rawg_id` and
+  `games.rawg_slug` for compatibility.
+- [x] Link user backlog rows to `games.catalog_game_id` and backfill existing
+  RAWG-linked rows.
+- [x] Add a catalog service that owns RAWG search/detail behavior, in-process
+  coalescing, stale/failure tracking, and serializer helpers.
+- [x] Cache RAWG search result id lists for 3 days and full metadata with
+  release-aware stale windows.
+- [x] Prefer stale cached catalog data over fatal errors when RAWG fails or is
+  quota-limited.
+- [x] Add manual catalog metadata refresh with a 24-hour cooldown that updates
+  external metadata only and never overwrites personal fields.
+- [x] Add opt-in curated shelf seeding with `npm run catalog:seed` and
+  `CATALOG_AUTO_SEED=true` for daily missing/expired collection refresh.
+- [x] Keep the internal catalog identity provider-neutral through
+  `external_game_ids`, so Steam app ids can attach later.
+- [ ] Add a richer hours-source model and UI labels for manual, HLTB, RAWG, and
+  future Steam actual playtime.
+- [ ] Let users lock/prefer a chosen hour estimate.
 
 Game discovery/add flow:
 
@@ -192,23 +189,37 @@ Game discovery/add flow:
   - Done 2026-05-09: add-game searches RAWG, saves `rawg_id`/`rawg_slug`,
     and uses selected identity during create/enrichment.
 - Fix wrong-game matching when multiple games share the same/similar name.
-- Allow browsing/searching a larger catalog of games and adding from there,
-  similar to game collection websites.
-- Add wishlist support as part of the discovery flow.
-- Add metadata loading states while search/enrichment is happening.
-- Add "metadata missing" actions:
-  - retry lookup
-  - choose different match
-  - manually edit metadata-related fields where appropriate
+- [x] Allow browsing/searching a larger catalog of games and adding from there,
+  similar to game collection websites. Done 2026-06-30: `/discover` shows
+  cached curated shelves, local catalog filters/sort, debounced RAWG search,
+  detail modal, metadata refresh, duplicate/already-in-backlog state, and
+  add-to-backlog.
+- [x] Add metadata loading/unavailable states while search/enrichment is
+  happening. Done 2026-06-30: search/detail/load-more prefer cached/stale data
+  and show friendly unavailable states.
+- [ ] Add wishlist/owned states as separate catalog relationship flows.
+- [ ] Add "change catalog match" for existing backlog items that are linked to
+  the wrong catalog game.
+- [ ] Add manually editable metadata override fields only if a real user need
+  appears; personal fields remain separate from catalog metadata.
 
 Possible implementation direction:
 
-- Add backend routes for game search and metadata refresh.
-- Add a `backend/services/metadata` or similar layer only when it reduces
-  duplicated RAWG/HLTB logic.
-- Add a serializer for public/private game payloads so both routes use the same
-  metadata shape.
-- Add schema fields only through migrations and update `backend/schema.sql`.
+- Implemented baseline:
+  - `backend/routes/catalog.js`
+  - `backend/services/catalogService.js`
+  - `backend/validators/catalog.js`
+  - `src/pages/DiscoverPage.jsx`
+  - `src/services/catalogService.js`
+  - migrations `004_add_catalog_metadata.sql` and
+    `005_add_catalog_collections.sql`
+  - `scripts/seed-catalog-collections.js`
+
+Phase 2 status:
+
+- Complete enough to close as Catalog/Discover V1 after final QA. Remaining
+  metadata work belongs to Phase 3 Steam/library relationships or later
+  hours-source polish.
 
 ### Phase 3: Account, Auth, Steam, And Library Management
 
@@ -488,10 +499,11 @@ Recommendations, later:
 
 Goal: keep the app reliable as features grow.
 
-- Browser smoke tests with Playwright or similar. Partial progress 2026-05-12:
-  Playwright is installed with a first mocked smoke suite covering demo start,
-  public profile read-only rendering, and an Insights active-games link back to
-  the filtered backlog. Manual smoke checklist remains at
+- Browser smoke tests with Playwright or similar. Partial progress 2026-06-28:
+  Playwright is installed with a mocked smoke suite covering demo start, public
+  profile read-only rendering, an Insights active-games link back to the
+  filtered backlog, add/edit/delete, same-rank reorder payload behavior, and
+  public profile favorite settings. Manual smoke checklist remains at
   [`testing/manual-smoke-checklist.md`](testing/manual-smoke-checklist.md) for
   deeper flows.
 - Backend API tests:
@@ -533,8 +545,8 @@ Goal: keep the app reliable as features grow.
 
 If another agent starts now, recommended order:
 
-1. Expand automated Playwright smoke tests to cover add/edit/delete and reorder
-   once stable selectors or fixtures are in place.
+1. Stabilize and deploy Catalog/Discover V1: final checks, production
+   migrations, RAWG env, and optional catalog auto-seeding.
 2. Plan the social/profile model before deeper profile work: friends/following,
    profile visibility, field privacy, and the future activity feed shape.
 3. Add favorite-game polish: drag reorder, quick favorite actions in game
@@ -543,8 +555,11 @@ If another agent starts now, recommended order:
 5. Do small demo-flow copy/CTA refinements as they come up in use.
 6. Plan the settings area: account basics, public/privacy controls, future
    custom statuses, and My Genre presets.
-7. Redesign metadata caching/refresh around RAWG/HLTB/Metacritic.
-8. Add Steam import/sync, including import/export decisions.
+7. Add Steam import/sync, including import/export decisions.
+8. Add richer hours-source behavior for manual, HLTB, RAWG, and Steam actual
+   playtime.
+9. Keep expanding Playwright coverage around high-risk flows, especially mobile
+   layout, demo keep/discard, auth errors, and future metadata/import work.
 
 ## Phase 0: Codebase Foundation
 
@@ -933,7 +948,7 @@ Deferred non-blocking cleanup:
 ### Auth And Demo
 
 - Consolidate auth calls through `src/services/authService.js` and
-  `apiClient.js`.
+  `apiClient.js`. Done.
 - Improve demo expiration visibility.
 - Avoid accidental demo discard on simple refresh or temporary navigation.
 - Make "save this demo" clearer and more prominent.
@@ -943,27 +958,33 @@ Deferred non-blocking cleanup:
 
 - Show hour source labels: manual, HLTB, RAWG.
 - Let users override and lock preferred hour estimates.
-- Add duplicate detection when adding similar game titles.
-- Add a RAWG/IGDB search picker instead of free-text-only add.
+- Add duplicate detection when adding similar game titles. Done for exact
+  normalized title matches.
+- Add a RAWG search picker instead of free-text-only add. Done for add/edit.
+- Add Discover/catalog browsing. Done 2026-06-30: cached curated shelves,
+  search, detail, refresh, load more, and add-to-backlog exist in V1.
 - Add better loading states while metadata hydrates.
-- Improve game edit validation and server error display.
-- Add date fields to the add flow, not only edit flow.
+- Improve game edit validation and server error display. Done baseline.
+- Add date fields to the add flow, not only edit flow. Done.
 
 ### Public Profiles
 
-- Add a stronger public profile header with stats and share action.
-- Make public toolbar match the private app controls more closely.
+- Add a stronger public profile header with stats and share action. Done.
+- Make public toolbar match the private app controls more closely. Done
+  baseline.
 - Add public profile filtered URLs for sharing a subset.
 - Add privacy controls for thoughts, scores, dates, abandoned games, or specific
   fields.
 
 ### Insights
 
-- Add completion timeline charts.
-- Add yearly/monthly finished-game stats.
+- Add completion timeline charts. Done for yearly started/finished baseline.
+- Add yearly/monthly finished-game stats. Yearly baseline done; monthly remains
+  optional.
 - Add charts for score distribution and hours by custom genre.
 - Make missing-hours resolution clearer and actionable.
-- Add click-through filters for more insight widgets.
+- Add click-through filters for more insight widgets. Done for the first
+  date/status-style filters; keep expanding as new widgets land.
 
 ## New Feature Ideas
 
@@ -991,20 +1012,24 @@ Deferred non-blocking cleanup:
 ## UI/UX Improvements
 
 - Replace panel toggles with a more app-like command toolbar or responsive top
-  bar on mobile.
+  bar on mobile. Done baseline.
 - Add a dense list/table view for large libraries.
-- Add card size options or compact mode.
+- Add card size options or compact mode. Done baseline with grid, compact, and
+  list modes.
 - Add group-by controls, especially group by status/platform/priority.
 - Add skeleton loaders for game cards, public profile, and insights.
 - Add better empty states for no games, no filters, no public profile, and no
-  insights.
+  insights. Done baseline; keep improving specific empty states as features
+  evolve.
 - Improve modal accessibility and keyboard handling.
 - Improve drag-and-drop affordances, especially on mobile.
 - Use lucide icons consistently for close, clear, back, and destructive actions.
 - Improve mobile layout for search, sort, filters, and public profile toolbar.
+  Done baseline.
 - Improve cover fallback visuals without external placeholder URLs.
 - Add shared UI primitives: `Modal`, `Button`, `IconButton`, `Field`, `Select`,
-  `Toast`, `ConfirmDialog`, `Toolbar`, `EmptyState`, `Skeleton`.
+  `Toast`, `ConfirmDialog`, `EmptyState`, and `Skeleton`. Done baseline; add
+  table/tabs/toolbar primitives only when a feature needs them.
 - Revisit visual theme so the app has more variation than dark navy plus orange
   accents.
 

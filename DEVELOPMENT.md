@@ -57,6 +57,8 @@ DEMO_ENABLED=true
 DEMO_TEMPLATE_USERNAME=demo_template
 DEMO_GUEST_TTL_HOURS=36
 ALLOW_REMOTE_DB_IN_DEV=false
+CATALOG_AUTO_SEED=false
+CATALOG_SEED_LIMIT=24
 ```
 
 ## Local Setup
@@ -88,7 +90,13 @@ npm run db:migrate:local
 npm run db:migrate:status
 ```
 
-5. Start the app:
+5. Optional: seed the cached Discover shelves from RAWG:
+
+```bash
+npm run catalog:seed -- --limit=24
+```
+
+6. Start the app:
 
 ```bash
 npm run dev
@@ -130,6 +138,17 @@ The check job runs on pushes to `main` and `Dev`, and on pull requests:
 The production migration job runs only on pushes to `main`, after checks pass.
 It applies SQL files from `backend/migrations/` only if the GitHub secret
 `PROD_DATABASE_URL` is configured.
+
+Catalog/Discover data is cached in Postgres. For production Discover shelves,
+either:
+
+- set `CATALOG_AUTO_SEED=true` on Railway so the backend refreshes
+  missing/expired catalog collections after startup and then once per day, or
+- run `npm run catalog:seed -- --limit=24` intentionally against the production
+  backend environment when you want a manual refresh.
+
+`CATALOG_SEED_LIMIT` defaults to `24` and controls how many games are seeded per
+collection. Keep it modest to protect the RAWG quota.
 
 Vercel and Railway are still expected to handle deployment from GitHub. Check
 their dashboards and make sure production deploys are connected to `main`, not a
@@ -201,6 +220,14 @@ Because Vercel/Railway deployment can happen near the same time as GitHub
 Actions, prefer backward-compatible migrations: old code should keep working
 briefly after the migration, and new code should tolerate the migration already
 being applied.
+
+For the catalog metadata release, confirm production has:
+
+- migrations `004_add_catalog_metadata.sql` and
+  `005_add_catalog_collections.sql` applied
+- `RAWG_API_KEY` configured on the backend
+- `CATALOG_AUTO_SEED=true` if automatic Discover shelf refresh is desired
+- a modest `CATALOG_SEED_LIMIT`, usually `24`
 
 ## Feature Workflow
 

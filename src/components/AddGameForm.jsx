@@ -77,7 +77,7 @@ const AddGameForm = ({
 
   useEffect(() => {
     const query = String(newGame.name || "").trim();
-    if (query.length < 2) {
+    if (query.length < 3) {
       setSearchResults([]);
       setSearchLoading(false);
       setSearchError("");
@@ -209,9 +209,9 @@ const AddGameForm = ({
                   ) : null}
                   {!searchLoading && !searchResults.length ? (
                     <p className="rounded-xl border border-surface-border bg-surface-elevated/35 px-3 py-4 text-sm text-content-muted">
-                      {newGame.name?.trim().length >= 2
+                      {newGame.name?.trim().length >= 3
                         ? "No matches yet. You can still add manually."
-                        : "Results appear as you type."}
+                        : "Results appear after 3 characters."}
                     </p>
                   ) : null}
                   {searchError ? (

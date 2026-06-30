@@ -160,7 +160,7 @@ export default function EditGameForm({
 
   useEffect(() => {
     const query = metadataQuery.trim();
-    if (query.length < 2) {
+    if (query.length < 3) {
       setSearchResults([]);
       setSearchLoading(false);
       setSearchError("");
@@ -304,9 +304,9 @@ export default function EditGameForm({
                     ) : null}
                     {!searchLoading && !searchResults.length ? (
                       <p className="rounded-xl border border-surface-border bg-surface-elevated/35 px-3 py-4 text-sm text-content-muted">
-                        {metadataQuery.trim().length >= 2
+                        {metadataQuery.trim().length >= 3
                           ? "No matches found."
-                          : "Search to choose another RAWG match."}
+                          : "Type at least 3 characters to choose another RAWG match."}
                       </p>
                     ) : null}
                     {searchError ? (

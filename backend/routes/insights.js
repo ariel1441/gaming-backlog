@@ -43,9 +43,15 @@ function toHoursInt(v) {
 /* ----------------------------- SQL helpers ---------------------------- */
 async function fetchBaseRows(userId) {
   const sql = `
-    SELECT g.id, g.name, g.status, s.rank, g.how_long_to_beat
+    SELECT g.id,
+           g.name,
+           g.status,
+           s.rank,
+           g.how_long_to_beat,
+           cg.rawg_playtime_hours AS catalog_rawg_playtime_hours
     FROM games g
     JOIN statuses s ON s.status = g.status
+    LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
     WHERE g.user_id = $1
   `;
   const { rows } = await pool.query(sql, [userId]);
@@ -70,6 +76,9 @@ function resolveHoursForRow(req, row) {
 
   const hltb = getHLTBHours(req.app, row.name);
   if (hltb && hltb > 0) return { hours: hltb, source: "hltb" };
+
+  const catalogRawg = toHoursInt(row.catalog_rawg_playtime_hours);
+  if (catalogRawg > 0) return { hours: catalogRawg, source: "rawg" };
 
   const rawg = getRawgPlaytime(req.app, row.name);
   if (rawg && rawg > 0) return { hours: rawg, source: "rawg" };

@@ -10,6 +10,8 @@ import authRouter from "./routes/auth.js";
 import publicRouter from "./routes/public.js";
 import insightsRouter from "./routes/insights.js";
 import metaRouter from "./routes/meta.js";
+import catalogRouter from "./routes/catalog.js";
+import { startCatalogCollectionScheduler } from "./services/catalogService.js";
 import errorHandler from "./middleware/errorHandler.js";
 import { errors as celebrateErrors } from "celebrate";
 import demoRouter from "./routes/demo.js";
@@ -20,6 +22,7 @@ const app = express();
 registerSecurity(app);
 
 await initCache(app); // sets app.locals.rawgCache
+const stopCatalogCollectionScheduler = startCatalogCollectionScheduler();
 
 // Liveness probe for platform health checks
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -27,6 +30,7 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 // ---- Routes ----
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/public", publicLimiter, publicRouter);
+app.use("/api/catalog", publicLimiter, catalogRouter);
 app.use("/api/games", gamesRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/meta", metaRouter);
@@ -56,6 +60,7 @@ const server = app.listen(PORT, () => {
 // Graceful shutdown
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {
+    stopCatalogCollectionScheduler?.();
     server.close(() => process.exit(0));
   });
 }

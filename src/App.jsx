@@ -3,6 +3,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { StatusGroupsProvider } from "./contexts/StatusGroupsContext";
 import { ConfirmProvider, ToastProvider } from "./components/ui";
 import BacklogPage from "./pages/Backlog/BacklogPage";
+import DiscoverPage from "./pages/DiscoverPage";
 import InsightsTab from "./pages/Insights/InsightsPage";
 import PublicProfile from "./pages/PublicProfile";
 
@@ -14,6 +15,7 @@ const App = () => {
           <StatusGroupsProvider>
             <Routes>
               <Route path="/" element={<BacklogPage />} />
+              <Route path="/discover" element={<DiscoverPage />} />
               <Route path="/insights" element={<InsightsTab />} />
               <Route path="/u/:username" element={<PublicProfile />} />
             </Routes>

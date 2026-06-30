@@ -5,7 +5,6 @@ import { verifyToken } from "../middleware/auth.js";
 import {
   fetchGameData,
   fetchGameDataByIdOrSlug,
-  searchRAWGGames,
 } from "../utils/fetchRAWG.js";
 import {
   favoriteGames,
@@ -24,6 +23,11 @@ import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
 import { normalizeScore } from "../utils/normalize.js";
 import { badRequest, notFound, conflict } from "../utils/httpError.js";
 import { findDuplicateGameTitle } from "../utils/gameTitle.js";
+import {
+  decorateGameWithCatalog,
+  ensureCatalogGameFromRawg,
+  searchCatalog,
+} from "../services/catalogService.js";
 import {
   assertSameRank,
   buildReorderedRankList,
@@ -286,6 +290,14 @@ const mapWithLimit = async (items, limit, fn) => {
  * We also include displayHLTB and displayName for future UI uses.
  */
 const decorateGameForClient = (game, rawg) => {
+  const catalogDecorated = decorateGameWithCatalog(game, rawg);
+  if (catalogDecorated) {
+    return {
+      ...game,
+      ...catalogDecorated,
+    };
+  }
+
   const dbHours = toHourInt(game.how_long_to_beat);
   const rawgHours = getRawgHours(rawg);
 
@@ -378,8 +390,8 @@ router.get("/", verifyToken, async (req, res, next) => {
 router.get("/search", verifyToken, async (req, res, next) => {
   try {
     const q = String(req.query.q || "").trim();
-    if (q.length < 2) {
-      return next(badRequest("Search query must be at least 2 characters."));
+    if (q.length < 3) {
+      return next(badRequest("Search query must be at least 3 characters."));
     }
 
     if (req.user?.is_guest) {
@@ -387,9 +399,19 @@ router.get("/search", verifyToken, async (req, res, next) => {
       return res.json({ results: [] });
     }
 
-    const results = await searchRAWGGames(q, { pageSize: 8 });
+    const catalogPayload = await searchCatalog(q, req.user);
+    const results = (catalogPayload.results || []).map((game) => ({
+      catalog_game_id: game.id,
+      rawg_id: game.rawg_id ?? game.rawgId ?? null,
+      rawg_slug: game.rawg_slug || game.rawgSlug || game.slug || "",
+      name: game.name,
+      released: game.released,
+      cover: game.cover,
+      rating: game.rating,
+      metacritic: game.metacritic,
+    }));
     res.setHeader("Cache-Control", "no-store");
-    res.json({ results });
+    res.json({ results, cacheStatus: catalogPayload.cacheStatus });
   } catch (err) {
     next(err);
   }
@@ -441,9 +463,21 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
 
     const { rows } = await client.query(
       `
-      SELECT g.*, s.rank AS status_rank
+      SELECT g.*,
+             s.rank AS status_rank,
+             cg.name AS catalog_name,
+             cg.cover_url AS catalog_cover_url,
+             cg.released_at AS catalog_released_at,
+             cg.description_html AS catalog_description_html,
+             cg.rawg_rating AS catalog_rawg_rating,
+             cg.metacritic AS catalog_metacritic,
+             cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
+             cg.genres_json AS catalog_genres_json,
+             cg.stores_json AS catalog_stores_json,
+             cg.tags_json AS catalog_tags_json
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
+      LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
       WHERE g.user_id = $1
       ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
       `,
@@ -511,6 +545,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     // For guests: NEVER fetch RAWG; read from cache only.
     // For real users: persist immediately on single-item routes.
     let rawg, canonicalName;
+    let catalogGameId = null;
     if (!isGuest) {
       const ensured = rawg_id
         ? await ensureRawgIdentityEntry(
@@ -523,6 +558,12 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
           });
       rawg = ensured.rawg;
       canonicalName = ensured.canonicalName;
+      if (rawg_id) {
+        const catalogRow = await ensureCatalogGameFromRawg(rawg_id, rawg_slug, {
+          allowSearchResult: true,
+        });
+        catalogGameId = catalogRow?.id ?? null;
+      }
     } else {
       const cached = cache[lowerKey(userTitle)] || {};
       rawg = cached;
@@ -568,43 +609,44 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
 
     const insertSql = `
       INSERT INTO games
-        (user_id, name, status, my_genre, thoughts, my_score,
+        (user_id, catalog_game_id, name, status, my_genre, thoughts, my_score,
          how_long_to_beat, position, started_at, finished_at, rawg_id, rawg_slug)
       VALUES
         (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8,
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9,
           CASE
-            WHEN $9  THEN $10
-            WHEN $3 = 'playing' THEN ${TODAY_SQL}
+            WHEN $10 THEN $11
+            WHEN $4 = 'playing' THEN ${TODAY_SQL}
             ELSE NULL
           END,
           CASE
-            WHEN $11 THEN $12
-            WHEN $3 IN ('finished','played alot but didnt finish') THEN ${TODAY_SQL}
+            WHEN $12 THEN $13
+            WHEN $4 IN ('finished','played alot but didnt finish') THEN ${TODAY_SQL}
             ELSE NULL
           END,
-          $13,
-          $14
+          $14,
+          $15
         )
       RETURNING *;
     `;
 
     const params = [
       userId, // $1
-      userTitle, // $2
-      statusNorm, // $3
-      (my_genre || "").trim(), // $4
-      (thoughts || "").trim(), // $5
-      score, // $6
-      hours, // $7
-      position, // $8
-      startedProvided, // $9
-      startedBody, // $10
-      finishedProvided, // $11
-      finishedBody, // $12
-      rawg_id || null, // $13
-      (rawg_slug || rawg?.slug || "").trim() || null, // $14
+      catalogGameId, // $2
+      userTitle, // $3
+      statusNorm, // $4
+      (my_genre || "").trim(), // $5
+      (thoughts || "").trim(), // $6
+      score, // $7
+      hours, // $8
+      position, // $9
+      startedProvided, // $10
+      startedBody, // $11
+      finishedProvided, // $12
+      finishedBody, // $13
+      rawg_id || null, // $14
+      (rawg_slug || rawg?.slug || "").trim() || null, // $15
     ];
 
     const { rows } = await pool.query(insertSql, params);
@@ -666,6 +708,7 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
     const nameChanged = userTitle !== row.name;
 
     const isGuest = !!req.user?.is_guest;
+    let catalogGameId = row.catalog_game_id || null;
 
     if (newHLTB == null && nameChanged) {
       const cache = req.app.locals.rawgCache || {};
@@ -706,6 +749,15 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
     }
 
     const score = normalizeScore(my_score);
+    const rawgProvided = Object.prototype.hasOwnProperty.call(req.body, "rawg_id");
+    if (!isGuest && rawg_id) {
+      const catalogRow = await ensureCatalogGameFromRawg(rawg_id, rawg_slug, {
+        allowSearchResult: true,
+      });
+      catalogGameId = catalogRow?.id ?? catalogGameId;
+    } else if (rawgProvided && !rawg_id) {
+      catalogGameId = null;
+    }
 
     // Date logic: explicit edits win; else one-time auto on qualifying transition
     const statusChanged = row.status !== statusNorm;
@@ -734,6 +786,7 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
          position = $7,
          rawg_id = $15,
          rawg_slug = $16,
+         catalog_game_id = $17,
 
          started_at = CASE
            WHEN $11 THEN $8
@@ -768,6 +821,7 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
       userId, // $14
       rawg_id || null, // $15
       (rawg_slug || "").trim() || null, // $16
+      catalogGameId, // $17
     ];
 
     const { rows } = await pool.query(updateSql, params);

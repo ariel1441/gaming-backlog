@@ -5,6 +5,7 @@ import { fetchGameData } from "../utils/fetchRAWG.js";
 import {
   sanitizeGameHtml /* or sanitizeGameHtmlWithLinks */,
 } from "../utils/sanitizeHtml.js";
+import { decorateGameWithCatalog } from "../services/catalogService.js";
 import { usernameParam } from "../validators/public.js";
 import { forbidden, notFound } from "../utils/httpError.js";
 const router = express.Router();
@@ -15,6 +16,14 @@ async function hydrateGamesWithRAWG(app, games) {
 
   const hydrated = await Promise.all(
     games.map(async (game) => {
+      const catalog = decorateGameWithCatalog(game);
+      if (catalog) {
+        return {
+          ...game,
+          ...catalog,
+        };
+      }
+
       const cacheKey = (game.name || "").toLowerCase().trim();
       if (!rawgCache[cacheKey]) {
         const data = await fetchGameData(game.name);
@@ -106,9 +115,21 @@ router.get("/:username/games", usernameParam, async (req, res, next) => {
     // 2) Fetch games like your private route does (rank + position)
     const gamesRes = await pool.query(
       `
-      SELECT g.*, s.rank AS status_rank
+      SELECT g.*,
+             s.rank AS status_rank,
+             cg.name AS catalog_name,
+             cg.cover_url AS catalog_cover_url,
+             cg.released_at AS catalog_released_at,
+             cg.description_html AS catalog_description_html,
+             cg.rawg_rating AS catalog_rawg_rating,
+             cg.metacritic AS catalog_metacritic,
+             cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
+             cg.genres_json AS catalog_genres_json,
+             cg.stores_json AS catalog_stores_json,
+             cg.tags_json AS catalog_tags_json
       FROM games g
       LEFT JOIN statuses s ON g.status = s.status
+      LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
       WHERE g.user_id = $1
       ORDER BY s.rank ASC, g.position ASC NULLS LAST, g.id ASC
       `,
