@@ -19,6 +19,8 @@ const optional = [
   "DEMO_ENABLED",
   "DEMO_TEMPLATE_USERNAME",
   "DEMO_GUEST_TTL_HOURS",
+  "CATALOG_AUTO_SEED",
+  "CATALOG_SEED_LIMIT",
 ];
 
 function redact(key, value) {
