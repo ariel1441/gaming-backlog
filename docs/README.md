@@ -35,6 +35,9 @@ documentation.
 - [`planning/metadata-catalog-refactor.md`](planning/metadata-catalog-refactor.md) -
   historical V1 design notes and future extension guidance for metadata
   refresh, catalog browsing, Steam import, wishlist, and ownership work.
+- [`planning/steam-integration-handoff.md`](planning/steam-integration-handoff.md) -
+  current Steam V1 implementation summary, known rough edges, next-work ideas,
+  and a prompt for continuing Steam integration in a new chat.
 - [`planning/production-migration-automation.md`](planning/production-migration-automation.md) -
   future improvements for production migration safety.
 

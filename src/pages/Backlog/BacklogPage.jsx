@@ -62,6 +62,8 @@ export default function BacklogPage() {
     setSelectedMyGenres,
     dateFilter,
     setDateFilter,
+    sourceFilter,
+    setSourceFilter,
     sortKey,
     setSortKey,
     isReversed,
@@ -205,6 +207,7 @@ export default function BacklogPage() {
   };
   const goInsights = () => nav("/insights");
   const goDiscover = () => nav("/discover");
+  const goSteam = () => nav("/steam/import");
   const startLiveDemo = async () => {
     await startDemo();
   };
@@ -254,6 +257,7 @@ export default function BacklogPage() {
         hoursRange,
         hoursBounds,
         dateFilter,
+        sourceFilter,
         sortKey,
         isReversed,
       });
@@ -269,6 +273,7 @@ export default function BacklogPage() {
     selectedGenres.length +
     selectedMyGenres.length +
     (dateFilter ? 1 : 0) +
+    (sourceFilter !== "all" ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveFilters = Boolean(
     searchQuery ||
@@ -276,6 +281,7 @@ export default function BacklogPage() {
       selectedGenres.length ||
       selectedMyGenres.length ||
       dateFilter ||
+      sourceFilter !== "all" ||
       hasHoursFilter
   );
 
@@ -321,6 +327,8 @@ export default function BacklogPage() {
               selectedMyGenres,
               dateFilter,
               setDateFilter,
+              sourceFilter,
+              setSourceFilter,
               setSelectedStatuses,
               setSelectedGenres,
               setSelectedMyGenres,
@@ -338,6 +346,7 @@ export default function BacklogPage() {
                   ? setShowAddForm(true)
                   : setShowAdminLogin(true),
               surprise: handleSurpriseMe,
+              steam: isAuthenticated && !isGuest ? goSteam : null,
               completedActive,
               toggleCompleted,
             }}
@@ -348,6 +357,8 @@ export default function BacklogPage() {
               showPublicSettings: () => setShowPublicSettings(true),
               goInsights,
               goDiscover,
+              goSteam,
+              isGuest,
               startDemo: startLiveDemo,
               logout,
             }}
@@ -464,6 +475,7 @@ export default function BacklogPage() {
           <BacklogModals
             selectedGame={selectedGame}
             onCloseSelectedGame={() => setSelectedGame(null)}
+            onSteamLinked={() => refresh({ silent: true })}
             surpriseGame={surpriseGame}
             onCloseSurpriseGame={() => setSurpriseGame(null)}
             onRefreshSurpriseGame={handleSurpriseMe}

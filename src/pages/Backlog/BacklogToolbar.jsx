@@ -10,6 +10,7 @@ import {
   Compass,
   Dice5,
   Globe,
+  Gamepad2,
   Grid2X2,
   LibraryBig,
   LayoutGrid,
@@ -30,6 +31,7 @@ import {
   StatusBadge,
   TextInput,
 } from "../../components/ui";
+import { resolveGameHours } from "../../utils/hours";
 
 const sortOptions = [
   { value: "", label: "Default order" },
@@ -40,12 +42,27 @@ const sortOptions = [
   { value: "releaseDate", label: "Release date" },
   { value: "startedDate", label: "Started date" },
   { value: "finishedDate", label: "Finished date" },
+  { value: "steamLastPlayed", label: "Steam last played" },
 ];
 
 const viewOptions = [
   { value: "grid", label: "Grid view", icon: LayoutGrid },
   { value: "compact", label: "Compact grid", icon: Grid2X2 },
   { value: "list", label: "List view", icon: List },
+];
+
+const sourceOptions = [
+  { value: "all", label: "All sources" },
+  { value: "steam_linked", label: "Linked to Steam" },
+  { value: "steam_unlinked", label: "Not linked to Steam" },
+  { value: "steam_playtime", label: "Has Steam playtime" },
+  { value: "steam_no_playtime", label: "Steam, no playtime" },
+  { value: "steam_recent", label: "Played on Steam recently" },
+  { value: "steam_achievements", label: "Has Steam achievements" },
+  { value: "steam_achievements_complete", label: "100% achievements" },
+  { value: "steam_achievements_close", label: "Close to 100%" },
+  { value: "steam_achievements_not_synced", label: "Achievements not synced" },
+  { value: "steam_achievements_unavailable", label: "Achievements unavailable" },
 ];
 
 export default function BacklogToolbar({
@@ -96,6 +113,17 @@ export default function BacklogToolbar({
           />
 
           <div className="order-2 ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2 md:order-none">
+            {actions?.steam ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={actions.steam}
+                className="hidden h-10 md:inline-flex"
+              >
+                <Gamepad2 className="h-4 w-4" aria-hidden="true" />
+                Steam
+              </Button>
+            ) : null}
             {actions?.surprise ? (
               <Button
                 type="button"
@@ -169,6 +197,17 @@ export default function BacklogToolbar({
                 Surprise
               </Button>
             ) : null}
+            {actions?.steam ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={actions.steam}
+                className="h-10 flex-1 justify-center"
+              >
+                <Gamepad2 className="h-4 w-4" aria-hidden="true" />
+                Steam
+              </Button>
+            ) : null}
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -199,6 +238,10 @@ export default function BacklogToolbar({
               hoursBounds={filters.hoursBounds}
               hoursRange={filters.hoursRange}
               setHoursRange={filters.setHoursRange}
+            />
+            <SourceDropdown
+              value={filters.sourceFilter || "all"}
+              onChange={filters.setSourceFilter}
             />
             {filters.setDateFilter ? (
               <DateDropdown
@@ -362,42 +405,45 @@ function SearchBox({
           <div className="border-b border-surface-border px-3 py-2 text-xs font-medium text-content-muted">
             Backlog matches
           </div>
-          {suggestions.map((game, index) => (
-            <button
-              type="button"
-              key={game.id || game.name}
-              role="option"
-              aria-selected={activeIndex === index}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => selectGame(game)}
-              className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                activeIndex === index
-                  ? "bg-surface-elevated text-content-primary"
-                  : "text-content-secondary hover:bg-surface-elevated/70"
-              }`}
-            >
-              {game.cover ? (
-                <img
-                  src={game.cover}
-                  alt=""
-                  className="h-12 w-9 rounded object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="h-12 w-9 rounded bg-surface-elevated" />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-content-primary">
-                  {game.name}
+          {suggestions.map((game, index) => {
+            const hours = resolveGameHours(game);
+            return (
+              <button
+                type="button"
+                key={game.id || game.name}
+                role="option"
+                aria-selected={activeIndex === index}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => selectGame(game)}
+                className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                  activeIndex === index
+                    ? "bg-surface-elevated text-content-primary"
+                    : "text-content-secondary hover:bg-surface-elevated/70"
+                }`}
+              >
+                {game.cover ? (
+                  <img
+                    src={game.cover}
+                    alt=""
+                    className="h-12 w-9 rounded object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="h-12 w-9 rounded bg-surface-elevated" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-content-primary">
+                    {game.name}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-content-muted">
+                    {game.status ? <StatusBadge status={game.status} /> : null}
+                    {hours.hours ? <span>{hours.label}</span> : null}
+                    {game.rating ? <span>{game.rating}/5</span> : null}
+                  </div>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-content-muted">
-                  {game.status ? <StatusBadge status={game.status} /> : null}
-                  {game.how_long_to_beat ? <span>{game.how_long_to_beat}h</span> : null}
-                  {game.rating ? <span>{game.rating}/5</span> : null}
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -694,6 +740,25 @@ function DateDropdown({ dateFilter, setDateFilter }) {
   );
 }
 
+function SourceDropdown({ value = "all", onChange }) {
+  const active = value !== "all";
+  return (
+    <SelectMenu
+      id="backlog-source-filter"
+      value={value}
+      onChange={onChange}
+      options={sourceOptions}
+      className="h-10 min-w-[165px] rounded-xl"
+      buttonClassName={
+        active
+          ? "border-primary/70 bg-primary text-white hover:border-primary hover:bg-primary-dark focus:border-primary focus:ring-primary/25 [&_svg]:text-white"
+          : ""
+      }
+      placeholder="All sources"
+    />
+  );
+}
+
 function isSameDateFilter(a, b) {
   return (
     a?.type === b?.type &&
@@ -726,6 +791,9 @@ function ViewModeSwitch({ value, onChange }) {
 }
 
 function ActiveFilterSummary({ filters }) {
+  const sourceLabel =
+    sourceOptions.find((option) => option.value === filters.sourceFilter)
+      ?.label || "";
   const chips = [
     ...filters.selectedStatuses.map((value) => ({
       value,
@@ -739,7 +807,13 @@ function ActiveFilterSummary({ filters }) {
       value,
       onRemove: () => filters.toggleGenre(value),
     })),
-  ];
+    filters.sourceFilter && filters.sourceFilter !== "all"
+      ? {
+          value: sourceLabel,
+          onRemove: () => filters.setSourceFilter("all"),
+        }
+      : null,
+  ].filter(Boolean);
   return (
     <div className="flex flex-wrap items-center gap-2">
       {chips.map((chip) => (
@@ -801,6 +875,9 @@ function ProfileMenu({ account }) {
           <MenuItem icon={BarChart3} label="Insights" onClick={account.goInsights} />
           {account.isAuthenticated ? (
             <MenuItem icon={Compass} label="Discover" onClick={account.goDiscover} />
+          ) : null}
+          {account.isAuthenticated && !account.isGuest ? (
+            <MenuItem icon={Gamepad2} label="Steam import" onClick={account.goSteam} />
           ) : null}
           {account.isAuthenticated ? (
             <MenuItem

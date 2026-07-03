@@ -1,7 +1,12 @@
 import { smartFuzzySearch } from "./fuzzySearch.js";
 import { parseGameDate } from "./gameDateInsights.js";
+import { hoursValueForList } from "./hours.js";
 
 const normalize = (value = "") => String(value).toLowerCase().trim();
+const titleCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
 export function normalizeGameTitle(value = "") {
   return String(value || "")
@@ -55,7 +60,9 @@ const dateValue = (value) => (value ? Date.parse(value) || 0 : 0);
 
 const validDateValue = (value) => {
   const parsed = parseGameDate(value);
-  return parsed ? parsed.timestamp : null;
+  if (parsed) return parsed.timestamp;
+  const nativeTimestamp = Date.parse(value);
+  return Number.isFinite(nativeTimestamp) ? nativeTimestamp : null;
 };
 
 const compareOptionalDates = (a, b, field, isReversed) => {
@@ -88,19 +95,19 @@ export function sortGames(
   { sortKey = "", isReversed = false } = {}
 ) {
   const dateSortKey =
-    sortKey === "startedDate" || sortKey === "finishedDate" ? sortKey : "";
+    sortKey === "startedDate" ||
+    sortKey === "finishedDate" ||
+    sortKey === "steamLastPlayed"
+      ? sortKey
+      : "";
   const sorted = [...(Array.isArray(games) ? games : [])].sort((a, b) => {
     switch (sortKey) {
       case "name":
-        return String(a?.name || "").localeCompare(
-          String(b?.name || ""),
-          undefined,
-          { sensitivity: "base" }
-        );
+        return titleCollator.compare(String(a?.name || ""), String(b?.name || ""));
       case "hoursPlayed":
         return (
-          numberOrNegativeInfinity(a?.hoursPlayed ?? a?.how_long_to_beat) -
-          numberOrNegativeInfinity(b?.hoursPlayed ?? b?.how_long_to_beat)
+          numberOrNegativeInfinity(a?.hoursPlayed ?? hoursValueForList(a)) -
+          numberOrNegativeInfinity(b?.hoursPlayed ?? hoursValueForList(b))
         );
       case "rawgRating":
         return (
@@ -121,6 +128,8 @@ export function sortGames(
         return compareOptionalDates(a, b, "started_at", isReversed);
       case "finishedDate":
         return compareOptionalDates(a, b, "finished_at", isReversed);
+      case "steamLastPlayed":
+        return compareOptionalDates(a, b, "steamLastPlayedAt", isReversed);
       default:
         return sortByDefaultOrder(a, b);
     }
@@ -173,6 +182,63 @@ export function matchesDateFilter(game, dateFilter, now = new Date()) {
   }
 }
 
+export function matchesSourceFilter(game, sourceFilter = "all", now = new Date()) {
+  switch (sourceFilter) {
+    case "steam_linked":
+      return !!game?.steamOwned;
+    case "steam_unlinked":
+      return !game?.steamOwned;
+    case "steam_playtime":
+      return !!game?.steamOwned && Number(game?.steamPlaytimeHours || 0) > 0;
+    case "steam_no_playtime":
+      return !!game?.steamOwned && Number(game?.steamPlaytimeHours || 0) <= 0;
+    case "steam_recent": {
+      if (!game?.steamOwned || !game?.steamLastPlayedAt) return false;
+      const playedAt = Date.parse(game.steamLastPlayedAt);
+      const current = now instanceof Date ? now.getTime() : Date.parse(now);
+      if (!Number.isFinite(playedAt) || !Number.isFinite(current)) return false;
+      return playedAt >= current - 30 * 24 * 60 * 60 * 1000;
+    }
+    case "steam_achievements":
+      return (
+        !!game?.steamOwned &&
+        game?.steamAchievements?.status === "synced" &&
+        Number(game?.steamAchievements?.total || 0) > 0
+      );
+    case "steam_achievements_complete":
+      return (
+        !!game?.steamOwned &&
+        game?.steamAchievements?.status === "synced" &&
+        Number(game?.steamAchievements?.percent || 0) >= 100
+      );
+    case "steam_achievements_close": {
+      const percent = Number(game?.steamAchievements?.percent);
+      return (
+        !!game?.steamOwned &&
+        game?.steamAchievements?.status === "synced" &&
+        Number.isFinite(percent) &&
+        percent >= 80 &&
+        percent < 100
+      );
+    }
+    case "steam_achievements_not_synced":
+      return (
+        !!game?.steamOwned &&
+        (!game?.steamAchievements?.lastSyncedAt ||
+          !game?.steamAchievements?.status ||
+          game?.steamAchievements?.status === "unknown")
+      );
+    case "steam_achievements_unavailable":
+      return (
+        !!game?.steamOwned &&
+        ["private", "unavailable", "failed"].includes(game?.steamAchievements?.status)
+      );
+    case "all":
+    default:
+      return true;
+  }
+}
+
 export function applyGameFilters(
   games = [],
   {
@@ -182,6 +248,7 @@ export function applyGameFilters(
     hoursRange = null,
     hoursBounds = null,
     dateFilter = null,
+    sourceFilter = "all",
     now = new Date(),
   } = {}
 ) {
@@ -212,12 +279,13 @@ export function applyGameFilters(
     }
 
     if (hoursActive) {
-      const hours = Number(game?.how_long_to_beat);
+      const hours = Number(hoursValueForList(game));
       if (!Number.isFinite(hours)) return false;
       if (hours < hoursRange.min || hours > hoursRange.max) return false;
     }
 
     if (!matchesDateFilter(game, dateFilter, now)) return false;
+    if (!matchesSourceFilter(game, sourceFilter, now)) return false;
 
     return true;
   });
@@ -232,6 +300,7 @@ export function buildDisplayGames({
   hoursRange = null,
   hoursBounds = null,
   dateFilter = null,
+  sourceFilter = "all",
   sortKey = "",
   isReversed = false,
 } = {}) {
@@ -242,6 +311,7 @@ export function buildDisplayGames({
     hoursRange,
     hoursBounds,
     dateFilter,
+    sourceFilter,
   });
 
   const searched = searchQuery?.trim()

@@ -1,12 +1,18 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { useDebouncedValue } from "./useDebouncedValue";
-import { matchesDateFilter } from "../utils/gameList";
+import { matchesDateFilter, matchesSourceFilter } from "../utils/gameList";
+import { hoursValueForList } from "../utils/hours";
 
 function toArray(raw) {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === "string") return raw.split(",");
   return [];
 }
+
+const titleCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
 export function useFilters(games, opts = {}) {
   // ----- basic state -----
@@ -15,6 +21,7 @@ export function useFilters(games, opts = {}) {
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [selectedMyGenres, setSelectedMyGenres] = useState([]);
   const [dateFilter, setDateFilter] = useState(null);
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [sortKey, setSortKey] = useState(opts.initialSortKey || "");
   const [isReversed, setIsReversed] = useState(!!opts.initialReverse);
 
@@ -67,7 +74,7 @@ export function useFilters(games, opts = {}) {
     let lo = Infinity,
       hi = -Infinity;
     for (const g of games) {
-      const h = Number(g?.how_long_to_beat);
+      const h = Number(hoursValueForList(g));
       if (Number.isFinite(h)) {
         if (h < lo) lo = h;
         if (h > hi) hi = h;
@@ -117,6 +124,7 @@ export function useFilters(games, opts = {}) {
     setSelectedGenres([]);
     setSelectedMyGenres([]);
     setDateFilter(null);
+    setSourceFilter("all");
     setSearchQuery("");
     if (hoursBounds.max > hoursBounds.min) setHoursRange(hoursBounds);
   }, [hoursBounds]);
@@ -128,6 +136,7 @@ export function useFilters(games, opts = {}) {
     selectedGenres.length === 0 &&
     selectedMyGenres.length === 0 &&
     !dateFilter &&
+    sourceFilter === "all" &&
     !isHoursActive &&
     !sortKey;
 
@@ -179,7 +188,7 @@ export function useFilters(games, opts = {}) {
         if (!name.includes(q)) return false;
       }
       if (isHoursActive) {
-        const h = Number(g?.how_long_to_beat);
+        const h = Number(hoursValueForList(g));
         if (!Number.isFinite(h)) return false;
         if (h < debouncedHoursRange.min || h > debouncedHoursRange.max)
           return false;
@@ -187,6 +196,7 @@ export function useFilters(games, opts = {}) {
       if (dateFilter) {
         if (!matchesDateFilter(g, dateFilter)) return false;
       }
+      if (!matchesSourceFilter(g, sourceFilter)) return false;
       return true;
     };
 
@@ -200,15 +210,11 @@ export function useFilters(games, opts = {}) {
     const sorter = (a, b) => {
       switch (sortKey) {
         case "name":
-          return String(a.name || "").localeCompare(
-            String(b.name || ""),
-            undefined,
-            { sensitivity: "base" }
-          );
+          return titleCollator.compare(String(a.name || ""), String(b.name || ""));
         case "hoursPlayed":
           return (
-            byNum(a.hoursPlayed ?? a.how_long_to_beat) -
-            byNum(b.hoursPlayed ?? b.how_long_to_beat)
+            byNum(a.hoursPlayed ?? hoursValueForList(a)) -
+            byNum(b.hoursPlayed ?? hoursValueForList(b))
           );
         case "rawgRating":
           return (
@@ -221,17 +227,15 @@ export function useFilters(games, opts = {}) {
             byDate(a.releaseDate ?? a.released) -
             byDate(b.releaseDate ?? b.released)
           );
+        case "steamLastPlayed":
+          return byDate(a.steamLastPlayedAt) - byDate(b.steamLastPlayedAt);
         default: {
           const r = rankOf(a.status) - rankOf(b.status);
           if (r !== 0) return r;
           const pa = byNum(a.position);
           const pb = byNum(b.position);
           if (pa !== pb) return pa - pb;
-          return String(a.name || "").localeCompare(
-            String(b.name || ""),
-            undefined,
-            { sensitivity: "base" }
-          );
+          return titleCollator.compare(String(a.name || ""), String(b.name || ""));
         }
       }
     };
@@ -247,6 +251,7 @@ export function useFilters(games, opts = {}) {
     selectedGenres,
     selectedMyGenres,
     dateFilter,
+    sourceFilter,
     sortKey,
     isReversed,
     isHoursActive,
@@ -266,6 +271,8 @@ export function useFilters(games, opts = {}) {
     setSelectedMyGenres,
     dateFilter,
     setDateFilter,
+    sourceFilter,
+    setSourceFilter,
     sortKey,
     setSortKey,
     isReversed,

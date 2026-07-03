@@ -12,10 +12,39 @@ export function listOwnedGamesQuery(userId) {
              cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
              cg.genres_json AS catalog_genres_json,
              cg.stores_json AS catalog_stores_json,
-             cg.tags_json AS catalog_tags_json
+             cg.tags_json AS catalog_tags_json,
+             ugs.provider_app_id AS steam_app_id,
+             sic.steam_name AS steam_name,
+             ugs.playtime_minutes_forever AS steam_playtime_minutes,
+             ugs.last_played_at AS steam_last_played_at,
+             ugs.last_synced_at AS steam_last_synced_at,
+             ugs.achievements_unlocked AS steam_achievements_unlocked,
+             ugs.achievements_total AS steam_achievements_total,
+             ugs.achievements_percent AS steam_achievements_percent,
+             ugs.achievements_status AS steam_achievements_status,
+             ugs.achievements_last_synced_at AS steam_achievements_last_synced_at,
+             ugs.achievements_last_error_code AS steam_achievements_last_error_code,
+             ugs.achievements_last_error_message AS steam_achievements_last_error_message,
+             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
       LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
+      LEFT JOIN LATERAL (
+        SELECT source.*
+        FROM user_game_sources source
+        WHERE source.game_id = g.id
+          AND source.user_id = g.user_id
+          AND source.provider = 'steam'
+          AND source.source_status = 'owned'
+        ORDER BY
+          (source.playtime_minutes_forever IS NOT NULL AND source.playtime_minutes_forever > 0) DESC,
+          source.last_synced_at DESC NULLS LAST,
+          source.id DESC
+        LIMIT 1
+      ) ugs ON TRUE
+      LEFT JOIN steam_import_candidates sic
+        ON sic.user_id = g.user_id
+       AND sic.steam_app_id = ugs.provider_app_id
       WHERE g.user_id = $1
       ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
       `,

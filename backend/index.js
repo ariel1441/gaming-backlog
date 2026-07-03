@@ -11,6 +11,7 @@ import publicRouter from "./routes/public.js";
 import insightsRouter from "./routes/insights.js";
 import metaRouter from "./routes/meta.js";
 import catalogRouter from "./routes/catalog.js";
+import steamRouter from "./routes/steam.js";
 import { startCatalogCollectionScheduler } from "./services/catalogService.js";
 import errorHandler from "./middleware/errorHandler.js";
 import { errors as celebrateErrors } from "celebrate";
@@ -31,6 +32,7 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/public", publicLimiter, publicRouter);
 app.use("/api/catalog", publicLimiter, catalogRouter);
+app.use("/api/steam", publicLimiter, steamRouter);
 app.use("/api/games", gamesRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/meta", metaRouter);
@@ -51,23 +53,92 @@ app.use(errorHandler);
 
 // ---- Server ----
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
+const isDevelopment = process.env.NODE_ENV === "development";
+const PORT_RETRY_LIMIT = isDevelopment ? 60 : 0;
+const PORT_RETRY_DELAY_MS = 500;
+const server = app.listen(PORT);
+let portRetryCount = 0;
+
+let shuttingDown = false;
+let guestCleanupInterval = null;
+
+async function shutdown(exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  stopCatalogCollectionScheduler?.();
+
+  if (guestCleanupInterval) {
+    clearInterval(guestCleanupInterval);
+    guestCleanupInterval = null;
+  }
+
+  if (isDevelopment) {
+    server.closeAllConnections?.();
+  }
+
+  const forceExitTimer = setTimeout(() => {
+    server.closeAllConnections?.();
+    process.exit(exitCode);
+  }, isDevelopment ? 750 : 3000);
+  forceExitTimer.unref?.();
+
+  server.closeIdleConnections?.();
+  server.close(async () => {
+    clearTimeout(forceExitTimer);
+    try {
+      await pool.end();
+    } catch (error) {
+      console.error("Database pool shutdown failed:", error?.message || error);
+    }
+    process.exit(exitCode);
+  });
+}
+
+server.on("listening", () => {
+  portRetryCount = 0;
   if (process.env.NODE_ENV !== "test") {
     console.log(`Server running on port ${PORT}`);
   }
 });
 
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    if (portRetryCount < PORT_RETRY_LIMIT) {
+      portRetryCount += 1;
+      const shouldLog =
+        portRetryCount === 1 ||
+        portRetryCount === PORT_RETRY_LIMIT ||
+        portRetryCount % 5 === 0;
+      if (shouldLog) {
+        console.warn(
+          `Port ${PORT} is still busy; retrying backend start ` +
+            `(${portRetryCount}/${PORT_RETRY_LIMIT})...`
+        );
+      }
+      setTimeout(() => {
+        server.listen(PORT);
+      }, PORT_RETRY_DELAY_MS).unref?.();
+      return;
+    }
+    console.error(
+      `Port ${PORT} is already in use. Stop the other backend process or run npm run dev:ports:back.`
+    );
+    process.exit(1);
+  }
+  throw error;
+});
+
 // Graceful shutdown
 for (const sig of ["SIGINT", "SIGTERM"]) {
-  process.on(sig, () => {
-    stopCatalogCollectionScheduler?.();
-    server.close(() => process.exit(0));
+  process.once(sig, () => {
+    void shutdown(0);
   });
 }
 
 const DEMO_ENABLED = String(process.env.DEMO_ENABLED ?? "true") === "true";
 if (DEMO_ENABLED) {
-  setInterval(
+  guestCleanupInterval = setInterval(
     async () => {
       try {
         await pool.query(`

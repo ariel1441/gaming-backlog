@@ -9,6 +9,7 @@ import PublicSettingsModal from "../../components/PublicSettingsModal";
 export default function BacklogModals({
   selectedGame,
   onCloseSelectedGame,
+  onSteamLinked,
   surpriseGame,
   onCloseSurpriseGame,
   onRefreshSurpriseGame,
@@ -35,7 +36,11 @@ export default function BacklogModals({
   return (
     <>
       {selectedGame && (
-        <GameModal game={selectedGame} onClose={onCloseSelectedGame} />
+        <GameModal
+          game={selectedGame}
+          onClose={onCloseSelectedGame}
+          onGameRefresh={onSteamLinked}
+        />
       )}
 
       {surpriseGame && (
@@ -43,6 +48,7 @@ export default function BacklogModals({
           game={surpriseGame}
           onClose={onCloseSurpriseGame}
           onRefresh={onRefreshSurpriseGame}
+          onGameRefresh={onSteamLinked}
         />
       )}
 
@@ -56,6 +62,7 @@ export default function BacklogModals({
           isSubmitting={isEditing}
           statuses={statuses}
           allMyGenres={allMyGenres}
+          onSteamLinked={onSteamLinked}
         />
       )}
 

@@ -1,6 +1,6 @@
 # Roadmap And Improvement Plan
 
-Last updated: 2026-06-30
+Last updated: 2026-07-03
 
 This is the planning document for improvements, feature ideas, cleanup, and
 future work. It is intentionally editable. Add your own ideas, reorder items,
@@ -253,17 +253,179 @@ Account/auth:
 
 Steam integration:
 
-- Steam library import.
-- Link Steam account/profile id.
-- Import owned games into backlog/wishlist.
-- Detect existing games and avoid duplicates.
-- Optional Steam data:
-  - playtime
-  - achievements
-  - last played
-  - app id/platform/source
-  - owned/not-started/completed hints if possible
-- Allow re-sync and conflict review.
+- [x] Link Steam account/profile id. Done 2026-06-30: Steam OpenID link route,
+  account state, and local-development SteamID link helper exist.
+- [x] Steam library import foundation. Done 2026-06-30: manual owned-library
+  sync stores private ownership/playtime source rows and persisted import
+  candidates.
+- [x] Review import candidates before adding to backlog. Done 2026-06-30:
+  `/steam/import` shows candidate counts, duplicate states, ignored items, and
+  catalog match correction.
+- [x] Improve large Steam library review. Done 2026-07-02: import candidates
+  are grouped and paginated, can be batch accepted/ignored/imported, can have
+  recommended or selected backlog statuses, include whole-group actions, and
+  include a larger auto-match action for unmatched candidates.
+- [x] Improve Steam review clarity. Done 2026-07-02: pile counts are scoped to
+  the selected review state, import rows expose a status picker before import,
+  and existing private backlog games can manually link a synced Steam app from
+  the edit-game form.
+- [x] Prefer Steam actual playtime in private backlog hours display. Done
+  2026-07-02: private backlog cards/details/search/filter/sort resolve hours
+  through a shared helper, using Steam actual time for played/finished-style
+  statuses and estimates for planned games.
+- [x] Detect existing games and avoid duplicates. Done 2026-06-30: Steam source
+  rows attach to existing backlog games instead of creating duplicates.
+- [x] Show Steam ownership/playtime privately. Done 2026-06-30: private backlog
+  cards/details and Discover can show owned/playtime indicators; public
+  profiles intentionally do not expose Steam data.
+- [x] Add duplicate repair tools after real-library testing exposed accidental
+  duplicate imports. Done 2026-07-02: Steam duplicate cleanup can list likely
+  duplicate backlog groups and merge duplicates while preserving the selected
+  game and moving Steam source rows to it.
+- [x] Add focused Steam duplicate-safety tests. Done 2026-07-02: service tests
+  cover import attaching marked duplicates instead of creating new rows, manual
+  link moves preserving stronger Steam source data, unlink reopening candidates,
+  and duplicate merge moving Steam links before deletion.
+- [x] Add safe unlink/change Steam actions in the edit-game card. Done
+  2026-07-02: linked games can unlink a Steam app, reopen search, and move a
+  synced app that was attached to the wrong backlog row.
+- [x] Add private Steam last-played UI. Done 2026-07-02: Steam last played is
+  shown in backlog cards/details and edit-card context, and backlog filtering
+  and sorting can use recent/last Steam play.
+- [x] Add a dedicated Steam library page. Done 2026-07-02: `/steam/library`
+  browses synced Steam apps with search, linked/open/needs-match/non-game/hidden
+  filters, playtime, last played, state badges, and store/review actions.
+- [x] Add Steam Library power tools. Done 2026-07-03: `/steam/library` can sort
+  by playtime, last played, achievement completion, achievement sync state, and
+  backlog state; achievement rows use a compact `unlocked/total` plus percent
+  display, and the Store action is the stable right-side action while Review is
+  shown only when an app still has an import-review path.
+- [x] Add Steam Achievements Summary V1. Done 2026-07-03: private
+  user-specific achievement summaries are stored on `user_game_sources`, with
+  unlocked count, total count, percent, status, last sync timestamp, and failure
+  fields. Backend sync supports one linked game, all linked Steam backlog games,
+  and cooldowned achievement refresh during normal manual Steam library sync.
+  Frontend display exists in `/steam/library`, backlog cards, game details, and
+  the edit-game Steam card.
+- [x] Simplify the Steam import opening view. Done 2026-07-03: `/steam/import`
+  now keeps search and the two main filters visible, moves bulk/cleanup tools
+  into a default-closed Advanced tools area, removes noisy explanatory row copy,
+  uses larger Steam capsule art and checkboxes, exposes inline status editing,
+  and keeps each row focused around one primary action.
+- [x] Add Steam Integration V1.2 product/design layer. Done 2026-07-03:
+  `/steam/library` rows can open a detail/repair drawer with restore/hide,
+  change catalog match, link to existing backlog game, add/link, store, and
+  achievement sync actions. Hidden apps stay hidden across future syncs until
+  restored. Matching handles more edition and non-game variants, sync copy is
+  clearer about checked versus changed apps, summary-based completion/status
+  suggestions appear privately, and games now have `auto`/`estimate`/
+  `steam_actual` hours source preference plus a lock flag.
+- [x] Harden local dev port handling during the Steam work. Done 2026-07-02:
+  `npm run dev` now uses `scripts/dev.js` to clean stale Node listeners on the
+  expected ports, start backend/frontend together, and stop both when either
+  side exits; the backend also shuts down more cleanly on nodemon restarts.
+
+Steam V1 implementation notes:
+
+- Steam is modeled as a user-specific source/ownership layer, not as the main
+  catalog identity. `catalog_games` remains the durable game identity and
+  `external_game_ids(source='steam')` attaches app ids when known.
+- The import screen is intentionally review-first. Importing every Steam app
+  automatically is unsafe because real Steam libraries contain DLC, demos,
+  soundtracks, tools, duplicate editions, delisted apps, and ambiguous titles.
+- Steam playtime is actual played time. It is stored separately from
+  `games.how_long_to_beat` and should not overwrite manual/HLTB/RAWG estimates.
+  Users can choose and lock a per-game hours display/insights preference.
+- Public profile Steam visibility is off in V1. Treat Steam library/playtime as
+  private until explicit privacy settings exist.
+- Manual sync is the V1 sync model. Owned-library sync remains user-triggered;
+  it may also refresh cooldown-eligible achievement summaries for linked
+  backlog games. Background jobs and scheduled sync remain later phases.
+
+Immediate Steam polish and bug-fix candidates:
+
+- Run another real-library QA pass before calling Steam V1.2 done-for-now:
+  `/steam/library` filters/search/load-more/detail drawer, restore/hide, change
+  match, link existing, add/link, `/steam/import` review/import/link/
+  hide/restore, edit-game unlink/change link, edit-game hours preferences,
+  backlog Steam filters/sort, and the dev runner while backend/frontend files
+  change.
+- Keep polishing reviewed-state wording for large libraries, especially the
+  difference between hidden, approved, added/imported, and linked.
+- Improve per-row status selection and status recommendations with richer
+  signals later; V1.2 only makes conservative private suggestions from existing
+  summary data.
+- Improve duplicate cleanup UI: explain what will be kept, what will be merged,
+  which Steam source rows move, and what fields are preserved.
+- Add better empty/error/private-library states for real Steam accounts.
+
+Steam matching improvements:
+
+- Expand title normalization for punctuation, trademark symbols, subtitles,
+  "Director's Cut", "Definitive Edition", "Remastered", "Complete Edition",
+  roman numerals, apostrophes, and common edition suffixes.
+- Use stronger matching signals when available: Steam app id, existing
+  `external_game_ids`, catalog title aliases, release year, RAWG search results,
+  current user backlog titles, and maybe Steam store metadata.
+- Flag or filter likely DLC, demos, soundtracks, software, tools, playtests,
+  test servers, and dedicated servers before they clutter the main import queue.
+- Consider persisting rejected/corrected match decisions so future syncs do not
+  re-suggest the same bad match.
+- Consider a "show why this matched" debug affordance while the matcher is still
+  being tuned.
+
+Steam hours and insights improvements:
+
+- [x] Add a small hours-source preference model. Done 2026-07-03:
+  `games.hours_preferred_source` supports `auto`, `estimate`, and
+  `steam_actual`, with `games.hours_locked` for user intent. A deeper split
+  between manual, HLTB, RAWG, and other estimates remains future work.
+- Let planned/lightly-played statuses show both expected estimate and small
+  Steam actual time. Finished and played-a-lot statuses can prioritize actual
+  Steam time when available.
+- Add source labels in cards/details/insights so users know whether a number is
+  HLTB, RAWG, manual, or Steam actual.
+- [x] Let users choose and lock the hours source used by display, filters, and
+  insights.
+- Revisit Insights calculations once the hours model is explicit. Currently
+  done-style statuses can use Steam actual time, while planned statuses should
+  stay estimate-led.
+
+Steam future feature candidates:
+
+- Achievements:
+  - summary V1 exists privately
+  - decide whether the next step is full per-achievement detail, global rarity
+    context, better completion copy, or dashboard-style achievement insights
+  - decide whether achievement sync should remain manual-only after normal
+    library sync, become prompted, or become scheduled later
+  - completion achievement heuristics where reliable
+  - achievement-based status suggestions
+  - achievement privacy controls before any public profile exposure
+- Recently played / last played:
+  - private display/filter/sort baseline exists
+  - use last played to suggest "played and should come back" or "played and
+    won't come back"
+- Wishlist:
+  - investigate whether Steam wishlist data is available in a stable way
+  - if possible, import wishlist into a separate wishlist state, not directly
+    into backlog
+- Owned-library page:
+  - baseline `/steam/library` exists
+  - baseline power tools exist for sort, filters, and compact achievements
+  - future: repair matches from the library page without jumping to import
+  - future: add richer app detail, bulk actions, and optional row/detail drawers
+- Background sync:
+  - scheduled or user-triggered with cooldowns
+  - failure state and last-success timestamps
+  - safe behavior for private profiles and API failures
+- Public profile options:
+  - explicit toggles for showing Steam ownership, playtime, achievements, and
+    last played
+  - defaults should remain private
+- Multi-source library model:
+  - Epic/GOG/PlayStation/Xbox/Nintendo/manual source rows later, if the app
+    needs non-Steam ownership tracking.
 - Consider other imports later, but keep these behind the Steam/import work:
   - CSV/JSON import/export
   - Epic/GOG/PlayStation/Xbox/Nintendo/manual sources if feasible

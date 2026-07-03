@@ -15,6 +15,9 @@ play next, and sharing a read-only public profile.
   to the backlog.
 - Enrich games with cached catalog/external metadata such as cover art, ratings,
   release dates, genres, and playtime estimates.
+- Link Steam, manually sync owned games, browse the synced Steam library,
+  review import candidates, attach Steam apps to existing backlog games, and
+  show private Steam ownership/playtime/last-played/achievement summary data.
 
 ## Tech Stack
 
@@ -55,6 +58,10 @@ DEMO_GUEST_TTL_HOURS=36
 ALLOW_REMOTE_DB_IN_DEV=false
 CATALOG_AUTO_SEED=false
 CATALOG_SEED_LIMIT=24
+STEAM_WEB_API_KEY=your_optional_steam_web_api_key
+STEAM_OPENID_REALM=http://localhost:5000
+STEAM_OPENID_RETURN_URL=http://localhost:5000/api/steam/auth/callback
+STEAM_DEV_SYNC_SAMPLE=false
 ```
 
 Create/reset the local database, check the environment, then start the app:
@@ -74,7 +81,7 @@ Local URLs:
 
 ## Common Commands
 
-- `npm run dev` - run backend and frontend together.
+- `npm run dev` - run backend and frontend together with stale dev-port cleanup.
 - `npm run dev:front` - run only Vite.
 - `npm run dev:back` - run only Express with nodemon.
 - `npm run check` - lint, test, and build.
@@ -84,6 +91,8 @@ Local URLs:
 - `npm run db:copy-prod-to-local` - copy production data into a local database.
 - `npm run catalog:seed -- --limit=24` - seed cached Discover shelves from
   RAWG for local/manual refresh.
+- `npm run dev:ports:dry` - inspect stale local dev Node processes without
+  stopping them.
 
 ## Repository Map
 
@@ -111,6 +120,11 @@ Discover shelves are stored in Postgres. In production, set
 `CATALOG_AUTO_SEED=true` if the backend should refresh missing/expired shelves
 automatically after startup and then once per day. Leave it false if you prefer
 manual seeding with `npm run catalog:seed`.
+
+Steam integration uses migrations `006`, `007`, and `008`. In production,
+configure `STEAM_WEB_API_KEY`, `STEAM_OPENID_REALM`,
+`STEAM_OPENID_RETURN_URL`, and the frontend return origin before enabling real
+Steam linking or achievement sync.
 
 ## Documentation
 

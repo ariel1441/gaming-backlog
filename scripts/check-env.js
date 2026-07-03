@@ -21,6 +21,11 @@ const optional = [
   "DEMO_GUEST_TTL_HOURS",
   "CATALOG_AUTO_SEED",
   "CATALOG_SEED_LIMIT",
+  "STEAM_WEB_API_KEY",
+  "STEAM_OPENID_RETURN_URL",
+  "STEAM_OPENID_REALM",
+  "STEAM_MOCK_OWNED_GAMES_JSON",
+  "STEAM_DEV_SYNC_SAMPLE",
 ];
 
 function redact(key, value) {

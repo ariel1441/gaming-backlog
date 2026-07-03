@@ -1,6 +1,6 @@
 # System Context
 
-Last updated: 2026-06-30
+Last updated: 2026-07-03
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
@@ -68,6 +68,9 @@ deliberately set.
   identity when the user chooses a match.
 - Browse the Discover catalog at `/discover`, search RAWG on demand, inspect
   catalog metadata, and add catalog games into the personal backlog.
+- Link a Steam account, manually sync owned Steam games into a private import
+  review queue, attach Steam ownership/playtime to existing backlog games, and
+  import reviewed catalog matches into the backlog.
 - Enrich games from Postgres catalog metadata, RAWG metadata, and local HLTB
   data while preserving user-entered fields.
 - Cache catalog search results, curated Discover shelves, external ids, and
@@ -94,6 +97,9 @@ Routes:
 - `backend/routes/games.js` - authenticated game CRUD, enrichment, reorder.
 - `backend/routes/catalog.js` - authenticated catalog browse/search/detail,
   manual metadata refresh, collection load-more, and add-to-backlog.
+- `backend/routes/steam.js` - authenticated Steam OpenID link, account state,
+  manual owned-library sync, import candidate review, duplicate attachment, and
+  reviewed import.
 - `backend/routes/insights.js` - analytics aggregation and micro-cache.
 - `backend/routes/public.js` - public profile metadata and read-only games.
 - `backend/routes/meta.js` - status group definitions with ETag caching.
@@ -129,6 +135,9 @@ Middleware and utilities:
 - `backend/services/catalogService.js` - Postgres catalog/cache layer,
   RAWG search/detail coalescing, curated shelf seeding, stale/failure handling,
   and catalog serialization helpers shared by private/public/insights flows.
+- `backend/services/steamService.js` - Steam OpenID/Web API helpers, owned-game
+  response normalization, account/source persistence, import matching, candidate
+  decisions, and reviewed import.
 
 Database:
 
@@ -145,6 +154,14 @@ Database:
 - `games`: user-owned game rows with status, position, custom fields, HLTB
   hours, score, notes, cover, RAWG identity fields, optional `catalog_game_id`,
   started date, and finished date.
+- `user_external_accounts`: linked external user accounts; Steam V1 stores
+  SteamID64, persona/profile fields, sync status, timestamps, and failure state.
+- `user_game_sources`: user-specific ownership/source rows; Steam V1 stores
+  owned app IDs, actual playtime, last played, and private achievement summary
+  data without overwriting personal game fields.
+- `steam_import_candidates`: persisted Steam import review queue with proposed
+  catalog matches, duplicate links, ignored/imported decisions, suggested or
+  selected import status, and sync data.
 
 Schema workflow:
 
@@ -181,6 +198,7 @@ Routes:
 
 - `/` - private backlog app.
 - `/discover` - catalog browse/search/add flow.
+- `/steam/import` - Steam account link/sync and reviewed import flow.
 - `/insights` - analytics dashboard.
 - `/u/:username` - public read-only profile.
 
@@ -218,6 +236,8 @@ Services:
   set.
 - `src/services/gameService.js` - game API wrapper.
 - `src/services/catalogService.js` - Discover/catalog API wrapper.
+- `src/services/steamService.js` - Steam account, sync, candidate review, and
+  import API wrapper.
 - `src/services/publicService.js` - public profile API wrapper.
 - `src/services/insightsService.js` - insights API wrapper.
 - `src/services/statusService.js` - status API wrapper.
@@ -230,6 +250,8 @@ Important components/pages:
   coordinator.
 - `src/pages/DiscoverPage.jsx` - Discover catalog route, curated shelves,
   search, filters, detail modal, metadata refresh, and add-to-backlog flow.
+- `src/pages/SteamImportPage.jsx` - Steam link/sync surface and import review
+  queue with match correction.
 - `src/pages/Backlog/BacklogPanels.jsx` - private backlog panel rendering.
 - `src/pages/Backlog/BacklogModals.jsx` - private backlog modal rendering.
 - `src/pages/Backlog/useBacklogActions.js` - private backlog mutation/action
@@ -283,6 +305,88 @@ Styling:
   timezone drift.
 - Public profile and insights should read catalog metadata when a game is linked
   to `catalog_game_id`, with legacy fallbacks for unlinked rows.
+- Steam data is private in V1. Public profile serializers should not expose
+  Steam ownership or playtime until explicit privacy controls exist.
+- Steam sync is manual-only in V1. A failed/private Steam API response updates
+  sync state but must not break normal backlog reads.
+- Steam actual playtime is stored separately from `games.how_long_to_beat`.
+  Private backlog UI can show both. For finished and played-a-lot style
+  statuses, Steam actual time can be the primary displayed hours; for planned or
+  lightly played games, the estimate remains primary and Steam actual time is
+  secondary when present. Insights currently prefers Steam actual time only for
+  done-style status groups.
+
+## Steam Integration Current Shape
+
+Steam V1 is an ownership/source layer with reviewed import. It intentionally
+does not replace `catalog_games` or RAWG catalog identity.
+
+Core decisions:
+
+- Steam account linking uses Steam OpenID to identify the user's SteamID64.
+  Private library import uses the backend-only `STEAM_WEB_API_KEY`; the key is
+  never exposed to the frontend.
+- Steam-owned apps are synced manually into `user_game_sources` and
+  `steam_import_candidates`. Normal Steam sync can also attempt cooldowned
+  achievement summary refreshes for already linked backlog games. Sync failure
+  or private library state is recorded on the Steam account or per-game
+  achievement fields and should never break normal backlog reads.
+- `external_game_ids(source='steam')` attaches Steam app ids to catalog games
+  where known. The internal catalog id remains the app's durable identity.
+- Import is reviewed. Nothing should blindly flood the user's backlog. The user
+  can improve matches, change a candidate match, choose a status before import,
+  ignore candidates, import new games, or attach Steam ownership/playtime to an
+  existing backlog game.
+- Duplicate safety is critical. Import and attach flows perform final duplicate
+  checks by Steam app id, catalog id, normalized title, and fuzzy title before
+  creating a new `games` row.
+- Existing backlog games can be linked to a synced Steam app from the edit-game
+  modal. The edit modal shows Steam app name/id, store link, playtime, sync
+  timestamp, achievement summary, and allows changing/unlinking the Steam app.
+- Backlog source filters exist for linked/unlinked Steam games, Steam playtime,
+  Steam-without-playtime, recently-played-on-Steam, and achievement summary
+  cases. Backlog sorting can also use Steam last played.
+- `/steam/library` is a calmer synced-library overview for all Steam apps. It
+  reuses the persisted import-candidate data to browse/search/filter/sort apps
+  by open review, linked/in-backlog, needs match, likely non-game, hidden
+  states, playtime, last played, and achievement summary states. Rows can open
+  a detail/repair drawer for store, achievement sync, restore/hide, catalog
+  match repair, linking to an existing backlog game, and add/link actions.
+- Steam achievements summary V1 is private and manual-only. It stores only
+  unlocked count, total count, completion percent, status, last sync timestamp,
+  and failure state on `user_game_sources`; per-achievement detail is deferred.
+  Summary-based completion/status suggestions can appear privately in Steam
+  Library detail views.
+- Hidden Steam apps stay hidden across future syncs until explicitly restored
+  from Steam Import or Steam Library.
+- Per-game hours source preference supports `auto`, `estimate`, and
+  `steam_actual`, plus a lock flag. `auto` keeps the V1 policy: Steam actual
+  time is primary for finished-style statuses, while planned/lightly-played
+  games keep estimates primary.
+- Public profiles do not expose Steam ownership, playtime, last played, or
+  achievements in V1. Add explicit privacy controls before changing that.
+
+Known rough edges from real-library testing:
+
+- Large Steam libraries still need continued review UX testing. The import
+  queue now keeps filters visible, hides advanced tools by default, uses larger
+  capsule art, inline status editing, and one primary row action, but future
+  work should still improve row detail disclosure, action naming, match repair,
+  and the mental model for hidden/ignored/reviewed apps.
+- Steam app matching improved from the first pass, but app names with symbols,
+  subtitles, editions, remasters, DLC, demos, tools, soundtracks, and regional
+  names still need more heuristics and more user correction tools.
+- Duplicate cleanup exists, but import flows should continue to be tested
+  heavily. A bad import can create confusing duplicate visual rows, especially
+  when multiple Steam source rows point at the same catalog/title.
+- Hours source behavior now has a small preference model for auto, estimate,
+  Steam actual, and locked display/insights choice. A deeper split between
+  manual, HLTB, RAWG, and other estimates is still future work.
+- Wishlist import, background sync, full achievement detail, achievement-based
+  status suggestions, global achievement rarity, and public Steam privacy
+  settings are deliberately not in V1. Last-played and achievement summary
+  storage/private UI now exist, but status-suggestion logic based on Steam
+  signals remains future work.
 
 ## Known Current Risks
 
@@ -329,10 +433,31 @@ Styling:
   Insights-to-backlog filter navigation, add/edit/delete, same-rank reorder
   payload behavior, and public profile favorite settings.
 - Catalog/metadata V1 exists, including migrations `004` and `005`, Discover,
-  Postgres catalog cache, manual refresh, curated shelves, and Steam-compatible
-  external ids. Read `docs/planning/metadata-catalog-refactor.md` before
-  extending wishlist/owned/import, deeper hours precedence, Steam sync, or
-  automatic metadata jobs beyond the current opt-in shelf seeding.
+  Postgres catalog cache, manual refresh, curated shelves, and provider-neutral
+  external ids.
+- Steam Integration V1/V1.2 exists behind migrations `006`, `007`, `008`, and
+  `009`: linked
+  account, manual sync, persisted reviewed imports, duplicate attachment,
+  searchable grouped/paginated import review, state-aware pile counts,
+  whole-group actions, per-candidate status selection, manual Steam app linking
+  from the private edit-game form, source badges, and Steam actual playtime for
+  private backlog/insights. The
+  private backlog UI resolves displayed/filterable hours through
+  `src/utils/hours.js`, using Steam actual time as primary for finished and
+  played-a-lot style statuses, while keeping estimates primary for planned or
+  lightly played games and showing Steam time secondarily when useful. Steam
+  last played is exposed privately in backlog cards/details, sorting/filtering,
+  edit Steam card context, and the dedicated `/steam/library` page. Steam
+  Achievements Summary V1 stores private per-user summary fields on
+  `user_game_sources`, exposes per-game and batch sync endpoints, participates
+  in normal manual Steam sync for linked backlog games, and appears subtly in
+  backlog cards plus more fully in the game modal, edit Steam card, Steam
+  Library table, and Library detail drawer. Full achievement detail, background
+  sync, public Steam privacy controls, global rarity, and wishlist import
+  remain future work.
+- Local development now uses `scripts/dev.js` behind `npm run dev` to preflight
+  stale Node listeners on ports `5000`/`5173`, run backend and frontend
+  together, and stop both sides when either process exits.
 
 ## Working Notes
 

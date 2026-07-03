@@ -6,6 +6,7 @@ import {
   findDuplicateGameByTitle,
   isSameGameTitle,
   matchesDateFilter,
+  matchesSourceFilter,
   normalizeGameTitle,
   sortGames,
   splitCsv,
@@ -136,6 +137,24 @@ test("sortGames supports finished date with missing dates last", () => {
   );
 });
 
+test("sortGames supports Steam last played with missing dates last", () => {
+  const steamGames = [
+    { id: 1, name: "Old", steamLastPlayedAt: "2026-01-01T00:00:00.000Z" },
+    { id: 2, name: "Recent", steamLastPlayedAt: "2026-06-01T00:00:00.000Z" },
+    { id: 3, name: "Never", steamLastPlayedAt: null },
+  ];
+  assert.deepEqual(
+    sortGames(steamGames, { sortKey: "steamLastPlayed" }).map((game) => game.name),
+    ["Old", "Recent", "Never"]
+  );
+  assert.deepEqual(
+    sortGames(steamGames, { sortKey: "steamLastPlayed", isReversed: true }).map(
+      (game) => game.name
+    ),
+    ["Recent", "Old", "Never"]
+  );
+});
+
 test("applyGameFilters filters by status, genres, my genres, and hours", () => {
   assert.deepEqual(
     applyGameFilters(games, {
@@ -146,6 +165,69 @@ test("applyGameFilters filters by status, genres, my genres, and hours", () => {
       hoursRange: { min: 40, max: 60 },
     }).map((game) => game.name),
     ["Elden Ring"]
+  );
+});
+
+test("matchesSourceFilter supports recently played Steam games", () => {
+  assert.equal(
+    matchesSourceFilter(
+      {
+        steamOwned: true,
+        steamLastPlayedAt: "2026-06-15T00:00:00.000Z",
+      },
+      "steam_recent",
+      new Date("2026-07-01T00:00:00.000Z")
+    ),
+    true
+  );
+  assert.equal(
+    matchesSourceFilter(
+      {
+        steamOwned: true,
+        steamLastPlayedAt: "2026-05-01T00:00:00.000Z",
+      },
+      "steam_recent",
+      new Date("2026-07-01T00:00:00.000Z")
+    ),
+    false
+  );
+});
+
+test("matchesSourceFilter supports Steam achievement summary filters", () => {
+  const game = {
+    steamOwned: true,
+    steamAchievements: {
+      status: "synced",
+      unlocked: 18,
+      total: 20,
+      percent: 90,
+      lastSyncedAt: "2026-07-01T00:00:00.000Z",
+    },
+  };
+
+  assert.equal(matchesSourceFilter(game, "steam_achievements"), true);
+  assert.equal(matchesSourceFilter(game, "steam_achievements_close"), true);
+  assert.equal(matchesSourceFilter(game, "steam_achievements_complete"), false);
+  assert.equal(
+    matchesSourceFilter(
+      { ...game, steamAchievements: { ...game.steamAchievements, percent: 100 } },
+      "steam_achievements_complete"
+    ),
+    true
+  );
+  assert.equal(
+    matchesSourceFilter(
+      { steamOwned: true, steamAchievements: { status: "unknown", lastSyncedAt: null } },
+      "steam_achievements_not_synced"
+    ),
+    true
+  );
+  assert.equal(
+    matchesSourceFilter(
+      { steamOwned: true, steamAchievements: { status: "private" } },
+      "steam_achievements_unavailable"
+    ),
+    true
   );
 });
 

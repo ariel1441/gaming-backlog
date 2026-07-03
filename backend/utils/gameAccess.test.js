@@ -18,6 +18,21 @@ test("owned game list query scopes rows to user_id", () => {
   assert.deepEqual(query.values, [7]);
 });
 
+test("owned game list query picks one steam source per game", () => {
+  const query = compact(listOwnedGamesQuery(7).text);
+  assert.match(query, /LEFT JOIN LATERAL/);
+  assert.match(query, /LIMIT 1/);
+  assert.match(query, /playtime_minutes_forever IS NOT NULL/);
+  assert.match(query, /steam_last_played_at/);
+});
+
+test("owned game list keeps Steam fields private-route only", () => {
+  const query = compact(listOwnedGamesQuery(7).text);
+  assert.match(query, /steam_achievements_status/);
+  assert.match(query, /user_game_sources/);
+  assert.match(query, /source\.user_id = g\.user_id/);
+});
+
 test("duplicate title query scopes candidate rows to user_id", () => {
   const query = listOwnedGameTitlesQuery(7);
   assert.match(compact(query.text), /WHERE user_id = \$1/);

@@ -48,10 +48,25 @@ async function fetchBaseRows(userId) {
            g.status,
            s.rank,
            g.how_long_to_beat,
-           cg.rawg_playtime_hours AS catalog_rawg_playtime_hours
+           g.hours_preferred_source,
+           cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
+           ugs.playtime_minutes_forever AS steam_playtime_minutes
     FROM games g
     JOIN statuses s ON s.status = g.status
     LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
+    LEFT JOIN LATERAL (
+      SELECT source.*
+      FROM user_game_sources source
+      WHERE source.game_id = g.id
+        AND source.user_id = g.user_id
+        AND source.provider = 'steam'
+        AND source.source_status = 'owned'
+      ORDER BY
+        (source.playtime_minutes_forever IS NOT NULL AND source.playtime_minutes_forever > 0) DESC,
+        source.last_synced_at DESC NULLS LAST,
+        source.id DESC
+      LIMIT 1
+    ) ugs ON TRUE
     WHERE g.user_id = $1
   `;
   const { rows } = await pool.query(sql, [userId]);
@@ -71,6 +86,21 @@ function getRawgPlaytime(app, title) {
 
 /* ----------------------- Per-row hours resolution ---------------------- */
 function resolveHoursForRow(req, row) {
+  const group = statusGroupOf(row.status);
+  const steamMinutes = Number(row.steam_playtime_minutes);
+  const steamHours =
+    Number.isFinite(steamMinutes) && steamMinutes > 0
+      ? Math.round((steamMinutes / 60) * 10) / 10
+      : 0;
+  const preferredSource = String(row.hours_preferred_source || "auto");
+  if (
+    steamHours > 0 &&
+    (preferredSource === "steam_actual" ||
+      (preferredSource === "auto" && group === "done"))
+  ) {
+    return { hours: steamHours, source: "steam" };
+  }
+
   const dbHours = toHoursInt(row.how_long_to_beat);
   if (dbHours > 0) return { hours: dbHours, source: "db" };
 
@@ -180,7 +210,7 @@ router.get("/", verifyToken, async (req, res, next) => {
       "true";
 
     // version bump to avoid stale payloads
-    const cacheKey = `v3|wh=${weekly_hours}&missing=${includeMissing ? 1 : 0}`;
+    const cacheKey = `v4|wh=${weekly_hours}&missing=${includeMissing ? 1 : 0}`;
     const hit = cacheGet(userId, cacheKey);
     if (hit) return res.json(hit);
 
@@ -188,7 +218,7 @@ router.get("/", verifyToken, async (req, res, next) => {
 
     const accepted = [];
     const skipped = [];
-    const sources = { db: 0, hltb: 0, rawg: 0 };
+    const sources = { db: 0, hltb: 0, rawg: 0, steam: 0 };
     const hltbWrites = [];
 
     for (const r of baseRows) {

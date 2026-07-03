@@ -11,6 +11,7 @@ import {
   BarChart3 as IconInsights,
   Sparkles as IconDemo,
   Compass as IconDiscover,
+  Gamepad2 as IconSteam,
 } from "lucide-react";
 
 const Sidebar = ({
@@ -35,6 +36,11 @@ const Sidebar = ({
   const goDiscover = () => {
     closeAllPanels();
     navigate("/discover");
+  };
+  const isSteam = location.pathname.startsWith("/steam");
+  const goSteam = () => {
+    closeAllPanels();
+    navigate("/steam/library");
   };
 
   const closeAllPanels = () => {
@@ -173,6 +179,15 @@ const Sidebar = ({
             icon={IconDiscover}
             active={isDiscover}
             onClick={goDiscover}
+            expanded={sidebarOpen}
+          />
+        )}
+        {authed && !isGuest && (
+          <SidebarRow
+            label="Steam Library"
+            icon={IconSteam}
+            active={isSteam}
+            onClick={goSteam}
             expanded={sidebarOpen}
           />
         )}

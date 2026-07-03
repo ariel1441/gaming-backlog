@@ -290,11 +290,45 @@ const mapWithLimit = async (items, limit, fn) => {
  * We also include displayHLTB and displayName for future UI uses.
  */
 const decorateGameForClient = (game, rawg) => {
+  const steamPlaytimeMinutes = Number.isFinite(Number(game.steam_playtime_minutes))
+    ? Math.max(0, Math.trunc(Number(game.steam_playtime_minutes)))
+    : null;
+  const steamFields = {
+    steamOwned: !!game.steam_owned,
+    steamAppId: game.steam_app_id || null,
+    steamName: game.steam_name || null,
+    steamPlaytimeMinutes: steamPlaytimeMinutes,
+    steamPlaytimeHours:
+      steamPlaytimeMinutes == null
+        ? null
+        : Math.round((steamPlaytimeMinutes / 60) * 10) / 10,
+    steamLastPlayedAt: game.steam_last_played_at || null,
+    steamLastSyncedAt: game.steam_last_synced_at || null,
+    steamAchievements: {
+      status: game.steam_achievements_status || "unknown",
+      unlocked:
+        game.steam_achievements_unlocked == null
+          ? null
+          : Number(game.steam_achievements_unlocked),
+      total:
+        game.steam_achievements_total == null
+          ? null
+          : Number(game.steam_achievements_total),
+      percent:
+        game.steam_achievements_percent == null
+          ? null
+          : Number(game.steam_achievements_percent),
+      lastSyncedAt: game.steam_achievements_last_synced_at || null,
+      errorCode: game.steam_achievements_last_error_code || null,
+      errorMessage: game.steam_achievements_last_error_message || null,
+    },
+  };
   const catalogDecorated = decorateGameWithCatalog(game, rawg);
   if (catalogDecorated) {
     return {
       ...game,
       ...catalogDecorated,
+      ...steamFields,
     };
   }
 
@@ -332,6 +366,7 @@ const decorateGameForClient = (game, rawg) => {
         : null,
     stores: storeNames.length ? storeNames.join(", ") : null,
     features: tagNames.length ? tagNames.join(", ") : null,
+    ...steamFields,
   };
 };
 
@@ -474,10 +509,39 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
              cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
              cg.genres_json AS catalog_genres_json,
              cg.stores_json AS catalog_stores_json,
-             cg.tags_json AS catalog_tags_json
+             cg.tags_json AS catalog_tags_json,
+             ugs.provider_app_id AS steam_app_id,
+             sic.steam_name AS steam_name,
+             ugs.playtime_minutes_forever AS steam_playtime_minutes,
+             ugs.last_played_at AS steam_last_played_at,
+             ugs.last_synced_at AS steam_last_synced_at,
+             ugs.achievements_unlocked AS steam_achievements_unlocked,
+             ugs.achievements_total AS steam_achievements_total,
+             ugs.achievements_percent AS steam_achievements_percent,
+             ugs.achievements_status AS steam_achievements_status,
+             ugs.achievements_last_synced_at AS steam_achievements_last_synced_at,
+             ugs.achievements_last_error_code AS steam_achievements_last_error_code,
+             ugs.achievements_last_error_message AS steam_achievements_last_error_message,
+             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
       LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
+      LEFT JOIN LATERAL (
+        SELECT source.*
+        FROM user_game_sources source
+        WHERE source.game_id = g.id
+          AND source.user_id = g.user_id
+          AND source.provider = 'steam'
+          AND source.source_status = 'owned'
+        ORDER BY
+          (source.playtime_minutes_forever IS NOT NULL AND source.playtime_minutes_forever > 0) DESC,
+          source.last_synced_at DESC NULLS LAST,
+          source.id DESC
+        LIMIT 1
+      ) ugs ON TRUE
+      LEFT JOIN steam_import_candidates sic
+        ON sic.user_id = g.user_id
+       AND sic.steam_app_id = ugs.provider_app_id
       WHERE g.user_id = $1
       ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
       `,
@@ -517,6 +581,8 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       thoughts,
       my_score,
       how_long_to_beat,
+      hours_preferred_source = "auto",
+      hours_locked = false,
       hltb_pref, // 'main' | 'plus' | 'comp' (default 'main')
       rawg_id,
       rawg_slug,
@@ -610,23 +676,24 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const insertSql = `
       INSERT INTO games
         (user_id, catalog_game_id, name, status, my_genre, thoughts, my_score,
-         how_long_to_beat, position, started_at, finished_at, rawg_id, rawg_slug)
+         how_long_to_beat, hours_preferred_source, hours_locked, position,
+         started_at, finished_at, rawg_id, rawg_slug)
       VALUES
         (
           $1, $2, $3, $4, $5, $6, $7,
-          $8, $9,
+          $8, $9, $10, $11,
           CASE
-            WHEN $10 THEN $11
+            WHEN $12 THEN $13
             WHEN $4 = 'playing' THEN ${TODAY_SQL}
             ELSE NULL
           END,
           CASE
-            WHEN $12 THEN $13
+            WHEN $14 THEN $15
             WHEN $4 IN ('finished','played alot but didnt finish') THEN ${TODAY_SQL}
             ELSE NULL
           END,
-          $14,
-          $15
+          $16,
+          $17
         )
       RETURNING *;
     `;
@@ -640,13 +707,15 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       (thoughts || "").trim(), // $6
       score, // $7
       hours, // $8
-      position, // $9
-      startedProvided, // $10
-      startedBody, // $11
-      finishedProvided, // $12
-      finishedBody, // $13
-      rawg_id || null, // $14
-      (rawg_slug || rawg?.slug || "").trim() || null, // $15
+      hours_preferred_source || "auto", // $9
+      !!hours_locked, // $10
+      position, // $11
+      startedProvided, // $12
+      startedBody, // $13
+      finishedProvided, // $14
+      finishedBody, // $15
+      rawg_id || null, // $16
+      (rawg_slug || rawg?.slug || "").trim() || null, // $17
     ];
 
     const { rows } = await pool.query(insertSql, params);
@@ -672,6 +741,8 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
       thoughts,
       my_score,
       how_long_to_beat,
+      hours_preferred_source = "auto",
+      hours_locked = false,
       hltb_pref,
       rawg_id,
       rawg_slug,
@@ -783,19 +854,21 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
          thoughts = $4,
          my_score = $5,
          how_long_to_beat = $6,
-         position = $7,
+         hours_preferred_source = $7,
+         hours_locked = $8,
+         position = $9,
          rawg_id = $15,
          rawg_slug = $16,
          catalog_game_id = $17,
 
          started_at = CASE
-           WHEN $11 THEN $8
+           WHEN $11 THEN $18
            WHEN $13 AND $2 = 'playing' AND g.started_at IS NULL THEN ${TODAY_SQL}
            ELSE g.started_at
          END,
 
          finished_at = CASE
-           WHEN $12 THEN $9
+           WHEN $12 THEN $19
            WHEN $13 AND $2 IN ('finished','played alot but didnt finish') AND g.finished_at IS NULL THEN ${TODAY_SQL}
            ELSE g.finished_at
          END
@@ -811,9 +884,9 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
       (thoughts || "").trim(), // $4
       score, // $5
       hours_new, // $6
-      position, // $7  <-- preserve existing position always
-      startedBody, // $8
-      finishedBody, // $9
+      hours_preferred_source || "auto", // $7
+      !!hours_locked, // $8
+      position, // $9  <-- preserve existing position always
       gameId, // $10
       startedProvided, // $11
       finishedProvided, // $12
@@ -822,6 +895,8 @@ router.put("/:id", verifyToken, gameIdParam, upsertGame, async (req, res, next) 
       rawg_id || null, // $15
       (rawg_slug || "").trim() || null, // $16
       catalogGameId, // $17
+      startedBody, // $18
+      finishedBody, // $19
     ];
 
     const { rows } = await pool.query(updateSql, params);

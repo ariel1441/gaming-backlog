@@ -103,6 +103,13 @@ export const gameSchemas = {
         "number.min": "how_long_to_beat must be >= 0",
         "number.max": "how_long_to_beat must be <= 1000 hours",
       }),
+    hours_preferred_source: Joi.string()
+      .valid("auto", "estimate", "steam_actual")
+      .optional()
+      .messages({
+        "any.only": "hours_preferred_source must be auto, estimate, or steam_actual",
+      }),
+    hours_locked: Joi.boolean().optional(),
     started_at: Joi.alternatives()
       .try(Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/), Joi.valid(null))
       .optional()

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { ExternalLink, Gamepad2, Search, Trophy, Unlink } from "lucide-react";
 import {
   Badge,
   Button,
@@ -6,17 +7,33 @@ import {
   Modal,
   MultiSelectMenu,
   SelectMenu,
+  Switch,
   Textarea,
   TextInput,
+  useConfirm,
+  useToast,
 } from "./ui";
 import { splitCsv } from "../utils/gameList";
 import { searchGames } from "../services/gameService";
+import {
+  attachSteamCandidate,
+  listSteamLinkCandidates,
+  syncSteamGameAchievements,
+  unlinkSteamGame,
+} from "../services/steamService";
+import {
+  formatAchievementSummary,
+  formatAchievementSyncDate,
+} from "../utils/steamAchievements";
+import { formatAchievementGameSyncMessage } from "../utils/steamSync";
 
 const emptyForm = {
   id: "",
   name: "",
   status: "",
   how_long_to_beat: "",
+  hours_preferred_source: "auto",
+  hours_locked: false,
   my_genre: "",
   thoughts: "",
   my_score: "",
@@ -77,6 +94,39 @@ function PreviewMetric({ label, value }) {
   );
 }
 
+const hourSourceOptions = [
+  { value: "auto", label: "Auto" },
+  { value: "estimate", label: "Estimate" },
+  { value: "steam_actual", label: "Steam actual" },
+];
+
+function hourSourceHelp(value) {
+  if (value === "estimate") return "Use the estimate first, even when Steam actual time exists.";
+  if (value === "steam_actual") return "Use Steam actual time first when this game is linked.";
+  return "Use Steam actual time for finished-style statuses and estimates elsewhere.";
+}
+
+function hoursFromMinutes(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value) || value <= 0) return "No Steam playtime";
+  return `${Math.round((value / 60) * 10) / 10}h played`;
+}
+
+function steamImageUrl(app) {
+  if (app?.steamIconUrl) return app.steamIconUrl;
+  if (app?.steamAppId) {
+    return `https://cdn.cloudflare.steamstatic.com/steam/apps/${app.steamAppId}/capsule_184x69.jpg`;
+  }
+  return "";
+}
+
+function shortDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString();
+}
+
 function toDateStr(value) {
   if (!value) return "";
   if (typeof value === "string") {
@@ -102,13 +152,26 @@ export default function EditGameForm({
   isSubmitting = false,
   formError = null,
   onDraftChange,
+  onSteamLinked,
 }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [formData, setFormData] = useState(emptyForm);
   const [metadataQuery, setMetadataQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [showMetadataSearch, setShowMetadataSearch] = useState(false);
+  const [steamQuery, setSteamQuery] = useState("");
+  const [steamResults, setSteamResults] = useState([]);
+  const [steamSearching, setSteamSearching] = useState(false);
+  const [steamAttachingId, setSteamAttachingId] = useState(null);
+  const [linkedSteam, setLinkedSteam] = useState(null);
+  const [localSteamAchievements, setLocalSteamAchievements] = useState(null);
+  const [unlinkedSteamAppId, setUnlinkedSteamAppId] = useState(null);
+  const [steamUnlinking, setSteamUnlinking] = useState(false);
+  const [steamAchievementsSyncing, setSteamAchievementsSyncing] = useState(false);
+  const [showSteamSearch, setShowSteamSearch] = useState(false);
 
   useEffect(() => {
     if (!game) return;
@@ -118,6 +181,8 @@ export default function EditGameForm({
       name: game.name || "",
       status: game.status || "",
       how_long_to_beat: game.how_long_to_beat ?? "",
+      hours_preferred_source: game.hours_preferred_source || "auto",
+      hours_locked: !!game.hours_locked,
       my_genre: game.my_genre || "",
       thoughts: game.thoughts || "",
       my_score: game.my_score ?? "",
@@ -129,6 +194,12 @@ export default function EditGameForm({
       rawg_released: game.releaseDate || "",
     });
     setMetadataQuery(game.name || "");
+    setSteamQuery(game.name || "");
+    setSteamResults([]);
+    setLinkedSteam(null);
+    setLocalSteamAchievements(null);
+    setUnlinkedSteamAppId(null);
+    setShowSteamSearch(false);
     setShowMetadataSearch(false);
   }, [game]);
 
@@ -214,7 +285,112 @@ export default function EditGameForm({
     }));
   };
 
+  const searchSteamLinks = async () => {
+    const query = (steamQuery || formData.name || game.name || "").trim();
+    if (!query) return;
+    setSteamSearching(true);
+    try {
+      const payload = await listSteamLinkCandidates({
+        q: query,
+        gameId: game.id,
+        limit: 8,
+      });
+      setSteamResults(payload?.results || []);
+    } catch (error) {
+      toast.error(error.message || "Could not search Steam apps.");
+    } finally {
+      setSteamSearching(false);
+    }
+  };
+
+  const attachSteam = async (candidate) => {
+    setSteamAttachingId(candidate.id);
+    try {
+      await attachSteamCandidate(candidate.id, game.id);
+      setLinkedSteam(candidate);
+      setLocalSteamAchievements(candidate.achievements || null);
+      setUnlinkedSteamAppId(null);
+      setSteamResults([]);
+      setShowSteamSearch(false);
+      toast.success("Steam app linked to this game.");
+      await onSteamLinked?.();
+    } catch (error) {
+      toast.error(error.message || "Could not link Steam app.");
+    } finally {
+      setSteamAttachingId(null);
+    }
+  };
+
+  const unlinkSteam = async () => {
+    const appId = currentSteam?.steamAppId;
+    if (!appId) return;
+    const ok = await confirm({
+      title: "Unlink Steam app?",
+      message:
+        "This keeps the Steam app in your synced library, but removes ownership and playtime from this backlog game.",
+      confirmLabel: "Unlink",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setSteamUnlinking(true);
+    try {
+      await unlinkSteamGame(game.id, appId);
+      setLinkedSteam(null);
+      setLocalSteamAchievements(null);
+      setUnlinkedSteamAppId(appId);
+      setShowSteamSearch(true);
+      toast.success("Steam app unlinked from this game.");
+      await onSteamLinked?.();
+    } catch (error) {
+      toast.error(error.message || "Could not unlink Steam app.");
+    } finally {
+      setSteamUnlinking(false);
+    }
+  };
+
   if (!game) return null;
+
+  const currentSteam = linkedSteam
+    ? {
+        steamAppId: linkedSteam.steamAppId,
+        steamName: linkedSteam.steamName,
+        playtimeMinutes: linkedSteam.playtimeMinutes,
+        lastPlayedAt: linkedSteam.lastPlayedAt,
+        lastSyncedAt: null,
+        achievements: localSteamAchievements || linkedSteam.achievements || null,
+      }
+    : game.steamOwned && game.steamAppId !== unlinkedSteamAppId
+      ? {
+          steamAppId: game.steamAppId,
+          steamName: game.steamName,
+          playtimeMinutes: game.steamPlaytimeMinutes,
+          lastPlayedAt: game.steamLastPlayedAt,
+          lastSyncedAt: game.steamLastSyncedAt,
+          achievements: localSteamAchievements || game.steamAchievements || null,
+        }
+      : null;
+  const currentAchievements = currentSteam
+    ? formatAchievementSummary(currentSteam.achievements)
+    : null;
+  const currentAchievementsSyncedAt = currentSteam
+    ? formatAchievementSyncDate(currentSteam.achievements?.lastSyncedAt)
+    : "";
+
+  const syncCurrentSteamAchievements = async () => {
+    if (!currentSteam?.steamAppId) return;
+    setSteamAchievementsSyncing(true);
+    try {
+      const payload = await syncSteamGameAchievements(game.id);
+      const result = formatAchievementGameSyncMessage(payload);
+      toast[result.tone](result.message);
+      if (payload?.achievements) setLocalSteamAchievements(payload.achievements);
+      await onSteamLinked?.();
+    } catch (error) {
+      toast.error(error.message || "Could not sync Steam achievements.");
+    } finally {
+      setSteamAchievementsSyncing(false);
+    }
+  };
 
   return (
     <Modal
@@ -437,6 +613,34 @@ export default function EditGameForm({
                   />
                 </Field>
 
+                <Field id="edit-hours-source" label="Hours source">
+                  <SelectMenu
+                    id="edit-hours-source"
+                    value={formData.hours_preferred_source}
+                    options={hourSourceOptions}
+                    onChange={(hours_preferred_source) => {
+                      onDraftChange?.();
+                      setFormData((prev) => ({ ...prev, hours_preferred_source }));
+                    }}
+                    disabled={isSubmitting}
+                  />
+                  <p className="mt-1 text-xs text-content-muted">
+                    {hourSourceHelp(formData.hours_preferred_source)}
+                  </p>
+                </Field>
+
+                <Switch
+                  checked={!!formData.hours_locked}
+                  onChange={(hours_locked) => {
+                    onDraftChange?.();
+                    setFormData((prev) => ({ ...prev, hours_locked }));
+                  }}
+                  label="Lock source"
+                  description="Keep this display choice when external data changes."
+                  disabled={isSubmitting}
+                  className="self-end"
+                />
+
                 <Field
                   id="edit-started-at"
                   label="Started on"
@@ -469,6 +673,222 @@ export default function EditGameForm({
                   />
                 </Field>
               </div>
+            </section>
+
+            <section className="rounded-2xl border border-surface-border bg-surface-bg/35 p-4">
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-content-secondary">
+                  Steam link
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-content-muted">
+                  Attach a synced Steam app to this backlog game for ownership and actual playtime.
+                </p>
+              </div>
+
+              {currentSteam ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex min-w-0 gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-surface-card/60 text-primary">
+                          <Gamepad2 className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-content-primary">
+                            {currentSteam.steamName ||
+                              `Steam app ${currentSteam.steamAppId}`}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
+                            {currentSteam.steamAppId ? (
+                              <span>App {currentSteam.steamAppId}</span>
+                            ) : null}
+                            <span>{hoursFromMinutes(currentSteam.playtimeMinutes)}</span>
+                            {currentSteam.lastPlayedAt ? (
+                              <span>Last played {shortDate(currentSteam.lastPlayedAt)}</span>
+                            ) : null}
+                            {currentSteam.lastSyncedAt ? (
+                              <span>Synced {shortDate(currentSteam.lastSyncedAt)}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {currentSteam.steamAppId ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              window.open(
+                                `https://store.steampowered.com/app/${currentSteam.steamAppId}`,
+                                "_blank",
+                                "noopener,noreferrer"
+                              )
+                            }
+                          >
+                            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                            Store
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setShowSteamSearch((value) => !value)}
+                          disabled={steamUnlinking}
+                        >
+                          Change link
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={unlinkSteam}
+                          disabled={steamUnlinking}
+                        >
+                          <Unlink className="h-4 w-4" aria-hidden="true" />
+                          {steamUnlinking ? "Unlinking..." : "Unlink"}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="mt-4 rounded-xl border border-surface-border bg-surface-bg/45 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-content-primary">
+                            <Trophy className="h-4 w-4 text-primary" aria-hidden="true" />
+                            <span>{currentAchievements?.label || "Not synced"}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-content-muted">
+                            {currentAchievements?.detail ||
+                              "Achievements have not been synced yet."}
+                            {currentAchievements?.remainingLabel
+                              ? ` ${currentAchievements.remainingLabel}.`
+                              : ""}
+                            {currentAchievementsSyncedAt
+                              ? ` Last synced ${currentAchievementsSyncedAt}.`
+                              : ""}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={syncCurrentSteamAchievements}
+                          disabled={steamAchievementsSyncing || steamUnlinking}
+                        >
+                          <Trophy className="h-4 w-4" aria-hidden="true" />
+                          {steamAchievementsSyncing ? "Syncing..." : "Sync achievements"}
+                        </Button>
+                      </div>
+                      {currentAchievements?.percent != null ? (
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-elevated">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{
+                              width: `${Math.min(
+                                Math.max(currentAchievements.percent, 0),
+                                100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                      <p className="mt-2 text-xs text-content-muted">
+                        Steam achievements are private here and update only when you sync.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {!currentSteam || showSteamSearch ? (
+                <div className={`space-y-3 ${currentSteam ? "mt-3" : ""}`}>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
+                      <TextInput
+                        value={steamQuery}
+                        onChange={(event) => setSteamQuery(event.target.value)}
+                        placeholder="Search synced Steam apps..."
+                        disabled={isSubmitting}
+                        className="pl-9"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            searchSteamLinks();
+                          }
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={searchSteamLinks}
+                      disabled={isSubmitting || steamSearching}
+                    >
+                      {steamSearching ? "Searching..." : "Search Steam"}
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {steamResults.map((candidate) => {
+                      const imageUrl = steamImageUrl(candidate);
+                      const linkedElsewhere =
+                        candidate.linkedGameId &&
+                        Number(candidate.linkedGameId) !== Number(game.id);
+                      return (
+                        <div
+                          key={candidate.id}
+                          className="flex items-center gap-3 rounded-xl border border-surface-border bg-surface-elevated/40 p-2"
+                        >
+                          {imageUrl ? (
+                            <img
+                              src={imageUrl}
+                              alt=""
+                              className="h-10 w-16 rounded object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-10 w-16 items-center justify-center rounded bg-surface-card text-content-muted">
+                              {String(candidate.steamName || "?").charAt(0)}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-content-primary">
+                              {candidate.steamName}
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs text-content-muted">
+                              <span>{hoursFromMinutes(candidate.playtimeMinutes)}</span>
+                              {candidate.lastPlayedAt ? (
+                                <span>Last played {shortDate(candidate.lastPlayedAt)}</span>
+                              ) : null}
+                              {candidate.linkedGameName ? (
+                                <span>
+                                  {linkedElsewhere ? "Currently linked to" : "Linked to"}{" "}
+                                  {candidate.linkedGameName}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant={linkedElsewhere ? "secondary" : "primary"}
+                            size="sm"
+                            onClick={() => attachSteam(candidate)}
+                            disabled={steamAttachingId === candidate.id}
+                          >
+                            {steamAttachingId === candidate.id
+                              ? "Linking..."
+                              : linkedElsewhere
+                                ? "Move link"
+                                : "Link"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section>

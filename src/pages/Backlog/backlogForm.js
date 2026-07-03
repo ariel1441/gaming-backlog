@@ -4,6 +4,8 @@ export const emptyGameForm = {
   name: "",
   status: "",
   how_long_to_beat: "",
+  hours_preferred_source: "auto",
+  hours_locked: false,
   my_genre: "",
   thoughts: "",
   my_score: "",
@@ -120,6 +122,13 @@ export function buildEditGamePayload(draft, original = {}) {
     thoughts: pick("thoughts", "thoughts") ?? original.thoughts ?? "",
     how_long_to_beat: toIntOrNull(
       pick("how_long_to_beat", "howLongToBeat") ?? original.how_long_to_beat
+    ),
+    hours_preferred_source:
+      pick("hours_preferred_source", "hoursPreferredSource") ??
+      original.hours_preferred_source ??
+      "auto",
+    hours_locked: !!(
+      pick("hours_locked", "hoursLocked") ?? original.hours_locked ?? false
     ),
     my_score: toNumOrNull(pick("my_score", "myScore") ?? original.my_score),
   };

@@ -57,6 +57,10 @@ async function selectGameWithCatalog(gameId, userId) {
            cg.genres_json AS catalog_genres_json,
            cg.stores_json AS catalog_stores_json,
            cg.tags_json AS catalog_tags_json,
+           ugs.provider_app_id AS steam_app_id,
+           ugs.playtime_minutes_forever AS steam_playtime_minutes,
+           ugs.last_synced_at AS steam_last_synced_at,
+           (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned,
            e.external_id::int AS catalog_rawg_id,
            e.slug AS catalog_rawg_slug
     FROM games g
@@ -64,6 +68,19 @@ async function selectGameWithCatalog(gameId, userId) {
     LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
     LEFT JOIN external_game_ids e
       ON e.catalog_game_id = cg.id AND e.source = 'rawg'
+    LEFT JOIN LATERAL (
+      SELECT source.*
+      FROM user_game_sources source
+      WHERE source.game_id = g.id
+        AND source.user_id = g.user_id
+        AND source.provider = 'steam'
+        AND source.source_status = 'owned'
+      ORDER BY
+        (source.playtime_minutes_forever IS NOT NULL AND source.playtime_minutes_forever > 0) DESC,
+        source.last_synced_at DESC NULLS LAST,
+        source.id DESC
+      LIMIT 1
+    ) ugs ON TRUE
     WHERE g.id = $1 AND g.user_id = $2
     `,
     [gameId, userId]

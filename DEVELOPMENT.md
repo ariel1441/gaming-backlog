@@ -59,7 +59,34 @@ DEMO_GUEST_TTL_HOURS=36
 ALLOW_REMOTE_DB_IN_DEV=false
 CATALOG_AUTO_SEED=false
 CATALOG_SEED_LIMIT=24
+STEAM_WEB_API_KEY=your_steam_web_api_key
+STEAM_OPENID_REALM=http://localhost:5000
+STEAM_OPENID_RETURN_URL=http://localhost:5000/api/steam/auth/callback
+STEAM_DEV_SYNC_SAMPLE=false
 ```
+
+For local Steam UI testing, `STEAM_WEB_API_KEY` is optional. You can either set
+`STEAM_MOCK_OWNED_GAMES_JSON` to a mock Steam payload, or set
+`STEAM_DEV_SYNC_SAMPLE=true` to use the built-in sample library after using the
+Dev link button. Mock/sample sync is ignored in production.
+
+For real local Steam testing:
+
+- Register a Steam Web API key at `https://steamcommunity.com/dev/apikey`.
+- For local-only testing, the registered domain can be `localhost`.
+- Put the key only in local `.env` as `STEAM_WEB_API_KEY`; never commit it.
+- Keep `STEAM_OPENID_REALM=http://localhost:5000`.
+- Keep
+  `STEAM_OPENID_RETURN_URL=http://localhost:5000/api/steam/auth/callback`.
+- Log in through the app's Steam link flow. Steam OpenID shares the SteamID64
+  and public profile data according to Steam privacy settings; it does not share
+  the user's Steam password with this app.
+- Owned-library sync works only when Steam profile/game details are public
+  enough for the Steam Web API to return owned games.
+- Achievement summary sync uses the same backend-only `STEAM_WEB_API_KEY`.
+  Per-game achievement data can legitimately come back as no achievements,
+  private, unavailable, or failed; those states should be recorded without
+  breaking normal library or backlog reads.
 
 ## Local Setup
 
@@ -101,6 +128,30 @@ npm run catalog:seed -- --limit=24
 ```bash
 npm run dev
 ```
+
+`npm run dev` uses `scripts/dev.js` to run the backend and frontend together.
+The runner frees the usual dev ports (`5000` and `5173`) if they are already
+held by stale Node dev processes, refuses to stop non-Node processes
+automatically, and stops the sibling process if either backend or frontend
+exits. This avoids a half-running local app where Vite stays alive after the
+API process fully exits. Backend restarts are handled by nodemon without
+`--exitcrash` so a transient Windows `EADDRINUSE` during restart does not tear
+down the whole dev session. To inspect ports without stopping anything, run
+`npm run dev:ports:dry`.
+
+Useful port helpers:
+
+```bash
+npm run dev:ports:dry
+npm run dev:ports:back:dry
+npm run dev:ports:front:dry
+npm run dev:ports:back
+npm run dev:ports:front
+```
+
+Use the `:dry` commands when you want to see what would be stopped without
+stopping it. The non-dry commands stop stale Node dev processes on the selected
+port.
 
 ## Daily Workflow
 
@@ -228,6 +279,28 @@ For the catalog metadata release, confirm production has:
 - `RAWG_API_KEY` configured on the backend
 - `CATALOG_AUTO_SEED=true` if automatic Discover shelf refresh is desired
 - a modest `CATALOG_SEED_LIMIT`, usually `24`
+
+For the Steam integration release, confirm production has:
+
+- migration `006_add_steam_integration.sql` applied
+- migration `007_improve_steam_import_review.sql` applied
+- migration `008_add_steam_achievement_summaries.sql` applied
+- `STEAM_WEB_API_KEY` configured on the backend
+- `STEAM_OPENID_REALM` set to the backend origin
+- `STEAM_OPENID_RETURN_URL` set to the backend `/api/steam/auth/callback`
+- `FRONTEND_BASE_URL` or `STEAM_FRONTEND_RETURN_URL` set to the frontend origin
+
+Steam production behavior to verify:
+
+- Steam data stays private in public profiles.
+- Manual sync failure or private-library state does not break the normal
+  backlog.
+- Manual achievement sync records per-game unavailable/private/failure states
+  without breaking backlog or Steam library reads.
+- Import candidates can be reviewed before any new backlog row is created.
+- Attach/import flows do not create duplicate `games` rows for an already
+  matched backlog game.
+- `STEAM_DEV_SYNC_SAMPLE` and mock sync data are disabled in production.
 
 ## Feature Workflow
 

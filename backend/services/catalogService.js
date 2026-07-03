@@ -316,7 +316,30 @@ function mapCatalogRow(row, { cacheStatus = "fresh", alreadyInBacklog = false } 
     cacheStatus,
     metadata_status: cacheStatus,
     alreadyInBacklog,
+    steamOwned: !!row.steam_owned,
+    steamAppId: row.steam_external_id || null,
   };
+}
+
+function steamOwnedSelect(userParamIndex) {
+  return `
+           EXISTS (
+             SELECT 1
+             FROM user_game_sources steam_src
+             WHERE steam_src.user_id = $${userParamIndex}
+               AND steam_src.provider = 'steam'
+               AND steam_src.source_status = 'owned'
+               AND steam_src.catalog_game_id = cg.id
+           ) AS steam_owned,
+           (
+             SELECT steam_src.provider_app_id
+             FROM user_game_sources steam_src
+             WHERE steam_src.user_id = $${userParamIndex}
+               AND steam_src.provider = 'steam'
+               AND steam_src.source_status = 'owned'
+               AND steam_src.catalog_game_id = cg.id
+             LIMIT 1
+           ) AS steam_external_id`;
 }
 
 function ownedCatalogPredicate(alias, userParam) {
@@ -365,6 +388,7 @@ async function selectCatalogById(id, userId) {
     SELECT cg.*,
            e.external_id AS rawg_external_id,
            e.slug AS rawg_external_slug,
+           ${steamOwnedSelect(2)},
            EXISTS (
              SELECT 1 FROM games g
              WHERE ${ownedCatalogPredicate("g", 2)}
@@ -553,6 +577,7 @@ async function catalogRowsForIds(ids, userId) {
     SELECT cg.*,
            e.external_id AS rawg_external_id,
            e.slug AS rawg_external_slug,
+           ${steamOwnedSelect(2)},
            EXISTS (
              SELECT 1 FROM games g
              WHERE ${ownedCatalogPredicate("g", 2)}
@@ -589,6 +614,7 @@ function catalogSelectSql(userParamIndex) {
     SELECT cg.*,
            e.external_id AS rawg_external_id,
            e.slug AS rawg_external_slug,
+           ${steamOwnedSelect(userParamIndex)},
            EXISTS (
              SELECT 1 FROM games g
              WHERE ${ownedCatalogPredicate("g", userParamIndex)}
@@ -739,6 +765,7 @@ async function collectionRows(userId, { limit = 8, key = "" } = {}) {
            cg.*,
            e.external_id AS rawg_external_id,
            e.slug AS rawg_external_slug,
+           ${steamOwnedSelect(1)},
            EXISTS (
              SELECT 1 FROM games g
              WHERE ${ownedCatalogPredicate("g", 1)}
@@ -1371,6 +1398,7 @@ export async function recentCatalogGames(user = {}, limit = 12) {
     SELECT cg.*,
            e.external_id AS rawg_external_id,
            e.slug AS rawg_external_slug,
+           ${steamOwnedSelect(2)},
            EXISTS (
              SELECT 1 FROM games g
              WHERE ${ownedCatalogPredicate("g", 2)}

@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   CalendarDays,
   Clock3,
+  Gamepad2,
   Layers3,
   Sparkles,
   Star,
@@ -9,7 +10,14 @@ import {
   Trophy,
   X,
 } from "lucide-react";
-import { Button, IconButton, StatusBadge } from "./ui";
+import { Button, IconButton, StatusBadge, useToast } from "./ui";
+import { syncSteamGameAchievements } from "../services/steamService";
+import { resolveGameHours } from "../utils/hours";
+import {
+  formatAchievementSummary,
+  formatAchievementSyncDate,
+} from "../utils/steamAchievements";
+import { formatAchievementGameSyncMessage } from "../utils/steamSync";
 
 function fmtDate(value) {
   if (!value) return null;
@@ -75,8 +83,16 @@ function TimelineRow({ label, value }) {
   );
 }
 
-export default function GameModal({ game, onClose, onRefresh }) {
+export default function GameModal({ game, onClose, onRefresh, onGameRefresh }) {
   const [showDescription, setShowDescription] = useState(false);
+  const [syncingAchievements, setSyncingAchievements] = useState(false);
+  const [localAchievements, setLocalAchievements] = useState(null);
+  const toast = useToast();
+
+  useEffect(() => {
+    setLocalAchievements(null);
+  }, [game?.id]);
+
   if (!game) return null;
 
   const invalidValues = ["#N/A", "N/A", "null", "", null, undefined];
@@ -91,6 +107,7 @@ export default function GameModal({ game, onClose, onRefresh }) {
   const releaseDate = fmtDate(game.releaseDate);
   const startedAt = fmtDate(game.started_at);
   const finishedAt = fmtDate(game.finished_at);
+  const steamLastPlayed = fmtDate(game.steamLastPlayedAt);
   const rating =
     !invalidValues.includes(game.rating) && game.rating != null
       ? `${game.rating}/5`
@@ -103,12 +120,33 @@ export default function GameModal({ game, onClose, onRefresh }) {
     !invalidValues.includes(game.metacritic) && game.metacritic != null
       ? String(game.metacritic)
       : null;
+  const hours = resolveGameHours(game);
+  const achievements = formatAchievementSummary(
+    localAchievements || game.steamAchievements
+  );
+  const achievementSyncedAt = formatAchievementSyncDate(
+    (localAchievements || game.steamAchievements)?.lastSyncedAt
+  );
+  const syncAchievements = async () => {
+    setSyncingAchievements(true);
+    try {
+      const payload = await syncSteamGameAchievements(game.id);
+      const result = formatAchievementGameSyncMessage(payload);
+      toast[result.tone](result.message);
+      if (payload?.achievements) setLocalAchievements(payload.achievements);
+      await onGameRefresh?.();
+    } catch (error) {
+      toast.error(error.message || "Could not sync Steam achievements.");
+    } finally {
+      setSyncingAchievements(false);
+    }
+  };
   const metricStats = [
     {
       icon: Clock3,
-      label: "How long to beat",
-      value: game.how_long_to_beat ? `${game.how_long_to_beat}h` : "TBD",
-      tone: game.how_long_to_beat ? "success" : "muted",
+      label: hours.sourceLabel,
+      value: hours.label,
+      tone: hours.hours ? (hours.isActual ? "primary" : "success") : "muted",
     },
     {
       icon: Star,
@@ -129,6 +167,24 @@ export default function GameModal({ game, onClose, onRefresh }) {
       tone: myScore ? "primary" : "muted",
     },
   ];
+  if (game.steamOwned && hours.source !== "steam") {
+    metricStats.splice(1, 0, {
+      icon: Gamepad2,
+      label: "Steam",
+      value: hours.secondarySteamHours
+        ? `${hours.secondarySteamHours}h actual`
+        : "Owned",
+      tone: "primary",
+    });
+  }
+  if (game.steamOwned && steamLastPlayed) {
+    metricStats.splice(2, 0, {
+      icon: CalendarDays,
+      label: "Steam last played",
+      value: steamLastPlayed,
+      tone: "primary",
+    });
+  }
 
   return (
     <div
@@ -249,6 +305,59 @@ export default function GameModal({ game, onClose, onRefresh }) {
                   </div>
 
                   <div className="space-y-5">
+                    {game.steamOwned ? (
+                      <DetailSection icon={Trophy} label="Steam achievements">
+                        <SectionContent>
+                          <div className="space-y-3">
+                            <div>
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-base font-semibold text-content-primary">
+                                    {achievements.label}
+                                  </div>
+                                  <div className="mt-1 text-sm text-content-muted">
+                                    {achievements.detail}
+                                  </div>
+                                  {achievements.remainingLabel ? (
+                                    <div className="mt-1 text-xs text-content-muted">
+                                      {achievements.remainingLabel}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={syncAchievements}
+                                  disabled={syncingAchievements}
+                                >
+                                  <Trophy className="h-4 w-4" aria-hidden="true" />
+                                  {syncingAchievements ? "Syncing..." : "Sync"}
+                                </Button>
+                              </div>
+                              {achievements.percent != null ? (
+                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-elevated">
+                                  <div
+                                    className="h-full rounded-full bg-primary"
+                                    style={{
+                                      width: `${Math.min(
+                                        Math.max(achievements.percent, 0),
+                                        100
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                              ) : null}
+                              <div className="mt-2 text-xs text-content-muted">
+                                Steam achievements are private here and update only when you sync.
+                                {achievementSyncedAt ? ` Last synced ${achievementSyncedAt}.` : ""}
+                              </div>
+                            </div>
+                          </div>
+                        </SectionContent>
+                      </DetailSection>
+                    ) : null}
+
                     {(startedAt || finishedAt || releaseDate) && (
                       <DetailSection icon={CalendarDays} label="Timeline">
                         <div className="space-y-3">

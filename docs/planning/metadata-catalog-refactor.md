@@ -1,6 +1,6 @@
 # Metadata And Catalog Refactor Notes
 
-Last updated: 2026-06-30
+Last updated: 2026-07-02
 
 This began as a planning handoff for the large metadata/catalog refactor.
 Catalog/Discover V1 now exists, so treat this file as historical design context
@@ -29,9 +29,34 @@ Catalog/Discover V1 chose the hybrid transitional model:
 - Curated shelf refresh is optional through `CATALOG_AUTO_SEED=true`; manual
   seeding uses `npm run catalog:seed -- --limit=24`.
 
-The sections below still explain tradeoffs and future decisions for Steam,
-wishlist/owned states, deeper hours precedence, privacy, admin/debug tools, and
-automatic metadata jobs beyond the current shelf seeding.
+Steam Integration V1 now exists on top of this catalog model. Read
+[`steam-integration-handoff.md`](steam-integration-handoff.md) for the current
+Steam implementation, known rough edges, and next-work prompt. The sections
+below still explain tradeoffs and future decisions for wishlist/owned states,
+deeper hours precedence, privacy, admin/debug tools, and automatic metadata
+jobs beyond the current shelf seeding.
+
+## Steam V1 Follow-Up
+
+The original Steam-compatible catalog direction was validated by the V1
+implementation:
+
+- `catalog_games` remains the provider-neutral identity.
+- `external_game_ids(source='steam')` attaches Steam app ids when a reliable
+  catalog match exists.
+- `user_game_sources` stores user-specific ownership/playtime.
+- `steam_import_candidates` stores reviewed import decisions and match state.
+- Steam actual playtime is separate from estimated hours.
+- Public profile Steam visibility remains private until explicit controls
+  exist.
+
+Current Steam follow-up work belongs in
+[`steam-integration-handoff.md`](steam-integration-handoff.md) and
+[`../ROADMAP.md`](../ROADMAP.md), especially import-review UX, better matching,
+match-decision memory, richer hours-source modeling, achievements, wishlist
+import, background sync, and public privacy controls. Duplicate-safety service
+tests, private last-played display/filter/sort, and a baseline Steam library
+page now exist.
 
 ## Original Context
 

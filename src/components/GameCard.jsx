@@ -3,6 +3,7 @@ import {
   CalendarDays,
   Clock3,
   Flag,
+  Gamepad2,
   ImageOff,
   Pencil,
   Star,
@@ -12,6 +13,8 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { canDeleteGame, canEditGame } from "../utils/permissions";
 import { splitCsv } from "../utils/gameList";
+import { resolveGameHours } from "../utils/hours";
+import { formatAchievementSummary } from "../utils/steamAchievements";
 import { IconButton, StatusBadge, useToast } from "./ui";
 
 function fmtDate(value) {
@@ -193,12 +196,13 @@ export default function GameCard({
   const startedAt = fmtShortDate(game.started_at);
   const finishedAt = fmtShortDate(game.finished_at);
   const myGenres = splitCsv(game.my_genre);
+  const hours = resolveGameHours(game);
   const cardStats = [
     {
       icon: Clock3,
-      label: "HLTB",
-      value: game.how_long_to_beat ? `${game.how_long_to_beat}h` : "TBD",
-      tone: game.how_long_to_beat ? "default" : "muted",
+      label: hours.sourceLabel,
+      value: hours.label,
+      tone: hours.hours ? (hours.isActual ? "primary" : "default") : "muted",
     },
     {
       icon: Star,
@@ -213,6 +217,24 @@ export default function GameCard({
       tone: game.metacritic ? "default" : "muted",
     },
   ];
+  const steamPlaytime =
+    game.steamOwned && hours.source !== "steam"
+      ? hours.secondarySteamHours
+        ? `Steam ${hours.secondarySteamHours}h`
+        : "Owned on Steam"
+      : null;
+  const steamLastPlayed = game.steamOwned ? fmtShortDate(game.steamLastPlayedAt) : null;
+  const achievements = game.steamOwned
+    ? formatAchievementSummary(game.steamAchievements)
+    : null;
+  const achievementStat = achievements?.isMeaningful && Number(achievements.percent) > 0
+    ? {
+        icon: Trophy,
+        label: "Achievements",
+        value: achievements.compact,
+        tone: achievements.percent >= 100 ? "success" : "primary",
+      }
+    : null;
   const isCompact = variant === "compact";
   const isList = variant === "list";
   const genreLimit = isCompact ? 2 : 3;
@@ -301,6 +323,30 @@ export default function GameCard({
                 tone={stat.tone}
               />
             ))}
+            {steamPlaytime ? (
+              <MiniStat
+                icon={Gamepad2}
+                label="Steam"
+                value={steamPlaytime}
+                tone="primary"
+              />
+            ) : null}
+            {steamLastPlayed ? (
+              <MiniStat
+                icon={CalendarDays}
+                label="Last played on Steam"
+                value={steamLastPlayed}
+                tone="primary"
+              />
+            ) : null}
+            {achievementStat ? (
+              <MiniStat
+                icon={achievementStat.icon}
+                label={achievementStat.label}
+                value={achievementStat.value}
+                tone={achievementStat.tone}
+              />
+            ) : null}
             <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
           </div>
         </div>
@@ -357,6 +403,30 @@ export default function GameCard({
                   tone={stat.tone}
                 />
               ))}
+              {steamPlaytime ? (
+                <MiniStat
+                  icon={Gamepad2}
+                  label="Steam"
+                  value={steamPlaytime}
+                  tone="primary"
+                />
+              ) : null}
+              {steamLastPlayed ? (
+                <MiniStat
+                  icon={CalendarDays}
+                  label="Last played on Steam"
+                  value={steamLastPlayed}
+                  tone="primary"
+                />
+              ) : null}
+              {achievementStat ? (
+                <MiniStat
+                  icon={achievementStat.icon}
+                  label={achievementStat.label}
+                  value={achievementStat.value}
+                  tone={achievementStat.tone}
+                />
+              ) : null}
             </div>
             <TimelineSlot
               startedAt={startedAt}
@@ -375,6 +445,30 @@ export default function GameCard({
                 tone={stat.tone}
               />
             ))}
+            {steamPlaytime ? (
+              <MiniStat
+                icon={Gamepad2}
+                label="Steam"
+                value={steamPlaytime}
+                tone="primary"
+              />
+            ) : null}
+            {steamLastPlayed ? (
+              <MiniStat
+                icon={CalendarDays}
+                label="Last played on Steam"
+                value={steamLastPlayed}
+                tone="primary"
+              />
+            ) : null}
+            {achievementStat ? (
+              <MiniStat
+                icon={achievementStat.icon}
+                label={achievementStat.label}
+                value={achievementStat.value}
+                tone={achievementStat.tone}
+              />
+            ) : null}
             <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
           </div>
         )}

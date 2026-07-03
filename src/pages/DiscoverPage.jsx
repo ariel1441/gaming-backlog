@@ -116,6 +116,9 @@ function CatalogCard({ game, onOpen, showCacheMeta = false }) {
               {game.alreadyInBacklog ? (
                 <Badge variant="success">In backlog</Badge>
               ) : null}
+              {game.steamOwned ? (
+                <Badge variant="primary">Owned on Steam</Badge>
+              ) : null}
             </div>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
               {game.releaseDate || game.released ? (
