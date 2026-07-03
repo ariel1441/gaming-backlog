@@ -2,6 +2,52 @@ function plural(value, singular, pluralLabel = `${singular}s`) {
   return `${value} ${value === 1 ? singular : pluralLabel}`;
 }
 
+const LAST_SYNC_REVIEW_KEY = "gaming-backlog:last-steam-sync-review:v1";
+
+function syncReviewTotal(review) {
+  return (
+    Number(review?.startedPlaying?.length || 0) +
+    Number(review?.statusSuggestions?.length || 0) +
+    Number(review?.newSteamGames?.length || 0)
+  );
+}
+
+export function normalizeSyncReview(review) {
+  if (!review) return null;
+  const next = {
+    startedPlaying: Array.isArray(review.startedPlaying) ? review.startedPlaying : [],
+    statusSuggestions: Array.isArray(review.statusSuggestions) ? review.statusSuggestions : [],
+    newSteamGames: Array.isArray(review.newSteamGames) ? review.newSteamGames : [],
+    savedAt: review.savedAt || new Date().toISOString(),
+  };
+  next.total = syncReviewTotal(next);
+  return next.total ? next : null;
+}
+
+export function saveLastSteamSyncReview(review) {
+  if (typeof window === "undefined") return null;
+  const normalized = normalizeSyncReview(review);
+  try {
+    if (!normalized) {
+      window.localStorage.removeItem(LAST_SYNC_REVIEW_KEY);
+      return null;
+    }
+    window.localStorage.setItem(LAST_SYNC_REVIEW_KEY, JSON.stringify(normalized));
+    return normalized;
+  } catch {
+    return normalized;
+  }
+}
+
+export function loadLastSteamSyncReview() {
+  if (typeof window === "undefined") return null;
+  try {
+    return normalizeSyncReview(JSON.parse(window.localStorage.getItem(LAST_SYNC_REVIEW_KEY)));
+  } catch {
+    return null;
+  }
+}
+
 export function formatSteamLibrarySyncMessage(payload) {
   const checked = Number(payload?.total || 0);
   const achievements = payload?.achievements;
@@ -13,6 +59,7 @@ export function formatSteamLibrarySyncMessage(payload) {
   const duplicates = Number(payload?.duplicates || 0);
   const filtered = Number(payload?.filtered || 0);
   const needsReview = Number(payload?.needsReview || 0);
+  const syncReview = normalizeSyncReview(payload?.syncReview);
   const hasCandidateCounts = created || updated || unchanged;
 
   if (payload?.skipped) {
@@ -37,6 +84,9 @@ export function formatSteamLibrarySyncMessage(payload) {
   }
 
   const parts = [`Checked ${plural(checked, "Steam app")} for library changes.`];
+  if (syncReview?.total) {
+    parts.push(`Found ${plural(syncReview.total, "Steam activity item")} to review.`);
+  }
   if (hasCandidateCounts) {
     parts.push(
       `Import queue: ${created} new, ${updated} updated, ${unchanged} unchanged.`

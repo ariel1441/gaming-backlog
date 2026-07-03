@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  applySteamStatusSuggestion,
   autoMatchSteamImportCandidates,
   bulkUpdateSteamImportCandidates,
   devLinkSteam,
@@ -31,7 +32,12 @@ import {
 } from "../services/steamService";
 import { searchCatalog } from "../services/catalogService";
 import { useStatuses } from "../hooks/useStatuses";
-import { formatSteamLibrarySyncMessage } from "../utils/steamSync";
+import { filteredReasonLabel } from "../utils/steamImport";
+import {
+  formatSteamLibrarySyncMessage,
+  loadLastSteamSyncReview,
+  saveLastSteamSyncReview,
+} from "../utils/steamSync";
 import {
   Badge,
   Button,
@@ -57,14 +63,23 @@ const reviewStateOptions = [
 const groupOptions = [
   { value: "all", label: "All open" },
   { value: "needs_match", label: "Needs match" },
-  { value: "matched", label: "Ready to add" },
+  { value: "matched", label: "Other ready" },
   { value: "duplicates", label: "Already in backlog" },
+  { value: "newly_played", label: "Newly played" },
   { value: "unplayed", label: "0h: plan to play" },
   { value: "played_bit", label: "Under 2h: played a bit" },
   { value: "playing", label: "Recently played" },
   { value: "played_alot", label: "Played a lot" },
   { value: "likely_finished", label: "Likely finished" },
   { value: "filtered", label: "Likely non-games" },
+];
+
+const sortOptions = [
+  { value: "suggested", label: "Suggested first" },
+  { value: "last_played_desc", label: "Recently played" },
+  { value: "newly_synced", label: "Newly synced" },
+  { value: "playtime_desc", label: "Most playtime" },
+  { value: "name", label: "Name A-Z" },
 ];
 
 const PAGE_LIMIT = 100;
@@ -107,11 +122,12 @@ function groupHelp(value) {
   const help = {
     all: "Everything still open in this review state.",
     needs_match: "These need a catalog game before they can be added.",
-    matched: "These have a catalog match and can become new backlog games.",
+    matched: "Matched apps that can be added but do not fit one of the playtime suggestion piles.",
     duplicates: "These look like games already in your backlog. Link Steam to the existing row instead of creating another one.",
+    newly_played: "Steam first showed playtime after a previous sync. These are strong playing candidates.",
     unplayed: "Owned games with no Steam playtime. They default to plan to play.",
     played_bit: "Games with a little Steam playtime. Check whether they belong in your backlog.",
-    playing: "Recently played games. These are usually good active backlog candidates.",
+    playing: "Recently played Steam games. These are strong candidates to add as playing.",
     played_alot: "Games with substantial playtime but no clear finish signal.",
     likely_finished: "Games whose Steam playtime is high enough to suggest they may be finished.",
     filtered: "Likely DLC, demos, tools, soundtracks, or other non-backlog apps.",
@@ -123,12 +139,36 @@ const quickGroupValues = [
   "needs_match",
   "matched",
   "duplicates",
+  "newly_played",
   "unplayed",
   "played_bit",
+  "playing",
   "played_alot",
   "likely_finished",
   "filtered",
 ];
+
+const importableGroupValues = new Set([
+  "matched",
+  "duplicates",
+  "newly_played",
+  "unplayed",
+  "playing",
+  "played_bit",
+  "played_alot",
+  "likely_finished",
+]);
+
+const approvableGroupValues = new Set([
+  "matched",
+  "duplicates",
+  "newly_played",
+  "unplayed",
+  "played_bit",
+  "playing",
+  "played_alot",
+  "likely_finished",
+]);
 
 export default function SteamImportPage() {
   const navigate = useNavigate();
@@ -140,9 +180,10 @@ export default function SteamImportPage() {
   const [account, setAccount] = useState(null);
   const [accountLoading, setAccountLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [filter, setFilter] = useState("active");
-  const [group, setGroup] = useState("needs_match");
-  const [steamSearch, setSteamSearch] = useState("");
+  const [filter, setFilter] = useState(searchParams.get("status") || "active");
+  const [group, setGroup] = useState(searchParams.get("group") || "needs_match");
+  const [sort, setSort] = useState("suggested");
+  const [steamSearch, setSteamSearch] = useState(searchParams.get("q") || "");
   const [candidates, setCandidates] = useState([]);
   const [summary, setSummary] = useState({});
   const [page, setPage] = useState({
@@ -164,6 +205,9 @@ export default function SteamImportPage() {
   const [duplicateGroups, setDuplicateGroups] = useState([]);
   const [duplicateLoading, setDuplicateLoading] = useState(false);
   const [mergingGroupKey, setMergingGroupKey] = useState("");
+  const [syncReview, setSyncReview] = useState(null);
+  const [lastSyncReview, setLastSyncReview] = useState(() => loadLastSteamSyncReview());
+  const [applyingSuggestionId, setApplyingSuggestionId] = useState(null);
 
   const isDev =
     typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
@@ -188,6 +232,7 @@ export default function SteamImportPage() {
       const payload = await listSteamImportCandidates({
         status: filter,
         group,
+        sort,
         q: steamSearch.trim(),
         limit: PAGE_LIMIT,
         offset,
@@ -235,7 +280,7 @@ export default function SteamImportPage() {
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
     loadCandidates();
-  }, [authLoading, isAuthenticated, filter, group, steamSearch]);
+  }, [authLoading, isAuthenticated, filter, group, sort, steamSearch]);
 
   useEffect(() => {
     if (authLoading || !isAuthenticated || !account) return;
@@ -247,7 +292,18 @@ export default function SteamImportPage() {
     const error = searchParams.get("error");
     if (linked) toast.success("Steam account linked.");
     if (error) toast.error(error);
+    if (searchParams.get("review") === "last") {
+      const stored = loadLastSteamSyncReview();
+      setLastSyncReview(stored);
+      if (stored?.total) setSyncReview(stored);
+    }
   }, [searchParams, toast]);
+
+  const storeLastSyncReview = (review) => {
+    const stored = saveLastSteamSyncReview(review);
+    setLastSyncReview(stored);
+    return stored;
+  };
 
   const visibleSelectableIds = candidates
     .filter(
@@ -265,6 +321,11 @@ export default function SteamImportPage() {
     group === "all"
       ? summary.state?.total || page.total || 0
       : summary.state?.groups?.[group] || page.total || 0;
+  const canUseWholePile = group !== "all" && currentGroupCount > 0;
+  const canApprovePile = canUseWholePile && approvableGroupValues.has(group);
+  const canImportPile = canUseWholePile && importableGroupValues.has(group);
+  const canHidePile = canUseWholePile && filter !== "ignored";
+  const hiddenCount = summary.ignored || 0;
 
   const linkSteam = async () => {
     try {
@@ -289,6 +350,7 @@ export default function SteamImportPage() {
   const sync = async () => {
     setSyncing(true);
     try {
+      toast.info("Steam sync started. I will show the review when it finishes.");
       const payload = await syncSteamLibrary();
       if (payload?.skipped) {
         toast.info(formatSteamLibrarySyncMessage(payload));
@@ -296,6 +358,12 @@ export default function SteamImportPage() {
         toast.warning(formatSteamLibrarySyncMessage(payload));
       } else {
         toast.success(formatSteamLibrarySyncMessage(payload));
+      }
+      if (payload?.syncReview?.total) {
+        const stored = storeLastSyncReview(payload.syncReview);
+        setSyncReview(stored);
+      } else if (!payload?.skipped && !payload?.private) {
+        storeLastSyncReview(null);
       }
       setAccount(payload?.account || account);
       await loadCandidates();
@@ -305,6 +373,54 @@ export default function SteamImportPage() {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const applyStatusSuggestion = async (item, { setStartedAt = false } = {}) => {
+    if (!item?.gameId) return;
+    setApplyingSuggestionId(item.gameId);
+    try {
+      await applySteamStatusSuggestion(item.gameId, {
+        status: item.suggestedStatus || "playing",
+        setStartedAt,
+        startedAt: item.firstPlayObservedAt || item.lastPlayedAt || null,
+      });
+      toast.success(`${item.gameName || item.steamName} marked as playing.`);
+      setSyncReview((current) => {
+        const next = removeSyncReviewItem(current, item);
+        storeLastSyncReview(next);
+        return next;
+      });
+      await loadCandidates();
+    } catch (error) {
+      toast.error(error.message || "Could not apply this Steam suggestion.");
+    } finally {
+      setApplyingSuggestionId(null);
+    }
+  };
+
+  const dismissSyncReviewItem = (item) => {
+    setSyncReview((current) => {
+      const next = removeSyncReviewItem(current, item);
+      storeLastSyncReview(next);
+      return next;
+    });
+  };
+
+  const openLastSyncReview = () => {
+    const stored = loadLastSteamSyncReview();
+    setLastSyncReview(stored);
+    if (stored?.total) {
+      setSyncReview(stored);
+    } else {
+      toast.info("No Steam sync review is waiting.");
+    }
+  };
+
+  const reviewImportPile = (nextGroup = "newly_played") => {
+    setFilter("active");
+    setGroup(nextGroup);
+    setSort("suggested");
+    setSyncReview(null);
   };
 
   const disconnect = async () => {
@@ -425,6 +541,7 @@ export default function SteamImportPage() {
       toast.warning("Choose a specific group before applying this to a whole group.");
       return;
     }
+    if (!canApprovePile) return;
     try {
       const payload = await bulkUpdateSteamImportCandidates({
         action: "accept",
@@ -442,6 +559,16 @@ export default function SteamImportPage() {
       toast.warning("Choose a specific group before applying this to a whole group.");
       return;
     }
+    if (!canHidePile) return;
+    const ok = await confirm({
+      title: `Hide ${groupLabel(group)}?`,
+      message: `This will hide ${currentGroupCount} Steam app${
+        currentGroupCount === 1 ? "" : "s"
+      } from the current pile. Hidden apps can be restored from the Hidden from import review state.`,
+      confirmLabel: `Hide ${currentGroupCount}`,
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       const payload = await bulkUpdateSteamImportCandidates({
         action: "ignore",
@@ -478,6 +605,21 @@ export default function SteamImportPage() {
       toast.warning("Choose a specific group before importing a whole group.");
       return;
     }
+    if (!canImportPile) return;
+    const ok = await confirm({
+      title: group === "duplicates" ? `Link ${groupLabel(group)}?` : `Add ${groupLabel(group)}?`,
+      message:
+        group === "duplicates"
+          ? `This will link up to ${currentGroupCount} Steam app${
+              currentGroupCount === 1 ? "" : "s"
+            } to existing backlog games when a duplicate match is available.`
+          : `This will add or link up to ${currentGroupCount} Steam app${
+              currentGroupCount === 1 ? "" : "s"
+            } from the current pile. Review selected rows first if you want to exclude anything.`,
+      confirmLabel: group === "duplicates" ? `Link ${currentGroupCount}` : `Add ${currentGroupCount}`,
+      tone: "default",
+    });
+    if (!ok) return;
     try {
       const payload = await importSteamCandidateScope({
         group,
@@ -654,6 +796,8 @@ export default function SteamImportPage() {
           devSteamId={devSteamId}
           setDevSteamId={setDevSteamId}
           onDevLink={devLink}
+          lastSyncReview={lastSyncReview}
+          onOpenLastSyncReview={openLastSyncReview}
         />
 
         <DuplicateCleanupPanel
@@ -674,7 +818,7 @@ export default function SteamImportPage() {
                 Pick a pile, then add, link, match, or hide each Steam app.
               </p>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(280px,1fr)_minmax(200px,260px)_minmax(200px,260px)] lg:items-end">
+            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(280px,1fr)_minmax(180px,230px)_minmax(180px,230px)_minmax(180px,230px)] lg:items-end">
               <Field id="steam-import-search" label="Search Steam library">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
@@ -713,6 +857,14 @@ export default function SteamImportPage() {
                   options={reviewStateOptions}
                 />
               </Field>
+              <Field id="steam-import-sort" label="Sort">
+                <SelectMenu
+                  id="steam-import-sort"
+                  value={sort}
+                  onChange={setSort}
+                  options={sortOptions}
+                />
+              </Field>
             </div>
           </div>
 
@@ -734,6 +886,9 @@ export default function SteamImportPage() {
             filter={filter}
             group={group}
             currentGroupCount={currentGroupCount}
+            canApprovePile={canApprovePile}
+            canHidePile={canHidePile}
+            canImportPile={canImportPile}
             onApplyStatusToGroup={applyStatusToCurrentGroup}
             onAcceptGroup={acceptCurrentGroup}
             onIgnoreGroup={ignoreCurrentGroup}
@@ -767,10 +922,34 @@ export default function SteamImportPage() {
               <span className="font-medium text-content-primary">{groupLabel(group)}</span>
               <span className="ml-2 text-content-muted">{groupHelp(group)}</span>
             </div>
-            <span className="text-content-muted">
-              Showing {candidates.length} of {page.total || summary.state?.total || 0}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {filter !== "ignored" && hiddenCount ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFilter("ignored")}
+                >
+                  View hidden {hiddenCount}
+                </Button>
+              ) : null}
+              <span className="text-content-muted">
+                Showing {candidates.length} of {page.total || summary.state?.total || 0}
+              </span>
+            </div>
           </div>
+
+          <PileActions
+            group={group}
+            count={currentGroupCount}
+            filter={filter}
+            canApprove={canApprovePile}
+            canHide={canHidePile}
+            canImport={canImportPile}
+            onAccept={acceptCurrentGroup}
+            onIgnore={ignoreCurrentGroup}
+            onImport={importCurrentGroup}
+          />
 
           <div className="mt-4 space-y-3">
             {candidateLoading ? (
@@ -891,7 +1070,222 @@ export default function SteamImportPage() {
           </div>
         </Modal>
       ) : null}
+
+      {syncReview?.total ? (
+        <SteamSyncReviewModal
+          review={syncReview}
+          applyingGameId={applyingSuggestionId}
+          onClose={() => setSyncReview(null)}
+          onApplyStatus={applyStatusSuggestion}
+          onDismissItem={dismissSyncReviewItem}
+          onReviewImport={reviewImportPile}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function syncReviewKey(item) {
+  return `${item?.steamAppId || ""}:${item?.gameId || ""}:${item?.candidateId || ""}`;
+}
+
+function removeSyncReviewItem(review, item) {
+  if (!review) return null;
+  const key = syncReviewKey(item);
+  const next = {
+    ...review,
+    startedPlaying: (review.startedPlaying || []).filter(
+      (entry) => syncReviewKey(entry) !== key
+    ),
+    statusSuggestions: (review.statusSuggestions || []).filter(
+      (entry) => syncReviewKey(entry) !== key
+    ),
+    newSteamGames: (review.newSteamGames || []).filter(
+      (entry) => syncReviewKey(entry) !== key
+    ),
+  };
+  next.total =
+    next.startedPlaying.length +
+    next.statusSuggestions.length +
+    next.newSteamGames.length;
+  return next.total ? next : null;
+}
+
+function formatShortDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function SteamSyncReviewModal({
+  review,
+  applyingGameId,
+  onClose,
+  onApplyStatus,
+  onDismissItem,
+  onReviewImport,
+}) {
+  const startedPlaying = review.startedPlaying || [];
+  const statusSuggestions = review.statusSuggestions || [];
+  const newSteamGames = review.newSteamGames || [];
+  return (
+    <Modal
+      title="Steam sync review"
+      description="Steam found new activity worth checking before it changes your backlog."
+      onClose={onClose}
+      maxWidth="max-w-5xl"
+    >
+      <div className="space-y-5">
+        <SyncReviewSection
+          title="Started playing"
+          empty="No newly started games in this sync."
+          items={startedPlaying}
+          applyingGameId={applyingGameId}
+          onApplyStatus={onApplyStatus}
+          onDismissItem={onDismissItem}
+          onReviewImport={onReviewImport}
+        />
+        <SyncReviewSection
+          title="Status looks outdated"
+          empty="No linked backlog statuses need attention."
+          items={statusSuggestions}
+          applyingGameId={applyingGameId}
+          onApplyStatus={onApplyStatus}
+          onDismissItem={onDismissItem}
+          onReviewImport={onReviewImport}
+        />
+        <SyncReviewSection
+          title="New Steam games"
+          empty="No newly discovered unplayed Steam games in this sync."
+          items={newSteamGames}
+          applyingGameId={applyingGameId}
+          onApplyStatus={onApplyStatus}
+          onDismissItem={onDismissItem}
+          onReviewImport={onReviewImport}
+          importGroup="unplayed"
+        />
+        <div className="flex flex-wrap justify-end gap-2 border-t border-surface-border pt-4">
+          <Button type="button" variant="secondary" onClick={() => onReviewImport("newly_played")}>
+            Open newly played pile
+          </Button>
+          <Button type="button" variant="primary" onClick={onClose}>
+            Done
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SyncReviewSection({
+  title,
+  empty,
+  items,
+  applyingGameId,
+  onApplyStatus,
+  onDismissItem,
+  onReviewImport,
+  importGroup = "newly_played",
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-content-primary">{title}</h3>
+        <Badge variant={items.length ? "primary" : "default"}>{items.length}</Badge>
+      </div>
+      {items.length ? (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <SyncReviewRow
+              key={syncReviewKey(item)}
+              item={item}
+              applying={applyingGameId === item.gameId}
+              onApplyStatus={onApplyStatus}
+              onDismiss={() => onDismissItem(item)}
+              onReviewImport={() => onReviewImport(importGroup)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-surface-border bg-surface-bg/35 px-3 py-3 text-sm text-content-muted">
+          {empty}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SyncReviewRow({ item, applying, onApplyStatus, onDismiss, onReviewImport }) {
+  const imageUrl = steamImageUrl(item);
+  const title = item.gameName || item.steamName;
+  const observed = formatShortDate(item.firstPlayObservedAt);
+  const lastPlayed = formatShortDate(item.lastPlayedAt);
+  const canApply = Boolean(item.gameId);
+  const canSetStartedAt = canApply && !item.startedAt && (item.firstPlayObservedAt || item.lastPlayedAt);
+  return (
+    <article className="grid gap-3 rounded-lg border border-surface-border bg-surface-bg/35 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="flex min-w-0 items-center gap-3">
+        {imageUrl ? (
+          <img src={imageUrl} alt="" className="h-14 w-24 rounded object-cover" loading="lazy" />
+        ) : (
+          <div className="flex h-14 w-24 items-center justify-center rounded bg-surface-elevated text-content-muted">
+            {String(title || "?").charAt(0)}
+          </div>
+        )}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="truncate text-sm font-semibold text-content-primary">{title}</h4>
+            {item.currentStatus ? <Badge>{item.currentStatus}</Badge> : null}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
+            <span>{hoursFromMinutes(item.playtimeMinutes)}</span>
+            {observed ? <span>first noticed {observed}</span> : null}
+            {lastPlayed ? <span>last played {lastPlayed}</span> : null}
+          </div>
+          {item.suggestedStatusReason ? (
+            <p className="mt-1 text-xs text-content-muted">{item.suggestedStatusReason}</p>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 md:justify-end">
+        {canApply ? (
+          <>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={applying}
+              onClick={() => onApplyStatus(item, { setStartedAt: canSetStartedAt })}
+            >
+              {applying ? "Applying..." : "Mark playing"}
+            </Button>
+            {canSetStartedAt ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={applying}
+                onClick={() => onApplyStatus(item, { setStartedAt: false })}
+              >
+                Status only
+              </Button>
+            ) : null}
+          </>
+        ) : (
+          <Button type="button" variant="primary" size="sm" onClick={onReviewImport}>
+            Review import
+          </Button>
+        )}
+        <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+    </article>
   );
 }
 
@@ -906,6 +1300,8 @@ function SteamAccountPanel({
   devSteamId,
   setDevSteamId,
   onDevLink,
+  lastSyncReview,
+  onOpenLastSyncReview,
 }) {
   const privateState = account?.syncStatus === "private";
 
@@ -962,6 +1358,12 @@ function SteamAccountPanel({
                 <RefreshCw className="h-4 w-4" aria-hidden="true" />
                 {syncing ? "Syncing..." : "Sync library"}
               </Button>
+              {lastSyncReview?.total ? (
+                <Button type="button" variant="secondary" onClick={onOpenLastSyncReview}>
+                  Review last sync
+                  <span className="ml-1 text-xs opacity-75">{lastSyncReview.total}</span>
+                </Button>
+              ) : null}
               <Button type="button" variant="ghost" onClick={onDisconnect}>
                 <Unlink className="h-4 w-4" aria-hidden="true" />
                 Disconnect
@@ -1105,6 +1507,53 @@ function DuplicateCleanupPanel({
   );
 }
 
+function PileActions({
+  group,
+  count,
+  filter,
+  canApprove,
+  canHide,
+  canImport,
+  onAccept,
+  onIgnore,
+  onImport,
+}) {
+  if (group === "all" || !count) return null;
+
+  const label = groupLabel(group);
+  const importLabel = group === "duplicates" ? `Link all ${count}` : `Add all ${count}`;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface-bg/30 px-3 py-2">
+      <div>
+        <div className="text-sm font-medium text-content-primary">
+          Actions for {label}
+        </div>
+        <div className="mt-0.5 text-xs text-content-muted">
+          These affect the whole pile, including apps not loaded on this page.
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {canApprove ? (
+          <Button type="button" variant="secondary" size="sm" onClick={onAccept}>
+            Approve all {count}
+          </Button>
+        ) : null}
+        {canHide ? (
+          <Button type="button" variant="ghost" size="sm" onClick={onIgnore}>
+            Hide all {count}
+          </Button>
+        ) : null}
+        {canImport ? (
+          <Button type="button" variant="primary" size="sm" onClick={onImport}>
+            {importLabel}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AdvancedTools({
   selectedCount,
   candidatesCount,
@@ -1123,6 +1572,9 @@ function AdvancedTools({
   filter,
   group,
   currentGroupCount,
+  canApprovePile,
+  canHidePile,
+  canImportPile,
   onApplyStatusToGroup,
   onAcceptGroup,
   onIgnoreGroup,
@@ -1249,7 +1701,7 @@ function AdvancedTools({
               variant="secondary"
               size="sm"
               onClick={onAcceptGroup}
-              disabled={group === "all"}
+              disabled={!canApprovePile}
             >
               Approve matches
             </Button>
@@ -1258,7 +1710,7 @@ function AdvancedTools({
               variant="ghost"
               size="sm"
               onClick={onIgnoreGroup}
-              disabled={group === "all"}
+              disabled={!canHidePile}
             >
               Hide pile
             </Button>
@@ -1267,7 +1719,7 @@ function AdvancedTools({
               variant="primary"
               size="sm"
               onClick={onImportGroup}
-              disabled={group === "all"}
+              disabled={!canImportPile}
             >
               {group === "duplicates" ? "Link pile" : "Add pile"}
             </Button>
@@ -1399,12 +1851,18 @@ function CandidateRow({
                 {importStatusLabel(candidate.importStatus)}
               </Badge>
               {candidate.filteredReason ? (
-                <Badge variant="warning">Likely non-game</Badge>
+                <Badge variant="warning">{filteredReasonLabel(candidate.filteredReason)}</Badge>
+              ) : null}
+              {candidate.firstPlayObservedAt ? (
+                <Badge variant="primary">new Steam activity</Badge>
               ) : null}
             </div>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
               <span>Steam app {candidate.steamAppId}</span>
               <span>{hoursFromMinutes(candidate.playtimeMinutes)}</span>
+              {candidate.firstPlayObservedAt ? (
+                <span>first noticed {formatShortDate(candidate.firstPlayObservedAt)}</span>
+              ) : null}
             </div>
           </div>
         </div>

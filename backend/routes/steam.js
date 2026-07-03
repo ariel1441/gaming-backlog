@@ -4,6 +4,7 @@ import { cacheClear } from "../utils/microCache.js";
 import { badRequest, notFound } from "../utils/httpError.js";
 import {
   attachSteamCandidate as validateAttachSteamCandidate,
+  applySteamStatusSuggestion as validateApplySteamStatusSuggestion,
   autoMatchSteam as validateAutoMatchSteam,
   bulkSteamCandidates as validateBulkSteamCandidates,
   devLinkSteam as validateDevLinkSteam,
@@ -19,6 +20,7 @@ import {
 } from "../validators/steam.js";
 import {
   createSteamOpenIdUrl,
+  applySteamStatusSuggestion,
   attachSteamCandidateToGame,
   autoMatchSteamCandidates,
   bulkUpdateSteamCandidates,
@@ -180,12 +182,32 @@ router.post(
   }
 );
 
+router.post(
+  "/games/:gameId/status-suggestion",
+  verifyToken,
+  validateApplySteamStatusSuggestion,
+  async (req, res, next) => {
+    try {
+      const payload = await applySteamStatusSuggestion(
+        req.user.id,
+        Number(req.params.gameId),
+        req.body || {}
+      );
+      cacheClear(req.user.id);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(payload);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 router.get("/import-candidates", verifyToken, validateListSteamImports, async (req, res, next) => {
   try {
     const status = String(req.query.status || "active");
     const group = String(req.query.group || "all");
     const achievement = String(req.query.achievement || "all");
-    const sort = String(req.query.sort || "name");
+    const sort = String(req.query.sort || "suggested");
     const query = String(req.query.q || "");
     const limit = Number(req.query.limit || 100);
     const offset = Number(req.query.offset || 0);

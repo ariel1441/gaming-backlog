@@ -285,6 +285,9 @@ For the Steam integration release, confirm production has:
 - migration `006_add_steam_integration.sql` applied
 - migration `007_improve_steam_import_review.sql` applied
 - migration `008_add_steam_achievement_summaries.sql` applied
+- migration `009_add_hours_source_preferences.sql` applied
+- migration `010_add_steam_activity_observed.sql` applied when deploying the
+  local Steam Sync Review/activity polish
 - `STEAM_WEB_API_KEY` configured on the backend
 - `STEAM_OPENID_REALM` set to the backend origin
 - `STEAM_OPENID_RETURN_URL` set to the backend `/api/steam/auth/callback`
@@ -297,6 +300,8 @@ Steam production behavior to verify:
   backlog.
 - Manual achievement sync records per-game unavailable/private/failure states
   without breaking backlog or Steam library reads.
+- Manual library sync can surface a private Steam Sync Review when newly
+  observed play activity or newly discovered Steam games need user action.
 - Import candidates can be reviewed before any new backlog row is created.
 - Attach/import flows do not create duplicate `games` rows for an already
   matched backlog game.

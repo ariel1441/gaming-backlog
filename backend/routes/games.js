@@ -303,6 +303,11 @@ const decorateGameForClient = (game, rawg) => {
         ? null
         : Math.round((steamPlaytimeMinutes / 60) * 10) / 10,
     steamLastPlayedAt: game.steam_last_played_at || null,
+    steamFirstPlayObservedAt: game.steam_first_play_observed_at || null,
+    steamFirstPlayObservedPlaytimeMinutes:
+      game.steam_first_play_observed_playtime_minutes == null
+        ? null
+        : Number(game.steam_first_play_observed_playtime_minutes),
     steamLastSyncedAt: game.steam_last_synced_at || null,
     steamAchievements: {
       status: game.steam_achievements_status || "unknown",
@@ -514,6 +519,8 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
              sic.steam_name AS steam_name,
              ugs.playtime_minutes_forever AS steam_playtime_minutes,
              ugs.last_played_at AS steam_last_played_at,
+             ugs.first_play_observed_at AS steam_first_play_observed_at,
+             ugs.first_play_observed_playtime_minutes AS steam_first_play_observed_playtime_minutes,
              ugs.last_synced_at AS steam_last_synced_at,
              ugs.achievements_unlocked AS steam_achievements_unlocked,
              ugs.achievements_total AS steam_achievements_total,

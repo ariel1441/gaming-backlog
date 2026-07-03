@@ -30,6 +30,23 @@ function fmtDate(value) {
   });
 }
 
+function daysSince(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return (Date.now() - date.getTime()) / (24 * 60 * 60 * 1000);
+}
+
+function statusIsAlreadyActiveOrDone(status) {
+  const value = String(status || "").toLowerCase().trim();
+  return [
+    "playing",
+    "finished",
+    "played alot but didnt finish",
+    "played a lot but didn't finish",
+  ].includes(value);
+}
+
 function DetailStat({ icon: Icon, label, value, tone = "default" }) {
   const toneClass =
     tone === "warning"
@@ -108,6 +125,12 @@ export default function GameModal({ game, onClose, onRefresh, onGameRefresh }) {
   const startedAt = fmtDate(game.started_at);
   const finishedAt = fmtDate(game.finished_at);
   const steamLastPlayed = fmtDate(game.steamLastPlayedAt);
+  const steamFirstObserved = fmtDate(game.steamFirstPlayObservedAt);
+  const showSteamActivityNudge =
+    game.steamOwned &&
+    daysSince(game.steamFirstPlayObservedAt) != null &&
+    daysSince(game.steamFirstPlayObservedAt) <= 30 &&
+    !statusIsAlreadyActiveOrDone(game.status);
   const rating =
     !invalidValues.includes(game.rating) && game.rating != null
       ? `${game.rating}/5`
@@ -354,6 +377,18 @@ export default function GameModal({ game, onClose, onRefresh, onGameRefresh }) {
                               </div>
                             </div>
                           </div>
+                        </SectionContent>
+                      </DetailSection>
+                    ) : null}
+
+                    {showSteamActivityNudge ? (
+                      <DetailSection icon={Gamepad2} label="Steam activity">
+                        <SectionContent>
+                          <p className="text-sm leading-6 text-content-primary">
+                            Steam recently started showing playtime for this game.
+                            {steamFirstObserved ? ` First noticed ${steamFirstObserved}.` : ""}
+                            {steamLastPlayed ? ` Last played ${steamLastPlayed}.` : ""}
+                          </p>
                         </SectionContent>
                       </DetailSection>
                     ) : null}

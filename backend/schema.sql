@@ -188,6 +188,8 @@ CREATE TABLE user_game_sources (
     CHECK (source_status IN ('owned', 'ignored', 'disconnected')),
   playtime_minutes_forever INTEGER,
   last_played_at TIMESTAMPTZ,
+  first_play_observed_at TIMESTAMPTZ,
+  first_play_observed_playtime_minutes INTEGER,
   achievements_unlocked INTEGER,
   achievements_total INTEGER,
   achievements_percent NUMERIC(5,2),
@@ -213,6 +215,12 @@ CREATE INDEX idx_user_game_sources_game_id
 CREATE INDEX idx_user_game_sources_steam_achievements
   ON user_game_sources (user_id, achievements_status, achievements_percent)
   WHERE provider = 'steam' AND source_status = 'owned';
+
+CREATE INDEX idx_user_game_sources_steam_first_play_observed
+  ON user_game_sources (user_id, first_play_observed_at DESC)
+  WHERE provider = 'steam'
+    AND source_status = 'owned'
+    AND first_play_observed_at IS NOT NULL;
 
 CREATE TABLE steam_import_candidates (
   id SERIAL PRIMARY KEY,

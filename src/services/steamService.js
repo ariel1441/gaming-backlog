@@ -28,6 +28,10 @@ export function syncSteamGameAchievements(gameId, opts = {}) {
   return api.post(`/api/steam/games/${gameId}/achievements/sync`, {}, opts);
 }
 
+export function applySteamStatusSuggestion(gameId, payload, opts = {}) {
+  return api.post(`/api/steam/games/${gameId}/status-suggestion`, payload, opts);
+}
+
 export function listSteamImportCandidates(params = {}, opts = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {

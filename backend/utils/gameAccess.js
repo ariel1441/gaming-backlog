@@ -17,6 +17,8 @@ export function listOwnedGamesQuery(userId) {
              sic.steam_name AS steam_name,
              ugs.playtime_minutes_forever AS steam_playtime_minutes,
              ugs.last_played_at AS steam_last_played_at,
+             ugs.first_play_observed_at AS steam_first_play_observed_at,
+             ugs.first_play_observed_playtime_minutes AS steam_first_play_observed_playtime_minutes,
              ugs.last_synced_at AS steam_last_synced_at,
              ugs.achievements_unlocked AS steam_achievements_unlocked,
              ugs.achievements_total AS steam_achievements_total,

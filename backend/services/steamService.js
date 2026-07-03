@@ -3,6 +3,7 @@ import stringSimilarity from "string-similarity";
 import { pool } from "../db.js";
 import { normalizeGameTitle } from "../utils/gameTitle.js";
 import { badRequest, serviceUnavailable } from "../utils/httpError.js";
+import { normStatus } from "../utils/status.js";
 import { searchCatalog } from "./catalogService.js";
 
 const PROVIDER = "steam";
@@ -19,6 +20,7 @@ const BULK_SCOPE_LIMIT = 1000;
 const ACHIEVEMENT_BATCH_LIMIT = 250;
 const ACHIEVEMENT_BATCH_CONCURRENCY = 3;
 const DUPLICATE_TITLE_SCORE = 0.86;
+const RECENT_STEAM_ACTIVITY_DAYS = 14;
 const DEV_OWNED_GAMES_SAMPLE = {
   response: {
     games: [
@@ -740,45 +742,113 @@ export async function syncSteamAchievementsForLinkedGames(
   };
 }
 
+const STEAM_FILTER_PATTERNS = [
+  {
+    reason: "steam_dlc",
+    patterns: [
+      /\bdlc\b/,
+      /\bexpansion pass\b/,
+      /\bseason pass\b/,
+      /\bdeluxe pack\b/,
+      /\bupgrade pack\b/,
+      /\bcharacter pack\b/,
+      /\bcostume pack\b/,
+      /\bskin pack\b/,
+      /\bcontent pack\b/,
+      /\bmap pack\b/,
+      /\bepisode pass\b/,
+    ],
+  },
+  {
+    reason: "steam_demo",
+    patterns: [
+      /\bdemo\b/,
+      /\btrial\b/,
+      /\bprologue\b/,
+      /\bpreview\b/,
+    ],
+  },
+  {
+    reason: "steam_playtest",
+    patterns: [
+      /\bplaytest\b/,
+      /\bbeta\b/,
+      /\bpublic test\b/,
+      /\btest server\b/,
+      /\btechnical test\b/,
+      /\bclosed alpha\b/,
+      /\bopen alpha\b/,
+      /\bclosed beta\b/,
+      /\bopen beta\b/,
+      /\bpts\b/,
+    ],
+  },
+  {
+    reason: "steam_server",
+    patterns: [
+      /\bdedicated server\b/,
+      /\bserver\b/,
+    ],
+  },
+  {
+    reason: "steam_soundtrack",
+    patterns: [
+      /\bost\b/,
+      /\bsoundtrack\b/,
+      /\boriginal soundtrack\b/,
+      /\bmusic pack\b/,
+    ],
+  },
+  {
+    reason: "steam_tool",
+    patterns: [
+      /\bbenchmark\b/,
+      /\beditor\b/,
+      /\blevel editor\b/,
+      /\bmod tools?\b/,
+      /\bsdk\b/,
+      /\bsoftware\b/,
+      /\btool\b/,
+      /\btools\b/,
+      /\butility\b/,
+      /\bworkshop tools?\b/,
+    ],
+  },
+  {
+    reason: "steam_bonus_content",
+    patterns: [
+      /\bartbook\b/,
+      /\bbonus content\b/,
+      /\bcomic\b/,
+      /\bcommentary\b/,
+      /\bcostume\b/,
+      /\bfan kit\b/,
+      /\bmanual\b/,
+      /\bpress kit\b/,
+      /\btexture pack\b/,
+      /\bhigh resolution texture pack\b/,
+      /\bwallpaper\b/,
+    ],
+  },
+  {
+    reason: "steam_media",
+    patterns: [
+      /\btrailer\b/,
+      /\bmovie\b/,
+      /\bvideo\b/,
+      /\bmaking of\b/,
+      /\bdocumentary\b/,
+    ],
+  },
+];
+
 export function likelyFilteredReason(name) {
   const value = normalizeGameTitle(name);
   if (!value) return "missing_title";
-  const patterns = [
-    /\bartbook\b/,
-    /\bbenchmark\b/,
-    /\bbeta\b/,
-    /\bbonus content\b/,
-    /\bcomic\b/,
-    /\bcommentary\b/,
-    /\bcostume\b/,
-    /\bdlc\b/,
-    /\bdemo\b/,
-    /\bdedicated server\b/,
-    /\bdeluxe pack\b/,
-    /\beditor\b/,
-    /\bexpansion pass\b/,
-    /\bfan kit\b/,
-    /\bhigh resolution texture pack\b/,
-    /\blevel editor\b/,
-    /\bmanual\b/,
-    /\bmod tools?\b/,
-    /\bost\b/,
-    /\bplaytest\b/,
-    /\bpress kit\b/,
-    /\bpublic test\b/,
-    /\bseason pass\b/,
-    /\bsdk\b/,
-    /\bserver\b/,
-    /\bsoftware\b/,
-    /\bsoundtrack\b/,
-    /\btest server\b/,
-    /\btool\b/,
-    /\btrailer\b/,
-    /\btexture pack\b/,
-    /\bwallpaper\b/,
-    /\bworkshop tools?\b/,
-  ];
-  return patterns.some((pattern) => pattern.test(value)) ? "possible_non_game" : null;
+  const match = STEAM_FILTER_PATTERNS.find(({ patterns }) =>
+    patterns.some((pattern) => pattern.test(value))
+  );
+  return match?.reason || null;
 }
 
 function replaceWholeWord(value, from, to) {
@@ -827,6 +897,7 @@ export function titleVariants(title) {
     "collectors edition",
     "complete edition",
     "definitive edition",
+    "definitive experience",
     "demo",
     "deluxe edition",
     "digital deluxe edition",
@@ -834,23 +905,28 @@ export function titleVariants(title) {
     "directors cut",
     "enhanced edition",
     "expanded edition",
+    "game of the year edition",
+    "game of the yorha edition",
     "final cut",
     "game of the year",
-    "game of the year edition",
     "gold edition",
     "goty edition",
     "hd edition",
     "legendary edition",
     "limited edition",
     "premium edition",
+    "pc edition",
     "remaster",
     "remastered",
     "redux",
     "soundtrack",
     "special edition",
     "standard edition",
+    "steam edition",
     "ultimate edition",
+    "upgrade",
     "vr edition",
+    "windows edition",
   ];
   const variants = new Set([base]);
   let stripped = base;
@@ -930,7 +1006,8 @@ function recommendStatus(app, catalog = null, filteredReason = null) {
   const hours = Number.isFinite(minutes) && minutes > 0 ? minutes / 60 : 0;
   const lastPlayed = app?.lastPlayedAt ? new Date(app.lastPlayedAt).getTime() : 0;
   const recentlyPlayed =
-    Number.isFinite(lastPlayed) && Date.now() - lastPlayed <= 14 * 24 * 60 * 60 * 1000;
+    Number.isFinite(lastPlayed) &&
+    Date.now() - lastPlayed <= RECENT_STEAM_ACTIVITY_DAYS * 24 * 60 * 60 * 1000;
   const estimate = Number(catalog?.rawg_playtime_hours || 0);
 
   if (hours <= 0) {
@@ -941,19 +1018,19 @@ function recommendStatus(app, catalog = null, filteredReason = null) {
     };
   }
 
+  if (recentlyPlayed) {
+    return {
+      status: "playing",
+      confidence: "medium",
+      reason: "Steam shows recent playtime.",
+    };
+  }
+
   if (hours < 2) {
     return {
       status: "played a bit",
       confidence: "high",
       reason: "Steam playtime is under 2 hours.",
-    };
-  }
-
-  if (recentlyPlayed) {
-    return {
-      status: "playing",
-      confidence: "medium",
-      reason: "Steam shows meaningful recent playtime.",
     };
   }
 
@@ -984,6 +1061,7 @@ function reviewGroupForCandidate(row) {
   if (row.filtered_reason) return "filtered";
   if (row.duplicate_game_id) return "duplicates";
   if (!row.proposed_catalog_game_id && !row.user_selected_catalog_game_id) return "needs_match";
+  if (row.first_play_observed_at) return "newly_played";
   const status =
     row.selected_status ||
     row.suggested_status ||
@@ -1009,34 +1087,50 @@ function appendImportGroupWhere(where, group) {
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
     where.push("c.duplicate_game_id IS NULL");
     where.push("c.filtered_reason IS NULL");
+    where.push("ugs.first_play_observed_at IS NULL");
+    where.push(
+      "(COALESCE(c.selected_status, c.suggested_status) IS NULL OR COALESCE(c.selected_status, c.suggested_status) NOT IN ('plan to play', 'played a bit', 'playing', 'played alot but didnt finish', 'finished'))"
+    );
   } else if (group === "unplayed") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
     where.push("COALESCE(c.selected_status, c.suggested_status) = 'plan to play'");
+  } else if (group === "newly_played") {
+    where.push("c.filtered_reason IS NULL");
+    where.push("c.duplicate_game_id IS NULL");
+    where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
+    where.push("ugs.first_play_observed_at IS NOT NULL");
   } else if (group === "played_bit") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
+    where.push("ugs.first_play_observed_at IS NULL");
     where.push("COALESCE(c.selected_status, c.suggested_status) = 'played a bit'");
   } else if (group === "playing") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
+    where.push("ugs.first_play_observed_at IS NULL");
     where.push("COALESCE(c.selected_status, c.suggested_status) = 'playing'");
   } else if (group === "played_alot") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
+    where.push("ugs.first_play_observed_at IS NULL");
     where.push("COALESCE(c.selected_status, c.suggested_status) = 'played alot but didnt finish'");
   } else if (group === "likely_finished") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
+    where.push("ugs.first_play_observed_at IS NULL");
     where.push("COALESCE(c.selected_status, c.suggested_status) = 'finished'");
   } else if (group === "needs_match") {
+    where.push("c.filtered_reason IS NULL");
+    where.push("c.duplicate_game_id IS NULL");
     where.push("c.proposed_catalog_game_id IS NULL AND c.user_selected_catalog_game_id IS NULL");
   } else if (group === "duplicates") {
+    where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NOT NULL");
   } else if (group === "filtered") {
     where.push("c.filtered_reason IS NOT NULL");
@@ -1064,9 +1158,46 @@ function appendAchievementWhere(where, achievement) {
   }
 }
 
-export function steamCandidateOrderBy(sort = "name") {
+export function steamCandidateOrderBy(sort = "suggested") {
   const orders = {
+    suggested: `
+      CASE
+        WHEN c.filtered_reason IS NULL
+         AND c.duplicate_game_id IS NULL
+         AND (c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)
+         AND ugs.first_play_observed_at IS NOT NULL
+          THEN 1
+        WHEN c.filtered_reason IS NULL
+         AND c.duplicate_game_id IS NULL
+         AND (c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)
+         AND COALESCE(ugs.playtime_minutes_forever, c.playtime_minutes_forever, 0) > 0
+         AND COALESCE(ugs.last_played_at, c.last_played_at) >= NOW() - INTERVAL '${RECENT_STEAM_ACTIVITY_DAYS} days'
+          THEN 2
+        WHEN c.import_status IN ('pending', 'accepted') AND c.created_at >= NOW() - INTERVAL '14 days'
+          THEN 3
+        WHEN c.filtered_reason IS NULL
+         AND c.duplicate_game_id IS NULL
+         AND c.proposed_catalog_game_id IS NULL
+         AND c.user_selected_catalog_game_id IS NULL
+          THEN 4
+        WHEN c.duplicate_game_id IS NOT NULL
+          THEN 5
+        WHEN c.filtered_reason IS NOT NULL
+          THEN 6
+        ELSE 7
+      END,
+      ugs.first_play_observed_at DESC NULLS LAST,
+      COALESCE(ugs.last_played_at, c.last_played_at) DESC NULLS LAST,
+      c.created_at DESC,
+      lower(c.steam_name) ASC,
+      c.id ASC
+    `,
     name: `
+      lower(c.steam_name) ASC,
+      c.id ASC
+    `,
+    newly_synced: `
+      c.created_at DESC,
       lower(c.steam_name) ASC,
       c.id ASC
     `,
@@ -1120,7 +1251,7 @@ export function steamCandidateOrderBy(sort = "name") {
       c.id ASC
     `,
   };
-  return orders[sort] || orders.name;
+  return orders[sort] || orders.suggested;
 }
 
 async function selectCatalogBrief(catalogGameId) {
@@ -1204,7 +1335,7 @@ async function findCatalogMatch(app) {
 async function findDuplicateGame(userId, app, catalogGameId) {
   const bySteamSource = await pool.query(
     `
-    SELECT g.id, g.name
+    SELECT g.id, g.name, g.status, g.started_at
     FROM user_game_sources ugs
     JOIN games g ON g.id = ugs.game_id AND g.user_id = ugs.user_id
     WHERE ugs.user_id = $1
@@ -1224,7 +1355,7 @@ async function findDuplicateGame(userId, app, catalogGameId) {
 
   if (catalogGameId) {
     const byCatalog = await pool.query(
-      "SELECT id, name FROM games WHERE user_id = $1 AND catalog_game_id = $2 LIMIT 1",
+      "SELECT id, name, status, started_at FROM games WHERE user_id = $1 AND catalog_game_id = $2 LIMIT 1",
       [userId, catalogGameId]
     );
     if (byCatalog.rows[0]) return byCatalog.rows[0];
@@ -1233,7 +1364,7 @@ async function findDuplicateGame(userId, app, catalogGameId) {
   if (!normalized) return null;
   const { rows } = await pool.query(
     `
-    SELECT id, name
+    SELECT id, name, status, started_at
     FROM games
     WHERE user_id = $1
       AND trim(regexp_replace(translate(lower(name), '''' || chr(8217) || chr(8216) || chr(700), ''), '[^a-z0-9]+', ' ', 'g')) = $2
@@ -1245,7 +1376,7 @@ async function findDuplicateGame(userId, app, catalogGameId) {
 
   const allGames = await pool.query(
     `
-    SELECT id, name
+    SELECT id, name, status, started_at
     FROM games
     WHERE user_id = $1
     ORDER BY id DESC
@@ -1391,7 +1522,12 @@ function sourceRowsEqual(before, after) {
     sameNullableNumber(before.catalog_game_id, after.catalog_game_id) &&
     sameNullableString(before.source_status, after.source_status) &&
     sameNullableNumber(before.playtime_minutes_forever, after.playtime_minutes_forever) &&
-    sameNullableDate(before.last_played_at, after.last_played_at)
+    sameNullableDate(before.last_played_at, after.last_played_at) &&
+    sameNullableDate(before.first_play_observed_at, after.first_play_observed_at) &&
+    sameNullableNumber(
+      before.first_play_observed_playtime_minutes,
+      after.first_play_observed_playtime_minutes
+    )
   );
 }
 
@@ -1418,24 +1554,29 @@ function writeState(before, after, equalFn) {
   return equalFn(before, after) ? "unchanged" : "updated";
 }
 
-async function upsertSourceRow(userId, app, catalogGameId, duplicateGameId) {
+async function upsertSourceRow(userId, app, catalogGameId, duplicateGameId, { hasPreviousSync = false } = {}) {
   const before = await pool.query(
     `
-    SELECT game_id, catalog_game_id, source_status, playtime_minutes_forever, last_played_at
+    SELECT game_id, catalog_game_id, source_status, playtime_minutes_forever, last_played_at,
+           first_play_observed_at, first_play_observed_playtime_minutes
     FROM user_game_sources
     WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = $2
     LIMIT 1
     `,
     [userId, app.appid]
   );
+  const playtimeMinutes = Math.max(0, Number(app.playtimeMinutes) || 0);
+  const firstObservedAt =
+    hasPreviousSync && playtimeMinutes > 0 ? app.lastPlayedAt || new Date() : null;
   const { rows } = await pool.query(
     `
     INSERT INTO user_game_sources (
       user_id, game_id, catalog_game_id, provider, provider_app_id,
       relationship, source_status, playtime_minutes_forever, last_played_at,
+      first_play_observed_at, first_play_observed_playtime_minutes,
       last_synced_at, updated_at
     )
-    VALUES ($1, $2, $3, 'steam', $4, 'owned', 'owned', $5, $6, NOW(), NOW())
+    VALUES ($1, $2, $3, 'steam', $4, 'owned', 'owned', $5, $6, $7, $8, NOW(), NOW())
     ON CONFLICT (user_id, provider, provider_app_id)
     DO UPDATE SET
       game_id = COALESCE(EXCLUDED.game_id, user_game_sources.game_id),
@@ -1452,26 +1593,51 @@ async function upsertSourceRow(userId, app, catalogGameId, duplicateGameId) {
         COALESCE(user_game_sources.last_played_at, EXCLUDED.last_played_at),
         COALESCE(EXCLUDED.last_played_at, user_game_sources.last_played_at)
       ),
+      first_play_observed_at = CASE
+        WHEN user_game_sources.first_play_observed_at IS NULL
+         AND COALESCE(user_game_sources.playtime_minutes_forever, 0) <= 0
+         AND COALESCE(EXCLUDED.playtime_minutes_forever, 0) > 0
+          THEN COALESCE(EXCLUDED.last_played_at, NOW())
+        ELSE user_game_sources.first_play_observed_at
+      END,
+      first_play_observed_playtime_minutes = CASE
+        WHEN user_game_sources.first_play_observed_at IS NULL
+         AND COALESCE(user_game_sources.playtime_minutes_forever, 0) <= 0
+         AND COALESCE(EXCLUDED.playtime_minutes_forever, 0) > 0
+          THEN EXCLUDED.playtime_minutes_forever
+        ELSE user_game_sources.first_play_observed_playtime_minutes
+      END,
       last_synced_at = NOW(),
       updated_at = NOW()
-    RETURNING game_id, catalog_game_id, source_status, playtime_minutes_forever, last_played_at
+    RETURNING game_id, catalog_game_id, source_status, playtime_minutes_forever, last_played_at,
+              first_play_observed_at, first_play_observed_playtime_minutes
     `,
     [
       userId,
       duplicateGameId || null,
       catalogGameId || null,
       app.appid,
-      app.playtimeMinutes,
+      playtimeMinutes,
       app.lastPlayedAt,
+      firstObservedAt,
+      firstObservedAt ? playtimeMinutes : null,
     ]
   );
-  return writeState(before.rows[0], rows[0], sourceRowsEqual);
+  const state = writeState(before.rows[0], rows[0], sourceRowsEqual);
+  const firstPlayObservedJustSet =
+    !before.rows[0]?.first_play_observed_at && !!rows[0]?.first_play_observed_at;
+  return {
+    state,
+    before: before.rows[0] || null,
+    row: rows[0] || null,
+    firstPlayObservedJustSet,
+  };
 }
 
 async function upsertCandidate(userId, app, match, duplicate, filteredReason, recommendation) {
   const before = await pool.query(
     `
-    SELECT steam_name, steam_icon_url, playtime_minutes_forever, last_played_at,
+    SELECT id, steam_name, steam_icon_url, playtime_minutes_forever, last_played_at,
            proposed_catalog_game_id, duplicate_game_id, match_confidence, match_reason,
            filtered_reason, suggested_status, suggested_status_reason,
            suggested_status_confidence
@@ -1521,7 +1687,7 @@ async function upsertCandidate(userId, app, match, duplicate, filteredReason, re
       suggested_status_confidence = EXCLUDED.suggested_status_confidence,
       updated_at = NOW()
     WHERE steam_import_candidates.import_status IN ('pending', 'accepted', 'attached', 'ignored')
-    RETURNING steam_name, steam_icon_url, playtime_minutes_forever, last_played_at,
+    RETURNING id, steam_name, steam_icon_url, playtime_minutes_forever, last_played_at,
               proposed_catalog_game_id, duplicate_game_id, match_confidence, match_reason,
               filtered_reason, suggested_status, suggested_status_reason,
               suggested_status_confidence
@@ -1543,8 +1709,12 @@ async function upsertCandidate(userId, app, match, duplicate, filteredReason, re
       recommendation.confidence,
     ]
   );
-  if (!rows[0]) return "unchanged";
-  return writeState(before.rows[0], rows[0], candidateRowsEqual);
+  if (!rows[0]) return { state: "unchanged", before: before.rows[0] || null, row: before.rows[0] || null };
+  return {
+    state: writeState(before.rows[0], rows[0], candidateRowsEqual),
+    before: before.rows[0] || null,
+    row: rows[0],
+  };
 }
 
 async function backfillCandidateRecommendations(userId) {
@@ -1591,9 +1761,57 @@ async function backfillCandidateRecommendations(userId) {
   }
 }
 
+function steamReviewItem(app, { candidate, game, recommendation, sourceRow }) {
+  return {
+    steamAppId: String(app.appid),
+    steamName: app.name,
+    steamIconUrl: app.iconUrl || null,
+    playtimeMinutes: Number(app.playtimeMinutes) || 0,
+    lastPlayedAt: app.lastPlayedAt || null,
+    firstPlayObservedAt: sourceRow?.first_play_observed_at || null,
+    candidateId: candidate?.id || null,
+    gameId: game?.id || null,
+    gameName: game?.name || null,
+    currentStatus: game?.status || null,
+    startedAt: game?.started_at || null,
+    suggestedStatus: recommendation?.status || null,
+    suggestedStatusReason: recommendation?.reason || null,
+    suggestedStatusConfidence: recommendation?.confidence || null,
+  };
+}
+
+function staleLinkedSteamStatus(game) {
+  const status = normStatus(game?.status);
+  if (!status) return false;
+  return !new Set([
+    "playing",
+    "finished",
+    "played alot but didnt finish",
+    "played a lot but didn't finish",
+  ]).has(status);
+}
+
+function createEmptySyncReview() {
+  return {
+    startedPlaying: [],
+    statusSuggestions: [],
+    newSteamGames: [],
+    total: 0,
+  };
+}
+
+function finalizeSyncReview(review) {
+  review.total =
+    review.startedPlaying.length +
+    review.statusSuggestions.length +
+    review.newSteamGames.length;
+  return review;
+}
+
 export async function syncSteamLibrary(userId, { force = false } = {}) {
   const account = await getSteamAccount(userId);
   if (!account) throw badRequest("Link Steam before syncing.");
+  const hasPreviousSync = Boolean(account.last_library_sync_at);
 
   if (!force && account.last_library_sync_at) {
     const elapsed = Date.now() - new Date(account.last_library_sync_at).getTime();
@@ -1639,6 +1857,7 @@ export async function syncSteamLibrary(userId, { force = false } = {}) {
     let duplicates = 0;
     let filtered = 0;
     let needsReview = 0;
+    const review = createEmptySyncReview();
     const sourceWrites = { created: 0, updated: 0, unchanged: 0 };
     const candidateWrites = { created: 0, updated: 0, unchanged: 0 };
 
@@ -1652,7 +1871,13 @@ export async function syncSteamLibrary(userId, { force = false } = {}) {
       if (match.catalogGameId) matched++;
       else needsReview++;
       if (duplicate) duplicates++;
-      const sourceState = await upsertSourceRow(userId, app, match.catalogGameId, duplicate?.id);
+      const sourceResult = await upsertSourceRow(
+        userId,
+        app,
+        match.catalogGameId,
+        duplicate?.id,
+        { hasPreviousSync }
+      );
       const candidateState = await upsertCandidate(
         userId,
         app,
@@ -1661,8 +1886,41 @@ export async function syncSteamLibrary(userId, { force = false } = {}) {
         filteredReason,
         recommendation
       );
-      sourceWrites[sourceState] += 1;
-      candidateWrites[candidateState] += 1;
+      sourceWrites[sourceResult.state] += 1;
+      candidateWrites[candidateState.state] += 1;
+
+      const reviewItem = steamReviewItem(app, {
+        candidate: candidateState.row,
+        game: duplicate,
+        recommendation,
+        sourceRow: sourceResult.row,
+      });
+      const hasPlaytime = (Number(app.playtimeMinutes) || 0) > 0;
+      if (
+        sourceResult.firstPlayObservedJustSet &&
+        hasPlaytime &&
+        !filteredReason &&
+        recommendation.status === "playing"
+      ) {
+        review.startedPlaying.push(reviewItem);
+      } else if (
+        duplicate &&
+        hasPlaytime &&
+        !filteredReason &&
+        recommendation.status === "playing" &&
+        staleLinkedSteamStatus(duplicate)
+      ) {
+        review.statusSuggestions.push(reviewItem);
+      }
+      if (
+        hasPreviousSync &&
+        candidateState.state === "created" &&
+        !sourceResult.firstPlayObservedJustSet &&
+        !duplicate &&
+        !filteredReason
+      ) {
+        review.newSteamGames.push(reviewItem);
+      }
     }
 
     const autoMatch = await autoMatchSteamCandidates(
@@ -1710,6 +1968,7 @@ export async function syncSteamLibrary(userId, { force = false } = {}) {
       duplicates,
       filtered,
       needsReview,
+      syncReview: finalizeSyncReview(review),
       syncedAt: nowIso(),
     };
   } catch (err) {
@@ -1734,7 +1993,7 @@ export async function listSteamImportCandidates(
     status = "active",
     group = "all",
     achievement = "all",
-    sort = "name",
+    sort = "suggested",
     query = "",
     limit = DEFAULT_CANDIDATE_LIMIT,
     offset = 0,
@@ -1804,6 +2063,8 @@ export async function listSteamImportCandidates(
            uc.rawg_playtime_hours AS user_selected_catalog_rawg_playtime_hours,
            ugs.playtime_minutes_forever AS source_playtime_minutes_forever,
            ugs.last_played_at AS source_last_played_at,
+           ugs.first_play_observed_at,
+           ugs.first_play_observed_playtime_minutes,
            ugs.achievements_unlocked,
            ugs.achievements_total,
            ugs.achievements_percent,
@@ -1846,6 +2107,56 @@ export async function listSteamImportCandidates(
   };
 }
 
+export async function applySteamStatusSuggestion(
+  userId,
+  gameId,
+  { status = "playing", setStartedAt = false, startedAt = null } = {}
+) {
+  const statusNorm = normStatus(status);
+  if (statusNorm !== "playing") {
+    throw badRequest("Only playing status suggestions are supported right now.");
+  }
+
+  const suggestedDate = startedAt ? new Date(startedAt) : null;
+  const dateValue =
+    suggestedDate && Number.isFinite(suggestedDate.getTime())
+      ? suggestedDate.toISOString().slice(0, 10)
+      : null;
+
+  const { rows } = await pool.query(
+    `
+    UPDATE games g
+       SET status = $3,
+           started_at = CASE
+             WHEN $4::boolean AND g.started_at IS NULL THEN COALESCE($5::date, CURRENT_DATE)
+             ELSE g.started_at
+           END,
+           updated_at = NOW()
+     WHERE g.id = $1
+       AND g.user_id = $2
+       AND EXISTS (
+         SELECT 1
+         FROM user_game_sources ugs
+         WHERE ugs.user_id = g.user_id
+           AND ugs.game_id = g.id
+           AND ugs.provider = 'steam'
+           AND ugs.source_status = 'owned'
+       )
+     RETURNING id, name, status, started_at
+    `,
+    [gameId, userId, statusNorm, !!setStartedAt, dateValue]
+  );
+  if (!rows[0]) throw badRequest("Steam-linked backlog game not found.");
+  return {
+    game: {
+      id: rows[0].id,
+      name: rows[0].name,
+      status: rows[0].status,
+      startedAt: rows[0].started_at,
+    },
+  };
+}
+
 async function summarizeAllCandidates(userId) {
   const { rows } = await pool.query(
     `
@@ -1859,7 +2170,8 @@ async function summarizeAllCandidates(userId) {
            GREATEST(
              COALESCE(c.last_played_at, ugs.last_played_at),
              COALESCE(ugs.last_played_at, c.last_played_at)
-           ) AS last_played_at
+           ) AS last_played_at,
+           ugs.first_play_observed_at
     FROM steam_import_candidates c
     LEFT JOIN user_game_sources ugs
       ON ugs.user_id = c.user_id
@@ -1907,7 +2219,8 @@ async function summarizeCandidatesForState(userId, status) {
            GREATEST(
              COALESCE(c.last_played_at, ugs.last_played_at),
              COALESCE(ugs.last_played_at, c.last_played_at)
-           ) AS last_played_at
+           ) AS last_played_at,
+           ugs.first_play_observed_at
     FROM steam_import_candidates c
     LEFT JOIN user_game_sources ugs
       ON ugs.user_id = c.user_id
@@ -1935,6 +2248,7 @@ function summarizeCandidates(rows) {
     filtered: 0,
     groups: {
       matched: 0,
+      newly_played: 0,
       unplayed: 0,
       played_bit: 0,
       playing: 0,
@@ -1987,6 +2301,8 @@ function serializeCandidate(row) {
     steamIconUrl: row.steam_icon_url,
     playtimeMinutes,
     lastPlayedAt,
+    firstPlayObservedAt: row.first_play_observed_at || null,
+    firstPlayObservedPlaytimeMinutes: row.first_play_observed_playtime_minutes ?? null,
     achievements: serializeAchievementSummary(row),
     proposedCatalogGameId: selectedCatalogId,
     proposedCatalogName:

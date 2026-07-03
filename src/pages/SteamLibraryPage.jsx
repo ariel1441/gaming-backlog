@@ -39,10 +39,13 @@ import {
   formatAchievementSummary,
   formatAchievementSyncDate,
 } from "../utils/steamAchievements";
+import { filteredReasonLabel } from "../utils/steamImport";
 import {
   formatAchievementBatchSyncMessage,
   formatAchievementGameSyncMessage,
   formatSteamLibrarySyncMessage,
+  loadLastSteamSyncReview,
+  saveLastSteamSyncReview,
 } from "../utils/steamSync";
 
 const PAGE_LIMIT = 100;
@@ -67,7 +70,9 @@ const achievementOptions = [
 ];
 
 const sortOptions = [
+  { value: "suggested", label: "Suggested first" },
   { value: "name", label: "Name A-Z" },
+  { value: "newly_synced", label: "Newly synced" },
   { value: "playtime_desc", label: "Most playtime" },
   { value: "playtime_asc", label: "Least playtime" },
   { value: "last_played_desc", label: "Last played: recent" },
@@ -114,12 +119,49 @@ function libraryState(app) {
     return { label: "Can link", variant: "primary" };
   }
   if (app.filteredReason) {
-    return { label: "Likely non-game", variant: "warning" };
+    return { label: filteredReasonLabel(app.filteredReason), variant: "warning" };
   }
   if (app.proposedCatalogGameId) {
     return { label: "Ready to add", variant: "primary" };
   }
   return { label: "Needs match", variant: "default" };
+}
+
+function libraryStateSummary(app) {
+  if (app.importStatus === "ignored") {
+    return {
+      title: "Hidden until restored",
+      description: "This app stays out of normal review and sync updates until you restore it.",
+    };
+  }
+  if (app.importStatus === "attached" || app.importStatus === "imported") {
+    return {
+      title: app.duplicateGameName ? `Linked to ${app.duplicateGameName}` : "Linked to backlog",
+      description: "Steam ownership, playtime, last played, and achievements can update this backlog row.",
+    };
+  }
+  if (app.duplicateGameName) {
+    return {
+      title: "Already in backlog",
+      description: "Link this Steam app to the existing backlog game instead of creating a duplicate.",
+    };
+  }
+  if (app.filteredReason) {
+    return {
+      title: filteredReasonLabel(app.filteredReason),
+      description: "This looks like DLC, a demo, a tool, media, or another app that may not belong in the backlog.",
+    };
+  }
+  if (app.proposedCatalogGameId) {
+    return {
+      title: "Ready to add",
+      description: "A catalog match is selected, so this app can become a new backlog game.",
+    };
+  }
+  return {
+    title: "Needs catalog match",
+    description: "Choose the catalog game before adding this Steam app to the backlog.",
+  };
 }
 
 function currentView(value) {
@@ -168,7 +210,7 @@ export default function SteamLibraryPage() {
   const [syncingAchievementGameId, setSyncingAchievementGameId] = useState(null);
   const [view, setView] = useState("all");
   const [achievementFilter, setAchievementFilter] = useState("all");
-  const [sort, setSort] = useState("name");
+  const [sort, setSort] = useState("suggested");
   const [query, setQuery] = useState("");
   const [apps, setApps] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -189,6 +231,7 @@ export default function SteamLibraryPage() {
   const [linkQuery, setLinkQuery] = useState("");
   const [linkResults, setLinkResults] = useState([]);
   const [linkLoading, setLinkLoading] = useState(false);
+  const [lastSyncReview, setLastSyncReview] = useState(() => loadLastSteamSyncReview());
 
   const selectedView = useMemo(() => currentView(view), [view]);
 
@@ -252,6 +295,7 @@ export default function SteamLibraryPage() {
   const sync = async () => {
     setSyncing(true);
     try {
+      toast.info("Steam sync started. I will show review actions when it finishes.");
       const payload = await syncSteamLibrary();
       if (payload?.skipped) {
         toast.info(formatSteamLibrarySyncMessage(payload));
@@ -259,6 +303,11 @@ export default function SteamLibraryPage() {
         toast.warning(formatSteamLibrarySyncMessage(payload));
       } else {
         toast.success(formatSteamLibrarySyncMessage(payload));
+      }
+      if (payload?.syncReview?.total) {
+        setLastSyncReview(saveLastSteamSyncReview(payload.syncReview));
+      } else if (!payload?.skipped && !payload?.private) {
+        setLastSyncReview(saveLastSteamSyncReview(null));
       }
       await loadAccount();
       await loadApps({ append: false, offset: 0 });
@@ -427,13 +476,23 @@ export default function SteamLibraryPage() {
   const total = page.total || 0;
   const allSummary = summary || {};
   const groups = allSummary.groups || {};
-  const hasActiveTools = query.trim() || view !== "all" || achievementFilter !== "all" || sort !== "name";
+  const hasActiveTools = query.trim() || view !== "all" || achievementFilter !== "all" || sort !== "suggested";
   const emptyCopy = emptyLibraryCopy({ account, query: query.trim(), view, achievementFilter });
   const resetTools = () => {
     setQuery("");
     setView("all");
     setAchievementFilter("all");
-    setSort("name");
+    setSort("suggested");
+  };
+
+  const openLastSyncReview = () => {
+    const stored = loadLastSteamSyncReview();
+    setLastSyncReview(stored);
+    if (stored?.total) {
+      navigate("/steam/import?review=last");
+    } else {
+      toast.info("No Steam sync review is waiting.");
+    }
   };
 
   return (
@@ -482,6 +541,12 @@ export default function SteamLibraryPage() {
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} aria-hidden="true" />
               {syncing ? "Syncing..." : "Sync library"}
             </Button>
+            {lastSyncReview?.total ? (
+              <Button type="button" variant="secondary" onClick={openLastSyncReview}>
+                Review last sync
+                <span className="ml-1 text-xs opacity-75">{lastSyncReview.total}</span>
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="secondary"
@@ -494,9 +559,10 @@ export default function SteamLibraryPage() {
           </div>
         </header>
 
-        <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
           <Metric label="Synced apps" value={allSummary.total || 0} />
           <Metric label="In backlog" value={(allSummary.imported || 0) + (allSummary.attached || 0)} />
+          <Metric label="Newly played" value={groups.newly_played || 0} />
           <Metric label="Needs match" value={groups.needs_match || 0} />
           <Metric label="Likely non-games" value={groups.filtered || 0} />
           <Metric label="Hidden" value={allSummary.ignored || 0} />
@@ -629,7 +695,11 @@ export default function SteamLibraryPage() {
           onImport={() => importCandidate(selectedApp)}
           onChangeMatch={() => openMatch(selectedApp)}
           onLinkExisting={() => openLinkExisting(selectedApp)}
-          onReview={() => navigate(`/steam/import?q=${encodeURIComponent(selectedApp.steamName || "")}`)}
+          onReview={() =>
+            navigate(
+              `/steam/import?status=all&group=all&q=${encodeURIComponent(selectedApp.steamName || "")}`
+            )
+          }
         />
       ) : null}
       {matchApp ? (
@@ -861,12 +931,19 @@ function SteamLibraryRow({
       </div>
       <div className="min-w-0">
         <Badge variant={state.variant}>{state.label}</Badge>
+        {app.firstPlayObservedAt ? (
+          <div className="mt-1 text-xs text-primary">
+            New Steam activity
+          </div>
+        ) : null}
         {app.duplicateGameName ? (
           <div className="mt-1 truncate text-xs text-content-muted">
             Linked candidate: {app.duplicateGameName}
           </div>
         ) : app.filteredReason ? (
-          <div className="mt-1 text-xs text-content-muted">Filtered from normal import piles</div>
+          <div className="mt-1 text-xs text-content-muted">
+            Filtered from normal import piles
+          </div>
         ) : null}
       </div>
       <div className="flex justify-start gap-2 lg:justify-end">
@@ -879,7 +956,11 @@ function SteamLibraryRow({
             type="button"
             size="sm"
             variant="secondary"
-            onClick={() => navigate(`/steam/import?q=${encodeURIComponent(app.steamName || "")}`)}
+            onClick={() =>
+              navigate(
+                `/steam/import?status=active&group=${app.firstPlayObservedAt ? "newly_played" : "all"}&q=${encodeURIComponent(app.steamName || "")}`
+              )
+            }
           >
             Review
           </Button>
@@ -940,6 +1021,9 @@ function SteamLibraryDrawer({
   );
   const canImport = !!app.proposedCatalogGameId || !!app.duplicateGameId;
   const storeUrl = `https://store.steampowered.com/app/${app.steamAppId}`;
+  const isLinked = app.importStatus === "attached" || app.importStatus === "imported";
+  const isHidden = app.importStatus === "ignored";
+  const canReview = !isLinked && !isHidden;
 
   return (
     <Modal
@@ -959,10 +1043,9 @@ function SteamLibraryDrawer({
           )}
           <div className="flex flex-wrap gap-2">
             <Badge variant={state.variant}>{state.label}</Badge>
-            {app.filteredReason ? <Badge variant="warning">Likely non-game</Badge> : null}
             {suggestion ? <Badge variant="primary">{suggestion.label}</Badge> : null}
           </div>
-          {app.importStatus === "ignored" ? (
+          {isHidden ? (
             <div className="rounded-lg border border-state-warning/40 bg-state-warning/10 px-3 py-2 text-sm text-state-warning">
               Hidden apps stay hidden on every Steam sync until you restore them.
             </div>
@@ -970,28 +1053,53 @@ function SteamLibraryDrawer({
         </div>
 
         <div className="space-y-4">
-          <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="rounded-lg border border-surface-border bg-surface-bg/35 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-content-primary">
+                  {stateSummary.title}
+                </h3>
+                <p className="mt-1 text-sm text-content-muted">
+                  {stateSummary.description}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => window.open(storeUrl, "_blank", "noopener,noreferrer")}
+                className="shrink-0"
+              >
+                <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                Store
+              </Button>
+            </div>
+          </section>
+
+          <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <DetailItem label="Steam app" value={app.steamAppId} />
             <DetailItem label="Playtime" value={hoursFromMinutes(app.playtimeMinutes)} />
             <DetailItem label="Last played" value={shortDate(app.lastPlayedAt) || "Never"} />
+            <DetailItem
+              label="First noticed played"
+              value={shortDate(app.firstPlayObservedAt) || "Not observed"}
+            />
             <DetailItem label="Achievements" value={achievements.detail || achievements.label} />
           </section>
 
           <section className="rounded-lg border border-surface-border bg-surface-bg/35 p-3">
             <h3 className="text-sm font-semibold text-content-primary">Match and backlog</h3>
-            <div className="mt-2 grid gap-2 text-sm text-content-muted">
-              <div>
-                Catalog match:{" "}
-                <span className="text-content-primary">
-                  {app.proposedCatalogName || "No catalog match selected"}
-                </span>
-              </div>
-              <div>
-                Backlog link:{" "}
-                <span className="text-content-primary">
-                  {app.duplicateGameName || (linkedGameId ? `Game #${linkedGameId}` : "Not linked")}
-                </span>
-              </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <DetailItem
+                label="Catalog match"
+                value={app.proposedCatalogName || "No catalog match selected"}
+              />
+              <DetailItem
+                label="Backlog link"
+                value={app.duplicateGameName || (linkedGameId ? `Game #${linkedGameId}` : "Not linked")}
+              />
+            </div>
+            <div className="mt-3 grid gap-2 text-sm text-content-muted">
               {app.matchReason ? (
                 <div>
                   Match reason:{" "}
@@ -1029,54 +1137,61 @@ function SteamLibraryDrawer({
             </div>
           </section>
 
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => window.open(storeUrl, "_blank", "noopener,noreferrer")}
-            >
-              <ExternalLink className="h-4 w-4" aria-hidden="true" />
-              Store
-            </Button>
-            {canSyncAchievements ? (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={onSyncAchievements}
-                disabled={syncingAchievements}
-              >
-                <Trophy className="h-4 w-4" aria-hidden="true" />
-                {syncingAchievements ? "Syncing..." : "Sync achievements"}
-              </Button>
-            ) : null}
-            <Button type="button" variant="secondary" onClick={onChangeMatch}>
-              Change match
-            </Button>
-            {app.importStatus !== "ignored" ? (
-              <Button type="button" variant="secondary" onClick={onLinkExisting}>
-                Link existing
-              </Button>
-            ) : null}
-            {app.importStatus === "ignored" ? (
-              <Button type="button" variant="primary" onClick={onRestore}>
-                Restore
-              </Button>
-            ) : (
-              <Button type="button" variant="ghost" onClick={onHide}>
-                Hide
-              </Button>
-            )}
-            {!app.duplicateGameId && app.proposedCatalogGameId && app.importStatus !== "accepted" ? (
-              <Button type="button" variant="secondary" onClick={onAccept}>
-                Approve match
-              </Button>
-            ) : null}
-            {app.importStatus !== "attached" && app.importStatus !== "imported" ? (
-              <Button type="button" variant="primary" onClick={canImport ? onImport : onReview}>
-                {canImport ? (app.duplicateGameId ? "Link to backlog" : "Add to backlog") : "Review"}
-              </Button>
-            ) : null}
-          </div>
+          <section className="rounded-lg border border-surface-border bg-surface-bg/35 p-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-content-primary">Next actions</h3>
+                <p className="mt-1 text-xs text-content-muted">
+                  Actions are scoped to this Steam app only.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                {canSyncAchievements ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={onSyncAchievements}
+                    disabled={syncingAchievements}
+                  >
+                    <Trophy className="h-4 w-4" aria-hidden="true" />
+                    {syncingAchievements ? "Syncing..." : "Sync achievements"}
+                  </Button>
+                ) : null}
+                <Button type="button" variant="secondary" onClick={onReview}>
+                  Open in import
+                </Button>
+                {!isLinked ? (
+                  <Button type="button" variant="secondary" onClick={onChangeMatch}>
+                    {app.proposedCatalogGameId ? "Change match" : "Choose match"}
+                  </Button>
+                ) : null}
+                {!isHidden && !isLinked ? (
+                  <Button type="button" variant="secondary" onClick={onLinkExisting}>
+                    Link existing
+                  </Button>
+                ) : null}
+                {isHidden ? (
+                  <Button type="button" variant="primary" onClick={onRestore}>
+                    Restore
+                  </Button>
+                ) : !isLinked ? (
+                  <Button type="button" variant="ghost" onClick={onHide}>
+                    Hide
+                  </Button>
+                ) : null}
+                {!app.duplicateGameId && app.proposedCatalogGameId && app.importStatus !== "accepted" && !isLinked ? (
+                  <Button type="button" variant="secondary" onClick={onAccept}>
+                    Approve match
+                  </Button>
+                ) : null}
+                {canReview ? (
+                  <Button type="button" variant="primary" onClick={canImport ? onImport : onReview}>
+                    {canImport ? (app.duplicateGameId ? "Link to backlog" : "Add to backlog") : "Review"}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </Modal>

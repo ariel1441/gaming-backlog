@@ -18,6 +18,7 @@ const importGroup = Joi.string()
     "needs_match",
     "matched",
     "duplicates",
+    "newly_played",
     "unplayed",
     "played_bit",
     "playing",
@@ -33,7 +34,9 @@ const achievementFilter = Joi.string()
 
 const librarySort = Joi.string()
   .valid(
+    "suggested",
     "name",
+    "newly_synced",
     "playtime_desc",
     "playtime_asc",
     "last_played_desc",
@@ -43,7 +46,7 @@ const librarySort = Joi.string()
     "achievement_synced",
     "backlog_state"
   )
-  .default("name");
+  .default("suggested");
 
 const scopeSchema = Joi.object({
   group: importGroup.required(),
@@ -135,6 +138,11 @@ export const steamSchemas = {
   }),
   attachBody: Joi.object({
     gameId: id,
+  }),
+  applyStatusSuggestionBody: Joi.object({
+    status: Joi.string().trim().valid("playing").default("playing"),
+    setStartedAt: Joi.boolean().default(false),
+    startedAt: Joi.date().iso().allow(null).optional(),
   }),
   importBody: Joi.object({
     candidateIds: Joi.array()
@@ -229,6 +237,14 @@ export const attachSteamCandidate = celebrate(
   {
     [Segments.PARAMS]: steamSchemas.candidateIdParams,
     [Segments.BODY]: steamSchemas.attachBody,
+  },
+  opts
+);
+
+export const applySteamStatusSuggestion = celebrate(
+  {
+    [Segments.PARAMS]: steamSchemas.gameAchievementParams,
+    [Segments.BODY]: steamSchemas.applyStatusSuggestionBody,
   },
   opts
 );

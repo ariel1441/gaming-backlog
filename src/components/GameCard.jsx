@@ -35,6 +35,23 @@ function fmtShortDate(value) {
   return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
 }
 
+function daysSince(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return (Date.now() - date.getTime()) / (24 * 60 * 60 * 1000);
+}
+
+function statusIsAlreadyActiveOrDone(status) {
+  const value = String(status || "").toLowerCase().trim();
+  return [
+    "playing",
+    "finished",
+    "played alot but didnt finish",
+    "played a lot but didn't finish",
+  ].includes(value);
+}
+
 function MiniStat({ icon: Icon, label, value, tone = "default" }) {
   const toneClass =
     tone === "warning"
@@ -224,6 +241,19 @@ export default function GameCard({
         : "Owned on Steam"
       : null;
   const steamLastPlayed = game.steamOwned ? fmtShortDate(game.steamLastPlayedAt) : null;
+  const steamActivityDays = daysSince(game.steamFirstPlayObservedAt);
+  const steamActivityStat =
+    game.steamOwned &&
+    steamActivityDays != null &&
+    steamActivityDays <= 30 &&
+    !statusIsAlreadyActiveOrDone(game.status)
+      ? {
+          icon: Gamepad2,
+          label: "Steam activity",
+          value: "Started on Steam?",
+          tone: "warning",
+        }
+      : null;
   const achievements = game.steamOwned
     ? formatAchievementSummary(game.steamAchievements)
     : null;
@@ -339,6 +369,14 @@ export default function GameCard({
                 tone="primary"
               />
             ) : null}
+            {steamActivityStat ? (
+              <MiniStat
+                icon={steamActivityStat.icon}
+                label={steamActivityStat.label}
+                value={steamActivityStat.value}
+                tone={steamActivityStat.tone}
+              />
+            ) : null}
             {achievementStat ? (
               <MiniStat
                 icon={achievementStat.icon}
@@ -419,6 +457,14 @@ export default function GameCard({
                   tone="primary"
                 />
               ) : null}
+              {steamActivityStat ? (
+                <MiniStat
+                  icon={steamActivityStat.icon}
+                  label={steamActivityStat.label}
+                  value={steamActivityStat.value}
+                  tone={steamActivityStat.tone}
+                />
+              ) : null}
               {achievementStat ? (
                 <MiniStat
                   icon={achievementStat.icon}
@@ -459,6 +505,14 @@ export default function GameCard({
                 label="Last played on Steam"
                 value={steamLastPlayed}
                 tone="primary"
+              />
+            ) : null}
+            {steamActivityStat ? (
+              <MiniStat
+                icon={steamActivityStat.icon}
+                label={steamActivityStat.label}
+                value={steamActivityStat.value}
+                tone={steamActivityStat.tone}
               />
             ) : null}
             {achievementStat ? (

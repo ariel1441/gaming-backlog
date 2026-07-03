@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { pool } from "../db.js";
 import {
+  applySteamStatusSuggestion,
   attachSteamCandidateToGame,
   bestTitleSimilarity,
   importSteamCandidates,
   isLikelySteamDuplicateTitle,
   likelyFilteredReason,
+  listSteamImportCandidates,
   mergeBacklogDuplicateGames,
   normalizeOwnedGamesPayload,
   normalizeSteamAchievementSummary,
@@ -216,12 +218,16 @@ test("summarizeAchievementSyncResults separates synced, empty, unavailable, fail
 });
 
 test("steamCandidateOrderBy only returns whitelisted order clauses", () => {
+  assert.match(compact(steamCandidateOrderBy()), /CASE WHEN c\.filtered_reason IS NULL/);
+  assert.match(compact(steamCandidateOrderBy("suggested")), /first_play_observed_at/);
+  assert.match(compact(steamCandidateOrderBy("suggested")), /c\.created_at DESC/);
+  assert.match(compact(steamCandidateOrderBy("newly_synced")), /c\.created_at DESC/);
   assert.match(compact(steamCandidateOrderBy("playtime_desc")), /playtime_minutes_forever.*DESC/);
   assert.match(compact(steamCandidateOrderBy("achievement_desc")), /achievements_percent DESC/);
   assert.match(compact(steamCandidateOrderBy("backlog_state")), /CASE c\.import_status/);
   assert.equal(
     compact(steamCandidateOrderBy("c.steam_name; DROP TABLE users;")),
-    compact(steamCandidateOrderBy("name"))
+    compact(steamCandidateOrderBy("suggested"))
   );
 });
 
@@ -241,6 +247,14 @@ test("titleVariants strip common Steam edition suffixes", () => {
   assert.deepEqual(
     new Set(titleVariants("Disco Elysium Final Cut")),
     new Set(["disco elysium final cut", "disco elysium"])
+  );
+  assert.deepEqual(
+    new Set(titleVariants("NieR:Automata Game of the YoRHa Edition")),
+    new Set(["nier automata game of the yorha edition", "nier automata"])
+  );
+  assert.deepEqual(
+    new Set(titleVariants("Quantum Break Windows Edition")),
+    new Set(["quantum break windows edition", "quantum break"])
   );
 });
 
@@ -269,10 +283,10 @@ test("isLikelySteamDuplicateTitle does not collapse distinct sequels", () => {
 });
 
 test("likelyFilteredReason catches common non-game Steam app variants", () => {
-  assert.equal(likelyFilteredReason("Some Game - Season Pass"), "possible_non_game");
-  assert.equal(likelyFilteredReason("Some Game High Resolution Texture Pack"), "possible_non_game");
-  assert.equal(likelyFilteredReason("Some Game Public Test Server"), "possible_non_game");
-  assert.equal(likelyFilteredReason("Some Game Soundtrack"), "possible_non_game");
+  assert.equal(likelyFilteredReason("Some Game - Season Pass"), "steam_dlc");
+  assert.equal(likelyFilteredReason("Some Game High Resolution Texture Pack"), "steam_bonus_content");
+  assert.equal(likelyFilteredReason("Some Game Public Test Server"), "steam_playtest");
+  assert.equal(likelyFilteredReason("Some Game Soundtrack"), "steam_soundtrack");
   assert.equal(likelyFilteredReason("Some Full Game"), null);
 });
 
@@ -335,11 +349,84 @@ test("updateSteamImportCandidate hides and restores both candidate and source ro
 });
 
 test("likelyFilteredReason flags common non-game Steam apps", () => {
-  assert.equal(likelyFilteredReason("Some Game - Dedicated Server"), "possible_non_game");
-  assert.equal(likelyFilteredReason("Some Game Playtest"), "possible_non_game");
-  assert.equal(likelyFilteredReason("Some Game Artbook"), "possible_non_game");
-  assert.equal(likelyFilteredReason("Some Game SDK"), "possible_non_game");
+  assert.equal(likelyFilteredReason("Some Game - Dedicated Server"), "steam_server");
+  assert.equal(likelyFilteredReason("Some Game Playtest"), "steam_playtest");
+  assert.equal(likelyFilteredReason("Some Game Artbook"), "steam_bonus_content");
+  assert.equal(likelyFilteredReason("Some Game SDK"), "steam_tool");
   assert.equal(likelyFilteredReason("Demon Tilt"), null);
+  assert.equal(likelyFilteredReason("Trials Rising"), null);
+  assert.equal(likelyFilteredReason("Some Game Prologue"), "steam_demo");
+  assert.equal(likelyFilteredReason("Some Game Documentary"), "steam_media");
+});
+
+test("listSteamImportCandidates group filters match exclusive summary piles", async () => {
+  await withMockPoolQuery(
+    async (text) => {
+      const sql = compact(text);
+      if (sql.startsWith("SELECT c.id, c.steam_name")) return { rows: [] };
+      if (sql.startsWith("SELECT COUNT(*)")) return { rows: [{ total: 0 }] };
+      return { rows: [] };
+    },
+    async (calls) => {
+      await listSteamImportCandidates(7, { group: "needs_match" });
+      await listSteamImportCandidates(7, { group: "matched" });
+      await listSteamImportCandidates(7, { group: "newly_played" });
+
+      const countQueries = calls
+        .map((call) => compact(call.text))
+        .filter((sql) => sql.startsWith("SELECT COUNT(*)"));
+      const needsMatchSql = countQueries[0];
+      const matchedSql = countQueries[1];
+      const newlyPlayedSql = countQueries[2];
+
+      assert.match(needsMatchSql, /c\.filtered_reason IS NULL/);
+      assert.match(needsMatchSql, /c\.duplicate_game_id IS NULL/);
+      assert.match(
+        needsMatchSql,
+        /c\.proposed_catalog_game_id IS NULL AND c\.user_selected_catalog_game_id IS NULL/
+      );
+      assert.match(matchedSql, /c\.filtered_reason IS NULL/);
+      assert.match(matchedSql, /c\.duplicate_game_id IS NULL/);
+      assert.match(matchedSql, /ugs\.first_play_observed_at IS NULL/);
+      assert.match(matchedSql, /NOT IN \('plan to play', 'played a bit', 'playing'/);
+      assert.match(newlyPlayedSql, /ugs\.first_play_observed_at IS NOT NULL/);
+      assert.match(newlyPlayedSql, /c\.duplicate_game_id IS NULL/);
+    }
+  );
+});
+
+test("applySteamStatusSuggestion updates only a Steam-linked game", async () => {
+  await withMockPoolQuery(
+    async (text, values) => {
+      const sql = compact(text);
+      if (sql.startsWith("UPDATE games g SET status = $3")) {
+        assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03"]);
+        assert.match(sql, /EXISTS \( SELECT 1 FROM user_game_sources ugs/);
+        return {
+          rows: [
+            {
+              id: 42,
+              name: "Hades",
+              status: "playing",
+              started_at: "2026-07-03",
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async () => {
+      const payload = await applySteamStatusSuggestion(7, 42, {
+        status: "playing",
+        setStartedAt: true,
+        startedAt: "2026-07-03T10:00:00.000Z",
+      });
+
+      assert.equal(payload.game.id, 42);
+      assert.equal(payload.game.status, "playing");
+      assert.equal(payload.game.startedAt, "2026-07-03");
+    }
+  );
 });
 
 test("importSteamCandidates attaches marked duplicates instead of creating a new game", async () => {

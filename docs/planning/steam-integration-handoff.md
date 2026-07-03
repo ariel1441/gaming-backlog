@@ -30,10 +30,13 @@ Backend:
 - Migration `009_add_hours_source_preferences.sql` adds per-game
   `hours_preferred_source` and `hours_locked` fields so users can keep auto
   behavior, prefer estimates, or prefer Steam actual time.
+- Migration `010_add_steam_activity_observed.sql` adds first-observed Steam play
+  fields used by Steam Sync Review and started/status suggestions.
 - `user_external_accounts` stores the linked Steam account, sync status,
   timestamps, persona/profile fields, and failure state.
 - `user_game_sources` stores user-specific Steam ownership, actual playtime,
-  last played, and private achievement summary state.
+  last played, first observed play activity, and private achievement summary
+  state.
 - `steam_import_candidates` stores the review queue, match decisions, ignored
   state, imported state, duplicate attachment state, and selected import status.
 - `external_game_ids(source='steam')` attaches Steam app ids to catalog games
@@ -69,7 +72,8 @@ Frontend:
   labels, progress, state checks, and conservative completion/status
   suggestions from summary data.
 - `src/utils/steamSync.js` formats Steam sync result copy so library changes and
-  achievement refresh results are understandable.
+  achievement refresh results are understandable. It also stores/reloads the
+  last actionable Steam Sync Review from browser local storage.
 
 Local/dev:
 
@@ -99,6 +103,26 @@ Steam achievements:
 - V1 intentionally does not store per-achievement rows, global rarity, or
   public achievement visibility.
 
+Steam sync activity review:
+
+- Manual Steam sync can return `syncReview` with `startedPlaying`,
+  `statusSuggestions`, and `newSteamGames`.
+- The first Steam sync does not treat old historical playtime as newly started.
+  Later syncs can detect existing/new apps moving from no Steam playtime to
+  Steam playtime.
+- Steam Import opens a persistent review modal after sync when there are
+  actionable items.
+- Steam Import has a `Newly played` pile and can reopen the last actionable
+  review with `?review=last`.
+- Steam Library also has a `Review last sync` action when local review data is
+  waiting.
+- Linked backlog cards and details show subtle private Steam activity signals
+  only when recent first-observed play suggests a non-playing/non-done status
+  may be stale.
+- The status-suggestion endpoint can mark linked Steam backlog games as
+  `playing` and optionally fill `started_at` only when it is currently empty.
+- Steam sync never silently changes backlog status or dates.
+
 ## Product Decisions
 
 - Review-first import: do not auto-import the full Steam library into the
@@ -117,10 +141,52 @@ Steam achievements:
 - Sync is manual-only in V1. Normal library sync may include cooldowned
   achievement summary refreshes, but there are no background jobs or scheduled
   Steam syncs.
+- First-observed Steam play can suggest a started date but is not a true Steam
+  first-played date. Steam does not reliably provide true first-played or
+  finished dates.
 - Steam achievements summary V1 is private and summary-only. Full detail,
   rarity, status suggestions, and public controls are later product decisions.
 - Duplicate prevention is part of the core product behavior, not just cleanup.
   Import/attach flows should attach existing games whenever possible.
+
+## Done-For-Now Decision
+
+As of 2026-07-03, Steam work is a good stopping point unless the next feature is
+explicitly Steam-related. The user wants to move to a different topic after
+documenting this state.
+
+Before deploying the local Steam activity-review polish:
+
+- Resolve the Railway production deploy issue documented below.
+- Decide whether to commit/deploy the local Steam changes as one batch or split
+  schema/backend/frontend polish into smaller commits.
+- Run one real-library QA pass on local or deployed dev:
+  - manual sync and long-running sync feedback
+  - Steam Sync Review modal and `Review last sync`
+  - `Newly played` pile and import actions
+  - status-suggestion action for linked games
+  - backlog card `Started on Steam?` signal
+  - game modal Steam activity note
+  - Steam Library drawer `Open in import` and first-observed play display
+
+Likely future Steam improvements, later:
+
+- Scheduled/background sync with a user opt-in setting, cooldowns, last
+  success/failure state, and review/notification UX for changes found while the
+  user was away.
+- Steam privacy/public controls before exposing ownership, playtime, last
+  played, achievements, or activity publicly.
+- Achievement summary modal as a medium-small feature before full achievement
+  storage: unlocked/total/percent, sync state, private/unavailable explanation,
+  and sync action.
+- Full per-achievement data and global rarity if it has a clear user-facing
+  reason.
+- Richer completion/status suggestions from achievements, playtime, and recent
+  activity.
+- Better started/finished date suggestions. Started can use local
+  first-observed Steam play; finished should remain manual/prompted because
+  Steam does not provide a reliable finished date.
+- Wishlist or other Steam data only after confirming reliable API access.
 
 ## Current User Flow
 
@@ -287,9 +353,142 @@ Small follow-up completed in the latest chat:
 - Added Steam Library power tools: richer sort options, compact achievement
   display/sync, stable Store action, and cleaner filter row.
 
+## Production Deployment Handoff - 2026-07-03
+
+Steam Integration code, frontend build, and production database migrations were
+prepared and pushed. The Railway backend initially stayed on the older backend
+deployment, then was manually redeployed after the free-tier deploy window
+opened.
+
+Current git/deploy state:
+
+- `main` and `Dev` both point to `6ab7ec6 Trigger production redeploy`.
+- The Steam implementation commit is `5becd35 Add Steam integration`.
+- GitHub Actions passed on both `main` and `Dev`.
+- Production migrations `006` through `009` were applied successfully.
+- Vercel deployed the new frontend, so `/steam/import` is visible on the real
+  site.
+- Railway was serving the older backend deployment from
+  `2026-06-30 08:20 +03:00`, so `/api/steam/*` routes returned generic `404 Not
+  found` until the manual redeploy below.
+
+Root cause discovered:
+
+- Railway free-tier deploys to `europe-west4-drams3a` are blocked during peak
+  hours: `8 AM - 8 PM Europe/Amsterdam`.
+- In Israel time, that means deploys are blocked until `21:00`.
+- The CLI error was:
+
+```text
+Free-tier deploys to europe-west4-drams3a are not available during peak hours (8 AM - 8 PM Europe/Amsterdam). Please try again later or upgrade your plan.
+```
+
+At or after `21:00` Israel time, run from the repo root:
+
+```bash
+railway deployment redeploy --service gaming-backlog --environment production --from-source --yes
+```
+
+If that command is not available or still fails, use this fallback:
+
+```bash
+railway up --service gaming-backlog --environment production --detach --message "Deploy Steam integration"
+```
+
+Before or during the Railway deploy, confirm the backend production variables
+exist in Railway. Do not paste secret values into chat/logs:
+
+```text
+STEAM_WEB_API_KEY=<real Steam Web API key>
+STEAM_OPENID_REALM=https://gaming-backlog-production.up.railway.app
+STEAM_OPENID_RETURN_URL=https://gaming-backlog-production.up.railway.app/api/steam/auth/callback
+FRONTEND_BASE_URL=https://gaming-backlog-ten.vercel.app
+STEAM_DEV_SYNC_SAMPLE=false
+```
+
+Do not use localhost Steam OpenID URLs in Railway production.
+
+After Railway deploys, verify:
+
+- `https://gaming-backlog-production.up.railway.app/healthz` returns `200`.
+- `https://gaming-backlog-production.up.railway.app/api/meta/status-groups`
+  still returns `200`.
+- `https://gaming-backlog-production.up.railway.app/api/steam/account` no longer
+  returns generic `404`; unauthenticated it should return an auth error such as
+  `401 No token provided`.
+- On `https://gaming-backlog-ten.vercel.app/steam/import`, the initial Steam
+  account/import-candidate requests no longer fail with generic `404`.
+- Link Steam uses
+  `https://gaming-backlog-production.up.railway.app/api/steam/auth/start` and
+  reaches Steam OpenID instead of returning `404`.
+- After linking, manually sync the Steam library and check reviewed import,
+  `/steam/library`, private playtime/last-played display, and achievement
+  summary sync on one linked game.
+
+Resolution note:
+
+- Resolved on 2026-07-03 at about 21:48 Israel time.
+- Railway deployment `dc64ad8a-a200-4bb1-a3e9-2d534cc39f93` succeeded.
+- Commit deployed: `6ab7ec6 Trigger production redeploy`.
+- Smoke checks passed:
+  - `/healthz` returned `200`.
+  - `/api/meta/status-groups` returned `200`.
+  - unauthenticated `/api/steam/account` returned `401`, confirming the Steam
+    backend route exists and is protected by auth.
+- Remaining production verification: user should test the real Steam link/sync
+  flow from the Vercel frontend with their logged-in account.
+
+## Local Steam Sync Review Work - 2026-07-03
+
+Local-only work after the production deploy handoff added a Steam activity
+review layer. This is the next Steam polish batch to test, commit, and deploy
+after the base Steam production backend is confirmed live.
+
+- Added migration `010_add_steam_activity_observed.sql`.
+- Added nullable `user_game_sources.first_play_observed_at` and
+  `first_play_observed_playtime_minutes`.
+- Steam sync now detects games that move from no Steam playtime to Steam
+  playtime after a previous sync.
+- The first Steam sync does not mark all historical played games as newly
+  started.
+- `/api/steam/sync` returns `syncReview` with:
+  - `startedPlaying`
+  - `statusSuggestions`
+  - `newSteamGames`
+- Added a small Steam-specific apply endpoint:
+  `POST /api/steam/games/:gameId/status-suggestion`.
+- The apply endpoint only changes linked Steam backlog games to `playing`; it
+  optionally fills `started_at` only if the game has no started date.
+- Steam Import opens a persistent Steam Sync Review modal after sync when there
+  are actionable items.
+- Steam Import now has a `Newly played` pile and badge for first observed Steam
+  play activity.
+- Steam Library metrics include `Newly played`.
+- Steam Import and Steam Library now show a long-running sync start toast before
+  waiting for the backend response.
+- The last actionable Steam Sync Review is saved locally in browser storage and
+  can be reopened from Steam Import or Steam Library.
+- Steam Import can initialize from `?q=`, `?group=`, `?status=`, and
+  `?review=last`.
+- Linked backlog cards show a subtle `Started on Steam?` chip when recent Steam
+  activity suggests a non-playing/non-done status may be stale.
+- Game details show a Steam activity note when recent first-observed Steam play
+  may need review.
+- Steam Library detail drawers show first-observed play and always offer an
+  `Open in import` action for repair/review.
+
+Checks already run locally:
+
+```bash
+npm run test -- backend/services/steamService.test.js src/utils/steamImport.test.js
+npm run lint
+npm run db:migrate:local
+npm run build
+```
+
 ## Prompt For The Next Chat
 
-Copy this into the next chat:
+Copy this into the next chat when starting a new topic:
 
 ```text
 We are working in:
@@ -303,59 +502,34 @@ Please first read:
 - docs/planning/steam-integration-handoff.md
 - DEVELOPMENT.md
 
-Context:
-We implemented Steam Integration V1/V1.1 on top of the existing catalog:
-- Steam account link via OpenID
-- manual owned-library sync using backend STEAM_WEB_API_KEY
-- user_external_accounts
-- user_game_sources
-- steam_import_candidates
-- external_game_ids(source='steam')
-- /steam/import reviewed import flow with a calmer opening view
-- grouped/paginated review queue
-- visible search/review filters, default-closed Advanced tools, inline status
-  editing, larger Steam capsule art, and one primary row action
-- match correction and status-before-import
-- attach to existing backlog games
-- per-game Steam link card in edit modal
-- Steam ownership/playtime badges and filters
-- duplicate prevention and duplicate cleanup/merge
-- Steam actual hours display policy via src/utils/hours.js
-- /steam/library synced-app overview with search, filters, sorting, compact
-  achievement display, Store/Review actions, and batch sync actions
-- Steam last-played display/filter/sort
-- Steam Achievements Summary V1: private summary-only unlocked/total/percent,
-  status, sync timestamp, and failure state on user_game_sources
-- achievement sync for one linked game, all linked Steam backlog games, and
-  cooldowned achievement refresh during normal manual Steam library sync
-- local dev runner/port cleanup and backend graceful shutdown hardening
+Before doing anything, run:
+- git status --short --branch
 
-Do not code yet. I want to plan the next Steam integration product/design layer
-before implementation.
+Important current context:
+- This is a full-stack JavaScript gaming backlog app.
+- Frontend: React 18, Vite, Tailwind, React Router.
+- Backend: Express, PostgreSQL via pg, JWT auth, Celebrate/Joi validation.
+- Production is Vercel frontend + Railway backend/Postgres.
+- main is production, Dev is integration.
+- Steam integration work is currently local-only after a production Railway deploy issue.
+- Do not push or deploy more Steam changes until the Railway production handoff in docs/planning/steam-integration-handoff.md is resolved or explicitly revisited.
+- There are uncommitted local Steam changes, including migration 010 and Steam Sync Review polish. Treat them as user/session work; do not revert them.
 
-Please help me brainstorm and decide what should come next for Steam. Cover
-ideas from small to big, including:
-- richer achievement modal/details, full per-achievement data, global rarity,
-  completion insights, and achievement-based status suggestions
-- better Steam Library power tools, row/detail drawers, bulk repair, and match
-  repair without always jumping to /steam/import
-- smarter import/review rules for non-games, DLC, demos, editions, alternate
-  names, hidden apps, and ignored/reviewed state
-- sync behavior: manual-only, prompted after library sync, scheduled/background,
-  cooldowns, and clearer changed-vs-checked messaging
-- source/hour rules: Steam actual time vs HLTB/RAWG/manual estimates,
-  preferred/locked hours, and insights behavior
-- public/privacy controls for Steam ownership, playtime, last played, and
-  achievements
-- wishlist or other Steam data if realistically available
+Steam state summary:
+- Steam account linking, manual library sync, reviewed import, duplicate prevention/cleanup, Steam Library, Steam actual hours, last played, private achievement summaries, and edit-game Steam linking exist.
+- Local unpushed work added first-observed Steam play tracking, Steam Sync Review, a Newly played pile, last-review reopen, subtle backlog activity signals, and Steam Library drawer polish.
+- Steam is considered a good stopping point for now unless I explicitly choose another Steam feature.
+- Future Steam ideas are documented: scheduled/background sync, public/privacy controls, achievement detail modal/full achievements/global rarity, better started/finished date suggestions, richer completion/status suggestions, and wishlist investigation.
 
-For each option, explain:
-1. what the user would see
-2. what data/backend changes it would require
-3. UX risks and clutter risks
-4. API/privacy/rate-limit risks
-5. whether it belongs in small polish, V1.2, or later
+Goal for this new chat:
+Help me decide and plan the next feature or improvement for the project overall, not necessarily Steam.
+Start by summarizing what you understand from the docs in a few bullets, then suggest 5-8 good next feature directions with tradeoffs.
+For each direction, explain:
+1. user value
+2. likely UI/UX shape
+3. backend/data impact
+4. risks or complexity
+5. whether it is small polish, medium feature, or big project
 
-End by recommending a phased plan and asking me to choose the important product
-decisions before any coding starts.
+Do not code until I choose a direction.
 ```
