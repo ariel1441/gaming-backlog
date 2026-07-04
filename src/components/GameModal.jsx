@@ -100,7 +100,13 @@ function TimelineRow({ label, value }) {
   );
 }
 
-export default function GameModal({ game, onClose, onRefresh, onGameRefresh }) {
+export default function GameModal({
+  game,
+  onClose,
+  onRefresh,
+  onGameRefresh,
+  readOnly = false,
+}) {
   const [showDescription, setShowDescription] = useState(false);
   const [syncingAchievements, setSyncingAchievements] = useState(false);
   const [localAchievements, setLocalAchievements] = useState(null);
@@ -347,16 +353,18 @@ export default function GameModal({ game, onClose, onRefresh, onGameRefresh }) {
                                     </div>
                                   ) : null}
                                 </div>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={syncAchievements}
-                                  disabled={syncingAchievements}
-                                >
-                                  <Trophy className="h-4 w-4" aria-hidden="true" />
-                                  {syncingAchievements ? "Syncing..." : "Sync"}
-                                </Button>
+                                {!readOnly ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={syncAchievements}
+                                    disabled={syncingAchievements}
+                                  >
+                                    <Trophy className="h-4 w-4" aria-hidden="true" />
+                                    {syncingAchievements ? "Syncing..." : "Sync"}
+                                  </Button>
+                                ) : null}
                               </div>
                               {achievements.percent != null ? (
                                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-elevated">
@@ -372,7 +380,7 @@ export default function GameModal({ game, onClose, onRefresh, onGameRefresh }) {
                                 </div>
                               ) : null}
                               <div className="mt-2 text-xs text-content-muted">
-                                Steam achievements are private here and update only when you sync.
+                                Steam achievements are private here and update only from sync actions.
                                 {achievementSyncedAt ? ` Last synced ${achievementSyncedAt}.` : ""}
                               </div>
                             </div>

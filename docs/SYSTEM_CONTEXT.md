@@ -18,7 +18,8 @@ Tech stack:
 - Frontend: React 18, Vite, React Router, Tailwind CSS, Recharts, dnd-kit.
 - Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
 - Deployment model: Vercel frontend, Railway backend/Postgres.
-- Main app routes: `/`, `/discover`, `/insights`, `/u/:username`.
+- Main app routes: `/`, `/discover`, `/timeline`, `/insights`,
+  `/u/:username`.
 
 ## Commands
 
@@ -69,13 +70,16 @@ deliberately set.
 - Browse the Discover catalog at `/discover`, search RAWG on demand, inspect
   catalog metadata, and add catalog games into the personal backlog.
 - Link a Steam account, manually sync owned Steam games into a private import
-  review queue, attach Steam ownership/playtime to existing backlog games, and
-  import reviewed catalog matches into the backlog.
+  review queue, attach Steam ownership/playtime to existing backlog games,
+  import reviewed catalog matches into the backlog, and review newly detected
+  Steam activity after sync.
 - Enrich games from Postgres catalog metadata, RAWG metadata, and local HLTB
   data while preserving user-entered fields.
 - Cache catalog search results, curated Discover shelves, external ids, and
   full metadata in Postgres with stale/failure fallback behavior.
 - Search, filter, sort, and drag-reorder games.
+- View a private read-only Timeline page grouped by month from existing
+  started and finished game dates.
 - Detect obvious duplicate titles before adding a game. The backend repeats the
   duplicate check per user before insert.
 - Use guest/demo sessions cloned from a template user.
@@ -157,8 +161,9 @@ Database:
 - `user_external_accounts`: linked external user accounts; Steam V1 stores
   SteamID64, persona/profile fields, sync status, timestamps, and failure state.
 - `user_game_sources`: user-specific ownership/source rows; Steam V1 stores
-  owned app IDs, actual playtime, last played, and private achievement summary
-  data without overwriting personal game fields.
+  owned app IDs, actual playtime, last played, first observed play activity,
+  and private achievement summary data without overwriting personal game
+  fields.
 - `steam_import_candidates`: persisted Steam import review queue with proposed
   catalog matches, duplicate links, ignored/imported decisions, suggested or
   selected import status, and sync data.
@@ -198,7 +203,9 @@ Routes:
 
 - `/` - private backlog app.
 - `/discover` - catalog browse/search/add flow.
-- `/steam/import` - Steam account link/sync and reviewed import flow.
+- `/steam/import` - Steam account link/sync, reviewed import flow, and Steam
+  Sync Review for newly detected activity.
+- `/timeline` - private read-only chronological started/finished date feed.
 - `/insights` - analytics dashboard.
 - `/u/:username` - public read-only profile.
 
@@ -250,6 +257,8 @@ Important components/pages:
   coordinator.
 - `src/pages/DiscoverPage.jsx` - Discover catalog route, curated shelves,
   search, filters, detail modal, metadata refresh, and add-to-backlog flow.
+- `src/pages/TimelinePage.jsx` - private started/finished event feed grouped
+  by month with filters and detail-modal opening.
 - `src/pages/SteamImportPage.jsx` - Steam link/sync surface and import review
   queue with match correction.
 - `src/pages/Backlog/BacklogPanels.jsx` - private backlog panel rendering.
@@ -308,13 +317,18 @@ Styling:
 - Steam data is private in V1. Public profile serializers should not expose
   Steam ownership or playtime until explicit privacy controls exist.
 - Steam sync is manual-only in V1. A failed/private Steam API response updates
-  sync state but must not break normal backlog reads.
+  sync state but must not break normal backlog reads. Manual sync can return a
+  private Steam Sync Review when it finds new activity that may need user
+  action.
 - Steam actual playtime is stored separately from `games.how_long_to_beat`.
   Private backlog UI can show both. For finished and played-a-lot style
   statuses, Steam actual time can be the primary displayed hours; for planned or
   lightly played games, the estimate remains primary and Steam actual time is
   secondary when present. Insights currently prefers Steam actual time only for
   done-style status groups.
+- Steam never silently changes backlog status or dates from sync activity. It
+  may suggest marking a linked game as `playing` and optionally filling a
+  missing `started_at` when first observed Steam play is detected.
 
 ## Steam Integration Current Shape
 
@@ -346,12 +360,21 @@ Core decisions:
 - Backlog source filters exist for linked/unlinked Steam games, Steam playtime,
   Steam-without-playtime, recently-played-on-Steam, and achievement summary
   cases. Backlog sorting can also use Steam last played.
+- Linked backlog cards and game details can show subtle private Steam activity
+  signals, such as `Started on Steam?`, when recent first-observed play suggests
+  a non-playing/non-done status may be stale.
 - `/steam/library` is a calmer synced-library overview for all Steam apps. It
   reuses the persisted import-candidate data to browse/search/filter/sort apps
   by open review, linked/in-backlog, needs match, likely non-game, hidden
   states, playtime, last played, and achievement summary states. Rows can open
   a detail/repair drawer for store, achievement sync, restore/hide, catalog
-  match repair, linking to an existing backlog game, and add/link actions.
+  match repair, linking to an existing backlog game, and add/link actions. It
+  also shows first-observed Steam play activity and can reopen the last sync
+  review.
+- Steam Sync Review appears after manual sync when actionable changes exist:
+  newly played games, linked games whose status may be stale, and newly
+  discovered Steam games. The last actionable review is stored locally in the
+  browser so it can be reopened from `/steam/import` or `/steam/library`.
 - Steam achievements summary V1 is private and manual-only. It stores only
   unlocked count, total count, completion percent, status, last sync timestamp,
   and failure state on `user_game_sources`; per-achievement detail is deferred.
@@ -382,11 +405,11 @@ Known rough edges from real-library testing:
 - Hours source behavior now has a small preference model for auto, estimate,
   Steam actual, and locked display/insights choice. A deeper split between
   manual, HLTB, RAWG, and other estimates is still future work.
-- Wishlist import, background sync, full achievement detail, achievement-based
-  status suggestions, global achievement rarity, and public Steam privacy
-  settings are deliberately not in V1. Last-played and achievement summary
-  storage/private UI now exist, but status-suggestion logic based on Steam
-  signals remains future work.
+- Wishlist import, background/scheduled sync, full achievement detail, global
+  achievement rarity, richer achievement-based status suggestions, better
+  started/finished date intelligence, and public Steam privacy settings are
+  deliberately not in V1. Last-played, first-observed play, achievement summary,
+  and conservative private activity suggestions now exist.
 
 ## Known Current Risks
 
@@ -435,8 +458,8 @@ Known rough edges from real-library testing:
 - Catalog/metadata V1 exists, including migrations `004` and `005`, Discover,
   Postgres catalog cache, manual refresh, curated shelves, and provider-neutral
   external ids.
-- Steam Integration V1/V1.2 exists behind migrations `006`, `007`, `008`, and
-  `009`: linked
+- Steam Integration V1/V1.2 plus the local activity-review polish exists behind
+  migrations `006`, `007`, `008`, `009`, and `010`: linked
   account, manual sync, persisted reviewed imports, duplicate attachment,
   searchable grouped/paginated import review, state-aware pile counts,
   whole-group actions, per-candidate status selection, manual Steam app linking
@@ -446,8 +469,9 @@ Known rough edges from real-library testing:
   `src/utils/hours.js`, using Steam actual time as primary for finished and
   played-a-lot style statuses, while keeping estimates primary for planned or
   lightly played games and showing Steam time secondarily when useful. Steam
-  last played is exposed privately in backlog cards/details, sorting/filtering,
-  edit Steam card context, and the dedicated `/steam/library` page. Steam
+  last played and first-observed Steam play are exposed privately in backlog
+  cards/details, sorting/filtering, edit Steam card context, Steam Sync Review,
+  and the dedicated `/steam/library` page. Steam
   Achievements Summary V1 stores private per-user summary fields on
   `user_game_sources`, exposes per-game and batch sync endpoints, participates
   in normal manual Steam sync for linked backlog games, and appears subtly in

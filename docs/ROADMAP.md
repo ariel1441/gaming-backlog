@@ -28,11 +28,118 @@ Current direction:
 - [ ] Phase 4: improve insights, public/social features, and recommendations.
 - [ ] Phase 5: add deeper polish, tests, ops, and long-term product features.
 
+Near-term product direction under consideration after Steam V1/V1.2:
+
+1. Account/settings area.
+2. Priority / Next Up queue.
+3. Timeline page. Done 2026-07-03 for V1: `/timeline` shows private
+   started/finished events grouped by month with type/year filters and
+   read-only game detail opening.
+4. Wishlist/catalog relationship cleanup only if the existing wishlist status
+   becomes too limited.
+5. Insights V2.
+6. Personal tags/mood/platform organization.
+7. Public profile privacy/showcase controls.
+
+Steam is a good stopping point for now. Do not expand Steam further unless the
+next chosen feature is explicitly Steam-related, and do not push/deploy the
+local Steam activity-review batch until the Railway production handoff is
+resolved.
+
 ## Updated Working Roadmap
 
 This is the current combined plan after Phase 0. It includes the original
 improvement ideas plus the latest requested priorities. Future agents should
 prefer this section when choosing what to implement next.
+
+### Candidate New Pages And Tabs
+
+This section captures the current product-shape discussion before choosing the
+next implementation. External pattern scan, 2026-07-03: Backloggd emphasizes
+collection, wishlist, play sessions/journaling, platform ownership, reviews,
+friend activity, and custom lists; RAWG is strong on discovery pages such as
+new releases, release calendar, platforms, stores, collections, genres, and
+trending games; Grouvee frames libraries as shelves such as Playing, Played,
+Backlog, Wish List, and custom shelves; Completionator is more power-user
+oriented with platform/condition tracking, backlog progress, tags/lists,
+imports, collection value, and completion times.
+
+Detailed research notes, feature breakdowns, V1/later scopes, data-model ideas,
+privacy risks, and QA prompts live in
+[`planning/product-research-long-term-plan.md`](planning/product-research-long-term-plan.md).
+
+Recommended page/tab candidates for this app:
+
+- **Settings**:
+  - user value: gives account/profile/preferences/data controls a permanent
+    home instead of relying on scattered modals and menus
+  - likely UI: `/settings` with sections for account basics, public profile,
+    preferences, data export/delete, and integrations later
+  - backend/data impact: medium for username/password; larger for email and
+    password reset
+  - risk: account security, username/public URL changes, and delete-account
+    data handling
+  - size: medium if scoped to account settings/change password; big if it
+    includes email recovery, export/import, and account deletion
+- **Timeline**:
+  - user value: turns the backlog into a personal gaming history, not only a
+    management board
+  - likely UI: `/timeline` with month/year groups, filters for added/started/
+    finished/rated/status changes, and game cards or compact activity rows
+  - backend/data impact: small/medium if generated from current fields such as
+    `created_at`, `started_at`, `finished_at`, score, and Steam activity; big
+    if a durable `activity_events` table is added
+  - risk: generated timelines can miss historical edits and status-change
+    history unless events are persisted going forward
+  - size: medium for generated V1; big for event-sourced activity history
+  - V1 status: done 2026-07-03 for started/finished events only; added/status/
+    score history, journal entries, and public activity remain future work
+- **Next Up**:
+  - user value: directly answers "what should I play next?"
+  - likely UI: `/next-up` or a Backlog tab with a ranked queue, pinned games,
+    short-game/high-priority filters, and a queue-aware Surprise Me action
+  - backend/data impact: small/medium depending on whether this is
+    `games.priority`, `games.pinned_at`, or a separate ordered queue
+  - risk: it must not fight the existing status/position ordering model
+  - size: small polish for a priority field; medium for a full ranked queue
+- **Library**:
+  - user value: one place for every game relationship: backlog, wishlist,
+    Steam-owned, hidden, ignored, and later non-Steam ownership
+  - likely UI: eventual `/library` that generalizes `/steam/library` rather
+    than replacing the focused backlog board
+  - backend/data impact: big if it needs a unified user-catalog relationship
+    model
+  - risk: overlap/confusion with Backlog, Discover, and Steam Library
+  - size: big project; defer until relationship modeling is chosen
+- **Lists**:
+  - user value: lets users create ranked or unranked personal collections such
+    as "cozy games", "best short games", "2026 completions", or "play with
+    friends"
+  - likely UI: `/lists` plus list detail pages, public/private flag, and add to
+    list actions from game cards/modals
+  - backend/data impact: medium/big through `lists` and `list_games`
+  - risk: can overlap with tags, public profile modules, and Next Up
+  - size: medium/big
+- **Journal / Play Log**:
+  - user value: captures active play sessions and progress notes, making the app
+    feel alive between status changes
+  - likely UI: `/journal` or Timeline-integrated entries with date, game,
+    minutes played, and note
+  - backend/data impact: medium/big through play-session rows
+  - risk: data entry friction; should be optional and lightweight
+  - size: medium for simple entries; big for session analytics
+- **Goals / Challenges**:
+  - user value: gives long-term motivation, such as finish 12 games this year
+    or clear five short games
+  - likely UI: `/goals` with progress cards and links back to filtered backlog
+  - backend/data impact: medium
+  - risk: goals should be flexible enough without becoming a separate project
+    manager
+  - size: medium/big
+
+Current best pair to build next: **Settings** for structure and **Timeline** for
+personality. **Next Up** is the best small-to-medium follow-up for immediate
+daily value.
 
 ### Phase 1: Core UX, Styling, And Bug Fixes
 
@@ -197,7 +304,11 @@ Game discovery/add flow:
 - [x] Add metadata loading/unavailable states while search/enrichment is
   happening. Done 2026-06-30: search/detail/load-more prefer cached/stale data
   and show friendly unavailable states.
-- [ ] Add wishlist/owned states as separate catalog relationship flows.
+- [ ] Revisit wishlist/owned states as separate catalog relationship flows only
+  if the current wishlist-as-status model becomes limiting. Today, wishlist
+  already exists as a normal backlog status, so this is not a duplicate "add a
+  wishlist status" task. The future question is whether Discover/catalog should
+  support a lighter saved relationship before a game fully enters the backlog.
 - [ ] Add "change catalog match" for existing backlog items that are linked to
   the wrong catalog game.
 - [ ] Add manually editable metadata override fields only if a real user need
@@ -228,6 +339,20 @@ manage.
 
 Account/auth:
 
+- Preferred next account step: build a real `/settings` page before adding
+  deeper account recovery. This gives the app a permanent home for account,
+  public profile, preferences, data, and later integration controls.
+- Settings V1 candidate:
+  - route: `/settings`
+  - account basics: current username display, change password, optional change
+    username after deciding public URL behavior
+  - public/profile: reuse current public profile toggle, public link, favorite
+    game picker, and `ProfileSnapshot`
+  - preferences: default backlog view/sort/filter and eventually saved My Genre
+    or tag presets
+  - data: CSV/JSON export first; delete account later with careful confirmation
+  - integrations: link to Steam Import/Steam Library for now, but avoid new
+    Steam scope while the production handoff is unresolved
 - Add "forgot password" flow:
   - request reset
   - reset token storage/expiry
@@ -320,6 +445,13 @@ Steam integration:
   clearer about checked versus changed apps, summary-based completion/status
   suggestions appear privately, and games now have `auto`/`estimate`/
   `steam_actual` hours source preference plus a lock flag.
+- [x] Add Steam Sync Review and final local Steam polish. Done locally
+  2026-07-03, not pushed while production Railway deploy is unresolved:
+  migration `010_add_steam_activity_observed.sql` tracks first-observed Steam
+  play, manual sync can return a persistent Steam Sync Review, Steam Import has
+  a `Newly played` pile, linked backlog cards/details show subtle stale-status
+  activity signals, Steam Library can reopen the last sync review, and the
+  detail drawer shows first-observed play plus `Open in import` repair actions.
 - [x] Harden local dev port handling during the Steam work. Done 2026-07-02:
   `npm run dev` now uses `scripts/dev.js` to clean stale Node listeners on the
   expected ports, start backend/frontend together, and stop both when either
@@ -341,8 +473,24 @@ Steam V1 implementation notes:
 - Manual sync is the V1 sync model. Owned-library sync remains user-triggered;
   it may also refresh cooldown-eligible achievement summaries for linked
   backlog games. Background jobs and scheduled sync remain later phases.
+- Steam sync suggestions do not silently change personal backlog data. Steam
+  can suggest `playing` and an optional missing `started_at` based on first
+  observed play, but user action is required.
 
-Immediate Steam polish and bug-fix candidates:
+Steam status before moving to another topic:
+
+- Steam is a good stopping point for now after V1/V1.2 plus local activity
+  review polish. Do not keep expanding Steam unless the next feature choice is
+  explicitly Steam-related.
+- Before pushing/deploying this local Steam batch, resolve the Railway backend
+  deploy handoff in `docs/planning/steam-integration-handoff.md`, then decide
+  whether these local changes should be committed/deployed together or split.
+- Run one real-library QA pass before shipping the local polish:
+  `/steam/import` sync review, `Newly played` pile, last-review reopen,
+  `/steam/library` detail drawer, backlog `Started on Steam?` chips, game modal
+  Steam activity note, and the status-suggestion action.
+
+Later Steam polish and bug-fix candidates:
 
 - Run another real-library QA pass before calling Steam V1.2 done-for-now:
   `/steam/library` filters/search/load-more/detail drawer, restore/hide, change
@@ -358,6 +506,9 @@ Immediate Steam polish and bug-fix candidates:
 - Improve duplicate cleanup UI: explain what will be kept, what will be merged,
   which Steam source rows move, and what fields are preserved.
 - Add better empty/error/private-library states for real Steam accounts.
+- Consider an achievement summary modal if Steam becomes the next focus again:
+  clickable summary, unlocked/total/percent, last sync, private/unavailable
+  explanation, and a sync action without storing full per-achievement data yet.
 
 Steam matching improvements:
 
@@ -402,6 +553,19 @@ Steam future feature candidates:
   - completion achievement heuristics where reliable
   - achievement-based status suggestions
   - achievement privacy controls before any public profile exposure
+- Scheduled/background sync:
+  - user setting to opt in/out; default off until behavior feels trustworthy
+  - probably daily at most, with cooldowns and last-success/failure timestamps
+  - background sync should create a review item/notification, not mutate backlog
+    statuses or dates silently
+  - design needed for what the user sees when the app opens after a background
+    sync found activity
+  - needs Railway/job/cron feasibility review before implementation
+- Date intelligence:
+  - Steam cannot reliably provide true first-played or finished dates
+  - first-observed play is now tracked locally and can suggest started dates
+  - finished dates should remain manual or prompted by conservative signals
+    such as achievements/playtime, not auto-filled from Steam
 - Recently played / last played:
   - private display/filter/sort baseline exists
   - use last played to suggest "played and should come back" or "played and
@@ -432,9 +596,19 @@ Steam future feature candidates:
 
 Library management:
 
-- Priority field.
-- "Next up" queue.
-- Pinned games.
+- Priority / Next Up is the preferred next library-management feature after
+  settings:
+  - small V1 option: add `games.priority` with filters/sort and card/detail
+    display
+  - stronger V1 option: add a ranked `Next Up` queue using a nullable rank or a
+    separate queue table
+  - UI: `/next-up` page or Backlog tab with queue cards, quick promote/remove,
+    short-game/high-priority filters, and a queue-aware Surprise Me action
+  - risk: keep it clearly separate from existing status rank and manual
+    position ordering
+- Pinned games:
+  - may be useful as a lightweight alternative to a ranked queue
+  - consider `pinned_at` if "I want this visible" matters more than exact order
 - Platforms owned or intended platform. Lower priority for this project because
   the primary personal use case is Steam-only; revisit if non-Steam tracking or
   public-profile detail becomes important.
@@ -448,6 +622,11 @@ Library management:
   - borrowed
   - wishlist
 - Tags beyond genre:
+  - current state: add/edit supports multi-value personal "My Genre" style
+    entries and catalog metadata already stores RAWG tags; there is not yet a
+    separate first-class personal tag system
+  - treat this as "personal organization beyond genre", not a duplicate of
+    catalog tags
   - mood
   - difficulty
   - co-op
@@ -509,11 +688,42 @@ Started/finished date integration:
   - monthly finished-game stats if yearly becomes too coarse
   - currently playing duration and active backlog aging buckets
 
+Timeline page:
+
+- [x] Build a dedicated `/timeline` page as a personal history surface distinct
+  from Insights. Done 2026-07-03: V1 is read-only, generated from existing
+  `started_at` and `finished_at` fields, grouped by month/year, filterable by
+  event type and year, and opens the existing game detail modal from compact
+  event rows.
+- Future generated-data additions:
+  - added date after `games.created_at` exists
+  - score/favorite/current-status snapshots only if the copy makes clear they
+    are current state, not historical changes
+  - local Steam first-observed play activity after the local Steam batch is
+    shipped and the privacy/product model is revisited
+- Future durable activity model:
+  - add an `activity_events` or `game_events` table for status changes, score
+    changes, notes/reviews, favorite changes, manual journal entries, imports,
+    and sync review events
+  - start recording events prospectively without trying to reconstruct every
+    historical edit
+  - decide public/privacy behavior before exposing activity on public profiles
+- Timeline should complement Insights:
+  - Timeline is chronological and personal
+  - Insights is aggregate and analytical
+  - public profile recent activity can reuse Timeline/event data later
+
 Insights improvements:
 
 - Defer the next full Insights redesign until the underlying metrics/data model
   are revised, so the layout follows the real information instead of polishing
   temporary charts.
+- Insights V2 should follow after Timeline/Next Up clarify the most useful
+  user questions:
+  - what did I play this year?
+  - what am I stuck on?
+  - what should I finish next?
+  - which games are missing useful metadata?
 - Score distribution.
 - Hours by personal genre.
 - Hours by platform/source after those fields exist.
@@ -543,6 +753,10 @@ Public profile:
     picker/reorder flow, and public/settings profile snapshots show the ranked
     poster shelf from the user's own backlog.
   - optional shareable "my backlog" summary card later
+- Preferred next public-profile step is not another standalone modal. Fold
+  public profile controls into `/settings` while keeping the current
+  `PublicSettingsModal` behavior available until the settings page fully
+  replaces it.
 - Later public profile sections after the underlying fields exist:
   - completed highlights
   - wishlist/next up if public
@@ -566,11 +780,14 @@ Public profile:
   - profile modules the user can reorder later: favorites, activity, reviews,
     lists, badges, stats, currently playing, and library snapshot
 - Privacy controls:
+  - model these in settings before exposing more fields publicly
   - thoughts
   - scores
   - started/finished dates
   - abandoned games
   - specific fields or sections
+  - Steam ownership, playtime, last played, and achievements only after explicit
+    privacy controls exist; default remains private
 - Public profile filtered URLs for sharing subsets in the full-library view.
 - Styling/profile customization ideas:
   - favorite-games poster shelf first, profile stats second, activity/reviews
@@ -1150,8 +1367,10 @@ Deferred non-blocking cleanup:
 
 ## New Feature Ideas
 
-- Backlog priority field.
-- "Next up" queue.
+- Account/settings page. Current preferred next feature.
+- Timeline page. Done V1 for started/finished date feed; future durable
+  activity/journal work remains.
+- Backlog priority field / "Next up" queue.
 - Pinned games.
 - Platforms owned or intended platform to play on.
 - Ownership source: Steam, Epic, Game Pass, PlayStation, Switch, physical,
@@ -1160,14 +1379,20 @@ Deferred non-blocking cleanup:
 - Tags beyond genre: mood, difficulty, co-op, replayable, short game, comfort
   game, requires focus.
 - Play sessions and actual time tracking.
+- Journal / play log.
+- Custom lists, ranked or unranked, private or public.
+- Goals/challenges, such as yearly completion goals or short-game cleanup.
 - Completion review: final notes, final score, date, screenshots/link.
 - CSV/JSON import and export.
-- Steam import.
+- Steam import. Done baseline; future work is documented in
+  `docs/planning/steam-integration-handoff.md`.
 - Bulk edit for status, genre, platform, tags, visibility, or archive state.
 - Archive/hide games.
 - Custom per-user statuses and per-user status order.
 - Public profile sections: user-selected favorites, currently playing,
-  recently finished, completed, wishlist/next-up later.
+  recently finished, completed, wishlist/next-up later. Favorites/currently
+  playing/recently finished are done baseline; completed/wishlist/next-up and
+  privacy-controlled activity remain future work.
 - Admin/dev tools page for cache status, environment summary, demo template
   health, and DB connectivity.
 
@@ -1175,7 +1400,8 @@ Deferred non-blocking cleanup:
 
 - Replace panel toggles with a more app-like command toolbar or responsive top
   bar on mobile. Done baseline.
-- Add a dense list/table view for large libraries.
+- Add a dense list/table view for large libraries. A list mode exists; a true
+  table/virtualized large-library view remains future work.
 - Add card size options or compact mode. Done baseline with grid, compact, and
   list modes.
 - Add group-by controls, especially group by status/platform/priority.
@@ -1197,17 +1423,18 @@ Deferred non-blocking cleanup:
 
 ## Organization And Structure
 
-- Split `src/App.jsx` into route/page components:
+- Split `src/App.jsx` into route/page components. Done baseline:
   - `BacklogPage`
   - `BacklogToolbar`
   - `BacklogPanels`
   - `BacklogModals`
-- Create shared domain utilities for:
+- Create shared domain utilities. Done baseline for game list/filter/date logic;
+  continue opportunistically:
   - game ordering
   - game filtering
   - game display normalization
   - metadata serialization
-- Move private-backlog-specific code into `src/pages/Backlog/`.
+- Move private-backlog-specific code into `src/pages/Backlog/`. Done baseline.
 - Keep reusable UI in `src/components/`.
 - Consider a backend `services/` layer for RAWG, HLTB, game serialization, and
   insights calculations after tests exist.

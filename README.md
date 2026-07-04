@@ -8,6 +8,7 @@ play next, and sharing a read-only public profile.
 - Track games by status, personal genre, score, thoughts, dates, and estimated
   hours.
 - Search, filter, sort, and manually reorder games.
+- View a private read-only timeline built from started and finished dates.
 - Use authenticated private collections with public profile sharing.
 - Offer guest/demo flows for trying the app without keeping an account.
 - Show insight charts for backlog composition and playtime.

@@ -8,6 +8,7 @@ import InsightsTab from "./pages/Insights/InsightsPage";
 import PublicProfile from "./pages/PublicProfile";
 import SteamImportPage from "./pages/SteamImportPage";
 import SteamLibraryPage from "./pages/SteamLibraryPage";
+import TimelinePage from "./pages/TimelinePage";
 
 const App = () => {
   return (
@@ -18,6 +19,7 @@ const App = () => {
             <Routes>
               <Route path="/" element={<BacklogPage />} />
               <Route path="/discover" element={<DiscoverPage />} />
+              <Route path="/timeline" element={<TimelinePage />} />
               <Route path="/steam/library" element={<SteamLibraryPage />} />
               <Route path="/steam/import" element={<SteamImportPage />} />
               <Route path="/insights" element={<InsightsTab />} />

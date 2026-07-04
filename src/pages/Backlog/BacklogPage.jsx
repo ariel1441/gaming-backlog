@@ -206,6 +206,7 @@ export default function BacklogPage() {
     setIsReversed(false);
   };
   const goInsights = () => nav("/insights");
+  const goTimeline = () => nav("/timeline");
   const goDiscover = () => nav("/discover");
   const goSteam = () => nav("/steam/import");
   const startLiveDemo = async () => {
@@ -356,6 +357,7 @@ export default function BacklogPage() {
               showLogin: () => setShowAdminLogin(true),
               showPublicSettings: () => setShowPublicSettings(true),
               goInsights,
+              goTimeline,
               goDiscover,
               goSteam,
               isGuest,

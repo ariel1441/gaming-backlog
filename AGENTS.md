@@ -8,7 +8,8 @@ scripts, and current git state over older notes in markdown files.
 - Full-stack JavaScript app for tracking a gaming backlog.
 - Frontend: React 18, Vite, Tailwind CSS, React Router, Recharts, dnd-kit.
 - Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
-- Main app routes: `/`, `/insights`, and public profiles at `/u/:username`.
+- Main app routes: `/`, `/discover`, `/timeline`, `/steam/import`,
+  `/steam/library`, `/insights`, and public profiles at `/u/:username`.
 - API routes live under `backend/routes/`; shared frontend API calls live under
   `src/services/`.
 

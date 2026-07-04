@@ -59,6 +59,15 @@ Run this before merging a larger UI/data branch to `main`.
 - Search/filter/sort public games.
 - Confirm edit/delete/reorder controls are not available.
 
+## Timeline
+
+- Open `/timeline` while logged in.
+- Confirm started and finished events are grouped by month.
+- Filter by started, finished, year, date preset, and search.
+- Open a Timeline item and confirm the game detail modal is read-only.
+- Confirm games without started or finished dates do not appear.
+- Confirm the empty state is friendly when no dated games or no filters match.
+
 ## Insights
 
 - Open `/insights` while logged in.

@@ -9,6 +9,7 @@ import {
   LogOut as IconLogout,
   User2 as IconUser,
   BarChart3 as IconInsights,
+  CalendarDays as IconTimeline,
   Sparkles as IconDemo,
   Compass as IconDiscover,
   Gamepad2 as IconSteam,
@@ -31,6 +32,11 @@ const Sidebar = ({
   const goInsights = () => {
     closeAllPanels();
     navigate("/insights");
+  };
+  const isTimeline = location.pathname.startsWith("/timeline");
+  const goTimeline = () => {
+    closeAllPanels();
+    navigate("/timeline");
   };
   const isDiscover = location.pathname.startsWith("/discover");
   const goDiscover = () => {
@@ -173,6 +179,15 @@ const Sidebar = ({
           onClick={goInsights}
           expanded={sidebarOpen}
         />
+        {authed && (
+          <SidebarRow
+            label="Timeline"
+            icon={IconTimeline}
+            active={isTimeline}
+            onClick={goTimeline}
+            expanded={sidebarOpen}
+          />
+        )}
         {authed && (
           <SidebarRow
             label="Discover"
