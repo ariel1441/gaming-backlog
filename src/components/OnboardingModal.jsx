@@ -1,13 +1,16 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { BarChart3, Edit3, GripVertical, PlayCircle, UserPlus } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button, Modal, useToast } from "./ui";
+import { preferredLandingPath } from "../utils/userPreferences";
 
 const ONBOARDING_KEY = "seen_onboarding_v1";
 
 export default function OnboardingModal({ open, onClose, onShowAuth }) {
   const { startDemo } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
 
   if (!open) return null;
 
@@ -22,6 +25,7 @@ export default function OnboardingModal({ open, onClose, onShowAuth }) {
     if (res?.success) {
       markSeen();
       onClose?.();
+      navigate(preferredLandingPath(res?.user));
     } else if (res?.error) {
       toast.error(res.error);
     }

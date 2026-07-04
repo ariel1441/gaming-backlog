@@ -24,6 +24,14 @@ export function setPublic(isPublic) {
   return api.patch("/api/auth/me/is-public", { is_public: isPublic });
 }
 
+export function updatePreferences(preferences) {
+  return api.patch("/api/auth/me/preferences", preferences);
+}
+
+export function updateProfile(profile) {
+  return api.patch("/api/auth/me/profile", profile);
+}
+
 export function startDemo() {
   return api.post("/api/demo/start");
 }

@@ -8,10 +8,16 @@ import React, {
 } from "react";
 import { getAuthToken, setAuthToken } from "../services/apiClient";
 import * as authService from "../services/authService";
+import { normalizeUserWithPreferences } from "../utils/userPreferences";
+import { normalizeUserWithProfile } from "../utils/userProfile";
 
 export const AuthContext = createContext(null);
 
 const DEMO_FLAG_KEY = "gb_demo_mode";
+
+function normalizeSessionUser(user) {
+  return normalizeUserWithProfile(normalizeUserWithPreferences(user));
+}
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => getAuthToken());
@@ -37,7 +43,7 @@ export const AuthProvider = ({ children }) => {
 
     setAuthToken(data.token);
     setToken(data.token);
-    setUser(data.user || null);
+    setUser(normalizeSessionUser(data.user) || null);
 
     try {
       if (demo) localStorage.setItem(DEMO_FLAG_KEY, "1");
@@ -49,8 +55,9 @@ export const AuthProvider = ({ children }) => {
 
   const loadUser = useCallback(async () => {
     const me = await authService.me();
-    setUser(me);
-    return me;
+    const normalized = normalizeSessionUser(me);
+    setUser(normalized);
+    return normalized;
   }, []);
 
   const isGuest = !!user?.is_guest;
@@ -96,7 +103,7 @@ export const AuthProvider = ({ children }) => {
 
       try {
         const me = await authService.me();
-        if (!ignore) setUser(me);
+        if (!ignore) setUser(normalizeSessionUser(me));
       } catch (err) {
         console.error("Failed to load /me:", err);
         if (!ignore && err?.status !== 0) clearSession();
@@ -118,8 +125,13 @@ export const AuthProvider = ({ children }) => {
         if (!applySession(data)) {
           return { success: false, error: "No token returned from server." };
         }
-        if (!data.user) await loadUser().catch(() => setUser(null));
-        return { success: true };
+        const nextUser = data.user
+          ? normalizeSessionUser(data.user)
+          : await loadUser().catch(() => {
+              setUser(null);
+              return null;
+            });
+        return { success: true, user: nextUser };
       } catch (err) {
         console.error("login() failed:", err);
         return {
@@ -137,9 +149,14 @@ export const AuthProvider = ({ children }) => {
         const data = await authService.register({ username, password });
         if (data?.token) {
           applySession(data);
-          if (!data.user) await loadUser().catch(() => setUser(null));
         }
-        return { success: true };
+        const nextUser = data?.user
+          ? normalizeSessionUser(data.user)
+          : await loadUser().catch(() => {
+              setUser(null);
+              return null;
+            });
+        return { success: true, user: nextUser };
       } catch (err) {
         console.error("register() failed:", err);
         return {
@@ -162,7 +179,10 @@ export const AuthProvider = ({ children }) => {
       if (!applySession(data, { demo: true })) {
         return { success: false, error: "No token from /demo/start" };
       }
-      return { success: true };
+      return {
+        success: true,
+        user: normalizeSessionUser(data.user),
+      };
     } catch (err) {
       console.error("startDemo failed:", err);
       return {
@@ -179,7 +199,10 @@ export const AuthProvider = ({ children }) => {
         if (!applySession(data)) {
           return { success: false, error: "No token returned from server." };
         }
-        return { success: true };
+        return {
+          success: true,
+          user: normalizeSessionUser(data.user),
+        };
       } catch (err) {
         console.error("keepDemo() failed:", err);
         return {
@@ -220,11 +243,70 @@ export const AuthProvider = ({ children }) => {
       try {
         const updated = await authService.setPublic(nextIsPublic);
         setUser((current) =>
-          current ? { ...current, ...updated } : updated
+          current ? normalizeSessionUser({ ...current, ...updated }) : normalizeSessionUser(updated)
         );
         return updated;
       } catch (err) {
         console.error("setPublic failed, rolling back:", err);
+        setUser(prev);
+        throw err;
+      }
+    },
+    [user]
+  );
+
+  const updatePreferences = useCallback(
+    async (nextPreferences) => {
+      if (!user) return null;
+
+      const prev = user;
+      const optimistic = normalizeSessionUser({
+        ...user,
+        preferences: {
+          ...(user.preferences || {}),
+          ...(nextPreferences || {}),
+        },
+      });
+      setUser(optimistic);
+
+      try {
+        const preferences = await authService.updatePreferences(nextPreferences);
+        const updated = normalizeSessionUser({
+          ...optimistic,
+          preferences,
+        });
+        setUser(updated);
+        return updated.preferences;
+      } catch (err) {
+        console.error("updatePreferences failed, rolling back:", err);
+        setUser(prev);
+        throw err;
+      }
+    },
+    [user]
+  );
+
+  const updateProfile = useCallback(
+    async (nextProfile) => {
+      if (!user) return null;
+
+      const prev = user;
+      const optimistic = normalizeSessionUser({
+        ...user,
+        ...(nextProfile || {}),
+      });
+      setUser(optimistic);
+
+      try {
+        const profile = await authService.updateProfile(nextProfile);
+        const updated = normalizeSessionUser({
+          ...optimistic,
+          ...profile,
+        });
+        setUser(updated);
+        return profile;
+      } catch (err) {
+        console.error("updateProfile failed, rolling back:", err);
         setUser(prev);
         throw err;
       }
@@ -248,6 +330,8 @@ export const AuthProvider = ({ children }) => {
       discardDemo,
       refreshMe,
       setPublic,
+      updatePreferences,
+      updateProfile,
     }),
     [
       user,
@@ -263,6 +347,8 @@ export const AuthProvider = ({ children }) => {
       discardDemo,
       refreshMe,
       setPublic,
+      updatePreferences,
+      updateProfile,
     ]
   );
 

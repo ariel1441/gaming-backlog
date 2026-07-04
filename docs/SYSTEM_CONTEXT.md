@@ -1,6 +1,6 @@
 # System Context
 
-Last updated: 2026-07-03
+Last updated: 2026-07-04
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
@@ -18,8 +18,8 @@ Tech stack:
 - Frontend: React 18, Vite, React Router, Tailwind CSS, Recharts, dnd-kit.
 - Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
 - Deployment model: Vercel frontend, Railway backend/Postgres.
-- Main app routes: `/`, `/discover`, `/timeline`, `/insights`,
-  `/u/:username`.
+- Main app routes: `/`, `/me`, `/settings`, `/discover`, `/timeline`,
+  `/insights`, `/u/:username`.
 
 ## Commands
 
@@ -78,6 +78,12 @@ deliberately set.
 - Cache catalog search results, curated Discover shelves, external ids, and
   full metadata in Postgres with stale/failure fallback behavior.
 - Search, filter, sort, and drag-reorder games.
+- View a signed-in owner profile dashboard at `/me` with favorites, currently
+  playing games, recently finished games, profile basics, basic stats, and app
+  shortcuts.
+- Manage settings at `/settings`: account context, account-backed backlog
+  preferences, profile basics, public-profile visibility, favorite
+  public-profile games, CSV export, and Steam integration shortcuts.
 - View a private read-only Timeline page grouped by month from existing
   started and finished game dates.
 - Detect obvious duplicate titles before adding a game. The backend repeats the
@@ -96,7 +102,8 @@ Entry point:
 
 Routes:
 
-- `backend/routes/auth.js` - register, login, `/me`, public-profile toggle.
+- `backend/routes/auth.js` - register, login, `/me`, public-profile toggle,
+  account preference updates, and profile basics updates.
 - `backend/routes/demo.js` - guest session start, keep, discard, heartbeat.
 - `backend/routes/games.js` - authenticated game CRUD, enrichment, reorder.
 - `backend/routes/catalog.js` - authenticated catalog browse/search/detail,
@@ -146,7 +153,10 @@ Middleware and utilities:
 Database:
 
 - `users`: username, password hash, public flag, guest flag, guest expiry,
+  profile basics (`display_name`, `bio`, `avatar_icon`, `avatar_color`), and
   created timestamp.
+- `user_preferences`: per-user default backlog view, default backlog sort/order,
+  and preferred landing page after explicit sign-in or demo start.
 - `statuses`: global status label and rank.
 - `catalog_games`: app-level game identity and shared external metadata.
 - `external_game_ids`: provider ids attached to catalog games; RAWG is used now,
@@ -202,6 +212,9 @@ Entry points:
 Routes:
 
 - `/` - private backlog app.
+- `/me` - signed-in owner profile dashboard.
+- `/settings` - signed-in settings for profile basics, account context,
+  preferences, public profile, data export, and integrations.
 - `/discover` - catalog browse/search/add flow.
 - `/steam/import` - Steam account link/sync, reviewed import flow, and Steam
   Sync Review for newly detected activity.
@@ -255,6 +268,10 @@ Important components/pages:
 
 - `src/pages/Backlog/BacklogPage.jsx` - private backlog route and state/action
   coordinator.
+- `src/pages/OwnerProfilePage.jsx` - private owner profile dashboard derived
+  from the authenticated user and `useGames`.
+- `src/components/ProfileAvatar.jsx` - shared generated avatar renderer backed
+  by built-in icon and color keys, without user image uploads.
 - `src/pages/DiscoverPage.jsx` - Discover catalog route, curated shelves,
   search, filters, detail modal, metadata refresh, and add-to-backlog flow.
 - `src/pages/TimelinePage.jsx` - private started/finished event feed grouped

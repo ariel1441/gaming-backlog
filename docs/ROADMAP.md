@@ -1,6 +1,6 @@
 # Roadmap And Improvement Plan
 
-Last updated: 2026-07-03
+Last updated: 2026-07-04
 
 This is the planning document for improvements, feature ideas, cleanup, and
 future work. It is intentionally editable. Add your own ideas, reorder items,
@@ -30,16 +30,29 @@ Current direction:
 
 Near-term product direction under consideration after Steam V1/V1.2:
 
-1. Account/settings area.
-2. Priority / Next Up queue.
-3. Timeline page. Done 2026-07-03 for V1: `/timeline` shows private
+1. Owner Profile V1. Done 2026-07-04: `/me` shows a signed-in private profile
+   dashboard with favorites, currently playing, recently finished, basic stats,
+   public-profile status/link when useful, and shortcuts to core app areas.
+2. Settings V1. Done 2026-07-04: `/settings` centralizes existing account
+   context, public-profile visibility/favorites, CSV export, and Steam
+   integration shortcuts without schema changes.
+3. Settings Preferences V2. Done 2026-07-04: `/settings` now stores
+   account-backed defaults for backlog view, backlog sort/order, and landing
+   page after explicit sign-in or demo start. Filter defaults and saved presets
+   remain deferred.
+4. Profile Basics V2. Done 2026-07-04: `/settings` now edits display name, bio,
+   and a generated avatar from built-in icon/color banks; `/me` and public
+   profile headers use the same identity basics. Uploads, banners, social
+   links, username changes, and module visibility controls remain deferred.
+5. Priority / Next Up queue.
+4. Timeline page. Done 2026-07-03 for V1: `/timeline` shows private
    started/finished events grouped by month with type/year filters and
    read-only game detail opening.
-4. Wishlist/catalog relationship cleanup only if the existing wishlist status
+5. Wishlist/catalog relationship cleanup only if the existing wishlist status
    becomes too limited.
-5. Insights V2.
-6. Personal tags/mood/platform organization.
-7. Public profile privacy/showcase controls.
+6. Insights V2.
+7. Personal tags/mood/platform organization.
+8. Public profile privacy/showcase controls.
 
 Steam is a good stopping point for now. Do not expand Steam further unless the
 next chosen feature is explicitly Steam-related, and do not push/deploy the
@@ -73,8 +86,10 @@ Recommended page/tab candidates for this app:
 - **Settings**:
   - user value: gives account/profile/preferences/data controls a permanent
     home instead of relying on scattered modals and menus
-  - likely UI: `/settings` with sections for account basics, public profile,
-    preferences, data export/delete, and integrations later
+  - V1 status: done 2026-07-04 with account context, public profile controls,
+    favorite-game editing, CSV export, and Steam shortcuts
+  - likely later UI: preferences, password/username/email changes, data import,
+    delete account, avatar/bio, and deeper integration controls
   - backend/data impact: medium for username/password; larger for email and
     password reset
   - risk: account security, username/public URL changes, and delete-account
@@ -339,20 +354,37 @@ manage.
 
 Account/auth:
 
-- Preferred next account step: build a real `/settings` page before adding
-  deeper account recovery. This gives the app a permanent home for account,
-  public profile, preferences, data, and later integration controls.
-- Settings V1 candidate:
+- Owner Profile V1:
+  - route: `/me`
+  - status: done 2026-07-04
+  - uses existing signed-in user/session data and `useGames`
+  - shows owner-focused header/status, favorites, currently playing, recently
+    finished, basic stats, and quick links without schema changes
+  - guests get a graceful private dashboard without public-profile or Steam
+    controls
+- Settings V1:
   - route: `/settings`
-  - account basics: current username display, change password, optional change
-    username after deciding public URL behavior
+  - status: done 2026-07-04
+  - account basics: current username, account type, joined date, public/private
+    state, and links back to `/me` and Backlog
   - public/profile: reuse current public profile toggle, public link, favorite
     game picker, and `ProfileSnapshot`
-  - preferences: default backlog view/sort/filter and eventually saved My Genre
-    or tag presets
-  - data: CSV/JSON export first; delete account later with careful confirmation
-  - integrations: link to Steam Import/Steam Library for now, but avoid new
-    Steam scope while the production handoff is unresolved
+  - data: CSV export from loaded private backlog data
+  - integrations: Steam linked/unlinked state plus Steam Import/Library links
+- Settings Preferences V2:
+  - route: `/settings?section=preferences`
+  - status: done 2026-07-04
+  - account-backed defaults for backlog view, backlog sort/order, and preferred
+    landing page after explicit sign-in or demo start
+- Profile Basics V2:
+  - route: `/settings?section=profile`
+  - status: done 2026-07-04
+  - display name, short bio, and generated avatar using a small built-in
+    icon/color bank
+  - `/me`, public profile, and Settings preview share the new identity header
+  - deferred: image uploads, banner images, social links, username/public URL
+    edits, default filters, saved filter presets, password, email, JSON
+    export/import, and delete account
 - Add "forgot password" flow:
   - request reset
   - reset token storage/expiry
@@ -1367,7 +1399,10 @@ Deferred non-blocking cleanup:
 
 ## New Feature Ideas
 
-- Account/settings page. Current preferred next feature.
+- Account/settings page. Done V1 2026-07-04; V2+ should focus on real
+  account/security changes or persistent preferences.
+- Owner profile page. Done 2026-07-04: `/me` is a read-mostly private
+  dashboard built from existing game and session data.
 - Timeline page. Done V1 for started/finished date feed; future durable
   activity/journal work remains.
 - Backlog priority field / "Next up" queue.

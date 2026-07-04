@@ -1,10 +1,13 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Save } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button, Field, Modal, TextInput } from "./ui";
+import { preferredLandingPath } from "../utils/userPreferences";
 
 export default function KeepDemoModal({ open, onClose }) {
   const { keepDemo } = useAuth();
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
@@ -26,8 +29,12 @@ export default function KeepDemoModal({ open, onClose }) {
     setLoading(true);
     const res = await keepDemo(username.trim(), password);
     setLoading(false);
-    if (res?.success) onClose?.();
-    else setErr(res?.error || "Could not save demo.");
+    if (res?.success) {
+      onClose?.();
+      navigate(preferredLandingPath(res?.user));
+    } else {
+      setErr(res?.error || "Could not save demo.");
+    }
   };
 
   return (

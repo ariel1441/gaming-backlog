@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS catalog_search_cache;
 DROP TABLE IF EXISTS external_game_ids;
 DROP TABLE IF EXISTS catalog_games;
 DROP TABLE IF EXISTS statuses;
+DROP TABLE IF EXISTS user_preferences;
 DROP TABLE IF EXISTS users;
 
 -- Users who own their games
@@ -19,7 +20,88 @@ CREATE TABLE users (
   is_public BOOLEAN NOT NULL DEFAULT FALSE,
   is_guest BOOLEAN NOT NULL DEFAULT FALSE,
   guest_expires_at TIMESTAMPTZ,
+  display_name TEXT CHECK (display_name IS NULL OR char_length(display_name) <= 40),
+  bio TEXT CHECK (bio IS NULL OR char_length(bio) <= 240),
+  avatar_icon TEXT NOT NULL DEFAULT 'gamepad'
+    CHECK (
+      avatar_icon IN (
+        'gamepad',
+        'joystick',
+        'dice',
+        'trophy',
+        'crown',
+        'flame',
+        'star',
+        'skull',
+        'sword',
+        'shield',
+        'book',
+        'rocket',
+        'heart',
+        'zap',
+        'compass',
+        'potion',
+        'hourglass',
+        'headphones',
+        'rune',
+        'mask',
+        'cards',
+        'axe',
+        'crystal',
+        'leaf',
+        'flower',
+        'coffee',
+        'cpu',
+        'eye'
+      )
+    ),
+  avatar_color TEXT NOT NULL DEFAULT 'orange'
+    CHECK (
+      avatar_color IN (
+        'orange',
+        'blue',
+        'green',
+        'pink',
+        'violet',
+        'gold',
+        'slate',
+        'red'
+      )
+    ),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE user_preferences (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  default_backlog_view TEXT NOT NULL DEFAULT 'grid'
+    CHECK (default_backlog_view IN ('grid', 'compact', 'list')),
+  default_backlog_sort_key TEXT NOT NULL DEFAULT ''
+    CHECK (
+      default_backlog_sort_key IN (
+        '',
+        'name',
+        'hoursPlayed',
+        'rawgRating',
+        'metacritic',
+        'releaseDate',
+        'startedDate',
+        'finishedDate',
+        'steamLastPlayed'
+      )
+    ),
+  default_backlog_sort_reversed BOOLEAN NOT NULL DEFAULT FALSE,
+  default_landing_path TEXT NOT NULL DEFAULT '/'
+    CHECK (
+      default_landing_path IN (
+        '/',
+        '/me',
+        '/timeline',
+        '/discover',
+        '/insights'
+      )
+    ),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Statuses (global lookup)

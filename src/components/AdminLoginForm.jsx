@@ -1,10 +1,13 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button, Field, Modal, TextInput } from "./ui";
+import { preferredLandingPath } from "../utils/userPreferences";
 
 const AuthModal = ({ onClose }) => {
   const { login, register } = useAuth();
+  const navigate = useNavigate();
 
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
@@ -36,7 +39,10 @@ const AuthModal = ({ onClose }) => {
           : await register(username.trim(), password);
 
       if (!res?.success && res?.error) setError(res.error);
-      else onClose();
+      else {
+        onClose();
+        navigate(preferredLandingPath(res?.user));
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {

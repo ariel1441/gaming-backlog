@@ -872,6 +872,12 @@ function ProfileMenu({ account }) {
               {account.isAuthenticated ? "Signed in" : "Not signed in"}
             </div>
           </div>
+          {account.isAuthenticated ? (
+            <MenuItem icon={User2} label="My profile" onClick={account.goProfile} />
+          ) : null}
+          {account.isAuthenticated ? (
+            <MenuItem icon={SlidersHorizontal} label="Settings" onClick={account.goSettings} />
+          ) : null}
           <MenuItem icon={BarChart3} label="Insights" onClick={account.goInsights} />
           {account.isAuthenticated ? (
             <MenuItem icon={CalendarDays} label="Timeline" onClick={account.goTimeline} />

@@ -67,7 +67,16 @@ router.get("/:username", usernameParam, async (req, res, next) => {
     const { username } = req.params;
 
     const userRes = await pool.query(
-      "SELECT id, username, is_public, created_at FROM users WHERE username = $1",
+      `SELECT id,
+              username,
+              is_public,
+              created_at,
+              display_name,
+              bio,
+              avatar_icon,
+              avatar_color
+         FROM users
+        WHERE username = $1`,
       [username]
     );
     if (userRes.rows.length === 0) {
@@ -89,6 +98,10 @@ router.get("/:username", usernameParam, async (req, res, next) => {
       is_public: true,
       game_count: countRes.rows[0].game_count || 0,
       joined_at: user.created_at,
+      display_name: user.display_name || "",
+      bio: user.bio || "",
+      avatar_icon: user.avatar_icon || "gamepad",
+      avatar_color: user.avatar_color || "orange",
     });
   } catch (err) {
     next(err);

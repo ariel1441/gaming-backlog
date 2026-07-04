@@ -2,6 +2,7 @@
 import React from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
+import { preferredLandingPath } from "../utils/userPreferences";
 
 import {
   Menu,
@@ -60,7 +61,8 @@ const Sidebar = ({
   };
   const startLiveDemo = async () => {
     closeAllPanels();
-    await startDemo();
+    const res = await startDemo();
+    if (res?.success) navigate(preferredLandingPath(res.user));
   };
 
   return (

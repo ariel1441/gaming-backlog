@@ -7,6 +7,10 @@ import DemoBanner from "../../components/DemoBanner";
 import { Button, EmptyState } from "../../components/ui";
 import { buildDisplayGames } from "../../utils/gameList";
 import { canReorderGames } from "../../utils/permissions";
+import {
+  normalizeUserPreferences,
+  preferredLandingPath,
+} from "../../utils/userPreferences";
 import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
 import { useStatuses } from "../../hooks/useStatuses";
@@ -43,6 +47,10 @@ export default function BacklogPage() {
     refresh,
     reorderGame,
   } = useGames();
+  const userPreferences = React.useMemo(
+    () => normalizeUserPreferences(user?.preferences),
+    [user?.preferences]
+  );
 
   const {
     statuses: allStatuses,
@@ -78,8 +86,8 @@ export default function BacklogPage() {
     hoursRange,
     setHoursRange,
   } = useFilters(games, {
-    initialSortKey: "",
-    initialReverse: false,
+    initialSortKey: userPreferences.default_backlog_sort_key,
+    initialReverse: userPreferences.default_backlog_sort_reversed,
     statuses: allStatuses,
   });
 
@@ -126,7 +134,23 @@ export default function BacklogPage() {
   const [selectedGame, setSelectedGame] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showKeepDemo, setShowKeepDemo] = useState(false);
-  const [viewMode, setViewMode] = useState("grid");
+  const [viewMode, setViewMode] = useState(userPreferences.default_backlog_view);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated) return;
+    setViewMode(userPreferences.default_backlog_view);
+    setSortKey(userPreferences.default_backlog_sort_key);
+    setIsReversed(userPreferences.default_backlog_sort_reversed);
+  }, [
+    authLoading,
+    isAuthenticated,
+    setIsReversed,
+    setSortKey,
+    user?.id,
+    userPreferences.default_backlog_sort_key,
+    userPreferences.default_backlog_sort_reversed,
+    userPreferences.default_backlog_view,
+  ]);
 
   const addFormRef = useRef(null);
   const bannerRef = useRef(null);
@@ -206,11 +230,15 @@ export default function BacklogPage() {
     setIsReversed(false);
   };
   const goInsights = () => nav("/insights");
+  const goProfile = () => nav("/me");
+  const goSettings = (section) =>
+    nav(section ? `/settings?section=${section}` : "/settings");
   const goTimeline = () => nav("/timeline");
   const goDiscover = () => nav("/discover");
   const goSteam = () => nav("/steam/import");
   const startLiveDemo = async () => {
-    await startDemo();
+    const res = await startDemo();
+    if (res?.success) nav(preferredLandingPath(res.user));
   };
 
   if (authLoading || gamesLoading) {
@@ -355,7 +383,9 @@ export default function BacklogPage() {
               user,
               isAuthenticated,
               showLogin: () => setShowAdminLogin(true),
-              showPublicSettings: () => setShowPublicSettings(true),
+              showPublicSettings: () => goSettings("public"),
+              goProfile,
+              goSettings,
               goInsights,
               goTimeline,
               goDiscover,
