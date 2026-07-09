@@ -44,7 +44,11 @@ Near-term product direction under consideration after Steam V1/V1.2:
    and a generated avatar from built-in icon/color banks; `/me` and public
    profile headers use the same identity basics. Uploads, banners, social
    links, username changes, and module visibility controls remain deferred.
-5. Priority / Next Up queue.
+5. Lists V1. Done 2026-07-04: `/lists` now supports private ranked lists with
+   manual membership/order and private smart lists saved from user-chosen rules.
+   Public sharing, pinned profile modules, likes/comments, and social discovery
+   remain deferred.
+6. Priority / Next Up queue.
 4. Timeline page. Done 2026-07-03 for V1: `/timeline` shows private
    started/finished events grouped by month with type/year filters and
    read-only game detail opening.
@@ -130,11 +134,13 @@ Recommended page/tab candidates for this app:
   - user value: lets users create ranked or unranked personal collections such
     as "cozy games", "best short games", "2026 completions", or "play with
     friends"
-  - likely UI: `/lists` plus list detail pages, public/private flag, and add to
-    list actions from game cards/modals
-  - backend/data impact: medium/big through `lists` and `list_games`
-  - risk: can overlap with tags, public profile modules, and Next Up
-  - size: medium/big
+  - V1 status: done 2026-07-04 with private manual ranked lists and private
+    smart lists backed by `user_lists`; manual membership/order uses
+    `user_list_games`
+  - deferred: public/private sharing controls beyond private-only, add-to-list
+    actions from game cards/modals, pinned profile modules, and social features
+  - risk: later public lists can overlap with tags, public profile modules, and
+    Next Up
 - **Journal / Play Log**:
   - user value: captures active play sessions and progress notes, making the app
     feel alive between status changes
@@ -1415,7 +1421,8 @@ Deferred non-blocking cleanup:
   game, requires focus.
 - Play sessions and actual time tracking.
 - Journal / play log.
-- Custom lists, ranked or unranked, private or public.
+- Lists. Done privately for V1 with manual ranked lists and smart saved-rule
+  lists; public sharing and social list features remain future work.
 - Goals/challenges, such as yearly completion goals or short-game cleanup.
 - Completion review: final notes, final score, date, screenshots/link.
 - CSV/JSON import and export.

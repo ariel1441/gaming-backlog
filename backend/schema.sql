@@ -2,6 +2,8 @@
 DROP TABLE IF EXISTS steam_import_candidates;
 DROP TABLE IF EXISTS user_game_sources;
 DROP TABLE IF EXISTS user_external_accounts;
+DROP TABLE IF EXISTS user_list_games;
+DROP TABLE IF EXISTS user_lists;
 DROP TABLE IF EXISTS games;
 DROP TABLE IF EXISTS catalog_collection_games;
 DROP TABLE IF EXISTS catalog_collections;
@@ -224,6 +226,41 @@ CREATE UNIQUE INDEX games_user_favorite_rank_unique
   WHERE favorite_rank IS NOT NULL;
 
 CREATE INDEX idx_games_catalog_game_id ON games (catalog_game_id);
+
+CREATE TABLE user_lists (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL CHECK (char_length(trim(name)) BETWEEN 1 AND 120),
+  description TEXT CHECK (description IS NULL OR char_length(description) <= 1000),
+  visibility TEXT NOT NULL DEFAULT 'private'
+    CHECK (visibility IN ('private')),
+  list_type TEXT NOT NULL DEFAULT 'manual'
+    CHECK (list_type IN ('manual', 'smart')),
+  query_json JSONB,
+  sort_key TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_user_lists_user_updated
+  ON user_lists (user_id, updated_at DESC, id DESC);
+
+CREATE INDEX idx_user_lists_user_type_updated
+  ON user_lists (user_id, list_type, updated_at DESC, id DESC);
+
+CREATE TABLE user_list_games (
+  list_id INTEGER NOT NULL REFERENCES user_lists(id) ON DELETE CASCADE,
+  game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 1000,
+  added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (list_id, game_id)
+);
+
+CREATE INDEX idx_user_list_games_list_position
+  ON user_list_games (list_id, position, game_id);
+
+CREATE INDEX idx_user_list_games_game_id
+  ON user_list_games (game_id);
 
 CREATE TABLE user_external_accounts (
   id SERIAL PRIMARY KEY,

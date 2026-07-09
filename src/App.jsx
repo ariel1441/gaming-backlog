@@ -11,6 +11,8 @@ import SettingsPage from "./pages/SettingsPage";
 import SteamImportPage from "./pages/SteamImportPage";
 import SteamLibraryPage from "./pages/SteamLibraryPage";
 import TimelinePage from "./pages/TimelinePage";
+import ListsPage from "./pages/Lists/ListsPage";
+import CustomListPage from "./pages/Lists/CustomListPage";
 
 const App = () => {
   return (
@@ -22,6 +24,8 @@ const App = () => {
               <Route path="/" element={<BacklogPage />} />
               <Route path="/me" element={<OwnerProfilePage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/lists" element={<ListsPage />} />
+              <Route path="/lists/:id" element={<CustomListPage />} />
               <Route path="/discover" element={<DiscoverPage />} />
               <Route path="/timeline" element={<TimelinePage />} />
               <Route path="/steam/library" element={<SteamLibraryPage />} />

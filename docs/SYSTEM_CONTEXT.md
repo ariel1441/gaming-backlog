@@ -18,8 +18,8 @@ Tech stack:
 - Frontend: React 18, Vite, React Router, Tailwind CSS, Recharts, dnd-kit.
 - Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
 - Deployment model: Vercel frontend, Railway backend/Postgres.
-- Main app routes: `/`, `/me`, `/settings`, `/discover`, `/timeline`,
-  `/insights`, `/u/:username`.
+- Main app routes: `/`, `/me`, `/settings`, `/lists`, `/discover`,
+  `/timeline`, `/insights`, `/u/:username`.
 
 ## Commands
 
@@ -81,6 +81,8 @@ deliberately set.
 - View a signed-in owner profile dashboard at `/me` with favorites, currently
   playing games, recently finished games, profile basics, basic stats, and app
   shortcuts.
+- View private Lists at `/lists`: private ranked lists with manual membership
+  and order, plus private smart lists saved from user-chosen backlog rules.
 - Manage settings at `/settings`: account context, account-backed backlog
   preferences, profile basics, public-profile visibility, favorite
   public-profile games, CSV export, and Steam integration shortcuts.
@@ -106,6 +108,8 @@ Routes:
   account preference updates, and profile basics updates.
 - `backend/routes/demo.js` - guest session start, keep, discard, heartbeat.
 - `backend/routes/games.js` - authenticated game CRUD, enrichment, reorder.
+- `backend/routes/lists.js` - authenticated private list CRUD, smart-list
+  metadata, manual membership add/remove, and list-specific reorder.
 - `backend/routes/catalog.js` - authenticated catalog browse/search/detail,
   manual metadata refresh, collection load-more, and add-to-backlog.
 - `backend/routes/steam.js` - authenticated Steam OpenID link, account state,
@@ -168,6 +172,9 @@ Database:
 - `games`: user-owned game rows with status, position, custom fields, HLTB
   hours, score, notes, cover, RAWG identity fields, optional `catalog_game_id`,
   started date, and finished date.
+- `user_lists`: private owner-scoped list metadata, including `manual` versus
+  `smart` list type and saved smart-list query/ranking metadata.
+- `user_list_games`: private manual-list membership and manual list positions.
 - `user_external_accounts`: linked external user accounts; Steam V1 stores
   SteamID64, persona/profile fields, sync status, timestamps, and failure state.
 - `user_game_sources`: user-specific ownership/source rows; Steam V1 stores
@@ -215,6 +222,9 @@ Routes:
 - `/me` - signed-in owner profile dashboard.
 - `/settings` - signed-in settings for profile basics, account context,
   preferences, public profile, data export, and integrations.
+- `/lists` - private Lists index with user-created ranked and smart lists.
+- `/lists/:id` - private list detail. Manual lists support add/remove/reorder;
+  smart lists resolve matching games from the saved rule and backlog data.
 - `/discover` - catalog browse/search/add flow.
 - `/steam/import` - Steam account link/sync, reviewed import flow, and Steam
   Sync Review for newly detected activity.
@@ -244,6 +254,8 @@ Hooks:
   `useDebouncedValue.js` - supporting UI/data hooks.
 - `src/utils/gameList.js` - shared game-list filtering, sorting, fuzzy-search
   composition, CSV parsing, and hours-range filtering.
+- `src/utils/automaticLists.js` - smart-list template, membership, rule
+  description, and ranking helpers.
 - `src/utils/permissions.js` - shared frontend permission helpers for writable
   versus read-only views, game ownership, reorder access, and public-profile
   toggles.
@@ -255,6 +267,7 @@ Services:
   defaults API requests to `http://localhost:5000` when no API base env var is
   set.
 - `src/services/gameService.js` - game API wrapper.
+- `src/services/listService.js` - private list API wrapper.
 - `src/services/catalogService.js` - Discover/catalog API wrapper.
 - `src/services/steamService.js` - Steam account, sync, candidate review, and
   import API wrapper.
@@ -270,6 +283,8 @@ Important components/pages:
   coordinator.
 - `src/pages/OwnerProfilePage.jsx` - private owner profile dashboard derived
   from the authenticated user and `useGames`.
+- `src/pages/Lists/` - private Lists index, smart-list rule editor, and list
+  detail pages.
 - `src/components/ProfileAvatar.jsx` - shared generated avatar renderer backed
   by built-in icon and color keys, without user image uploads.
 - `src/pages/DiscoverPage.jsx` - Discover catalog route, curated shelves,
@@ -323,6 +338,9 @@ Styling:
   ranks is rejected. Plain drag reorder updates positions only; the reorder API
   changes a game's status only when the client explicitly sends a same-rank
   target status.
+- Manual list ordering is separate from backlog ordering. `/api/lists/:id/games/reorder`
+  updates only `user_list_games.position` and never changes `games.position` or
+  status. Smart lists do not support manual membership or manual ordering.
 - Status grouping should come from `backend/utils/status.js` and
   `/api/meta/status-groups`, not hardcoded in random UI code.
 - Insights can write missing HLTB hour values back to the DB when it resolves

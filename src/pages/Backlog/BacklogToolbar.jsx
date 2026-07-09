@@ -883,6 +883,9 @@ function ProfileMenu({ account }) {
             <MenuItem icon={CalendarDays} label="Timeline" onClick={account.goTimeline} />
           ) : null}
           {account.isAuthenticated ? (
+            <MenuItem icon={List} label="Lists" onClick={account.goLists} />
+          ) : null}
+          {account.isAuthenticated ? (
             <MenuItem icon={Compass} label="Discover" onClick={account.goDiscover} />
           ) : null}
           {account.isAuthenticated && !account.isGuest ? (

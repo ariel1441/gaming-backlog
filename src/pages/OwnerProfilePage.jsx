@@ -535,6 +535,7 @@ function QuickLinks({ isGuest }) {
   const links = [
     { label: "Backlog", to: "/", icon: LibraryBig },
     { label: "Timeline", to: "/timeline", icon: CalendarDays },
+    { label: "Lists", to: "/lists", icon: List },
     { label: "Insights", to: "/insights", icon: BarChart3 },
     { label: "Discover", to: "/discover", icon: Compass },
     ...(isGuest
