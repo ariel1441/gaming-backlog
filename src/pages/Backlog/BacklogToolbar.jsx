@@ -17,6 +17,7 @@ import {
   List,
   LogIn,
   LogOut,
+  MessageSquareText,
   Plus,
   Search,
   SlidersHorizontal,
@@ -881,6 +882,9 @@ function ProfileMenu({ account }) {
           <MenuItem icon={BarChart3} label="Insights" onClick={account.goInsights} />
           {account.isAuthenticated ? (
             <MenuItem icon={CalendarDays} label="Timeline" onClick={account.goTimeline} />
+          ) : null}
+          {account.isAuthenticated ? (
+            <MenuItem icon={MessageSquareText} label="Reviews" onClick={account.goReviews} />
           ) : null}
           {account.isAuthenticated ? (
             <MenuItem icon={List} label="Lists" onClick={account.goLists} />

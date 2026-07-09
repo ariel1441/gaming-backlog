@@ -234,6 +234,7 @@ export default function BacklogPage() {
   const goSettings = (section) =>
     nav(section ? `/settings?section=${section}` : "/settings");
   const goTimeline = () => nav("/timeline");
+  const goReviews = () => nav("/reviews");
   const goLists = () => nav("/lists");
   const goDiscover = () => nav("/discover");
   const goSteam = () => nav("/steam/import");
@@ -389,6 +390,7 @@ export default function BacklogPage() {
               goSettings,
               goInsights,
               goTimeline,
+              goReviews,
               goLists,
               goDiscover,
               goSteam,

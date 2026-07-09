@@ -11,6 +11,7 @@ import {
   User2 as IconUser,
   BarChart3 as IconInsights,
   CalendarDays as IconTimeline,
+  MessageSquareText as IconReviews,
   List as IconLists,
   Sparkles as IconDemo,
   Compass as IconDiscover,
@@ -41,6 +42,7 @@ const Sidebar = ({
     navigate("/timeline");
   };
   const isDiscover = location.pathname.startsWith("/discover");
+  const isReviews = location.pathname.startsWith("/reviews");
   const isLists = location.pathname.startsWith("/lists");
   const goDiscover = () => {
     closeAllPanels();
@@ -49,6 +51,10 @@ const Sidebar = ({
   const goLists = () => {
     closeAllPanels();
     navigate("/lists");
+  };
+  const goReviews = () => {
+    closeAllPanels();
+    navigate("/reviews");
   };
   const isSteam = location.pathname.startsWith("/steam");
   const goSteam = () => {
@@ -202,6 +208,15 @@ const Sidebar = ({
             icon={IconLists}
             active={isLists}
             onClick={goLists}
+            expanded={sidebarOpen}
+          />
+        )}
+        {authed && (
+          <SidebarRow
+            label="Reviews"
+            icon={IconReviews}
+            active={isReviews}
+            onClick={goReviews}
             expanded={sidebarOpen}
           />
         )}
