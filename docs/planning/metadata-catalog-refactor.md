@@ -392,6 +392,12 @@ discovery and "My Backlog" for the user's collection.
 Before adding browse/catalog features, decide how a user relates to a catalog
 game.
 
+Current app note, 2026-07-03: wishlist already exists as a normal backlog
+status. Do not plan "add wishlist" as a second status. The unresolved product
+question is whether Discover/catalog should support a lighter saved
+relationship, such as "wishlist/saved for later", before a game becomes a full
+backlog row with personal fields, ordering, and status history.
+
 Possible relationship states:
 
 - in backlog
@@ -402,10 +408,12 @@ Possible relationship states:
 - archived
 - manually added
 
-Open design choice: wishlist could be a status inside `user_games`, a separate
-table, or a relationship flag. A unified user-game relationship table is likely
-more flexible, but it needs clear constraints so the same user does not get
-confusing duplicates.
+Open design choice: the current wishlist-as-status model may be enough for the
+near term. A separate table or relationship flag becomes useful only if the app
+needs lightweight catalog saves, independent ownership, Steam/other-source
+owned states, or library-wide relationships that should not clutter the main
+backlog. A unified user-game relationship table is likely more flexible, but it
+needs clear constraints so the same user does not get confusing duplicates.
 
 ## Steam Import Relationship
 

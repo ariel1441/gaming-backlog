@@ -135,6 +135,7 @@ Start with:
 - [AGENTS.md](AGENTS.md) for durable AI-agent rules.
 - [docs/README.md](docs/README.md) for the markdown/doc index.
 - [docs/AI_WORKFLOW.md](docs/AI_WORKFLOW.md) for human prompts and AI usage.
+- [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md) for the short active queue.
 
 ## Screenshots
 

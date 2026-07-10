@@ -11,6 +11,12 @@ code when a note appears stale.
 - [`../AGENTS.md`](../AGENTS.md) - durable AI-agent instructions for this repo.
 - [`AI_WORKFLOW.md`](AI_WORKFLOW.md) - human-facing guide for asking AI tools to
   work on this codebase.
+- [`AI_WORKFLOW_AUDIT.md`](AI_WORKFLOW_AUDIT.md) - short summary of lessons
+  learned from previous AI/Codex sessions.
+- [`AI_TOOLING.md`](AI_TOOLING.md) - practical guide for optional plugins, MCP,
+  skills, and hooks.
+- [`NEXT_TASKS.md`](NEXT_TASKS.md) - short active queue for current priorities
+  and low-token new-chat startup context.
 - [`ROADMAP.md`](ROADMAP.md) - current improvement plan, priorities, and future
   feature tracks.
 - [`SYSTEM_CONTEXT.md`](SYSTEM_CONTEXT.md) - compact architecture and current
@@ -22,12 +28,40 @@ code when a note appears stale.
 
 ## Templates
 
+- [`templates/ai-plan-brief.md`](templates/ai-plan-brief.md) - planning-only
+  prompt template.
+- [`templates/ai-implementation-brief.md`](templates/ai-implementation-brief.md) -
+  implementation prompt template.
+- [`templates/ai-review-brief.md`](templates/ai-review-brief.md) - code review
+  prompt template.
+- [`templates/ai-release-brief.md`](templates/ai-release-brief.md) - release
+  verification prompt template.
+- [`templates/ai-handoff.md`](templates/ai-handoff.md) - compact handoff prompt
+  for starting a new chat.
 - [`templates/bug-report.md`](templates/bug-report.md) - issue/debugging brief.
 - [`templates/feature-request.md`](templates/feature-request.md) - feature task
   brief.
 
 These templates are prompts/checklists. They are not authoritative product
 documentation.
+
+## Skill Drafts
+
+`skills/` contains repo-local skill drafts. They are not automatically active
+unless copied or installed into the Codex skills location used by your
+environment.
+
+- [`skills/gaming-backlog-review/SKILL.md`](skills/gaming-backlog-review/SKILL.md)
+- [`skills/gaming-backlog-release/SKILL.md`](skills/gaming-backlog-release/SKILL.md)
+- [`skills/gaming-backlog-frontend-ui/SKILL.md`](skills/gaming-backlog-frontend-ui/SKILL.md)
+- [`skills/gaming-backlog-backend-api/SKILL.md`](skills/gaming-backlog-backend-api/SKILL.md)
+- [`skills/gaming-backlog-db-safety/SKILL.md`](skills/gaming-backlog-db-safety/SKILL.md)
+- [`skills/gaming-backlog-steam/SKILL.md`](skills/gaming-backlog-steam/SKILL.md)
+
+## Hook Drafts
+
+- [`hooks/README.md`](hooks/README.md) - draft lifecycle checks for pre-task,
+  pre-edit, pre-backup/export, pre-commit, schema-change, and release safety.
 
 ## Planning Notes
 

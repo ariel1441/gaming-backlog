@@ -5,6 +5,28 @@ should follow every time, use the root [`AGENTS.md`](../AGENTS.md).
 
 Use this as the default playbook when asking Codex or another AI assistant to work on the repo.
 
+## Choose A Mode First
+
+Start each request with one mode. This prevents the assistant from planning,
+coding, reviewing, and releasing all in the same thread.
+
+- `PLAN ONLY`: discuss product shape, options, risks, and test plan. No edits.
+- `REVIEW ONLY`: inspect code/diff and return findings first. No edits.
+- `IMPLEMENT`: make one focused change, verify it, and summarize.
+- `DEBUG ONLY`: reproduce and diagnose first; fix only after the cause is clear.
+- `UI POLISH`: improve a specific screen/state without changing product scope.
+- `RELEASE`: prepare or verify deploys, migrations, CI, and production smoke
+  checks.
+
+Good mode prompt:
+
+```text
+Mode: PLAN ONLY
+Goal: Decide whether Next Up should be a priority field, a queue, or a smart list.
+Do not edit files. Give 3 options max with user value, data impact, risks, and
+your recommendation.
+```
+
 ## Start Every Task With Context
 
 Give the assistant:
@@ -14,6 +36,7 @@ Give the assistant:
 - The user flow that should work when done.
 - Whether database schema changes are allowed.
 - Whether UI style should match live, current local changes, or a new direction.
+- Acceptance criteria and checks, if you know them.
 
 Good prompt:
 
@@ -22,6 +45,18 @@ Work on branch feature/hour-filter. Add an hours range filter to the backlog gri
 Use the existing filter panel style. Local DB is okay, but do not change production data.
 Add/adjust tests if practical and run npm run check.
 ```
+
+## Use Less Context By Default
+
+Most tasks should start with only:
+
+- `AGENTS.md`
+- `docs/SYSTEM_CONTEXT.md`
+- one directly relevant feature doc, if needed
+
+Use `docs/NEXT_TASKS.md` for the current short queue. Use `docs/ROADMAP.md`
+only when choosing broader priorities. Avoid asking every new chat to read all
+planning docs unless the task is genuinely strategic.
 
 ## Use Small Branches
 
@@ -34,6 +69,10 @@ Prefer one branch per task:
 
 Small branches make AI review and rollback much easier.
 
+If two features touch the same files, stop before commit time and decide whether
+to split branches, stash, or finish one feature first. Selective commits are
+possible, but they get risky when unrelated work shares files.
+
 ## Ask For A Plan When The Task Is Big
 
 For large features, ask for:
@@ -45,6 +84,14 @@ For large features, ask for:
 5. Rollout risks.
 
 Then let the assistant implement after the plan makes sense.
+
+Large features should usually be split into separate chats or phases:
+
+1. Planning and product decisions.
+2. Schema/backend implementation.
+3. Frontend implementation.
+4. QA and review.
+5. Release/deploy verification.
 
 ## Database Work
 
@@ -70,6 +117,9 @@ Be explicit about the visual target:
 - "continue the local UI refresh"
 - "make a new design direction"
 - "only fix spacing, do not redesign"
+- "keep card heights equal"
+- "show full review text"
+- "prioritize compact scanning"
 
 When judging UI, test:
 
@@ -80,6 +130,10 @@ When judging UI, test:
 - public read-only view
 - guest/demo user view
 
+For UI polish, use browser screenshots or visual inspection early. Repeated
+small text/spacing/image tweaks are cheaper when the assistant can see the
+screen state before changing code again.
+
 ## Reviews
 
 Before merging, ask:
@@ -89,6 +143,25 @@ Review this diff for bugs, regressions, database risks, and missing tests.
 Prioritize findings with file and line references.
 ```
 
+## Release Work
+
+Release work should verify each system separately instead of assuming one
+successful push means everything updated.
+
+Checklist:
+
+- `git status --short --branch`
+- relevant local checks, usually `npm run check`
+- GitHub Actions status
+- production migrations, if any
+- Vercel frontend deployment
+- Railway backend deployment
+- representative production API routes
+
+For backend route releases, smoke test the backend directly before testing the
+frontend. Example for protected routes: unauthenticated production calls should
+return an auth error such as `401`, not a generic `404`.
+
 ## Useful Local Checks
 
 ```bash
@@ -96,6 +169,20 @@ npm run env:check
 npm run db:migrate:local
 npm run check
 ```
+
+## Templates To Reuse
+
+Use the templates under `docs/templates/` instead of rewriting long prompts
+from scratch:
+
+- `ai-plan-brief.md`
+- `ai-implementation-brief.md`
+- `ai-review-brief.md`
+- `ai-release-brief.md`
+- `ai-handoff.md`
+
+For small tasks, paste only the relevant sections. The point is to reduce
+guessing, not to make every prompt long.
 
 ## Codex-Specific Setup
 
@@ -118,6 +205,32 @@ stale planning notes:
 Use `docs/AI_WORKFLOW.md` for human workflow guidance and `AGENTS.md` for rules
 the agent should obey every time.
 
+For optional tooling, plugin, skill, and hook guidance, see
+`docs/AI_TOOLING.md`.
+
+## When To Start A New Chat
+
+Start a new chat or phase when:
+
+- the task changes from planning to implementation
+- implementation is done and the next step is review or release
+- the thread has accumulated unrelated debugging/deployment context
+- a large feature starts pulling in adjacent feature ideas
+- selective commit/staging becomes confusing
+
+Before switching, ask for a compact handoff:
+
+```text
+Create a compact handoff for the next chat:
+- current goal
+- branch/status
+- changed files
+- decisions made
+- checks run/results
+- unresolved risks
+- next 3 steps
+```
+
 ## Skills And Reusable Agent Rules
 
 Good reusable skills/rules for this project:
@@ -127,6 +240,8 @@ Good reusable skills/rules for this project:
 - **Database migration skill**: migration + `schema.sql` updates, backward-compatible releases.
 - **Code review skill**: findings first, file/line references, regression and test focus.
 - **Release skill**: `Dev` to `main`, CI, Vercel/Railway, production migration caution.
+- **Steam skill**: reviewed import, duplicate safety, private source data, and
+  explicit privacy controls before public exposure.
 
 If your Codex environment supports custom skills, create small focused skills
 instead of one huge project skill. A good skill includes:
@@ -143,6 +258,28 @@ Example request:
 Use the database migration skill. Add a nullable column for Steam app id.
 Update backend/schema.sql, add a migration, update API validation if needed,
 run npm run db:migrate:local and npm run check.
+```
+
+Repo-local skill drafts live under `docs/skills/`. They are reference material
+until installed into your active Codex skills location. `AGENTS.md` now tells
+agents working in this repo to proactively consult the relevant draft even when
+you forget to ask.
+
+Skill selection guide:
+
+| Work type | Skill draft |
+| --- | --- |
+| Review, audit, risky diff | `docs/skills/gaming-backlog-review/SKILL.md` |
+| Release, deploy, production verification | `docs/skills/gaming-backlog-release/SKILL.md` |
+| React, Tailwind, UI, forms, layout | `docs/skills/gaming-backlog-frontend-ui/SKILL.md` |
+| Express routes, validators, auth, API errors | `docs/skills/gaming-backlog-backend-api/SKILL.md` |
+| Migrations, schema, backups, exports, prod/local data | `docs/skills/gaming-backlog-db-safety/SKILL.md` |
+| Steam import, library, sync, achievements, playtime | `docs/skills/gaming-backlog-steam/SKILL.md` |
+
+You can still explicitly prompt:
+
+```text
+Use the relevant repo-local skill draft from docs/skills if this task matches one.
 ```
 
 ## Agent Task Briefs
@@ -177,25 +314,46 @@ non-overlapping ownership area.
 
 ## Good Agent Prompts
 
+For planning:
+
+```text
+Mode: PLAN ONLY
+Goal:
+User flow:
+Constraints:
+Read only AGENTS.md, SYSTEM_CONTEXT.md, and files directly relevant to this topic.
+Output 3 options max, a recommendation, risks, and a test plan.
+Do not edit files.
+```
+
 For implementation:
 
 ```text
-Implement this end to end. Keep the diff focused. Do not modify unrelated files.
-Run npm run check and explain any warnings.
+Mode: IMPLEMENT
+Scope:
+Acceptance criteria:
+Allowed changes:
+Do not touch:
+Checks to run:
+Start with git status, inspect relevant files, then make the smallest focused diff.
 ```
 
 For debugging:
 
 ```text
-Reproduce the error first. Identify root cause. Make the smallest fix.
-Add a regression test if practical.
+Mode: DEBUG ONLY
+Reproduce the error first. Identify the root cause. Make the smallest fix only
+after the cause is clear. Add a regression test if practical.
 ```
 
 For UI:
 
 ```text
-Check desktop and mobile layouts. Long titles and missing cover art must still look good.
-Do not introduce a new visual language unless asked.
+Mode: UI POLISH
+Target screen/state:
+Visual priority:
+Keep the existing visual language. Check desktop/mobile, long titles, missing
+covers, empty states, demo, and public read-only flows.
 ```
 
 For database:
@@ -203,6 +361,15 @@ For database:
 ```text
 Use a migration. Make it backward-compatible. Update schema.sql.
 Do not change production data.
+```
+
+For release:
+
+```text
+Mode: RELEASE
+Verify GitHub/CI, production migrations, Vercel, Railway, and direct production
+API smoke checks separately. Do not assume the backend deployed just because the
+frontend did.
 ```
 
 ## Good Habits
@@ -213,3 +380,5 @@ Do not change production data.
 - Tell the assistant when existing local changes are experiments.
 - Ask the assistant to keep unrelated files untouched.
 - Use production data locally only through `npm run db:copy-prod-to-local`.
+- Before creating backups, exports, or production-derived files, confirm the
+  output path is ignored by git and avoid private identifiers in filenames.

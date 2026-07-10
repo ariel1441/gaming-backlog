@@ -35,6 +35,39 @@ scripts, and current git state over older notes in markdown files.
 - Do not overwrite, revert, format, or "clean up" uncommitted changes you did
   not make.
 - Keep diffs focused on the user request. Avoid unrelated refactors.
+- If asked to commit only one feature while unrelated work exists, inspect and
+  report mixed-file risk before staging. Do not silently stage shared files that
+  also contain unrelated changes.
+
+## Agent Workflow Modes
+
+- Treat explicit modes as binding:
+  - `PLAN ONLY`: inspect and propose; do not edit files.
+  - `REVIEW ONLY`: review findings first; do not edit unless later asked.
+  - `IMPLEMENT`: make the focused change and verify it.
+  - `DEBUG ONLY`: reproduce/diagnose first, then make the smallest fix if asked.
+  - `UI POLISH`: keep the existing visual language and verify responsive states.
+  - `RELEASE`: check code, git, CI/deploy state, and production smoke targets.
+- For large features, split planning, implementation, review, and release into
+  separate phases instead of letting one chat absorb everything.
+- If the task starts broad or product direction is unsettled, ask for or provide
+  options before coding.
+
+## Repo-Local Skill Drafts
+
+- Skill drafts under `docs/skills/*/SKILL.md` are not automatically installed as
+  global Codex skills. However, within this repo, agents should proactively read
+  and follow the relevant draft when the task clearly matches it, even if the
+  user forgets to mention skills.
+- Skill selection:
+  - Review/diff/audit request -> `docs/skills/gaming-backlog-review/SKILL.md`
+  - Release/deploy/production verification -> `docs/skills/gaming-backlog-release/SKILL.md`
+  - React/Tailwind/UI/layout/forms -> `docs/skills/gaming-backlog-frontend-ui/SKILL.md`
+  - Express/API/auth/validators/routes -> `docs/skills/gaming-backlog-backend-api/SKILL.md`
+  - Migrations/schema/local or production data/export/backup -> `docs/skills/gaming-backlog-db-safety/SKILL.md`
+  - Steam import/library/sync/playtime/achievements -> `docs/skills/gaming-backlog-steam/SKILL.md`
+- If multiple skill drafts apply, read the smallest relevant set and say which
+  ones are being used. Do not read every skill draft by default.
 
 ## Environment Rules
 
@@ -43,6 +76,9 @@ scripts, and current git state over older notes in markdown files.
   `ALLOW_REMOTE_DB_IN_DEV=true` is deliberately set.
 - Never commit `.env`, dumps, real secrets, tokens, or production data.
 - Use `npm run env:check` when environment behavior is relevant.
+- Before creating backups, exports, dumps, or production-derived files, verify
+  the target path is ignored by git. Prefer generic filenames that do not expose
+  usernames or private account identifiers.
 
 ## Database Rules
 
@@ -61,7 +97,8 @@ scripts, and current git state over older notes in markdown files.
 - Match the existing React component/hook/service patterns before adding new
   abstractions.
 - Read `docs/SYSTEM_CONTEXT.md` early in a new session for the current
-  architecture handoff. Use `docs/ROADMAP.md` for plans and priorities.
+  architecture handoff. Use `docs/NEXT_TASKS.md` for the active queue and
+  `docs/ROADMAP.md` only when broader planning or priorities are needed.
 - Preserve admin, guest/demo, and public read-only flows when changing shared
   UI.
 - Check responsive behavior for desktop and mobile when touching layout.
@@ -110,6 +147,11 @@ scripts, and current git state over older notes in markdown files.
 - Treat `docs/planning/ideas.md` as unverified planning notes until the code is
   checked.
 - Templates under `docs/templates/` are reusable prompts, not product docs.
+- Skill drafts under `docs/skills/` are reusable agent workflows. They are
+  repo-local reference material unless installed into the active Codex skills
+  location; agents should still consult the relevant draft when working here.
+- Use `docs/NEXT_TASKS.md` for the short active queue. Use `docs/ROADMAP.md`
+  for broader planning, not as mandatory startup context for every small task.
 - If documentation is updated, prefer clearly marking unverified or historical
   material instead of presenting it as current fact.
 
@@ -130,6 +172,10 @@ scripts, and current git state over older notes in markdown files.
   briefly say why.
 - Mention if tests are absent or only `--passWithNoTests` succeeded.
 - Summarize changed files and call out any pre-existing local modifications.
+- For release/deploy work, verify each system separately: GitHub/CI,
+  production migrations, Vercel frontend, Railway backend, and representative
+  production API routes. Do not assume a pushed commit means every deployment
+  target updated successfully.
 
 ## Review Mode
 

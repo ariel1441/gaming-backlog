@@ -68,6 +68,7 @@ Thumbs.db
 # -----------------------
 # 📦 Exported archives
 # -----------------------
+backups/
 *.zip
 *.tar.gz
 *.tgz
