@@ -19,22 +19,16 @@ import {
   Sparkles,
   User2,
 } from "lucide-react";
+import { AppPage, PageHeader } from "../components/layout";
 import GameModal from "../components/GameModal";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { Button, EmptyState, StatusBadge } from "../components/ui";
 import { useAuth } from "../contexts/AuthContext";
+import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
 import { useGames } from "../hooks/useGames";
-import {
-  isCompletedGame,
-  isPlannedGame,
-  isPlayingGame,
-} from "../components/ProfileSnapshot";
+import { buildProfileSnapshot } from "../components/ProfileSnapshot";
 import { parseGameDate } from "../utils/gameDateInsights";
 import { profileDisplayName, profileHandle } from "../utils/userProfile";
-
-function finishedTimestamp(game) {
-  return parseGameDate(game?.finished_at)?.timestamp || 0;
-}
 
 function formatHoursValue(value) {
   const hours = Number(value);
@@ -51,60 +45,6 @@ function displayHours(game, mode = "estimate") {
     );
   }
   return formatHoursValue(game?.how_long_to_beat);
-}
-
-function queueSortValue(game) {
-  const rank = Number(game?.status_rank);
-  const position = Number(game?.position);
-  const id = Number(game?.id);
-
-  return [
-    Number.isFinite(rank) ? rank : Number.MAX_SAFE_INTEGER,
-    Number.isFinite(position) ? position : Number.MAX_SAFE_INTEGER,
-    Number.isFinite(id) ? id : Number.MAX_SAFE_INTEGER,
-  ];
-}
-
-function buildOwnerProfile(games = []) {
-  const list = Array.isArray(games) ? games : [];
-  const currentYear = new Date().getFullYear();
-  const playing = list.filter(isPlayingGame);
-  const done = list.filter(isCompletedGame);
-  const planned = list.filter(isPlannedGame).sort((a, b) => {
-    const aValues = queueSortValue(a);
-    const bValues = queueSortValue(b);
-    return (
-      aValues[0] - bValues[0] ||
-      aValues[1] - bValues[1] ||
-      aValues[2] - bValues[2]
-    );
-  });
-  const favorites = list
-    .filter((game) => {
-      const rank = Number(game?.favorite_rank);
-      return Number.isInteger(rank) && rank >= 1 && rank <= 5;
-    })
-    .sort((a, b) => Number(a.favorite_rank) - Number(b.favorite_rank));
-  const recentlyFinished = list
-    .filter((game) => finishedTimestamp(game) > 0)
-    .sort((a, b) => finishedTimestamp(b) - finishedTimestamp(a));
-  const finishedThisYear = recentlyFinished.filter(
-    (game) => parseGameDate(game?.finished_at)?.year === currentYear
-  );
-
-  return {
-    favorites,
-    playing,
-    planned,
-    recentlyFinished,
-    stats: {
-      total: list.length,
-      playing: playing.length,
-      finished: done.length,
-      backlog: planned.length,
-      finishedThisYear: finishedThisYear.length,
-    },
-  };
 }
 
 function publicProfileUrl(username) {
@@ -126,12 +66,18 @@ function formatJoinedDate(value) {
 
 export default function OwnerProfilePage() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useAuth();
-  const { games, loading: gamesLoading, error: gamesError, refresh } = useGames();
+  const {
+    games,
+    loading: gamesLoading,
+    error: gamesError,
+    refresh,
+  } = useGames();
   const [selectedGame, setSelectedGame] = useState(null);
 
-  const profile = useMemo(() => buildOwnerProfile(games), [games]);
+  const profile = useMemo(() => buildProfileSnapshot(games), [games]);
   const username = user?.username || "You";
-  const publicUrl = !isGuest && user?.is_public ? publicProfileUrl(user?.username) : "";
+  const publicUrl =
+    !isGuest && user?.is_public ? publicProfileUrl(user?.username) : "";
   const loading = authLoading || (isAuthenticated && gamesLoading);
 
   if (loading) {
@@ -182,8 +128,8 @@ export default function OwnerProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-surface-bg px-3 py-4 text-content-primary sm:px-6">
-      <div className="mx-auto max-w-7xl space-y-4">
+    <AppPage width="standard">
+      <div className="space-y-5">
         <ProfileHeader
           user={user}
           username={username}
@@ -233,14 +179,18 @@ export default function OwnerProfilePage() {
       {selectedGame ? (
         <GameModal game={selectedGame} onClose={() => setSelectedGame(null)} />
       ) : null}
-    </main>
+    </AppPage>
   );
 }
 
 function OwnerProfileSkeleton() {
   return (
-    <main className="min-h-screen bg-surface-bg px-3 py-4 text-content-primary sm:px-6">
-      <div className="mx-auto max-w-7xl space-y-5">
+    <AppPage width="standard">
+      <PageHeader
+        title="My profile"
+        description="Your games, favorites, and recent activity."
+      />
+      <div className="space-y-5 pt-6">
         <div className="rounded-2xl border border-surface-border bg-surface-card p-5 shadow-panel">
           <div className="flex flex-wrap items-center gap-4">
             <div className="h-14 w-14 animate-pulse rounded-2xl bg-surface-elevated" />
@@ -264,11 +214,19 @@ function OwnerProfileSkeleton() {
           <div className="h-72 animate-pulse rounded-2xl border border-surface-border bg-surface-card" />
         </div>
       </div>
-    </main>
+    </AppPage>
   );
 }
 
-function ProfileHeader({ user, username, isGuest, isPublic, publicUrl, stats, joinedAt }) {
+function ProfileHeader({
+  user,
+  username,
+  isGuest,
+  isPublic,
+  publicUrl,
+  stats,
+  joinedAt,
+}) {
   const statusLabel = isGuest
     ? "Demo profile"
     : isPublic
@@ -298,14 +256,13 @@ function ProfileHeader({ user, username, isGuest, isPublic, publicUrl, stats, jo
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <QuickLinks isGuest={isGuest} />
-            <Button as={Link} to="/" variant="secondary">
-              <LibraryBig className="h-4 w-4" aria-hidden="true" />
-              Backlog
-            </Button>
-            <Button as={Link} to="/settings?section=profile" variant="secondary">
+            <Button
+              as={Link}
+              to="/settings?section=profile"
+              variant="secondary"
+            >
               <User2 className="h-4 w-4" aria-hidden="true" />
-              Edit profile
+              Profile settings
             </Button>
             {publicUrl ? (
               <Button as={Link} to={`/u/${username}`} variant="primary">
@@ -410,7 +367,10 @@ function FavoriteGames({ games, onSelectGame }) {
         {slots.map((_, index) => (
           <div key={index} className="min-w-0">
             <div className="flex aspect-[2/3] items-center justify-center rounded-xl border border-dashed border-surface-border bg-surface-elevated/45">
-              <Heart className="h-5 w-5 text-content-muted" aria-hidden="true" />
+              <Heart
+                className="h-5 w-5 text-content-muted"
+                aria-hidden="true"
+              />
             </div>
             <div className="mt-2 truncate text-sm font-medium text-content-primary">
               Favorite slot {games.length + index + 1}
@@ -441,8 +401,8 @@ function PosterButton({ game, onClick }) {
           {String(game.name || "?").charAt(0)}
         </div>
       )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2">
-        <div className="line-clamp-2 text-xs font-semibold text-white">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-media-overlay/90 to-transparent p-2">
+        <div className="line-clamp-2 text-xs font-semibold text-media-text">
           {game.name}
         </div>
       </div>
@@ -495,17 +455,17 @@ function CompactGameRow({ game, hoursMode, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-transparent p-2 text-left transition-colors hover:border-surface-border hover:bg-surface-elevated/70"
+      className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-transparent p-2.5 text-left transition-colors hover:border-surface-border hover:bg-surface-elevated/70"
     >
       {game.cover ? (
         <img
           src={game.cover}
           alt=""
           loading="lazy"
-          className="h-14 w-10 shrink-0 rounded object-cover"
+          className="h-20 w-14 shrink-0 rounded-lg object-cover"
         />
       ) : (
-        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-surface-elevated text-xs font-semibold text-content-muted">
+        <div className="flex h-20 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-elevated text-xs font-semibold text-content-muted">
           {String(game.name || "?").charAt(0)}
         </div>
       )}
@@ -542,17 +502,15 @@ function QuickLinks({ isGuest }) {
       ? []
       : [
           { label: "Steam Library", to: "/steam/library", icon: Gamepad2 },
-          { label: "Steam Import", to: "/steam/import", icon: Sparkles },
-      ]),
+          { label: "Steam Review", to: "/steam/import", icon: Sparkles },
+        ]),
   ];
 
-  useEffect(() => {
-    const onPointerDown = (event) => {
-      if (!wrapperRef.current?.contains(event.target)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+  useDismissibleLayer({
+    open,
+    layerRef: wrapperRef,
+    onDismiss: () => setOpen(false),
+  });
 
   return (
     <div ref={wrapperRef} className="relative">

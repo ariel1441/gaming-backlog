@@ -1,6 +1,12 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Edit3, GripVertical, PlayCircle, UserPlus } from "lucide-react";
+import {
+  BarChart3,
+  Edit3,
+  GripVertical,
+  PlayCircle,
+  UserPlus,
+} from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button, Modal, useToast } from "./ui";
 import { preferredLandingPath } from "../utils/userPreferences";
@@ -47,7 +53,7 @@ export default function OnboardingModal({ open, onClose, onShowAuth }) {
       title="Welcome to Gaming Backlog"
       description="Try the app with a ready-made backlog, or create your own account."
       onClose={handleClose}
-      maxWidth="max-w-2xl"
+      size="lg"
       bodyClassName="p-0"
     >
       <div className="space-y-5 p-5">

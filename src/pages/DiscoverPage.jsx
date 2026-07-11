@@ -7,6 +7,7 @@ import {
   Compass,
   Database,
   Filter,
+  Gamepad2,
   Plus,
   RefreshCw,
   Search,
@@ -24,6 +25,12 @@ import {
   searchCatalog,
 } from "../services/catalogService";
 import {
+  AppPage,
+  PageHeader,
+  PageSection,
+  PageToolbar,
+} from "../components/layout";
+import {
   Badge,
   Button,
   EmptyState,
@@ -34,6 +41,11 @@ import {
   Textarea,
   useToast,
 } from "../components/ui";
+import {
+  CatalogCard,
+  CatalogShelf,
+  DetailModal,
+} from "./Discover/DiscoverView";
 
 const emptyAddDraft = {
   status: "plan to play",
@@ -65,390 +77,6 @@ const backlogOptions = [
   { value: "not_in", label: "Not in backlog" },
   { value: "in", label: "In backlog" },
 ];
-
-function cacheLabel(status) {
-  if (status === "live") return "Live";
-  if (status === "stale") return "Cached";
-  if (status === "unavailable") return "Offline";
-  return "Cached";
-}
-
-function cacheVariant(status) {
-  if (status === "live") return "success";
-  if (status === "stale") return "warning";
-  if (status === "unavailable") return "danger";
-  return "default";
-}
-
-function gameGenres(game) {
-  if (Array.isArray(game?.genres)) return game.genres.join(", ");
-  return game?.genresText || "";
-}
-
-function CatalogCard({ game, onOpen, showCacheMeta = false }) {
-  return (
-    <article className="flex h-48 overflow-hidden rounded-lg border border-surface-border bg-surface-card/95 shadow-sm transition-colors hover:border-primary/35 hover:bg-surface-card">
-      <button
-        type="button"
-        onClick={() => onOpen(game)}
-        className="flex w-full min-w-0 text-left"
-      >
-        <div className="h-full w-32 shrink-0 bg-surface-elevated">
-          {game.cover ? (
-            <img
-              src={game.cover}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-content-muted">
-              {String(game.name || "?").charAt(0)}
-            </div>
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
-          <div className="min-w-0">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="line-clamp-2 text-base font-semibold text-content-primary">
-                {game.name}
-              </h3>
-              {game.alreadyInBacklog ? (
-                <Badge variant="success">In backlog</Badge>
-              ) : null}
-              {game.steamOwned ? (
-                <Badge variant="primary">Owned on Steam</Badge>
-              ) : null}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
-              {game.releaseDate || game.released ? (
-                <span>{game.releaseDate || game.released}</span>
-              ) : null}
-              {game.rating ? <span>{game.rating}/5 RAWG</span> : null}
-              {game.metacritic ? <span>MC {game.metacritic}</span> : null}
-            </div>
-          </div>
-          {gameGenres(game) ? (
-            <p className="line-clamp-2 text-sm text-content-secondary">
-              {gameGenres(game)}
-            </p>
-          ) : null}
-          {showCacheMeta || game.rawgPlaytimeHours ? (
-            <div className="mt-auto flex min-h-6 flex-wrap items-center gap-2 text-xs text-content-muted">
-              {showCacheMeta ? <span>{cacheLabel(game.cacheStatus)}</span> : null}
-              {game.rawgPlaytimeHours ? <span>{game.rawgPlaytimeHours}h estimate</span> : null}
-            </div>
-          ) : (
-            <div className="mt-auto min-h-6" />
-          )}
-        </div>
-      </button>
-    </article>
-  );
-}
-
-function CatalogShelf({
-  title,
-  games,
-  expanded,
-  canLoadMore,
-  loadingMore,
-  onToggleExpanded,
-  onLoadMore,
-  onOpen,
-}) {
-  const rowRef = useRef(null);
-  if (!games?.length) return null;
-  const visibleGames = expanded ? games : games.slice(0, 8);
-  const scrollBy = (direction) => {
-    rowRef.current?.scrollBy({
-      left: direction * 640,
-      behavior: "smooth",
-    });
-  };
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary-light" aria-hidden="true" />
-          <h2 className="text-sm font-semibold text-content-primary">{title}</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          {expanded && canLoadMore ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={onLoadMore}
-              disabled={loadingMore}
-            >
-              {loadingMore ? "Loading..." : "Load more"}
-            </Button>
-          ) : null}
-          {games.length > 8 ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onToggleExpanded}>
-              {expanded ? "Show less" : "Show more"}
-            </Button>
-          ) : canLoadMore ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onLoadMore}
-              disabled={loadingMore}
-            >
-              {loadingMore ? "Loading..." : "Load more"}
-            </Button>
-          ) : null}
-        </div>
-      </div>
-      <div className="relative px-16">
-        <button
-          type="button"
-          aria-label={`Scroll ${title} left`}
-          onClick={() => scrollBy(-1)}
-          className="absolute left-0 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg border border-surface-border bg-surface-card/95 text-content-secondary shadow-xl transition hover:border-primary/35 hover:bg-surface-card hover:text-content-primary md:flex"
-        >
-          <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-        </button>
-        <div
-          ref={rowRef}
-          className="grid auto-cols-[minmax(300px,1fr)] grid-flow-col gap-4 overflow-x-auto scroll-smooth pb-3 [scrollbar-width:thin] xl:auto-cols-[calc((100%_-_48px)/4)]"
-        >
-          {visibleGames.map((game) => (
-            <div key={`${title}-${game.id}`} className="min-w-0">
-              <CatalogCard game={game} onOpen={onOpen} />
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          aria-label={`Scroll ${title} right`}
-          onClick={() => scrollBy(1)}
-          className="absolute right-0 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg border border-surface-border bg-surface-card/95 text-content-secondary shadow-xl transition hover:border-primary/35 hover:bg-surface-card hover:text-content-primary md:flex"
-        >
-          <ChevronRight className="h-5 w-5" aria-hidden="true" />
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function DetailModal({
-  game,
-  statuses,
-  addDraft,
-  setAddDraft,
-  adding,
-  refreshing,
-  onClose,
-  onRefresh,
-  onAdd,
-  onOpenBacklog,
-}) {
-  if (!game) return null;
-  const statusOptions = statuses.map((status) => ({ value: status, label: status }));
-  return (
-    <Modal
-      title={game.name}
-      description="Catalog metadata is cached locally and can be refreshed without changing your personal backlog data."
-      onClose={onClose}
-      maxWidth="max-w-5xl"
-      bodyClassName="p-0"
-    >
-      <div className="grid lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="border-b border-surface-border bg-surface-bg/35 p-5 lg:border-b-0 lg:border-r">
-          <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-elevated">
-            {game.cover ? (
-              <img src={game.cover} alt="" className="h-96 w-full object-cover" />
-            ) : (
-              <div className="flex h-96 items-center justify-center text-4xl font-semibold text-content-muted">
-                {String(game.name || "?").charAt(0)}
-              </div>
-            )}
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Badge variant={cacheVariant(game.cacheStatus)}>
-              {cacheLabel(game.cacheStatus)}
-            </Badge>
-            {game.metadataQuality ? <Badge>{game.metadataQuality}</Badge> : null}
-            {game.alreadyInBacklog ? <Badge variant="success">In backlog</Badge> : null}
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-4 w-full justify-center"
-            onClick={onRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            {refreshing ? "Refreshing..." : "Refresh metadata"}
-          </Button>
-        </aside>
-        <div className="space-y-5 p-5">
-          <section className="grid gap-3 sm:grid-cols-4">
-            <Stat label="Released" value={game.releaseDate || game.released || "Unknown"} />
-            <Stat label="RAWG" value={game.rating ? `${game.rating}/5` : "N/A"} />
-            <Stat label="Metacritic" value={game.metacritic || "N/A"} />
-            <Stat
-              label="Estimate"
-              value={game.rawgPlaytimeHours ? `${game.rawgPlaytimeHours}h` : "Unknown"}
-            />
-          </section>
-
-          {gameGenres(game) ? (
-            <section>
-              <h3 className="text-sm font-semibold text-content-primary">Genres</h3>
-              <p className="mt-2 text-sm leading-6 text-content-secondary">
-                {gameGenres(game)}
-              </p>
-            </section>
-          ) : null}
-
-          {game.description ? (
-            <section>
-              <h3 className="text-sm font-semibold text-content-primary">Overview</h3>
-              <div
-                className="prose prose-invert mt-2 max-w-none rounded-xl border border-surface-border bg-surface-bg/35 p-4 text-sm leading-7 text-content-secondary"
-                dangerouslySetInnerHTML={{ __html: game.description }}
-              />
-            </section>
-          ) : null}
-
-          <section className="rounded-xl border border-surface-border bg-surface-bg/35 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-content-primary">
-                  {game.alreadyInBacklog ? "Already in backlog" : "Add to backlog"}
-                </h3>
-                <p className="mt-1 text-xs text-content-muted">
-                  {game.alreadyInBacklog
-                    ? "This catalog game is already linked to your library."
-                    : "Personal fields stay separate from catalog metadata."}
-                </p>
-              </div>
-              {game.alreadyInBacklog ? (
-                <Badge variant="success">Already added</Badge>
-              ) : null}
-            </div>
-            {game.alreadyInBacklog ? (
-              <div className="rounded-lg border border-surface-border bg-surface-elevated/35 p-4">
-                <p className="text-sm text-content-secondary">
-                  It will stay out of the main recommendation shelves, but you can still find it through search or filters.
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="mt-4"
-                  onClick={onOpenBacklog}
-                >
-                  Open backlog
-                </Button>
-              </div>
-            ) : (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field id="discover-add-status" label="Status">
-                    <SelectMenu
-                      id="discover-add-status"
-                      value={addDraft.status}
-                      onChange={(status) =>
-                        setAddDraft((draft) => ({ ...draft, status }))
-                      }
-                      options={statusOptions}
-                    />
-                  </Field>
-                  <Field id="discover-add-my-genre" label="My Genre">
-                    <TextInput
-                      id="discover-add-my-genre"
-                      value={addDraft.my_genre}
-                      onChange={(event) =>
-                        setAddDraft((draft) => ({
-                          ...draft,
-                          my_genre: event.target.value,
-                        }))
-                      }
-                      placeholder="RPG, Action..."
-                    />
-                  </Field>
-                  <Field id="discover-add-hours" label="Hours">
-                    <TextInput
-                      id="discover-add-hours"
-                      type="number"
-                      min="0"
-                      max="1000"
-                      value={addDraft.how_long_to_beat}
-                      onChange={(event) =>
-                        setAddDraft((draft) => ({
-                          ...draft,
-                          how_long_to_beat: event.target.value,
-                        }))
-                      }
-                      placeholder={game.rawgPlaytimeHours ? String(game.rawgPlaytimeHours) : "Optional"}
-                    />
-                  </Field>
-                  <Field id="discover-add-my-score" label="My Score">
-                    <TextInput
-                      id="discover-add-my-score"
-                      type="number"
-                      min="0"
-                      max="10"
-                      step="0.1"
-                      value={addDraft.my_score}
-                      onChange={(event) =>
-                        setAddDraft((draft) => ({
-                          ...draft,
-                          my_score: event.target.value,
-                        }))
-                      }
-                      placeholder="0-10"
-                    />
-                  </Field>
-                  <Field id="discover-add-thoughts" label="Thoughts" className="sm:col-span-2">
-                    <Textarea
-                      id="discover-add-thoughts"
-                      rows={3}
-                      value={addDraft.thoughts}
-                      onChange={(event) =>
-                        setAddDraft((draft) => ({
-                          ...draft,
-                          thoughts: event.target.value,
-                        }))
-                      }
-                      placeholder="Why this belongs on the backlog..."
-                    />
-                  </Field>
-                </div>
-                <div className="mt-4 flex justify-end">
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={onAdd}
-                    disabled={adding}
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    {adding ? "Adding..." : "Add to backlog"}
-                  </Button>
-                </div>
-              </>
-            )}
-          </section>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-xl border border-surface-border bg-surface-bg/35 p-3">
-      <div className="text-xs uppercase tracking-wide text-content-muted">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold text-content-primary">
-        {value}
-      </div>
-    </div>
-  );
-}
 
 export default function DiscoverPage() {
   const { isAuthenticated, loading: authLoading, getAuthHeaders } = useAuth();
@@ -489,8 +117,9 @@ export default function DiscoverPage() {
     filters.sort !== "recent";
   const showBrowseGrid = canSearch || hasBrowseFilters || !shelves.length;
   const statusList = useMemo(
-    () => (statuses?.length ? statuses : ["plan to play", "playing", "finished"]),
-    [statuses]
+    () =>
+      statuses?.length ? statuses : ["plan to play", "playing", "finished"],
+    [statuses],
   );
 
   useEffect(() => {
@@ -505,7 +134,7 @@ export default function DiscoverPage() {
       setLoading(true);
       browseCatalog(
         { ...filters, page, limit: 24, shelfLimit: 24 },
-        { auth: false, headers: getAuthHeaders() }
+        { auth: false, headers: getAuthHeaders() },
       )
         .then((payload) => {
           setResults(payload?.results || []);
@@ -517,7 +146,7 @@ export default function DiscoverPage() {
           setMessage(
             payload?.results?.length || payload?.shelves?.length
               ? ""
-              : "The local catalog is still empty. Search for a few games to start growing it."
+              : "The local catalog is still empty. Search for a few games to start growing it.",
           );
         })
         .catch(() => {
@@ -577,7 +206,9 @@ export default function DiscoverPage() {
     setSelected(game);
     setAddDraft({
       ...emptyAddDraft,
-      how_long_to_beat: game.rawgPlaytimeHours ? String(game.rawgPlaytimeHours) : "",
+      how_long_to_beat: game.rawgPlaytimeHours
+        ? String(game.rawgPlaytimeHours)
+        : "",
     });
     try {
       const detail = await getCatalogGame(game.id, {
@@ -622,7 +253,9 @@ export default function DiscoverPage() {
       const payload = {
         ...addDraft,
         how_long_to_beat:
-          addDraft.how_long_to_beat === "" ? null : Number(addDraft.how_long_to_beat),
+          addDraft.how_long_to_beat === ""
+            ? null
+            : Number(addDraft.how_long_to_beat),
         my_score: addDraft.my_score === "" ? null : Number(addDraft.my_score),
       };
       await addCatalogGameToBacklog(selected.id, payload, {
@@ -635,18 +268,18 @@ export default function DiscoverPage() {
         list.map((game) =>
           Number(game.id) === Number(selected.id)
             ? { ...game, alreadyInBacklog: true }
-            : game
-        )
+            : game,
+        ),
       );
       setShelves((list) =>
         list
           .map((shelf) => ({
             ...shelf,
             results: shelf.results.filter(
-              (game) => Number(game.id) !== Number(selected.id)
+              (game) => Number(game.id) !== Number(selected.id),
             ),
           }))
-          .filter((shelf) => shelf.results.length)
+          .filter((shelf) => shelf.results.length),
       );
     } catch (error) {
       toast.error(error.message || "Could not add this game.");
@@ -664,7 +297,7 @@ export default function DiscoverPage() {
       });
       if (payload?.shelf) {
         setShelves((list) =>
-          list.map((shelf) => (shelf.key === key ? payload.shelf : shelf))
+          list.map((shelf) => (shelf.key === key ? payload.shelf : shelf)),
         );
         setExpandedShelves((current) => new Set(current).add(key));
       }
@@ -677,83 +310,64 @@ export default function DiscoverPage() {
 
   if (!authLoading && !isAuthenticated) {
     return (
-      <main className="min-h-screen bg-surface-bg px-4 py-6 text-content-primary sm:px-6">
-        <EmptyState
+      <AppPage width="full">
+        <PageHeader
+          title="Discover"
+          description="Find games based on your backlog and preferences."
           icon={Compass}
-          title="Sign in to discover games."
-          description="Catalog search is available for signed-in libraries so API usage stays tied to real backlog work."
-          action={
-            <Button type="button" variant="primary" onClick={() => navigate("/")}>
-              Back to backlog
-            </Button>
-          }
         />
-      </main>
+        <div className="pt-8">
+          <EmptyState
+            icon={Compass}
+            title="Sign in to discover games."
+            description="Catalog search is available for signed-in libraries so API usage stays tied to real backlog work."
+            action={
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => navigate("/")}
+              >
+                Back to backlog
+              </Button>
+            }
+          />
+        </div>
+      </AppPage>
     );
   }
 
   return (
-    <main className="min-h-screen bg-surface-bg px-4 py-5 text-content-primary sm:px-6">
-      <header className="sticky top-0 z-30 -mx-4 border-b border-surface-border bg-surface-bg/95 px-4 pb-4 backdrop-blur-xl sm:-mx-6 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" variant="ghost" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Backlog
-          </Button>
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-surface-border bg-surface-elevated/70 text-content-secondary">
-              <Compass className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <h1 className="text-base font-semibold">Discover</h1>
-              <p className="text-xs text-content-muted">
-                Browse curated catalog shelves or search RAWG when you need something specific.
-              </p>
-            </div>
-          </div>
-          <div className="relative min-w-[260px] flex-1 md:max-w-2xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
-            <TextInput
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search games..."
-              className="h-11 rounded-xl bg-surface-elevated/45 pl-10"
-            />
-          </div>
-          {canSearch ? (
-            <Badge variant={cacheVariant(cacheStatus)}>
-              <Database className="mr-1 h-3 w-3" aria-hidden="true" />
-              {cacheLabel(cacheStatus)}
-            </Badge>
-          ) : null}
+    <AppPage width="full">
+      <PageHeader
+        title="Discover"
+        description="Browse curated catalog shelves or search for something specific."
+        icon={Compass}
+      />
+      <PageToolbar>
+        <div className="relative min-w-0 w-full">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
+          <TextInput
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search games..."
+            className="h-11 rounded-xl bg-surface-elevated/45 pl-10"
+          />
         </div>
-      </header>
+      </PageToolbar>
 
-      <section className="mx-auto mt-5 max-w-7xl">
+      <PageSection className="pt-6">
         {isBrowseMode ? (
           <div className="mb-6 border-b border-surface-border pb-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-content-primary">
-                  <Filter className="h-4 w-4" aria-hidden="true" />
-                  Catalog tools
-                </div>
-                <p className="mt-1 text-xs text-content-muted">
-                  Filters use local catalog data only.
-                </p>
-              </div>
-              <div className="text-xs text-content-muted">
-                {total} cached {total === 1 ? "game" : "games"}
-              </div>
-            </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field id="discover-genre" label="Genre">
                 <SelectMenu
                   id="discover-genre"
                   value={filters.genre}
                   placeholder="Any genre"
-                  onChange={(genre) => setFilters((current) => ({ ...current, genre }))}
+                  onChange={(genre) =>
+                    setFilters((current) => ({ ...current, genre }))
+                  }
                   options={[
                     { value: "", label: "Any genre" },
                     ...(facets.genres || []).map((genre) => ({
@@ -777,7 +391,9 @@ export default function DiscoverPage() {
                 <SelectMenu
                   id="discover-backlog"
                   value={filters.backlog}
-                  onChange={(backlog) => setFilters((current) => ({ ...current, backlog }))}
+                  onChange={(backlog) =>
+                    setFilters((current) => ({ ...current, backlog }))
+                  }
                   options={backlogOptions}
                 />
               </Field>
@@ -785,7 +401,9 @@ export default function DiscoverPage() {
                 <SelectMenu
                   id="discover-sort"
                   value={filters.sort}
-                  onChange={(sort) => setFilters((current) => ({ ...current, sort }))}
+                  onChange={(sort) =>
+                    setFilters((current) => ({ ...current, sort }))
+                  }
                   options={sortOptions}
                 />
               </Field>
@@ -866,7 +484,9 @@ export default function DiscoverPage() {
                         variant="secondary"
                         size="sm"
                         disabled={page <= 1}
-                        onClick={() => setPage((value) => Math.max(value - 1, 1))}
+                        onClick={() =>
+                          setPage((value) => Math.max(value - 1, 1))
+                        }
                       >
                         Previous
                       </Button>
@@ -878,7 +498,9 @@ export default function DiscoverPage() {
                         variant="secondary"
                         size="sm"
                         disabled={page >= totalPages}
-                        onClick={() => setPage((value) => Math.min(value + 1, totalPages))}
+                        onClick={() =>
+                          setPage((value) => Math.min(value + 1, totalPages))
+                        }
                       >
                         Next
                       </Button>
@@ -905,7 +527,7 @@ export default function DiscoverPage() {
             description="Search for games like hades, zelda, persona, or baldur. Results are saved locally for future browsing."
           />
         )}
-      </section>
+      </PageSection>
 
       <DetailModal
         game={selected}
@@ -919,6 +541,6 @@ export default function DiscoverPage() {
         onAdd={addSelected}
         onOpenBacklog={() => navigate("/")}
       />
-    </main>
+    </AppPage>
   );
 }

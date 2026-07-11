@@ -2,7 +2,7 @@ import React from "react";
 
 export default function DemoBanner({ onSave, onDiscard }) {
   return (
-    <div className="w-full bg-primary-light text-content-inverse ring-1 ring-black/10 shadow-sm">
+    <div className="w-full bg-primary-light text-content-inverse ring-1 ring-surface-border/35 shadow-sm">
       <div
         className="
           py-2.5 pr-4 sm:pr-6 md:pr-8

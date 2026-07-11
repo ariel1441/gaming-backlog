@@ -43,7 +43,7 @@ export default function KeepDemoModal({ open, onClose }) {
       description="Turn this demo session into your own account without losing the changes you made."
       onClose={close}
       closeDisabled={loading}
-      maxWidth="max-w-lg"
+      size="sm"
       bodyClassName="p-0"
     >
       <form onSubmit={submit}>

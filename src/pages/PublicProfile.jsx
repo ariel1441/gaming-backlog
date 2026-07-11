@@ -11,6 +11,7 @@ import GameGrid from "../components/GameGrid";
 import GameModal from "../components/GameModal";
 import ProfileSnapshot from "../components/ProfileSnapshot";
 import BacklogToolbar from "./Backlog/BacklogToolbar";
+import { AppPage, PageHeader, PageSection } from "../components/layout";
 import { Button, EmptyState, useToast } from "../components/ui";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useFilters } from "../hooks/useFilters";
@@ -69,7 +70,9 @@ export default function PublicProfile() {
   const { statuses: apiStatuses } = useStatuses();
   const derivedStatuses = useMemo(() => {
     if (!games?.length) return [];
-    const set = new Set(games.map((game) => String(game.status)).filter(Boolean));
+    const set = new Set(
+      games.map((game) => String(game.status)).filter(Boolean),
+    );
     return Array.from(set).sort();
   }, [games]);
   const allStatuses = apiStatuses?.length ? apiStatuses : derivedStatuses;
@@ -115,7 +118,7 @@ export default function PublicProfile() {
   const hasHoursFilter = Boolean(
     hoursBounds?.max > hoursBounds?.min &&
       hoursRange &&
-      (hoursRange.min > hoursBounds.min || hoursRange.max < hoursBounds.max)
+      (hoursRange.min > hoursBounds.min || hoursRange.max < hoursBounds.max),
   );
   const activeFilterCount =
     selectedStatuses.length +
@@ -149,7 +152,7 @@ export default function PublicProfile() {
     : null;
   const completedActive = useMemo(() => {
     const set = new Set(
-      (selectedStatuses || []).map((status) => String(status).toLowerCase())
+      (selectedStatuses || []).map((status) => String(status).toLowerCase()),
     );
     return (
       set.size === COMPLETED_STATUSES.length &&
@@ -235,7 +238,7 @@ export default function PublicProfile() {
 
   return (
     <div className="min-h-screen bg-surface-bg text-content-primary">
-      <main className="min-h-screen max-w-[100vw] bg-surface-bg px-2 py-4 pb-[env(safe-area-inset-bottom)] text-content-primary sm:px-6">
+      <AppPage width="full" className="max-w-[100vw]">
         {isGamesView ? (
           <PublicGamesView
             profile={profile}
@@ -296,7 +299,7 @@ export default function PublicProfile() {
             onClose={() => setSelectedGame(null)}
           />
         )}
-      </main>
+      </AppPage>
     </div>
   );
 }

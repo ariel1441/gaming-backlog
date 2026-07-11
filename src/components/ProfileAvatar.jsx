@@ -69,7 +69,7 @@ const colorClasses = {
   pink: "border-pink-400/45 bg-pink-500/15 text-pink-200 shadow-pink-500/10",
   violet: "border-violet-400/45 bg-violet-500/15 text-violet-200 shadow-violet-500/10",
   gold: "border-yellow-300/45 bg-yellow-400/15 text-yellow-200 shadow-yellow-400/10",
-  slate: "border-surface-border bg-surface-elevated text-content-secondary shadow-black/10",
+  slate: "border-surface-border bg-surface-elevated text-content-secondary shadow-overlay/10",
   red: "border-state-error/45 bg-state-error/15 text-state-error shadow-state-error/10",
 };
 

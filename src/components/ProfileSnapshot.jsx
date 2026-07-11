@@ -304,7 +304,7 @@ function FavoriteGamesSection({ games, placeholderCount = 4, onSelectGame }) {
             <div className="relative flex aspect-[2/3] items-center justify-center overflow-hidden rounded-xl border border-dashed border-surface-border bg-gradient-to-br from-surface-elevated/70 via-surface-bg/60 to-surface-card">
               <div className="absolute inset-x-4 top-4 h-px bg-surface-border/70" />
               <div className="absolute inset-x-6 bottom-5 h-px bg-surface-border/50" />
-              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-surface-border bg-surface-card/80 text-sm font-semibold text-content-muted shadow-inner shadow-black/20">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-surface-border bg-surface-card/80 text-sm font-semibold text-content-muted shadow-control-inset">
                 {index + 1}
               </span>
             </div>
@@ -347,8 +347,8 @@ function FavoriteGame({ game, onClick }) {
           {String(game.name || "?").charAt(0)}
         </div>
       )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2">
-        <div className="line-clamp-2 text-xs font-semibold text-white">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-media-overlay/90 to-transparent p-2">
+        <div className="line-clamp-2 text-xs font-semibold text-media-text">
           {game.name}
         </div>
       </div>

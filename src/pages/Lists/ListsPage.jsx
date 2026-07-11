@@ -7,7 +7,6 @@ import {
   ListPlus,
   LockKeyhole,
   RefreshCw,
-  Sparkles,
   Wand2,
 } from "lucide-react";
 import {
@@ -31,6 +30,12 @@ import {
   normalizeSmartSortKey,
   resolveSmartList,
 } from "../../utils/automaticLists";
+import {
+  AppPage,
+  PageHeader,
+  PageLoading,
+  PageSection,
+} from "../../components/layout";
 import { CoverCollage, formatUpdatedDate } from "./ListPreview";
 import SmartListRuleFields from "./SmartListRuleFields";
 
@@ -45,7 +50,12 @@ const defaultManualDraft = {
 
 export default function ListsPage() {
   const { isAuthenticated, loading: authLoading } = useAuth();
-  const { games, loading: gamesLoading, error: gamesError, refresh } = useGames();
+  const {
+    games,
+    loading: gamesLoading,
+    error: gamesError,
+    refresh,
+  } = useGames();
   const [lists, setLists] = useState([]);
   const [listsLoading, setListsLoading] = useState(false);
   const [listsError, setListsError] = useState("");
@@ -85,7 +95,7 @@ export default function ListsPage() {
           description: list.description || resolved.ruleLabel,
         };
       }),
-    [games, lists]
+    [games, lists],
   );
 
   const applyTemplate = (templateKey) => {
@@ -149,92 +159,76 @@ export default function ListsPage() {
     }
   };
 
-  if (authLoading || (isAuthenticated && gamesLoading)) {
+  if (!isAuthenticated && !authLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-surface-bg text-content-primary">
-        <div className="h-12 w-12 animate-spin rounded-full border-t-4 border-primary" />
-      </main>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
-        <EmptyState
-          icon={LockKeyhole}
-          title="Sign in to use Lists."
-          description="Lists are private rankings and smart collections built from your backlog."
-          action={
-            <Button as={Link} to="/" variant="primary">
-              <LibraryBig className="h-4 w-4" aria-hidden="true" />
-              Back to backlog
-            </Button>
-          }
-          className="w-full max-w-lg"
+      <AppPage width="wide">
+        <PageHeader
+          title="Lists"
+          description="Organize games into ranked collections and smart lists."
+          icon={ListOrdered}
         />
-      </main>
-    );
-  }
-
-  if (gamesError) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Could not load your backlog."
-          description={gamesError?.message || "Lists need your games to load first."}
-          action={
-            <Button type="button" variant="primary" onClick={() => refresh()}>
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Retry
-            </Button>
-          }
-        />
-      </main>
+        <div className="pt-6">
+          <EmptyState
+            icon={LockKeyhole}
+            title="Sign in to use Lists."
+            description="Lists are private rankings and smart collections built from your backlog."
+            action={
+              <Button as={Link} to="/" variant="primary">
+                <LibraryBig className="h-4 w-4" aria-hidden="true" />
+                Go to backlog
+              </Button>
+            }
+          />
+        </div>
+      </AppPage>
     );
   }
 
   return (
-    <main className="min-h-screen bg-surface-bg px-3 py-4 text-content-primary sm:px-6">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="rounded-2xl border border-surface-border bg-surface-card p-5 shadow-panel">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-content-muted">
-                Lists
-              </div>
-              <h1 className="mt-1 text-3xl font-semibold">Your lists</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-content-muted">
-                Make ranked lists by hand, or save a smart list that updates from your backlog rules.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button as={Link} to="/" variant="secondary">
-                <LibraryBig className="h-4 w-4" aria-hidden="true" />
-                Backlog
-              </Button>
-              <Button type="button" variant="primary" onClick={() => setShowCreate(true)}>
-                <ListPlus className="h-4 w-4" aria-hidden="true" />
-                New list
-              </Button>
-            </div>
-          </div>
-        </header>
+    <AppPage width="wide">
+      <PageHeader
+        title="Lists"
+        description="Organize games into ranked collections and smart lists that update automatically."
+        icon={ListOrdered}
+        meta={displayLists.length ? `${displayLists.length} saved` : undefined}
+        actions={
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setShowCreate(true)}
+          >
+            <ListPlus className="h-4 w-4" aria-hidden="true" />
+            Create list
+          </Button>
+        }
+      />
 
-        <section>
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-content-primary">
-                <Sparkles className="h-5 w-5 text-content-muted" aria-hidden="true" />
-                Saved lists
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-content-muted">
-                Only lists you create appear here.
-              </p>
-            </div>
-          </div>
-
-          {listsError ? (
+      <div className="pt-7">
+        <PageSection title="Saved lists">
+          {authLoading || gamesLoading ? (
+            <PageLoading
+              rows={4}
+              className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            />
+          ) : gamesError ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title="Could not load your backlog."
+              description={
+                gamesError?.message || "Lists need your games to load first."
+              }
+              action={
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => refresh()}
+                >
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                  Retry
+                </Button>
+              }
+            />
+          ) : listsError ? (
             <EmptyState
               icon={AlertTriangle}
               title="Could not load lists."
@@ -257,21 +251,27 @@ export default function ListsPage() {
               title={listsLoading ? "Loading lists..." : "No lists yet."}
               description="Create a ranked list for your own order, or a smart list that updates from rules you choose."
               action={
-                <Button type="button" variant="primary" onClick={() => setShowCreate(true)}>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => setShowCreate(true)}
+                >
                   <ListPlus className="h-4 w-4" aria-hidden="true" />
                   Create list
                 </Button>
               }
             />
           )}
-        </section>
+        </PageSection>
       </div>
 
       {showCreate ? (
         <Modal
-          title={draft.mode === "smart" ? "Create smart list" : "Create ranked list"}
+          title={
+            draft.mode === "smart" ? "Create smart list" : "Create ranked list"
+          }
           onClose={closeCreate}
-          maxWidth="max-w-3xl"
+          size="xl"
         >
           <form onSubmit={createList} className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -312,14 +312,21 @@ export default function ListsPage() {
                   id="list-name"
                   value={draft.name}
                   onChange={(event) =>
-                    setDraft((current) => ({ ...current, name: event.target.value }))
+                    setDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
                   }
                   maxLength={120}
                   autoFocus
                   disabled={creating}
                 />
               </Field>
-              <Field id="list-description" label="Description" help="Optional. Private in V1.">
+              <Field
+                id="list-description"
+                label="Description"
+                help="Optional. Private in V1."
+              >
                 <Textarea
                   id="list-description"
                   value={draft.description}
@@ -341,8 +348,12 @@ export default function ListsPage() {
                   games={games}
                   query={draft.query}
                   sortKey={draft.sortKey}
-                  onQueryChange={(query) => setDraft((current) => ({ ...current, query }))}
-                  onSortChange={(sortKey) => setDraft((current) => ({ ...current, sortKey }))}
+                  onQueryChange={(query) =>
+                    setDraft((current) => ({ ...current, query }))
+                  }
+                  onSortChange={(sortKey) =>
+                    setDraft((current) => ({ ...current, sortKey }))
+                  }
                   disabled={creating}
                 />
                 <p className="rounded-lg border border-surface-border bg-surface-bg/40 px-3 py-2 text-xs leading-5 text-content-muted">
@@ -352,17 +363,26 @@ export default function ListsPage() {
             ) : null}
 
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={closeCreate} disabled={creating}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={closeCreate}
+                disabled={creating}
+              >
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" disabled={creating || !draft.name.trim()}>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={creating || !draft.name.trim()}
+              >
                 {creating ? "Creating..." : "Create list"}
               </Button>
             </div>
           </form>
         </Modal>
       ) : null}
-    </main>
+    </AppPage>
   );
 }
 
@@ -378,10 +398,15 @@ function ModeCard({ icon: Icon, title, description, active, onClick }) {
           : "border-surface-border bg-surface-bg/35 text-content-secondary hover:border-primary/35 hover:bg-surface-elevated/40",
       ].join(" ")}
     >
-      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary-light" aria-hidden="true" />
+      <Icon
+        className="mt-0.5 h-5 w-5 shrink-0 text-primary-light"
+        aria-hidden="true"
+      />
       <span className="min-w-0">
         <span className="block text-sm font-semibold">{title}</span>
-        <span className="mt-1 block text-xs leading-5 text-content-muted">{description}</span>
+        <span className="mt-1 block text-xs leading-5 text-content-muted">
+          {description}
+        </span>
       </span>
     </button>
   );
@@ -394,7 +419,10 @@ function ListCard({ list }) {
       to={`/lists/${list.id}`}
       className="group block min-w-0 rounded-lg border border-surface-border bg-surface-card p-3 transition-colors hover:border-primary/45 hover:bg-surface-elevated/35"
     >
-      <CoverCollage games={list.previewGames} className="transition-colors group-hover:border-primary/35" />
+      <CoverCollage
+        games={list.previewGames}
+        className="transition-colors group-hover:border-primary/35"
+      />
       <div className="mt-3 min-w-0">
         <div className="flex items-center gap-2">
           <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-content-primary">
@@ -406,7 +434,9 @@ function ListCard({ list }) {
         </div>
         <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-content-muted">
           {list.description ||
-            (list.updated_at ? `Updated ${formatUpdatedDate(list.updated_at)}` : "Private list")}
+            (list.updated_at
+              ? `Updated ${formatUpdatedDate(list.updated_at)}`
+              : "Private list")}
         </p>
       </div>
       <div className="mt-3 text-sm font-semibold text-content-secondary">

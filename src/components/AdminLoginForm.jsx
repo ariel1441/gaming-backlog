@@ -68,7 +68,7 @@ const AuthModal = ({ onClose }) => {
       }
       onClose={handleClose}
       closeDisabled={loading}
-      maxWidth="max-w-md"
+      size="xs"
       bodyClassName="p-0"
     >
       <div className="p-5">
