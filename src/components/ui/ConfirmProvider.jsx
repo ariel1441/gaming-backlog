@@ -32,7 +32,7 @@ export function ConfirmProvider({ children }) {
       if (dialog?.resolve) dialog.resolve(result);
       setDialog(null);
     },
-    [dialog]
+    [dialog],
   );
 
   const value = useMemo(() => ({ confirm }), [confirm]);
@@ -45,7 +45,7 @@ export function ConfirmProvider({ children }) {
         title={dialog?.title}
         description={dialog?.message}
         onClose={() => close(false)}
-        maxWidth="max-w-md"
+        size="xs"
         footer={
           <>
             <Button type="button" onClick={() => close(false)}>
@@ -70,4 +70,3 @@ export function useConfirm() {
   if (!ctx) throw new Error("useConfirm must be used inside ConfirmProvider");
   return ctx.confirm;
 }
-

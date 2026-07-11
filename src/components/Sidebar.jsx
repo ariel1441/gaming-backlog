@@ -1,315 +1,353 @@
-// src/components/Sidebar.jsx
-import React from "react";
-import { useAuth } from "../contexts/AuthContext";
-import { useNavigate, useLocation } from "react-router-dom";
-import { preferredLandingPath } from "../utils/userPreferences";
-
+import React, { useEffect, useRef, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
-  Menu,
-  Globe as IconGlobe,
-  LogOut as IconLogout,
-  User2 as IconUser,
-  BarChart3 as IconInsights,
-  CalendarDays as IconTimeline,
-  MessageSquareText as IconReviews,
-  List as IconLists,
-  Sparkles as IconDemo,
-  Compass as IconDiscover,
-  Gamepad2 as IconSteam,
+  ChevronRight,
+  LogIn,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  User2,
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
+import ProfileAvatar from "./ProfileAvatar";
+import { profileDisplayName, profileHandle } from "../utils/userProfile";
+import {
+  libraryNavigationItems,
+  primaryNavigationItems,
+  visibleNavigationItems,
+} from "../config/navigation";
 
-const Sidebar = ({
-  sidebarOpen,
-  setSidebarOpen,
-  setShowAddForm,
-  isAdmin,
-  onShowAdminLogin,
-  onShowPublicSettings,
-}) => {
-  const { user, isAuthenticated, logout, isGuest, startDemo } = useAuth();
-  const authed = isAuthenticated ?? !!isAdmin;
+const COLLAPSED_STORAGE_KEY = "gaming_backlog_sidebar_collapsed_v1";
+const NARROW_DESKTOP_QUERY = "(max-width: 1279px)";
 
+function initialCollapsedState() {
+  if (typeof window === "undefined") return false;
+  if (window.matchMedia(NARROW_DESKTOP_QUERY).matches) return true;
+  try {
+    return window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function NavigationItem({ item, collapsed }) {
+  const Icon = item.icon;
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      title={collapsed ? item.label : undefined}
+      aria-label={collapsed ? item.label : undefined}
+      className={({ isActive }) =>
+        [
+          "group relative flex min-h-11 items-center rounded-xl text-sm font-medium transition-colors",
+          collapsed ? "justify-center px-2" : "gap-3 px-3",
+          isActive
+            ? "bg-primary/14 text-content-primary"
+            : "text-content-muted hover:bg-surface-elevated/65 hover:text-content-primary",
+        ].join(" ")
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span
+            className={[
+              "absolute inset-y-2 -left-2 w-1 rounded-r-full transition-opacity",
+              isActive ? "bg-primary opacity-100" : "opacity-0",
+            ].join(" ")}
+            aria-hidden="true"
+          />
+          <Icon
+            className={[
+              "h-[18px] w-[18px] shrink-0 transition-colors",
+              isActive
+                ? "text-primary-light"
+                : "text-content-muted group-hover:text-content-primary",
+            ].join(" ")}
+            aria-hidden="true"
+          />
+          {!collapsed ? <span className="truncate">{item.label}</span> : null}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function AccountMenu({ collapsed, user, onClose, onNavigate, onLogout }) {
+  const displayName = user?.display_name?.trim();
+
+  return (
+    <div
+      className={[
+        "absolute z-50 w-56 overflow-hidden rounded-xl border border-surface-border bg-surface-card p-1.5 shadow-menu",
+        collapsed
+          ? "bottom-0 left-[calc(100%+0.6rem)]"
+          : "bottom-[calc(100%+0.6rem)] left-0",
+      ].join(" ")}
+    >
+      <div className="border-b border-surface-border/70 px-3 py-2.5">
+        <div className="truncate text-sm font-semibold text-content-primary">
+          {profileDisplayName(user)}
+        </div>
+        {displayName ? (
+          <div className="truncate text-xs text-content-muted">
+            {profileHandle(user)}
+          </div>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          onClose();
+          onNavigate("/me");
+        }}
+        className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-content-secondary transition-colors hover:bg-surface-elevated hover:text-content-primary"
+      >
+        <User2 className="h-4 w-4" aria-hidden="true" />
+        Profile
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onClose();
+          onNavigate("/settings");
+        }}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-content-secondary transition-colors hover:bg-surface-elevated hover:text-content-primary"
+      >
+        <Settings className="h-4 w-4" aria-hidden="true" />
+        Settings
+      </button>
+      <div className="mt-1 border-t border-surface-border/70 pt-1">
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            onLogout();
+          }}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-content-muted transition-colors hover:bg-state-error/10 hover:text-state-error"
+        >
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          Log out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function Sidebar() {
+  const { user, isAuthenticated, isGuest, logout } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const isInsights = location.pathname.startsWith("/insights");
-  const goInsights = () => {
-    closeAllPanels();
-    navigate("/insights");
-  };
-  const isTimeline = location.pathname.startsWith("/timeline");
-  const goTimeline = () => {
-    closeAllPanels();
-    navigate("/timeline");
-  };
-  const isDiscover = location.pathname.startsWith("/discover");
-  const isReviews = location.pathname.startsWith("/reviews");
-  const isLists = location.pathname.startsWith("/lists");
-  const goDiscover = () => {
-    closeAllPanels();
-    navigate("/discover");
-  };
-  const goLists = () => {
-    closeAllPanels();
-    navigate("/lists");
-  };
-  const goReviews = () => {
-    closeAllPanels();
-    navigate("/reviews");
-  };
-  const isSteam = location.pathname.startsWith("/steam");
-  const goSteam = () => {
-    closeAllPanels();
-    navigate("/steam/library");
-  };
+  const accountRef = useRef(null);
+  const [collapsed, setCollapsed] = useState(initialCollapsedState);
+  const [accountOpen, setAccountOpen] = useState(false);
 
-  const closeAllPanels = () => {
-    setShowAddForm(false);
-  };
+  useEffect(() => {
+    const media = window.matchMedia(NARROW_DESKTOP_QUERY);
+    const handleChange = (event) => {
+      if (event.matches) setCollapsed(true);
+      setAccountOpen(false);
+    };
+    media.addEventListener?.("change", handleChange);
+    return () => media.removeEventListener?.("change", handleChange);
+  }, []);
 
-  const tryToggleSidebar = () => {
-    if (window.innerWidth < 1024) return;
-    setSidebarOpen(!sidebarOpen);
-    if (sidebarOpen) closeAllPanels();
-  };
-  const startLiveDemo = async () => {
-    closeAllPanels();
-    const res = await startDemo();
-    if (res?.success) navigate(preferredLandingPath(res.user));
+  const customDisplayName = user?.display_name?.trim() || "";
+  const primaryAccountLabel = customDisplayName || profileHandle(user || {});
+  const secondaryAccountLabel = customDisplayName
+    ? profileHandle(user || {})
+    : "Profile";
+
+  const allowedPrimary = visibleNavigationItems(primaryNavigationItems, {
+    isAuthenticated,
+    isGuest,
+  });
+  const allowedLibrary = visibleNavigationItems(libraryNavigationItems, {
+    isAuthenticated,
+    isGuest,
+  });
+
+  useDismissibleLayer({
+    open: accountOpen,
+    layerRef: accountRef,
+    onDismiss: () => setAccountOpen(false),
+  });
+
+  const toggleCollapsed = () => {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(COLLAPSED_STORAGE_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+    setAccountOpen(false);
   };
 
   return (
-    <aside
-      className={[
-        "relative",
-        "w-16 lg:transition-[width] lg:duration-300 lg:ease-out",
-        sidebarOpen ? "lg:w-72" : "lg:w-16",
-        "bg-surface-card/95 border-r border-surface-border text-content-primary",
-        "h-screen shrink-0 flex flex-col overflow-hidden",
-      ].join(" ")}
-    >
-      {/* HEADER */}
-      <div className="border-b border-surface-border px-2 py-3 lg:px-3">
-        <button
-          type="button"
-          onClick={tryToggleSidebar}
-          className="flex h-11 w-full items-center justify-center rounded-lg bg-transparent transition-colors hover:bg-surface-elevated hover:text-content-primary lg:justify-start"
-          title={sidebarOpen ? "Collapse" : "Expand"}
-          aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+    <>
+      <div
+        className={[
+          "hidden shrink-0 transition-[width] duration-200 lg:block",
+          collapsed ? "w-[68px]" : "w-[204px]",
+        ].join(" ")}
+        aria-hidden="true"
+      />
+      <aside
+        className={[
+          "fixed inset-y-0 left-0 z-40 hidden h-dvh border-r border-surface-border/70 bg-surface-sidebar transition-[width] duration-200 lg:flex lg:flex-col",
+          collapsed ? "w-[68px]" : "w-[204px]",
+        ].join(" ")}
+      >
+        <div
+          className={[
+            "flex h-16 shrink-0 items-center border-b border-surface-border/55 px-3",
+            collapsed ? "justify-start" : "gap-2",
+          ].join(" ")}
         >
-          <div className="flex h-11 w-10 items-center justify-center">
-            <Menu className="w-5 h-5" />
-          </div>
-          <div
+          <button
+            type="button"
+            onClick={toggleCollapsed}
             className={[
-              "min-w-0 text-left",
-              "transition-all duration-300",
-              "opacity-0 -translate-x-2 pointer-events-none",
-              sidebarOpen
-                ? "lg:opacity-100 lg:translate-x-0 lg:pointer-events-auto"
-                : "",
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors",
+              collapsed
+                ? "border-primary/35 bg-primary/10 text-primary-light hover:border-primary/60 hover:bg-primary/16"
+                : "border-surface-border/70 bg-surface-elevated/45 text-content-muted hover:border-primary/40 hover:bg-surface-elevated hover:text-content-primary",
             ].join(" ")}
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            title={collapsed ? "Expand navigation" : "Collapse navigation"}
           >
-            {sidebarOpen && (
-              <span className="hidden truncate font-semibold lg:inline">
-                Gaming Backlog
-              </span>
+            {collapsed ? (
+              <PanelLeftOpen className="h-[18px] w-[18px]" aria-hidden="true" />
+            ) : (
+              <PanelLeftClose
+                className="h-[18px] w-[18px]"
+                aria-hidden="true"
+              />
             )}
-          </div>
-        </button>
-      </div>
+          </button>
 
-      {/* AUTH BOX */}
-      <div className="border-b border-surface-border px-2 py-3 lg:px-3">
-        {authed ? (
-          sidebarOpen ? (
-            <div className="hidden h-11 items-center rounded-lg bg-surface-bg/35 pr-2 lg:flex">
-              <div className="flex h-11 w-10 items-center justify-center">
-                <IconUser className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-content-secondary">
-                  Signed in as
+          {!collapsed ? (
+            <NavLink
+              to="/"
+              className="min-w-0 flex-1 rounded-lg px-1 py-2 text-sm font-semibold tracking-tight text-content-primary transition-colors hover:text-primary-light"
+              title="Gaming Backlog"
+            >
+              <span className="block whitespace-nowrap">Gaming Backlog</span>
+            </NavLink>
+          ) : null}
+        </div>
+
+        <nav
+          className={[
+            "min-h-0 flex-1 overflow-y-auto py-4",
+            collapsed ? "px-2" : "px-3",
+          ].join(" ")}
+        >
+          <div className="space-y-1">
+            {allowedPrimary.map((item) => (
+              <NavigationItem key={item.to} item={item} collapsed={collapsed} />
+            ))}
+          </div>
+
+          {allowedLibrary.length ? (
+            <div className="mt-6 border-t border-surface-border/55 pt-4">
+              {!collapsed ? (
+                <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-content-muted/75">
+                  Library
                 </div>
-                <div className="text-sm font-medium truncate">
-                  {user?.username ?? "You"}
-                </div>
+              ) : null}
+              <div className="space-y-1">
+                {allowedLibrary.map((item) => (
+                  <NavigationItem
+                    key={item.to}
+                    item={item}
+                    collapsed={collapsed}
+                  />
+                ))}
               </div>
+            </div>
+          ) : null}
+        </nav>
+
+        <div
+          ref={accountRef}
+          className={[
+            "relative shrink-0 border-t border-surface-border/55",
+            collapsed ? "p-2" : "p-3",
+          ].join(" ")}
+        >
+          {isAuthenticated ? (
+            <>
               <button
                 type="button"
-                onClick={logout}
-                className="ml-auto inline-flex h-8 items-center justify-center gap-1 rounded-md bg-transparent px-2.5 text-xs transition-colors hover:bg-surface-elevated hover:text-content-primary"
-                title="Sign out"
+                onClick={() => setAccountOpen((current) => !current)}
+                className={[
+                  "flex w-full items-center rounded-xl border border-transparent text-left transition-colors hover:border-surface-border/70 hover:bg-surface-elevated/60",
+                  collapsed ? "h-11 justify-center" : "gap-2.5 p-2",
+                ].join(" ")}
+                aria-expanded={accountOpen}
+                aria-label="Open account menu"
+                title={collapsed ? primaryAccountLabel : undefined}
               >
-                <IconLogout className="w-4 h-4" />
-                <span>Sign out</span>
+                {collapsed ? (
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border border-surface-border bg-surface-elevated text-content-secondary">
+                    <User2 className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                ) : (
+                  <ProfileAvatar
+                    profile={user}
+                    size="sm"
+                    className="shrink-0 rounded-full"
+                  />
+                )}
+                {!collapsed ? (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-content-primary">
+                        {primaryAccountLabel}
+                      </div>
+                      <div className="truncate text-xs text-content-muted">
+                        {secondaryAccountLabel}
+                      </div>
+                    </div>
+                    <ChevronRight
+                      className={[
+                        "h-4 w-4 shrink-0 text-content-muted transition-transform",
+                        accountOpen ? "-rotate-90" : "",
+                      ].join(" ")}
+                      aria-hidden="true"
+                    />
+                  </>
+                ) : null}
               </button>
-            </div>
+              {accountOpen ? (
+                <AccountMenu
+                  collapsed={collapsed}
+                  user={user}
+                  onClose={() => setAccountOpen(false)}
+                  onNavigate={navigate}
+                  onLogout={logout}
+                />
+              ) : null}
+            </>
           ) : (
             <button
               type="button"
-              onClick={logout}
-              className="flex h-11 w-full items-center justify-center rounded-lg bg-transparent transition-colors hover:bg-surface-elevated hover:text-content-primary"
-              title="Sign out"
-              aria-label="Sign out"
-            >
-              <IconLogout className="w-5 h-5" />
-            </button>
-          )
-        ) : (
-          <button
-            type="button"
-            onClick={onShowAdminLogin}
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-transparent px-3 transition-colors hover:bg-surface-elevated hover:text-content-primary lg:justify-start"
-            title="Sign in / Create account"
-          >
-            <div className="flex h-11 w-10 items-center justify-center">
-              <IconUser className="w-5 h-5" />
-            </div>
-            <div
+              onClick={() => navigate("/")}
               className={[
-                "transition-all duration-300",
-                "opacity-0 -translate-x-2 pointer-events-none",
-                sidebarOpen
-                  ? "lg:opacity-100 lg:translate-x-0 lg:pointer-events-auto"
-                  : "",
+                "flex h-11 w-full items-center justify-center rounded-xl border border-primary/35 bg-primary/10 text-sm font-semibold text-primary-light transition-colors hover:bg-primary/16",
+                collapsed ? "px-0" : "gap-2 px-3",
               ].join(" ")}
+              title={collapsed ? "Sign in" : undefined}
             >
-              {sidebarOpen && (
-                <span className="hidden lg:inline">
-                  Sign in / Create account
-                </span>
-              )}
-            </div>
-          </button>
-        )}
-      </div>
-
-      {/* ACTIONS */}
-      <nav className="flex-1 space-y-1.5 overflow-auto p-2 lg:p-3">
-        <SidebarRow
-          label="Insights"
-          icon={IconInsights}
-          active={isInsights}
-          onClick={goInsights}
-          expanded={sidebarOpen}
-        />
-        {authed && (
-          <SidebarRow
-            label="Timeline"
-            icon={IconTimeline}
-            active={isTimeline}
-            onClick={goTimeline}
-            expanded={sidebarOpen}
-          />
-        )}
-        {authed && (
-          <SidebarRow
-            label="Lists"
-            icon={IconLists}
-            active={isLists}
-            onClick={goLists}
-            expanded={sidebarOpen}
-          />
-        )}
-        {authed && (
-          <SidebarRow
-            label="Reviews"
-            icon={IconReviews}
-            active={isReviews}
-            onClick={goReviews}
-            expanded={sidebarOpen}
-          />
-        )}
-        {authed && (
-          <SidebarRow
-            label="Discover"
-            icon={IconDiscover}
-            active={isDiscover}
-            onClick={goDiscover}
-            expanded={sidebarOpen}
-          />
-        )}
-        {authed && !isGuest && (
-          <SidebarRow
-            label="Steam Library"
-            icon={IconSteam}
-            active={isSteam}
-            onClick={goSteam}
-            expanded={sidebarOpen}
-          />
-        )}
-        {authed && (
-          <SidebarRow
-            label="Public Profile"
-            icon={IconGlobe}
-            onClick={onShowPublicSettings}
-            expanded={sidebarOpen}
-          />
-        )}
-        <SidebarRow
-          label="Try Live Demo"
-          icon={IconDemo}
-          onClick={startLiveDemo}
-          expanded={sidebarOpen}
-        />
-      </nav>
-
-      {/* FOOTER TIP */}
-      <div className="border-t border-surface-border px-2 py-3 text-xs text-content-muted lg:px-3">
-        <div
-          className={[
-            "transition-all duration-300 text-center lg:text-left",
-            "opacity-0 -translate-x-2 pointer-events-none",
-            sidebarOpen
-              ? "lg:opacity-100 lg:translate-x-0 lg:pointer-events-auto"
-              : "",
-          ].join(" ")}
-        >
-          {sidebarOpen ? (
-            <span className="hidden lg:inline">
-              Drag cards to reorder games within a status.
-            </span>
-          ) : (
-            <span className="sr-only">Backlog tip</span>
+              <LogIn className="h-4 w-4" aria-hidden="true" />
+              {!collapsed ? "Sign in" : null}
+            </button>
           )}
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
-};
-
-// Sidebar row
-const SidebarRow = ({ label, icon, active, onClick, expanded }) => {
-  const Icon = icon;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "flex h-11 w-full items-center justify-center rounded-lg border text-sm transition-colors lg:justify-start",
-        active
-          ? "border-primary/45 bg-primary/15 text-primary-light"
-          : "border-transparent bg-transparent text-content-secondary hover:border-surface-border hover:bg-surface-elevated/70 hover:text-content-primary",
-      ].join(" ")}
-      title={label}
-    >
-      <div className="w-10 h-full flex items-center justify-center">
-        <Icon className="w-5 h-5" aria-hidden="true" />
-      </div>
-      <div
-        className={[
-          "min-w-0 text-left",
-          "transition-all duration-300",
-          "opacity-0 -translate-x-2 pointer-events-none",
-          expanded
-            ? "lg:opacity-100 lg:translate-x-0 lg:pointer-events-auto"
-            : "",
-        ].join(" ")}
-      >
-        {expanded && <span className="hidden lg:inline truncate">{label}</span>}
-      </div>
-    </button>
-  );
-};
-
-export default Sidebar;
+}

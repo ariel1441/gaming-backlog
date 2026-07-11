@@ -4,46 +4,120 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#f97316", // Orange 500
-          light: "#fb923c", // Orange 400
-          dark: "#ea580c", // Orange 600
-          darker: "#c2410c", // Orange 700
+          DEFAULT: "rgb(var(--color-primary) / <alpha-value>)",
+          light: "rgb(var(--color-primary-light) / <alpha-value>)",
+          dark: "rgb(var(--color-primary-dark) / <alpha-value>)",
+          darker: "rgb(var(--color-primary-darker) / <alpha-value>)",
         },
         secondary: {
-          DEFAULT: "#38bdf8", // Sky 400
-          light: "#7dd3fc", // Sky 300
-          dark: "#0284c7", // Sky 600
+          DEFAULT: "rgb(var(--color-secondary) / <alpha-value>)",
+          light: "rgb(var(--color-secondary-light) / <alpha-value>)",
+          dark: "rgb(var(--color-secondary-dark) / <alpha-value>)",
         },
         surface: {
-          bg: "#0A0F18",
-          card: "#121A27",
-          elevated: "#182235",
-          border: "#263448",
+          bg: "rgb(var(--color-surface-bg) / <alpha-value>)",
+          sidebar: "rgb(var(--color-surface-sidebar) / <alpha-value>)",
+          card: "rgb(var(--color-surface-card) / <alpha-value>)",
+          elevated: "rgb(var(--color-surface-elevated) / <alpha-value>)",
+          input: "rgb(var(--color-surface-input) / <alpha-value>)",
+          selected: "rgb(var(--color-surface-selected) / <alpha-value>)",
+          disabled: "rgb(var(--color-surface-disabled) / <alpha-value>)",
+          border: "rgb(var(--color-surface-border) / <alpha-value>)",
+          "border-strong":
+            "rgb(var(--color-surface-border-strong) / <alpha-value>)",
+          hover: "rgb(var(--color-surface-hover) / <alpha-value>)",
         },
         content: {
-          primary: "#f9fafb", // Gray 50
-          secondary: "#d8dee8",
-          muted: "#94a3b8",
+          primary: "rgb(var(--color-content-primary) / <alpha-value>)",
+          inverse: "rgb(var(--color-content-inverse) / <alpha-value>)",
+          secondary: "rgb(var(--color-content-secondary) / <alpha-value>)",
+          muted: "rgb(var(--color-content-muted) / <alpha-value>)",
+          disabled: "rgb(var(--color-content-disabled) / <alpha-value>)",
+          "on-primary": "rgb(var(--color-content-on-primary) / <alpha-value>)",
+          "on-danger": "rgb(var(--color-content-on-danger) / <alpha-value>)",
         },
         state: {
-          success: "#22c55e", // Green 500
-          warning: "#eab308", // Yellow 500
-          error: "#ef4444", // Red 500
+          success: "rgb(var(--color-state-success) / <alpha-value>)",
+          warning: "rgb(var(--color-state-warning) / <alpha-value>)",
+          info: "rgb(var(--color-state-info) / <alpha-value>)",
+          error: "rgb(var(--color-state-error) / <alpha-value>)",
+        },
+        status: {
+          active: "rgb(var(--color-status-active) / <alpha-value>)",
+          soon: "rgb(var(--color-status-soon) / <alpha-value>)",
+          planned: "rgb(var(--color-status-planned) / <alpha-value>)",
+          return: "rgb(var(--color-status-return) / <alpha-value>)",
+          flexible: "rgb(var(--color-status-flexible) / <alpha-value>)",
+          future: "rgb(var(--color-status-future) / <alpha-value>)",
+          recommended: "rgb(var(--color-status-recommended) / <alpha-value>)",
+          idle: "rgb(var(--color-status-idle) / <alpha-value>)",
+          done: "rgb(var(--color-status-done) / <alpha-value>)",
+          sampled: "rgb(var(--color-status-sampled) / <alpha-value>)",
+          dropped: "rgb(var(--color-status-dropped) / <alpha-value>)",
         },
         action: {
-          primary: "#f97316",
-          "primary-hover": "#ea580c",
-          secondary: "#3b82f6",
-          "secondary-hover": "#2563eb",
-          danger: "#ef4444",
-          "danger-hover": "#dc2626",
+          primary: "rgb(var(--color-action-primary) / <alpha-value>)",
+          "primary-hover":
+            "rgb(var(--color-action-primary-hover) / <alpha-value>)",
+          secondary: "rgb(var(--color-action-secondary) / <alpha-value>)",
+          "secondary-hover":
+            "rgb(var(--color-action-secondary-hover) / <alpha-value>)",
+          danger: "rgb(var(--color-action-danger) / <alpha-value>)",
+          "danger-hover":
+            "rgb(var(--color-action-danger-hover) / <alpha-value>)",
+        },
+        focus: "rgb(var(--color-focus-ring) / <alpha-value>)",
+        "focus-border": "rgb(var(--color-focus-border) / <alpha-value>)",
+        overlay: "rgb(var(--color-overlay) / <alpha-value>)",
+        backdrop: "rgb(var(--color-overlay-backdrop) / <alpha-value>)",
+        media: {
+          overlay: "rgb(var(--color-media-overlay) / <alpha-value>)",
+          text: "rgb(var(--color-media-text) / <alpha-value>)",
+          muted: "rgb(var(--color-media-text-muted) / <alpha-value>)",
+          border: "rgb(var(--color-media-border) / <alpha-value>)",
+        },
+        skeleton: {
+          base: "rgb(var(--color-skeleton-base) / <alpha-value>)",
+          highlight: "rgb(var(--color-skeleton-highlight) / <alpha-value>)",
+        },
+        scrollbar: {
+          thumb: "rgb(var(--color-scrollbar-thumb) / <alpha-value>)",
+          track: "rgb(var(--color-scrollbar-track) / <alpha-value>)",
+        },
+        metadata: {
+          surface: "rgb(var(--color-metadata-surface) / <alpha-value>)",
+          border: "rgb(var(--color-metadata-border) / <alpha-value>)",
+          text: "rgb(var(--color-metadata-text) / <alpha-value>)",
+        },
+        integration: {
+          steam: "rgb(var(--color-integration-steam) / <alpha-value>)",
+          surface: "rgb(var(--color-integration-surface) / <alpha-value>)",
+          border: "rgb(var(--color-integration-border) / <alpha-value>)",
         },
       },
       boxShadow: {
-        "glow-primary": "0 18px 45px rgba(249, 115, 22, 0.18)",
-        "glow-secondary": "0 18px 45px rgba(56, 189, 248, 0.16)",
-        "glow-error": "0 0 20px rgba(239, 68, 68, 0.4)",
-        panel: "0 18px 55px rgba(0, 0, 0, 0.28)",
+        control: "var(--shadow-control)",
+        "control-inset": "var(--shadow-control-inset)",
+        menu: "var(--shadow-menu)",
+        "active-navigation": "var(--shadow-active-navigation)",
+        "glow-primary": "var(--shadow-primary-glow)",
+        "glow-secondary": "var(--shadow-secondary-glow)",
+        "glow-error": "var(--shadow-error-glow)",
+        panel: "var(--shadow-panel)",
+        dialog: "var(--shadow-dialog)",
+        pulse: "var(--shadow-primary-pulse)",
+        "sticky-footer": "var(--shadow-sticky-footer)",
+      },
+      borderRadius: {
+        control: "var(--radius-control)",
+        card: "var(--radius-card)",
+        panel: "var(--radius-panel)",
+        dialog: "var(--radius-dialog)",
+      },
+      maxWidth: {
+        page: "var(--layout-page-standard)",
+        "page-wide": "var(--layout-page-wide)",
+        "page-full": "var(--layout-page-full)",
       },
       spacing: { 18: "4.5rem" },
       zIndex: { modal: "9999", tooltip: "99999" },

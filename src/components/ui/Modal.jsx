@@ -1,5 +1,17 @@
-import React, { useEffect, useRef } from "react";
+import React, { useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import IconButton from "./IconButton";
+import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
+
+const sizes = {
+  xs: "max-w-md",
+  sm: "max-w-lg",
+  md: "max-w-xl",
+  lg: "max-w-2xl",
+  xl: "max-w-3xl",
+  "2xl": "max-w-4xl",
+  "3xl": "max-w-5xl",
+};
 
 export default function Modal({
   open = true,
@@ -8,7 +20,8 @@ export default function Modal({
   onClose,
   children,
   footer,
-  maxWidth = "max-w-2xl",
+  size = "lg",
+  maxWidth,
   panelRef,
   closeDisabled = false,
   closeLabel = "Close",
@@ -16,17 +29,20 @@ export default function Modal({
   bodyClassName = "p-5",
 }) {
   const localRef = useRef(null);
+  const generatedId = useId();
+  const titleId = title ? `${generatedId}-title` : undefined;
+  const descriptionId = description ? `${generatedId}-description` : undefined;
 
-  useEffect(() => {
-    if (!open || closeDisabled) return;
-
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") onClose?.();
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeDisabled, onClose, open]);
+  useDismissibleLayer({
+    open,
+    layerRef: localRef,
+    onDismiss: onClose,
+    dismissOnEscape: !closeDisabled,
+    dismissOnPointerOutside: !closeDisabled,
+    trapFocus: true,
+    lockScroll: true,
+    restoreFocus: true,
+  });
 
   if (!open) return null;
 
@@ -36,40 +52,41 @@ export default function Modal({
     else if (panelRef) panelRef.current = node;
   };
 
-  return (
+  const dialog = (
     <div
-      className="fixed inset-0 z-modal flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-modal flex items-center justify-center overflow-y-auto bg-backdrop/75 p-2 backdrop-blur-md sm:p-5"
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? "modal-title" : undefined}
-      onMouseDown={(event) => {
-        if (!closeDisabled && event.target === event.currentTarget) {
-          onClose?.();
-        }
-      }}
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
     >
       <div
         ref={setRefs}
+        tabIndex={-1}
         className={[
-          "relative w-full rounded-xl border border-surface-border bg-surface-card shadow-xl",
-          "max-h-[calc(100vh-2rem)] overflow-hidden",
-          maxWidth,
+          "relative flex max-h-[calc(100vh-1rem)] w-full flex-col overflow-hidden rounded-dialog border border-surface-border/80 bg-surface-card shadow-dialog sm:max-h-[calc(100vh-2.5rem)]",
+          maxWidth || sizes[size] || sizes.lg,
           className,
         ].join(" ")}
       >
-        {(title || onClose) && (
-          <div className="flex items-start justify-between gap-4 border-b border-surface-border bg-surface-bg/35 p-5">
+        {title || onClose ? (
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-surface-border/65 bg-surface-elevated/55 px-5 py-4 sm:px-6 sm:py-5">
             <div className="min-w-0">
               {title ? (
                 <h2
-                  id="modal-title"
-                  className="text-xl font-semibold text-content-primary"
+                  id={titleId}
+                  className="text-xl font-semibold tracking-tight text-content-primary sm:text-2xl"
                 >
                   {title}
                 </h2>
               ) : null}
               {description ? (
-                <p className="mt-1 text-sm text-content-muted">{description}</p>
+                <p
+                  id={descriptionId}
+                  className="mt-1.5 max-w-2xl text-sm leading-6 text-content-muted"
+                >
+                  {description}
+                </p>
               ) : null}
             </div>
 
@@ -81,21 +98,30 @@ export default function Modal({
                 variant="ghost"
                 onClick={onClose}
                 disabled={closeDisabled}
+                className="h-9 w-9 border border-surface-border/65 bg-surface-elevated/35"
               />
             ) : null}
           </div>
-        )}
+        ) : null}
 
-        <div className={[bodyClassName, "max-h-[calc(100vh-9rem)] overflow-y-auto"].join(" ")}>
+        <div
+          className={[bodyClassName, "min-h-0 flex-1 overflow-y-auto"].join(
+            " ",
+          )}
+        >
           {children}
         </div>
 
         {footer ? (
-          <div className="flex justify-end gap-3 border-t border-surface-border bg-surface-bg/35 p-5">
+          <div className="flex shrink-0 justify-end gap-3 border-t border-surface-border/65 bg-surface-elevated/55 p-5">
             {footer}
           </div>
         ) : null}
       </div>
     </div>
   );
+
+  return typeof document === "undefined"
+    ? dialog
+    : createPortal(dialog, document.body);
 }

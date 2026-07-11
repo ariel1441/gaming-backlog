@@ -30,14 +30,14 @@ export default function Switch({
       </span>
       <input
         type="checkbox"
-        className="sr-only"
+        className="peer sr-only"
         checked={checked}
         onChange={(event) => onChange?.(event.target.checked)}
         disabled={disabled}
       />
       <span
         className={[
-          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
+          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus",
           checked
             ? "border-primary/70 bg-primary"
             : "border-surface-border bg-surface-elevated",

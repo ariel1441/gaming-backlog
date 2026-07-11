@@ -1,0 +1,464 @@
+/* === Chart & UI color variables coming from Tailwind tokens === */
+:root,
+[data-theme="ember"] {
+    color-scheme: dark;
+
+    --color-primary: 249 115 22;
+    --color-primary-light: 251 146 60;
+    --color-primary-dark: 234 88 12;
+    --color-primary-darker: 194 65 12;
+    --color-secondary: 56 189 248;
+    --color-secondary-light: 125 211 252;
+    --color-secondary-dark: 2 132 199;
+
+    --color-surface-bg: 10 15 24;
+    --color-surface-sidebar: 8 13 22;
+    --color-surface-card: 18 26 39;
+    --color-surface-elevated: 24 34 53;
+    --color-surface-input: 24 34 53;
+    --color-surface-selected: 49 35 27;
+    --color-surface-disabled: 31 41 55;
+    --color-surface-border: 38 52 72;
+    --color-surface-border-strong: 54 72 98;
+    --color-surface-hover: 31 44 66;
+
+    --color-content-primary: 249 250 251;
+    --color-content-inverse: 255 255 255;
+    --color-content-secondary: 216 222 232;
+    --color-content-muted: 148 163 184;
+    --color-content-disabled: 100 116 139;
+    --color-content-on-primary: 255 255 255;
+    --color-content-on-danger: 255 255 255;
+    --color-state-success: 34 197 94;
+    --color-state-warning: 234 179 8;
+    --color-state-info: 56 189 248;
+    --color-state-error: 239 68 68;
+    --color-focus-ring: var(--color-primary-light);
+    --color-focus-border: var(--color-primary-light);
+    --color-overlay: 0 0 0;
+    --color-overlay-backdrop: 0 0 0;
+    --color-media-overlay: 0 0 0;
+    --color-media-text: 255 255 255;
+    --color-media-text-muted: 209 213 219;
+    --color-media-border: 255 255 255;
+    --color-skeleton-base: 255 255 255;
+    --color-skeleton-highlight: 255 255 255;
+    --color-scrollbar-thumb: var(--color-surface-border);
+    --color-scrollbar-track: 0 0 0;
+    --color-metadata-surface: 24 34 53;
+    --color-metadata-border: 54 72 98;
+    --color-metadata-text: 216 222 232;
+    --color-integration-steam: var(--color-primary);
+    --color-integration-surface: var(--color-surface-selected);
+    --color-integration-border: var(--color-primary-dark);
+
+    /* Domain tones stay semantic so themes can rebalance them independently. */
+    --color-status-active: 249 115 22;
+    --color-status-soon: 245 158 11;
+    --color-status-planned: 234 179 8;
+    --color-status-return: 132 204 22;
+    --color-status-flexible: 59 130 246;
+    --color-status-future: 139 92 246;
+    --color-status-recommended: 6 182 212;
+    --color-status-idle: 100 116 139;
+    --color-status-done: 34 197 94;
+    --color-status-sampled: 107 114 128;
+    --color-status-dropped: 239 68 68;
+
+    --color-action-primary: var(--color-primary);
+    --color-action-primary-hover: var(--color-primary-dark);
+    --color-action-secondary: 59 130 246;
+    --color-action-secondary-hover: 37 99 235;
+    --color-action-danger: var(--color-state-error);
+    --color-action-danger-hover: 220 38 38;
+
+    /* Semantic shape, elevation, and layout tokens. */
+    --radius-control: 0.75rem;
+    --radius-card: 1rem;
+    --radius-panel: 1.25rem;
+    --radius-dialog: 1rem;
+    --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.1);
+    --shadow-control: 0 1px 2px rgb(var(--color-overlay) / 0.15);
+    --shadow-menu: 0 24px 70px rgb(var(--color-overlay) / 0.45);
+    --shadow-panel: 0 18px 55px rgb(var(--color-overlay) / 0.28);
+    --shadow-dialog: 0 30px 100px rgb(var(--color-overlay) / 0.65);
+    --shadow-primary-glow: 0 18px 45px rgb(var(--color-primary) / 0.18);
+    --shadow-secondary-glow: 0 18px 45px rgb(var(--color-secondary) / 0.16);
+    --shadow-error-glow: 0 0 20px rgb(var(--color-state-error) / 0.4);
+    --shadow-primary-pulse: 0 0 18px rgb(var(--color-primary) / 0.5);
+    --shadow-active-navigation: 0 0 8px rgb(var(--color-primary) / 0.5);
+    --shadow-sticky-footer: 0 -12px 28px rgb(var(--color-overlay) / 0.28);
+    --layout-page-standard: 75rem;
+    --layout-page-wide: 85rem;
+    --layout-page-full: 95rem;
+
+    /* brand palette for charts */
+    --chart-1: rgb(var(--color-primary));
+    --chart-2: rgb(var(--color-secondary-light));
+    --chart-3: rgb(var(--color-state-success));
+    --chart-4: rgb(var(--color-secondary));
+    --chart-5: rgb(6 182 212);
+    --chart-6: rgb(var(--color-state-warning));
+    --chart-7: rgb(244 63 94);
+    --chart-8: rgb(20 184 166);
+    --chart-9: rgb(251 113 133);
+    --chart-10: rgb(var(--color-secondary-light));
+    --chart-11: rgb(var(--color-primary-light));
+    --chart-12: rgb(52 211 153);
+
+    /* neutrals driven by your theme */
+    --axis-tick: rgb(var(--color-content-muted));
+    --grid-stroke: rgb(var(--color-surface-border));
+    --tooltip-bg: rgb(var(--color-surface-card));
+    --tooltip-border: rgb(var(--color-surface-border));
+    --tooltip-text: rgb(var(--color-content-primary));
+    --tooltip-muted: rgb(var(--color-content-muted));
+    --chart-cursor: rgb(var(--color-primary) / 0.08);
+    --chart-skeleton: rgb(var(--color-skeleton-base) / 0.1);
+  }
+
+[data-theme="black-red"] {
+    color-scheme: dark;
+
+    --color-primary: 198 46 62;
+    --color-primary-light: 231 81 96;
+    --color-primary-dark: 164 35 49;
+    --color-primary-darker: 126 27 39;
+    --color-secondary: 56 189 248;
+    --color-secondary-light: 125 211 252;
+    --color-secondary-dark: 2 132 199;
+
+    --color-surface-bg: 5 5 6;
+    --color-surface-sidebar: 2 2 3;
+    --color-surface-card: 13 13 15;
+    --color-surface-elevated: 20 20 23;
+    --color-surface-input: 16 16 18;
+    --color-surface-selected: 45 18 23;
+    --color-surface-disabled: 31 31 34;
+    --color-surface-border: 39 39 44;
+    --color-surface-border-strong: 61 59 65;
+    --color-surface-hover: 27 27 31;
+
+    --color-content-primary: 250 250 250;
+    --color-content-inverse: 255 255 255;
+    --color-content-secondary: 228 228 231;
+    --color-content-muted: 161 161 170;
+    --color-content-disabled: 113 113 122;
+    --color-content-on-primary: 255 255 255;
+    --color-content-on-danger: 255 255 255;
+
+    --color-state-success: 34 197 94;
+    --color-state-warning: 245 158 11;
+    --color-state-info: 56 189 248;
+    --color-state-error: 248 113 113;
+    --color-focus-ring: var(--color-secondary-light);
+    --color-focus-border: var(--color-secondary-light);
+
+    --color-overlay: 0 0 0;
+    --color-overlay-backdrop: 0 0 0;
+    --color-media-overlay: 0 0 0;
+    --color-media-text: 255 255 255;
+    --color-media-text-muted: 212 212 216;
+    --color-media-border: 255 255 255;
+    --color-skeleton-base: 255 255 255;
+    --color-skeleton-highlight: 255 255 255;
+    --color-scrollbar-thumb: 61 59 65;
+    --color-scrollbar-track: 5 5 6;
+    --color-metadata-surface: 20 20 23;
+    --color-metadata-border: 61 59 65;
+    --color-metadata-text: 212 212 216;
+    --color-integration-steam: var(--color-primary);
+    --color-integration-surface: var(--color-surface-selected);
+    --color-integration-border: var(--color-primary-dark);
+
+    --color-status-active: 249 115 22;
+    --color-status-soon: 245 158 11;
+    --color-status-planned: 234 179 8;
+    --color-status-return: 132 204 22;
+    --color-status-flexible: 59 130 246;
+    --color-status-future: 139 92 246;
+    --color-status-recommended: 6 182 212;
+    --color-status-idle: 100 116 139;
+    --color-status-done: 34 197 94;
+    --color-status-sampled: 107 114 128;
+    --color-status-dropped: 239 68 68;
+
+    --color-action-primary: var(--color-primary);
+    --color-action-primary-hover: 224 67 82;
+    --color-action-secondary: 59 130 246;
+    --color-action-secondary-hover: 37 99 235;
+    --color-action-danger: 239 68 68;
+    --color-action-danger-hover: 220 38 38;
+
+    --radius-control: 0.75rem;
+    --radius-card: 1rem;
+    --radius-panel: 1.25rem;
+    --radius-dialog: 1rem;
+    --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.16);
+    --shadow-control: 0 1px 2px rgb(var(--color-overlay) / 0.24);
+    --shadow-menu: 0 24px 70px rgb(var(--color-overlay) / 0.62);
+    --shadow-panel: 0 18px 55px rgb(var(--color-overlay) / 0.42);
+    --shadow-dialog: 0 30px 100px rgb(var(--color-overlay) / 0.78);
+    --shadow-primary-glow: 0 18px 48px rgb(var(--color-primary) / 0.23);
+    --shadow-secondary-glow: 0 18px 45px rgb(var(--color-secondary) / 0.14);
+    --shadow-error-glow: 0 0 20px rgb(var(--color-state-error) / 0.35);
+    --shadow-primary-pulse: 0 0 18px rgb(var(--color-primary) / 0.55);
+    --shadow-active-navigation: 0 0 9px rgb(var(--color-primary-light) / 0.55);
+    --shadow-sticky-footer: 0 -12px 28px rgb(var(--color-overlay) / 0.42);
+    --layout-page-standard: 75rem;
+    --layout-page-wide: 85rem;
+    --layout-page-full: 95rem;
+
+    --chart-1: rgb(var(--color-primary-light));
+    --chart-2: rgb(var(--color-secondary-light));
+    --chart-3: rgb(var(--color-state-success));
+    --chart-4: rgb(168 85 247);
+    --chart-5: rgb(6 182 212);
+    --chart-6: rgb(var(--color-state-warning));
+    --chart-7: rgb(244 114 182);
+    --chart-8: rgb(20 184 166);
+    --chart-9: rgb(251 146 60);
+    --chart-10: rgb(96 165 250);
+    --chart-11: rgb(232 121 249);
+    --chart-12: rgb(74 222 128);
+
+    --axis-tick: rgb(var(--color-content-muted));
+    --grid-stroke: rgb(var(--color-surface-border));
+    --tooltip-bg: rgb(var(--color-surface-card));
+    --tooltip-border: rgb(var(--color-surface-border-strong));
+    --tooltip-text: rgb(var(--color-content-primary));
+    --tooltip-muted: rgb(var(--color-content-muted));
+    --chart-cursor: rgb(var(--color-primary) / 0.1);
+    --chart-skeleton: rgb(var(--color-skeleton-base) / 0.1);
+}
+
+
+[data-theme="latte-mauve"] {
+    color-scheme: light;
+
+    --color-primary: 118 80 199;
+    --color-primary-light: 143 105 218;
+    --color-primary-dark: 101 64 181;
+    --color-primary-darker: 79 47 148;
+    --color-secondary: 198 83 140;
+    --color-secondary-light: 218 111 163;
+    --color-secondary-dark: 166 61 113;
+
+    --color-surface-bg: 238 234 243;
+    --color-surface-sidebar: 228 223 234;
+    --color-surface-card: 247 244 250;
+    --color-surface-elevated: 252 250 253;
+    --color-surface-input: 235 230 240;
+    --color-surface-selected: 229 216 244;
+    --color-surface-disabled: 224 219 230;
+    --color-surface-border: 203 194 211;
+    --color-surface-border-strong: 175 163 186;
+    --color-surface-hover: 226 219 233;
+
+    --color-content-primary: 43 35 52;
+    --color-content-inverse: 255 255 255;
+    --color-content-secondary: 86 74 98;
+    --color-content-muted: 118 107 128;
+    --color-content-disabled: 157 146 166;
+    --color-content-on-primary: 255 255 255;
+    --color-content-on-danger: 255 255 255;
+
+    --color-state-success: 52 145 80;
+    --color-state-warning: 202 128 28;
+    --color-state-info: 63 112 196;
+    --color-state-error: 198 55 82;
+    --color-focus-ring: var(--color-primary-light);
+    --color-focus-border: var(--color-primary);
+
+    --color-overlay: 48 38 58;
+    --color-overlay-backdrop: 48 38 58;
+    --color-media-overlay: 0 0 0;
+    --color-media-text: 255 255 255;
+    --color-media-text-muted: 232 226 238;
+    --color-media-border: 255 255 255;
+    --color-skeleton-base: 43 35 52;
+    --color-skeleton-highlight: 255 255 255;
+    --color-scrollbar-thumb: 175 163 186;
+    --color-scrollbar-track: 238 234 243;
+    --color-metadata-surface: 239 235 243;
+    --color-metadata-border: 198 189 207;
+    --color-metadata-text: 86 74 98;
+    --color-integration-steam: var(--color-primary);
+    --color-integration-surface: 229 216 244;
+    --color-integration-border: 177 151 217;
+
+    --color-status-active: 230 99 18;
+    --color-status-soon: 217 119 6;
+    --color-status-planned: 190 130 15;
+    --color-status-return: 77 124 15;
+    --color-status-flexible: 37 99 235;
+    --color-status-future: 124 58 237;
+    --color-status-recommended: 8 145 178;
+    --color-status-idle: 100 116 139;
+    --color-status-done: 22 163 74;
+    --color-status-sampled: 107 114 128;
+    --color-status-dropped: 220 38 38;
+
+    --color-action-primary: var(--color-primary);
+    --color-action-primary-hover: var(--color-primary-dark);
+    --color-action-secondary: var(--color-secondary);
+    --color-action-secondary-hover: var(--color-secondary-dark);
+    --color-action-danger: 198 55 82;
+    --color-action-danger-hover: 171 43 68;
+
+    --radius-control: 0.75rem;
+    --radius-card: 1rem;
+    --radius-panel: 1.25rem;
+    --radius-dialog: 1rem;
+    --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.07);
+    --shadow-control: 0 1px 3px rgb(var(--color-overlay) / 0.1);
+    --shadow-menu: 0 20px 55px rgb(var(--color-overlay) / 0.17);
+    --shadow-panel: 0 14px 38px rgb(var(--color-overlay) / 0.11);
+    --shadow-dialog: 0 28px 80px rgb(var(--color-overlay) / 0.23);
+    --shadow-primary-glow: 0 16px 38px rgb(var(--color-primary) / 0.14);
+    --shadow-secondary-glow: 0 16px 38px rgb(var(--color-secondary) / 0.13);
+    --shadow-error-glow: 0 0 18px rgb(var(--color-state-error) / 0.18);
+    --shadow-primary-pulse: 0 0 16px rgb(var(--color-primary) / 0.28);
+    --shadow-active-navigation: 0 0 8px rgb(var(--color-primary) / 0.24);
+    --shadow-sticky-footer: 0 -10px 25px rgb(var(--color-overlay) / 0.11);
+    --layout-page-standard: 75rem;
+    --layout-page-wide: 85rem;
+    --layout-page-full: 95rem;
+
+    --chart-1: rgb(118 80 199);
+    --chart-2: rgb(198 83 140);
+    --chart-3: rgb(52 145 80);
+    --chart-4: rgb(63 112 196);
+    --chart-5: rgb(8 145 178);
+    --chart-6: rgb(202 128 28);
+    --chart-7: rgb(220 95 151);
+    --chart-8: rgb(20 148 136);
+    --chart-9: rgb(230 99 18);
+    --chart-10: rgb(89 117 214);
+    --chart-11: rgb(160 91 210);
+    --chart-12: rgb(84 155 102);
+
+    --axis-tick: rgb(var(--color-content-muted));
+    --grid-stroke: rgb(var(--color-surface-border));
+    --tooltip-bg: rgb(var(--color-surface-elevated));
+    --tooltip-border: rgb(var(--color-surface-border-strong));
+    --tooltip-text: rgb(var(--color-content-primary));
+    --tooltip-muted: rgb(var(--color-content-muted));
+    --chart-cursor: rgb(var(--color-primary) / 0.08);
+    --chart-skeleton: rgb(var(--color-skeleton-base) / 0.08);
+}
+
+[data-theme="midnight-teal"] {
+    color-scheme: dark;
+
+    --color-primary: 32 184 166;
+    --color-primary-light: 50 207 187;
+    --color-primary-dark: 13 148 136;
+    --color-primary-darker: 15 118 110;
+    --color-secondary: 139 111 214;
+    --color-secondary-light: 167 139 250;
+    --color-secondary-dark: 109 79 190;
+
+    --color-surface-bg: 5 15 17;
+    --color-surface-sidebar: 7 19 21;
+    --color-surface-card: 11 26 29;
+    --color-surface-elevated: 16 37 41;
+    --color-surface-input: 13 32 35;
+    --color-surface-selected: 16 58 54;
+    --color-surface-disabled: 32 47 50;
+    --color-surface-border: 30 58 62;
+    --color-surface-border-strong: 49 86 90;
+    --color-surface-hover: 19 46 50;
+
+    --color-content-primary: 230 242 241;
+    --color-content-inverse: 255 255 255;
+    --color-content-secondary: 190 215 213;
+    --color-content-muted: 126 159 158;
+    --color-content-disabled: 83 111 112;
+    --color-content-on-primary: 3 27 25;
+    --color-content-on-danger: 255 255 255;
+
+    --color-state-success: 74 222 128;
+    --color-state-warning: 250 204 21;
+    --color-state-info: 96 165 250;
+    --color-state-error: 248 113 113;
+    --color-focus-ring: var(--color-primary-light);
+    --color-focus-border: var(--color-primary-light);
+
+    --color-overlay: 0 0 0;
+    --color-overlay-backdrop: 0 0 0;
+    --color-media-overlay: 0 0 0;
+    --color-media-text: 255 255 255;
+    --color-media-text-muted: 209 228 226;
+    --color-media-border: 255 255 255;
+    --color-skeleton-base: 255 255 255;
+    --color-skeleton-highlight: 255 255 255;
+    --color-scrollbar-thumb: 49 86 90;
+    --color-scrollbar-track: 5 15 17;
+    --color-metadata-surface: 16 37 41;
+    --color-metadata-border: 49 86 90;
+    --color-metadata-text: 190 215 213;
+    --color-integration-steam: var(--color-primary);
+    --color-integration-surface: 16 58 54;
+    --color-integration-border: 38 115 105;
+
+    --color-status-active: 249 115 22;
+    --color-status-soon: 245 158 11;
+    --color-status-planned: 234 179 8;
+    --color-status-return: 132 204 22;
+    --color-status-flexible: 96 165 250;
+    --color-status-future: 167 139 250;
+    --color-status-recommended: 34 211 238;
+    --color-status-idle: 100 116 139;
+    --color-status-done: 74 222 128;
+    --color-status-sampled: 107 114 128;
+    --color-status-dropped: 248 113 113;
+
+    --color-action-primary: var(--color-primary);
+    --color-action-primary-hover: var(--color-primary-light);
+    --color-action-secondary: var(--color-secondary);
+    --color-action-secondary-hover: var(--color-secondary-light);
+    --color-action-danger: 248 113 113;
+    --color-action-danger-hover: 239 68 68;
+
+    --radius-control: 0.75rem;
+    --radius-card: 1rem;
+    --radius-panel: 1.25rem;
+    --radius-dialog: 1rem;
+    --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.16);
+    --shadow-control: 0 1px 2px rgb(var(--color-overlay) / 0.24);
+    --shadow-menu: 0 24px 70px rgb(var(--color-overlay) / 0.58);
+    --shadow-panel: 0 18px 55px rgb(var(--color-overlay) / 0.38);
+    --shadow-dialog: 0 30px 100px rgb(var(--color-overlay) / 0.74);
+    --shadow-primary-glow: 0 18px 45px rgb(var(--color-primary) / 0.18);
+    --shadow-secondary-glow: 0 18px 45px rgb(var(--color-secondary) / 0.15);
+    --shadow-error-glow: 0 0 20px rgb(var(--color-state-error) / 0.32);
+    --shadow-primary-pulse: 0 0 18px rgb(var(--color-primary) / 0.45);
+    --shadow-active-navigation: 0 0 8px rgb(var(--color-primary) / 0.46);
+    --shadow-sticky-footer: 0 -12px 28px rgb(var(--color-overlay) / 0.38);
+    --layout-page-standard: 75rem;
+    --layout-page-wide: 85rem;
+    --layout-page-full: 95rem;
+
+    --chart-1: rgb(50 207 187);
+    --chart-2: rgb(var(--color-secondary-light));
+    --chart-3: rgb(74 222 128);
+    --chart-4: rgb(167 139 250);
+    --chart-5: rgb(34 211 238);
+    --chart-6: rgb(250 204 21);
+    --chart-7: rgb(244 114 182);
+    --chart-8: rgb(45 212 191);
+    --chart-9: rgb(251 146 60);
+    --chart-10: rgb(96 165 250);
+    --chart-11: rgb(232 121 249);
+    --chart-12: rgb(134 239 172);
+
+    --axis-tick: rgb(var(--color-content-muted));
+    --grid-stroke: rgb(var(--color-surface-border));
+    --tooltip-bg: rgb(var(--color-surface-card));
+    --tooltip-border: rgb(var(--color-surface-border-strong));
+    --tooltip-text: rgb(var(--color-content-primary));
+    --tooltip-muted: rgb(var(--color-content-muted));
+    --chart-cursor: rgb(var(--color-primary) / 0.10);
+    --chart-skeleton: rgb(var(--color-skeleton-base) / 0.10);
+}

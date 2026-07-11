@@ -1,10 +1,35 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="ember">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/controller-website-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>Gaming Backlog</title>
+    <script id="theme-bootstrap-config" type="application/json">
+      {"storageKey":"gaming_backlog_theme_v1","defaultTheme":"ember","themes":{"ember":{"appearance":"dark"},"black-red":{"appearance":"dark"},"latte-mauve":{"appearance":"light"},"midnight-teal":{"appearance":"dark"}}}
+    </script>
+    <script>
+      (() => {
+        const root = document.documentElement;
+
+        try {
+          const configElement = document.getElementById("theme-bootstrap-config");
+          const config = JSON.parse(configElement.textContent);
+          const storedTheme = localStorage.getItem(config.storageKey);
+          const themeId = Object.hasOwn(config.themes, storedTheme)
+            ? storedTheme
+            : config.defaultTheme;
+          const theme = config.themes[themeId];
+
+          root.dataset.theme = themeId;
+          root.style.colorScheme = theme.appearance;
+        } catch {
+          root.dataset.theme = "ember";
+          root.style.colorScheme = "dark";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

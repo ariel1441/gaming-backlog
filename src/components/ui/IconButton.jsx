@@ -2,12 +2,14 @@ import React from "react";
 import { X } from "lucide-react";
 
 const variants = {
+  primary:
+    "border border-action-primary bg-action-primary text-content-on-primary shadow-control hover:border-action-primary-hover hover:bg-action-primary-hover",
   default:
     "border border-surface-border bg-surface-card/90 text-content-primary shadow-sm hover:border-secondary/60 hover:bg-surface-elevated hover:text-secondary-light",
   ghost:
     "border border-transparent bg-transparent text-content-muted hover:border-surface-border hover:bg-surface-elevated/70 hover:text-content-primary",
   danger:
-    "border border-surface-border bg-surface-card/90 text-content-primary hover:border-state-error hover:bg-state-error hover:text-white",
+    "border border-surface-border bg-surface-card/90 text-content-primary hover:border-action-danger hover:bg-action-danger hover:text-content-on-danger",
 };
 
 export default function IconButton({
@@ -29,14 +31,17 @@ export default function IconButton({
       {...props}
       className={[
         "inline-flex shrink-0 items-center justify-center rounded-full transition-colors",
-        "focus:outline-none focus:ring-2 focus:ring-primary/70 focus:ring-offset-2 focus:ring-offset-surface-bg",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg",
         "disabled:cursor-not-allowed disabled:opacity-60",
         sizeClass,
         variants[variant] || variants.default,
         className,
       ].join(" ")}
     >
-      <Icon className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} />
+      <Icon
+        className={size === "sm" ? "h-4 w-4" : "h-5 w-5"}
+        aria-hidden="true"
+      />
     </button>
   );
 }

@@ -11,7 +11,9 @@ export default function StatusBadge({
 }) {
   const label = status || placeholder;
   const normalized =
-    typeof label === "string" ? label.toLowerCase().trim().replaceAll("-", " ") : "";
+    typeof label === "string"
+      ? label.toLowerCase().trim().replaceAll("-", " ")
+      : "";
   const toneClass = statusClassMap[normalized] || fallbackClass;
 
   return (

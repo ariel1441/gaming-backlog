@@ -3,6 +3,10 @@ import React from "react";
 const variants = {
   default: "border-surface-border bg-surface-elevated text-content-secondary",
   primary: "border-primary/40 bg-primary/15 text-primary-light",
+  secondary: "border-secondary/40 bg-secondary/14 text-secondary-light",
+  metadata: "border-metadata-border/70 bg-metadata-surface/75 text-metadata-text",
+  info: "border-state-info/40 bg-state-info/14 text-state-info",
+  integration: "border-integration-border/70 bg-integration-surface/80 text-integration-steam",
   success: "border-state-success/40 bg-state-success/15 text-state-success",
   warning: "border-state-warning/40 bg-state-warning/15 text-state-warning",
   danger: "border-state-error/40 bg-state-error/15 text-state-error",
