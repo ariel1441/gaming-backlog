@@ -28,7 +28,7 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npx --yes eslint@8.57.1 .
+        run: npm run lint
 
       - name: Test
         run: npm test
