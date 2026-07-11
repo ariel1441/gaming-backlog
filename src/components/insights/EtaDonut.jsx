@@ -61,8 +61,8 @@ export default function EtaDonut({
                     border: `1px solid ${tooltipColors().border}`,
                     borderRadius: 8,
                   }}
-                  labelStyle={{ color: "#fff" }}
-                  itemStyle={{ color: "#fff" }}
+                  labelStyle={{ color: tooltipColors().text }}
+                  itemStyle={{ color: tooltipColors().text }}
                   labelFormatter={() => ""}
                   formatter={(value, name, { payload }) => [
                     `${fmtInt(value)} h`,

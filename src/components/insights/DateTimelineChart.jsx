@@ -51,8 +51,8 @@ export default function DateTimelineChart({
                 border: `1px solid ${tooltipColors().border}`,
                 borderRadius: 8,
               }}
-              labelStyle={{ color: "#fff" }}
-              itemStyle={{ color: "#fff" }}
+              labelStyle={{ color: tooltipColors().text }}
+              itemStyle={{ color: tooltipColors().text }}
               formatter={(value, name) => [fmtInt(value), name]}
             />
             <Legend wrapperStyle={{ color: axisTick(), fontSize: 12 }} />

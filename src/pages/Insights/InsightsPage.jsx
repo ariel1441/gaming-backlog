@@ -14,6 +14,13 @@ import { api } from "../../services/apiClient";
 // context
 import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  AppPage,
+  PageError,
+  PageHeader,
+  PageSection,
+  PageToolbar,
+} from "../../components/layout";
 
 // components
 import Tile from "../../components/insights/Tile";
@@ -52,7 +59,7 @@ export default function InsightsPage() {
   const { user } = useAuth();
   const displayName = useMemo(
     () => user?.name || user?.username || user?.email || "You",
-    [user]
+    [user],
   );
 
   const isSmall = useMedia("(max-width: 1024px)");
@@ -185,13 +192,13 @@ export default function InsightsPage() {
         value: Number(s.hours || 0),
         count: Number(s.count || 0),
       })),
-    [byStatus]
+    [byStatus],
   );
 
   // exclude "done" from ETA donut
   const etaPieData = useMemo(
     () => statusData.filter((row) => toGroup(row.name) !== "done"),
-    [statusData, toGroup]
+    [statusData, toGroup],
   );
 
   // ---------- Genres transforms ----------
@@ -256,25 +263,22 @@ export default function InsightsPage() {
 
   const myGenreDisplay = useMemo(
     () => myGenreData.map((d) => ({ ...d, hoursRounded: Math.ceil(d.hours) })),
-    [myGenreData]
+    [myGenreData],
   );
   const rawgGenreDisplay = useMemo(
     () =>
       rawgGenreData.map((d) => ({ ...d, hoursRounded: Math.ceil(d.hours) })),
-    [rawgGenreData]
+    [rawgGenreData],
   );
 
   const genreAccessor = genreMetric === "hours" ? "hoursRounded" : "count";
   const genreData = genreType === "my" ? myGenreDisplay : rawgGenreDisplay;
 
-  const dateInsights = useMemo(
-    () => computeGameDateInsights(games),
-    [games]
-  );
+  const dateInsights = useMemo(() => computeGameDateInsights(games), [games]);
 
   const onStatusClick = useCallback(
     (status) => nav(`${GAMES_ROUTE}${toQP({ status })}`),
-    [nav]
+    [nav],
   );
 
   const onGenreClick = useCallback(
@@ -285,9 +289,9 @@ export default function InsightsPage() {
           genre: key,
           group: genreStatus !== "all" ? genreStatus : undefined,
           metric: genreMetric,
-        })}`
+        })}`,
       ),
-    [nav, genreType, genreStatus, genreMetric]
+    [nav, genreType, genreStatus, genreMetric],
   );
 
   const onDateYearClick = useCallback(
@@ -295,12 +299,12 @@ export default function InsightsPage() {
       if (!dateType || !year) return;
       nav(`${GAMES_ROUTE}${toQP({ dateType, year })}`);
     },
-    [nav]
+    [nav],
   );
 
   const onActiveClick = useCallback(
     (active) => nav(`${GAMES_ROUTE}${toQP({ active })}`),
-    [nav]
+    [nav],
   );
 
   const allHoursFallback = useMemo(
@@ -308,211 +312,176 @@ export default function InsightsPage() {
       Array.isArray(byStatus)
         ? byStatus.reduce((a, s) => a + (s.hours || 0), 0)
         : 0,
-    [byStatus]
+    [byStatus],
   );
 
   const showSkeletons = !ready || loading;
 
   return (
-    <div className="min-h-screen bg-surface-bg text-content-primary p-4 md:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl md:text-2xl font-semibold">
-          Insights{" "}
-          <span className="font-normal text-content-secondary">
-            — {displayName}
-          </span>
-        </h1>
-        <div className="flex items-center gap-3 flex-wrap justify-end">
-          <label className="flex items-center gap-3 text-sm">
-            <span className="text-content-muted whitespace-nowrap">
-              Weekly hours
-            </span>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={Number.isFinite(weeklyHours) ? weeklyHours : 0}
-              onChange={(e) =>
-                setWeeklyHours(
-                  clamp(parseInt(e.target.value || "0", 10), 0, 999)
-                )
-              }
-              className="w-20 border border-surface-border rounded px-2 py-1 text-sm bg-surface-card text-content-primary"
-              aria-label="Weekly hours value"
-            />
-          </label>
+    <AppPage width="full">
+      <div className="space-y-6">
+        <PageHeader
+          title="Insights"
+          description="Patterns across your gaming history and backlog."
+          meta={displayName}
+        />
 
-          <button
-            type="button"
-            onClick={() => setIncludeMissing((v) => !v)}
-            className={[
-              "px-3 py-1.5 rounded border text-sm transition-colors",
-              includeMissing
-                ? "bg-surface-elevated border-surface-border text-content-primary"
-                : "bg-surface-card border-surface-border text-content-primary hover:bg-surface-elevated",
-            ].join(" ")}
-          >
-            {includeMissing ? "Hide missing games" : "Show missing games"}
-          </button>
-
-          <button
-            onClick={() => nav(GAMES_ROUTE)}
-            className="px-3 py-1.5 rounded border border-surface-border bg-surface-card text-content-primary hover:bg-surface-elevated transition-colors text-sm"
-            aria-label="Back to main"
-          >
-            Back to Games
-          </button>
-        </div>
-      </div>
-
-      {err ? (
-        <div className="p-3 rounded bg-red-500/10 text-red-300 text-sm border border-red-500/30">
-          {err}
-        </div>
-      ) : null}
-
-      {showSkeletons ? (
-        <div className="space-y-6">
-          <KPISkeleton />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ChartSkeleton />
-            <ChartSkeleton />
-          </div>
-          <ChartSkeleton />
-        </div>
-      ) : data ? (
-        <>
-          {/* KPI tiles */}
-          <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <Tile label="Total games" value={fmtInt(totals.count)} />
-            <Tile
-              label="Playing hours"
-              value={`${fmtInt(totals.hours_playing)} h`}
-            />
-            <Tile
-              label="Planned hours"
-              value={`${fmtInt(totals.hours_planned)} h`}
-            />
-            <Tile label="Done hours" value={`${fmtInt(totals.hours_done)} h`} />
-            <Tile
-              label="Total games hours"
-              value={`${fmtInt(totals.total_hours ?? allHoursFallback)} h`}
-            />
-            <Tile label="Avg hours" value={`${fmtInt(totals.avg_hours)} h`} />
-          </section>
-
-          <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-4">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <h2 className="font-semibold text-content-primary">
-                  Started and finished over time
-                </h2>
-                <p className="mt-1 text-sm text-content-muted">
-                  Yearly progress from the dates saved on your games.
-                </p>
-              </div>
-            </div>
-
-            <DateTimelineChart
-              data={dateInsights.yearly}
-              axisTick={axisTick}
-              gridStroke={gridStroke}
-              tooltipColors={tooltipColors}
-              onBarClick={onDateYearClick}
-            />
-
-            <div className="grid gap-3 border-t border-surface-border pt-4 sm:grid-cols-2 lg:grid-cols-5">
-              <InsightStat
-                label="Started this year"
-                value={fmtInt(dateInsights.startedThisYear)}
-              />
-              <InsightStat
-                label="Finished this year"
-                value={fmtInt(dateInsights.finishedThisYear)}
-              />
-              <InsightStat
-                label="Currently active"
-                value={fmtInt(dateInsights.activeCount)}
-                onClick={() => onActiveClick("unfinished")}
-              />
-              <InsightStat
-                label="Avg start to finish"
-                value={
-                  dateInsights.averageCompletionDays == null
-                    ? "N/A"
-                    : `${fmtInt(dateInsights.averageCompletionDays)} days`
-                }
-              />
-              <InsightStat
-                label="Oldest active"
-                value={
-                  dateInsights.oldestActive
-                    ? dateInsights.oldestActive.name
-                    : "N/A"
-                }
-                detail={dateInsights.oldestActive?.started_at}
-                onClick={() => onActiveClick("unfinished")}
-              />
-            </div>
-          </section>
-
-          {/* Hours by status + ETA */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-            <HoursByStatusChart
-              data={statusData}
-              isSmall={isSmall}
-              isPhone={isPhone}
-              axisTick={axisTick}
-              gridStroke={gridStroke}
-              tooltipColors={tooltipColors}
-              colorAt={colorAt}
-              onBarClick={onStatusClick}
-            />
-            <EtaDonut
-              data={etaPieData}
-              eta={eta}
-              axisTick={axisTick}
-              tooltipColors={tooltipColors}
-              colorAt={colorAt}
-              onSliceClick={onStatusClick}
-            />
-          </div>
-
-          {/* Genres */}
-          <GenresChart
-            data={genreData}
-            accessor={genreAccessor}
-            isSmall={isSmall}
-            axisTick={axisTick}
-            gridStroke={gridStroke}
-            tooltipColors={tooltipColors}
-            colorAt={colorAt}
-            groupKeys={groupKeys}
-            genreType={genreType}
-            onGenreTypeChange={setGenreType}
-            genreMetric={genreMetric}
-            onGenreMetricChange={setGenreMetric}
-            genreStatus={genreStatus}
-            onGenreStatusChange={setGenreStatus}
-            onBarClick={onGenreClick}
+        {err ? (
+          <PageError
+            title="Could not load insights."
+            description={err}
+            onRetry={() => load()}
+            className="min-h-[160px]"
           />
+        ) : null}
 
-          {includeMissing && missing?.length ? (
-            <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5">
-              <h2 className="font-semibold mb-2">Missing hours (excluded)</h2>
-              <ul className="list-disc pl-5 text-sm text-content-secondary space-y-1">
-                {missing.map((name) => (
-                  <li key={name}>{name}</li>
-                ))}
-              </ul>
+        {showSkeletons ? (
+          <div className="space-y-6">
+            <KPISkeleton />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ChartSkeleton />
+              <ChartSkeleton />
+            </div>
+            <ChartSkeleton />
+          </div>
+        ) : data ? (
+          <>
+            {/* KPI tiles */}
+            <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <Tile label="Total games" value={fmtInt(totals.count)} />
+              <Tile
+                label="Playing hours"
+                value={`${fmtInt(totals.hours_playing)} h`}
+              />
+              <Tile
+                label="Planned hours"
+                value={`${fmtInt(totals.hours_planned)} h`}
+              />
+              <Tile
+                label="Done hours"
+                value={`${fmtInt(totals.hours_done)} h`}
+              />
+              <Tile
+                label="Total games hours"
+                value={`${fmtInt(totals.total_hours ?? allHoursFallback)} h`}
+              />
+              <Tile label="Avg hours" value={`${fmtInt(totals.avg_hours)} h`} />
             </section>
-          ) : null}
-        </>
-      ) : (
-        <div className="text-sm text-content-muted">No insights available.</div>
-      )}
-    </div>
+
+            <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <h2 className="font-semibold text-content-primary">
+                    Started and finished over time
+                  </h2>
+                  <p className="mt-1 text-sm text-content-muted">
+                    Yearly progress from the dates saved on your games.
+                  </p>
+                </div>
+              </div>
+
+              <DateTimelineChart
+                data={dateInsights.yearly}
+                axisTick={axisTick}
+                gridStroke={gridStroke}
+                tooltipColors={tooltipColors}
+                onBarClick={onDateYearClick}
+              />
+
+              <div className="grid gap-3 border-t border-surface-border pt-4 sm:grid-cols-2 lg:grid-cols-5">
+                <InsightStat
+                  label="Started this year"
+                  value={fmtInt(dateInsights.startedThisYear)}
+                />
+                <InsightStat
+                  label="Finished this year"
+                  value={fmtInt(dateInsights.finishedThisYear)}
+                />
+                <InsightStat
+                  label="Currently active"
+                  value={fmtInt(dateInsights.activeCount)}
+                  onClick={() => onActiveClick("unfinished")}
+                />
+                <InsightStat
+                  label="Avg start to finish"
+                  value={
+                    dateInsights.averageCompletionDays == null
+                      ? "N/A"
+                      : `${fmtInt(dateInsights.averageCompletionDays)} days`
+                  }
+                />
+                <InsightStat
+                  label="Oldest active"
+                  value={
+                    dateInsights.oldestActive
+                      ? dateInsights.oldestActive.name
+                      : "N/A"
+                  }
+                  detail={dateInsights.oldestActive?.started_at}
+                  onClick={() => onActiveClick("unfinished")}
+                />
+              </div>
+            </section>
+
+            {/* Hours by status + ETA */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+              <HoursByStatusChart
+                data={statusData}
+                isSmall={isSmall}
+                isPhone={isPhone}
+                axisTick={axisTick}
+                gridStroke={gridStroke}
+                tooltipColors={tooltipColors}
+                colorAt={colorAt}
+                onBarClick={onStatusClick}
+              />
+              <EtaDonut
+                data={etaPieData}
+                eta={eta}
+                axisTick={axisTick}
+                tooltipColors={tooltipColors}
+                colorAt={colorAt}
+                onSliceClick={onStatusClick}
+              />
+            </div>
+
+            {/* Genres */}
+            <GenresChart
+              data={genreData}
+              accessor={genreAccessor}
+              isSmall={isSmall}
+              axisTick={axisTick}
+              gridStroke={gridStroke}
+              tooltipColors={tooltipColors}
+              colorAt={colorAt}
+              groupKeys={groupKeys}
+              genreType={genreType}
+              onGenreTypeChange={setGenreType}
+              genreMetric={genreMetric}
+              onGenreMetricChange={setGenreMetric}
+              genreStatus={genreStatus}
+              onGenreStatusChange={setGenreStatus}
+              onBarClick={onGenreClick}
+            />
+
+            {includeMissing && missing?.length ? (
+              <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5">
+                <h2 className="font-semibold mb-2">Missing hours (excluded)</h2>
+                <ul className="list-disc pl-5 text-sm text-content-secondary space-y-1">
+                  {missing.map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </>
+        ) : (
+          <div className="text-sm text-content-muted">
+            No insights available.
+          </div>
+        )}
+      </div>
+    </AppPage>
   );
 }
 

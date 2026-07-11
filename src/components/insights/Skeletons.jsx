@@ -1,6 +1,6 @@
 function Skeleton({ className = "" }) {
   return (
-    <div className={`animate-pulse rounded-lg bg-white/10 ${className}`} />
+    <div className={`animate-pulse rounded-lg bg-skeleton-base/10 ${className}`} />
   );
 }
 

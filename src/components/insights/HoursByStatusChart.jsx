@@ -89,8 +89,8 @@ export default function HoursByStatusChart({
                     border: `1px solid ${tooltipColors().border}`,
                     borderRadius: 8,
                   }}
-                  labelStyle={{ color: "#fff" }}
-                  itemStyle={{ color: "#fff" }}
+                  labelStyle={{ color: tooltipColors().text }}
+                  itemStyle={{ color: tooltipColors().text }}
                   labelFormatter={() => ""}
                   formatter={(value, _name, { payload }) => [
                     `${fmtInt(value)} h`,
@@ -144,8 +144,8 @@ export default function HoursByStatusChart({
                   border: `1px solid ${tooltipColors().border}`,
                   borderRadius: 8,
                 }}
-                labelStyle={{ color: "#fff" }}
-                itemStyle={{ color: "#fff" }}
+                labelStyle={{ color: tooltipColors().text }}
+                itemStyle={{ color: tooltipColors().text }}
                 labelFormatter={() => ""}
                 formatter={(value, _name, { payload }) => [
                   `${fmtInt(value)} h`,

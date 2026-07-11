@@ -1,34 +1,78 @@
-import { useMemo, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-const cssVar = (name) =>
-  typeof window !== "undefined"
-    ? getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-    : "";
+const FALLBACKS = {
+  axisTick: "rgb(148 163 184)",
+  gridStroke: "rgb(38 52 72)",
+  tooltipBg: "rgb(18 26 39)",
+  tooltipBorder: "rgb(38 52 72)",
+  tooltipText: "rgb(249 250 251)",
+  tooltipMuted: "rgb(148 163 184)",
+  cursor: "transparent",
+};
+
+function readCssVar(name, fallback = "") {
+  if (typeof window === "undefined") return fallback;
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue(name).trim() ||
+    fallback
+  );
+}
+
+function readChartTheme() {
+  return {
+    palette: Array.from({ length: 12 }, (_, index) =>
+      readCssVar(`--chart-${index + 1}`, "rgb(148 163 184)"),
+    ),
+    axisTick: readCssVar("--axis-tick", FALLBACKS.axisTick),
+    gridStroke: readCssVar("--grid-stroke", FALLBACKS.gridStroke),
+    tooltip: {
+      bg: readCssVar("--tooltip-bg", FALLBACKS.tooltipBg),
+      border: readCssVar("--tooltip-border", FALLBACKS.tooltipBorder),
+      text: readCssVar("--tooltip-text", FALLBACKS.tooltipText),
+      muted: readCssVar("--tooltip-muted", FALLBACKS.tooltipMuted),
+    },
+    cursor: readCssVar("--chart-cursor", FALLBACKS.cursor),
+  };
+}
 
 export function useChartTheme() {
-  const palette = useMemo(
-    () =>
-      Array.from(
-        { length: 12 },
-        (_, i) => cssVar(`--chart-${i + 1}`) || "#888"
-      ),
-    []
+  const [theme, setTheme] = useState(readChartTheme);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const updateTheme = () => setTheme(readChartTheme());
+    const observer = new MutationObserver(updateTheme);
+
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-theme", "class", "style"],
+    });
+    window.addEventListener("storage", updateTheme);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("storage", updateTheme);
+    };
+  }, []);
+
+  const colorAt = useCallback(
+    (index) => theme.palette[index % theme.palette.length],
+    [theme.palette],
+  );
+  const axisTick = useCallback(() => theme.axisTick, [theme.axisTick]);
+  const gridStroke = useCallback(() => theme.gridStroke, [theme.gridStroke]);
+  const tooltipColors = useCallback(() => theme.tooltip, [theme.tooltip]);
+  const chartCursor = useMemo(
+    () => ({ fill: theme.cursor }),
+    [theme.cursor],
   );
 
-  const colorAt = useCallback((i) => palette[i % palette.length], [palette]);
-
-  const axisTick = useCallback(() => cssVar("--axis-tick") || "#9ca3af", []);
-  const gridStroke = useCallback(
-    () => cssVar("--grid-stroke") || "rgba(156,163,175,.25)",
-    []
-  );
-  const tooltipColors = useCallback(
-    () => ({
-      bg: cssVar("--tooltip-bg") || "#1f2937",
-      border: cssVar("--tooltip-border") || "#374151",
-    }),
-    []
-  );
-
-  return { palette, colorAt, axisTick, gridStroke, tooltipColors };
+  return {
+    palette: theme.palette,
+    colorAt,
+    axisTick,
+    gridStroke,
+    tooltipColors,
+    chartCursor,
+  };
 }

@@ -4,7 +4,7 @@ export default function EllipsisTick({
   payload,
   angle = -18,
   maxChars = 22,
-  color = "#9ca3af",
+  color = "currentColor",
 }) {
   const full = String(payload?.value ?? "");
   const text =
