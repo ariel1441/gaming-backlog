@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Clock3,
   Gamepad2,
   Layers3,
+  Pencil,
+  RefreshCw,
   Sparkles,
   Star,
   Tag,
@@ -18,6 +20,7 @@ import {
   formatAchievementSyncDate,
 } from "../utils/steamAchievements";
 import { formatAchievementGameSyncMessage } from "../utils/steamSync";
+import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
 
 function fmtDate(value) {
   if (!value) return null;
@@ -30,132 +33,113 @@ function fmtDate(value) {
   });
 }
 
-function daysSince(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return (Date.now() - date.getTime()) / (24 * 60 * 60 * 1000);
-}
-
-function statusIsAlreadyActiveOrDone(status) {
-  const value = String(status || "").toLowerCase().trim();
-  return [
-    "playing",
-    "finished",
-    "played alot but didnt finish",
-    "played a lot but didn't finish",
-  ].includes(value);
-}
-
-function DetailStat({ icon: Icon, label, value, tone = "default" }) {
+function Metric({ icon: Icon, label, value, tone = "default" }) {
   const toneClass =
-    tone === "warning"
-      ? "text-state-warning"
-      : tone === "success"
-        ? "text-state-success"
+    tone === "success"
+      ? "text-state-success"
+      : tone === "warning"
+        ? "text-state-warning"
         : tone === "primary"
-          ? "text-primary"
-          : tone === "muted"
+          ? "text-primary-light"
+          : value === "—"
             ? "text-content-muted"
             : "text-content-primary";
 
   return (
-    <div className="rounded-xl border border-surface-border bg-surface-elevated/60 p-4">
-      <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-content-muted">
-        <Icon className="h-4 w-4" />
-        <span>{label}</span>
+    <div className="min-w-0 border-r border-surface-border/55 pr-4 last:border-r-0 last:pr-0">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-content-muted">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="truncate">{label}</span>
       </div>
-      <div className={`text-lg font-semibold ${toneClass}`}>{value}</div>
+      <div className={`mt-1.5 truncate text-sm font-semibold ${toneClass}`}>
+        {value || "—"}
+      </div>
     </div>
   );
 }
 
-function DetailSection({ icon: Icon, label, children, className = "" }) {
+function DetailRow({ label, value, icon: Icon }) {
+  if (!value) return null;
   return (
-    <section
-      className={[
-        "rounded-2xl border border-surface-border bg-surface-card/70 p-4 md:p-5",
-        className,
-      ].join(" ")}
-    >
-      <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-content-muted">
-        <Icon className="h-4 w-4" />
-        <span>{label}</span>
+    <div className="flex items-start gap-3 py-2.5">
+      {Icon ? (
+        <Icon
+          className="mt-0.5 h-4 w-4 shrink-0 text-content-muted"
+          aria-hidden="true"
+        />
+      ) : null}
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-content-muted">
+          {label}
+        </div>
+        <div className="mt-1 break-words text-sm text-content-secondary">
+          {value}
+        </div>
       </div>
-      {children}
-    </section>
-  );
-}
-
-function SectionContent({ children }) {
-  return <div className="space-y-4">{children}</div>;
-}
-
-function TimelineRow({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-border bg-surface-elevated/40 px-4 py-3">
-      <span className="text-sm text-content-secondary">{label}</span>
-      <span className="text-sm font-medium text-content-primary">{value}</span>
     </div>
   );
 }
+
+const tabs = [
+  { value: "overview", label: "Overview", icon: Layers3 },
+  { value: "achievements", label: "Achievements", icon: Trophy },
+  { value: "notes", label: "Notes", icon: Sparkles },
+  { value: "activity", label: "Activity", icon: CalendarDays },
+];
 
 export default function GameModal({
   game,
   onClose,
   onRefresh,
   onGameRefresh,
+  onEdit,
   readOnly = false,
 }) {
-  const [showDescription, setShowDescription] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
   const [syncingAchievements, setSyncingAchievements] = useState(false);
   const [localAchievements, setLocalAchievements] = useState(null);
+  const modalRef = useRef(null);
   const toast = useToast();
+
+  useDismissibleLayer({
+    open: !!game,
+    layerRef: modalRef,
+    onDismiss: onClose,
+    trapFocus: true,
+    lockScroll: true,
+    restoreFocus: true,
+  });
 
   useEffect(() => {
     setLocalAchievements(null);
+    setActiveTab("overview");
   }, [game?.id]);
+
+  const achievements = useMemo(
+    () =>
+      formatAchievementSummary(localAchievements || game?.steamAchievements),
+    [game?.steamAchievements, localAchievements],
+  );
 
   if (!game) return null;
 
-  const invalidValues = ["#N/A", "N/A", "null", "", null, undefined];
-
-  const cover =
-    game.cover || "https://via.placeholder.com/900x1200?text=No+Cover";
-  const status = game.status || "Unknown";
-  const myGenre = game.my_genre || null;
-  const genres = game.genres || null;
-  const thoughts = game.thoughts?.trim() || null;
-  const description = game.description || "";
+  const cover = game.cover || null;
   const releaseDate = fmtDate(game.releaseDate);
   const startedAt = fmtDate(game.started_at);
   const finishedAt = fmtDate(game.finished_at);
   const steamLastPlayed = fmtDate(game.steamLastPlayedAt);
   const steamFirstObserved = fmtDate(game.steamFirstPlayObservedAt);
-  const showSteamActivityNudge =
-    game.steamOwned &&
-    daysSince(game.steamFirstPlayObservedAt) != null &&
-    daysSince(game.steamFirstPlayObservedAt) <= 30 &&
-    !statusIsAlreadyActiveOrDone(game.status);
-  const rating =
-    !invalidValues.includes(game.rating) && game.rating != null
-      ? `${game.rating}/5`
-      : null;
-  const myScore =
-    !invalidValues.includes(game.my_score) && game.my_score != null
-      ? `${game.my_score}/10`
-      : null;
-  const metacritic =
-    !invalidValues.includes(game.metacritic) && game.metacritic != null
-      ? String(game.metacritic)
-      : null;
   const hours = resolveGameHours(game);
-  const achievements = formatAchievementSummary(
-    localAchievements || game.steamAchievements
-  );
+  const rating = Number(game.rating) > 0 ? `${game.rating}/5` : "—";
+  const metacritic =
+    Number(game.metacritic) > 0 ? String(game.metacritic) : "—";
+  const myScore = Number(game.my_score) > 0 ? `${game.my_score}/10` : "—";
+  const thoughts = game.thoughts?.trim() || null;
+  const description = game.description || null;
   const achievementSyncedAt = formatAchievementSyncDate(
-    (localAchievements || game.steamAchievements)?.lastSyncedAt
+    (localAchievements || game.steamAchievements)?.lastSyncedAt,
   );
+
   const syncAchievements = async () => {
     setSyncingAchievements(true);
     try {
@@ -170,283 +154,311 @@ export default function GameModal({
       setSyncingAchievements(false);
     }
   };
-  const metricStats = [
-    {
-      icon: Clock3,
-      label: hours.sourceLabel,
-      value: hours.label,
-      tone: hours.hours ? (hours.isActual ? "primary" : "success") : "muted",
-    },
-    {
-      icon: Star,
-      label: "RAWG rating",
-      value: rating || "N/A",
-      tone: rating ? "warning" : "muted",
-    },
-    {
-      icon: Trophy,
-      label: "Metacritic",
-      value: metacritic || "N/A",
-      tone: metacritic ? "default" : "muted",
-    },
-    {
-      icon: Trophy,
-      label: "My score",
-      value: myScore || "Not scored",
-      tone: myScore ? "primary" : "muted",
-    },
-  ];
-  if (game.steamOwned && hours.source !== "steam") {
-    metricStats.splice(1, 0, {
-      icon: Gamepad2,
-      label: "Steam",
-      value: hours.secondarySteamHours
-        ? `${hours.secondarySteamHours}h actual`
-        : "Owned",
-      tone: "primary",
-    });
-  }
-  if (game.steamOwned && steamLastPlayed) {
-    metricStats.splice(2, 0, {
-      icon: CalendarDays,
-      label: "Steam last played",
-      value: steamLastPlayed,
-      tone: "primary",
-    });
-  }
 
   return (
     <div
-      className="fixed inset-0 z-modal overflow-y-auto bg-black/80 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      className="fixed inset-0 z-modal overflow-y-auto bg-backdrop/78 p-2 backdrop-blur-md sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="game-modal-title"
     >
-      <div
-        className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-6xl items-center"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="relative w-full overflow-hidden rounded-2xl border border-surface-border bg-surface-bg shadow-glow-primary">
+      <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center">
+        <div
+          ref={modalRef}
+          tabIndex={-1}
+          className="relative flex max-h-[calc(100vh-1rem)] w-full flex-col overflow-hidden rounded-dialog border border-surface-border/80 bg-surface-bg shadow-dialog sm:max-h-[calc(100vh-2.5rem)]"
+        >
           <IconButton
             icon={X}
             onClick={onClose}
-            className="absolute right-4 top-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-surface-border bg-surface-card/85 text-content-primary transition-colors hover:border-primary hover:text-primary"
-            label="Close modal"
+            variant="ghost"
+            className="absolute right-4 top-4 z-30 h-9 w-9 border border-media-border/10 bg-media-overlay/35 text-media-text backdrop-blur hover:bg-media-overlay/60"
+            label="Close game details"
             title="Close"
           />
 
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(320px,40%)_1fr]">
-            <div className="relative overflow-hidden border-b border-surface-border bg-surface-bg lg:h-[calc(100vh-3rem)] lg:max-h-[760px] lg:min-h-[620px] lg:self-start lg:border-b-0 lg:border-r">
+          <div className="relative min-h-[290px] shrink-0 overflow-hidden sm:min-h-[360px]">
+            {cover ? (
               <img
                 src={cover}
-                alt={game.name || "Game cover"}
-                className="h-[300px] w-full object-cover sm:h-[380px] lg:h-full"
-                loading="lazy"
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
               />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface-bg/70 via-transparent to-surface-bg/10 lg:bg-gradient-to-r lg:from-transparent lg:via-surface-bg/5 lg:to-surface-bg/20" />
-            </div>
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-surface-elevated to-surface-bg" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-surface-bg via-surface-bg/48 to-media-overlay/15" />
+            <div className="absolute inset-0 bg-gradient-to-r from-surface-bg/35 via-transparent to-surface-bg/20" />
 
-            <div className="flex flex-col">
-              <div className="border-b border-surface-border px-5 pb-5 pt-6 md:px-7 md:pr-20">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2
-                      id="game-modal-title"
-                      className="break-words pr-10 text-3xl font-semibold leading-tight text-content-primary md:pr-0 md:text-4xl"
-                    >
-                      {game.name}
-                    </h2>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <StatusBadge status={status} />
-                      {releaseDate ? (
-                        <span className="rounded-full border border-surface-border bg-surface-card/80 px-3 py-1 text-xs text-content-secondary">
-                          Released {releaseDate}
-                        </span>
-                      ) : null}
-                    </div>
+            <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 px-5 pb-5 sm:gap-6 sm:px-7 sm:pb-6">
+              <div className="hidden h-36 w-28 shrink-0 overflow-hidden rounded-2xl border border-media-border/15 bg-surface-card shadow-2xl sm:block">
+                {cover ? (
+                  <img
+                    src={cover}
+                    alt={game.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-3xl font-semibold text-content-muted">
+                    {String(game.name || "?").charAt(0)}
                   </div>
-
-                  {onRefresh ? (
-                    <Button
-                      type="button"
-                      onClick={onRefresh}
-                      variant="secondary"
-                      className="pr-4"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      Surprise me again
-                    </Button>
-                  ) : null}
-                </div>
+                )}
               </div>
 
-              <div className="space-y-5 p-5 md:p-7">
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  {metricStats.map((stat) => (
-                    <DetailStat
-                      key={stat.label}
-                      icon={stat.icon}
-                      label={stat.label}
-                      value={stat.value}
-                      tone={stat.tone}
-                    />
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.85fr)]">
-                  <div className="space-y-5">
-                    {(myGenre || genres) && (
-                      <DetailSection icon={Tag} label="Genres">
-                        <SectionContent>
-                          {myGenre ? (
-                            <div>
-                              <div className="mb-1 text-sm font-medium text-content-secondary">
-                                My genre
-                              </div>
-                              <div className="text-base text-content-primary">
-                                {myGenre}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {genres ? (
-                            <div>
-                              <div className="mb-1 text-sm font-medium text-content-secondary">
-                                RAWG genres
-                              </div>
-                              <div className="text-base text-content-primary">
-                                {genres}
-                              </div>
-                            </div>
-                          ) : null}
-                        </SectionContent>
-                      </DetailSection>
-                    )}
-
-                    {thoughts ? (
-                      <DetailSection icon={Sparkles} label="Your thoughts">
-                        <p className="whitespace-pre-wrap leading-7 text-content-primary">
-                          {thoughts}
-                        </p>
-                      </DetailSection>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-5">
-                    {game.steamOwned ? (
-                      <DetailSection icon={Trophy} label="Steam achievements">
-                        <SectionContent>
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                  <div className="text-base font-semibold text-content-primary">
-                                    {achievements.label}
-                                  </div>
-                                  <div className="mt-1 text-sm text-content-muted">
-                                    {achievements.detail}
-                                  </div>
-                                  {achievements.remainingLabel ? (
-                                    <div className="mt-1 text-xs text-content-muted">
-                                      {achievements.remainingLabel}
-                                    </div>
-                                  ) : null}
-                                </div>
-                                {!readOnly ? (
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="secondary"
-                                    onClick={syncAchievements}
-                                    disabled={syncingAchievements}
-                                  >
-                                    <Trophy className="h-4 w-4" aria-hidden="true" />
-                                    {syncingAchievements ? "Syncing..." : "Sync"}
-                                  </Button>
-                                ) : null}
-                              </div>
-                              {achievements.percent != null ? (
-                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-elevated">
-                                  <div
-                                    className="h-full rounded-full bg-primary"
-                                    style={{
-                                      width: `${Math.min(
-                                        Math.max(achievements.percent, 0),
-                                        100
-                                      )}%`,
-                                    }}
-                                  />
-                                </div>
-                              ) : null}
-                              <div className="mt-2 text-xs text-content-muted">
-                                Steam achievements are private here and update only from sync actions.
-                                {achievementSyncedAt ? ` Last synced ${achievementSyncedAt}.` : ""}
-                              </div>
-                            </div>
-                          </div>
-                        </SectionContent>
-                      </DetailSection>
-                    ) : null}
-
-                    {showSteamActivityNudge ? (
-                      <DetailSection icon={Gamepad2} label="Steam activity">
-                        <SectionContent>
-                          <p className="text-sm leading-6 text-content-primary">
-                            Steam recently started showing playtime for this game.
-                            {steamFirstObserved ? ` First noticed ${steamFirstObserved}.` : ""}
-                            {steamLastPlayed ? ` Last played ${steamLastPlayed}.` : ""}
-                          </p>
-                        </SectionContent>
-                      </DetailSection>
-                    ) : null}
-
-                    {(startedAt || finishedAt || releaseDate) && (
-                      <DetailSection icon={CalendarDays} label="Timeline">
-                        <div className="space-y-3">
-                          {releaseDate ? (
-                            <TimelineRow label="Release date" value={releaseDate} />
-                          ) : null}
-                          {startedAt ? (
-                            <TimelineRow label="Started" value={startedAt} />
-                          ) : null}
-                          {finishedAt ? (
-                            <TimelineRow label="Finished" value={finishedAt} />
-                          ) : null}
-                        </div>
-                      </DetailSection>
-                    )}
-                  </div>
-
-                  {description ? (
-                    <DetailSection
-                      icon={Layers3}
-                      label="About the game"
-                      className="xl:col-span-2"
-                    >
-                      <Button
-                        type="button"
-                        onClick={() => setShowDescription((prev) => !prev)}
-                        variant="primary"
-                        aria-expanded={showDescription}
-                        aria-controls="game-description"
-                      >
-                        {showDescription ? "Hide description" : "Show description"}
-                      </Button>
-
-                      {showDescription ? (
-                        <div
-                          id="game-description"
-                          className="prose prose-invert mt-4 max-w-3xl rounded-xl border border-surface-border bg-surface-elevated/35 p-5 leading-7 text-content-primary"
-                          dangerouslySetInnerHTML={{ __html: description }}
-                        />
-                      ) : null}
-                    </DetailSection>
+              <div className="min-w-0 flex-1 pb-1">
+                <h2
+                  id="game-modal-title"
+                  className="line-clamp-2 pr-10 text-2xl font-semibold tracking-tight text-media-text drop-shadow sm:text-4xl"
+                >
+                  {game.name}
+                </h2>
+                <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                  <StatusBadge status={game.status || "Unknown"} />
+                  {game.steamOwned ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-media-border/15 bg-media-overlay/30 px-2.5 py-1 text-xs font-medium text-media-text/75 backdrop-blur">
+                      <Gamepad2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Steam owned
+                    </span>
+                  ) : null}
+                  {releaseDate ? (
+                    <span className="text-xs font-medium text-media-text/65">
+                      Released {releaseDate}
+                    </span>
                   ) : null}
                 </div>
               </div>
             </div>
           </div>
+
+          <div className="grid shrink-0 grid-cols-2 gap-4 border-b border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:grid-cols-4 sm:px-7">
+            <Metric
+              icon={Clock3}
+              label={hours.sourceLabel}
+              value={hours.label || "—"}
+              tone={hours.hours ? "primary" : "default"}
+            />
+            <Metric
+              icon={Star}
+              label="RAWG"
+              value={rating}
+              tone={rating !== "—" ? "warning" : "default"}
+            />
+            <Metric icon={Trophy} label="Metacritic" value={metacritic} />
+            <Metric
+              icon={Sparkles}
+              label="My score"
+              value={myScore}
+              tone={myScore !== "—" ? "primary" : "default"}
+            />
+          </div>
+
+          <div className="shrink-0 overflow-x-auto border-b border-surface-border/65 bg-surface-card/22 px-4 sm:px-7">
+            <div className="flex min-w-max items-center gap-1">
+              {tabs.map(({ value, label, icon: Icon }) => (
+                <button
+                  type="button"
+                  key={value}
+                  onClick={() => setActiveTab(value)}
+                  className={[
+                    "relative inline-flex h-12 items-center gap-2 px-3 text-sm font-medium transition-colors",
+                    activeTab === value
+                      ? "text-primary-light"
+                      : "text-content-muted hover:text-content-primary",
+                  ].join(" ")}
+                >
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {label}
+                  <span
+                    className={[
+                      "absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary transition-opacity",
+                      activeTab === value ? "opacity-100" : "opacity-0",
+                    ].join(" ")}
+                    aria-hidden="true"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+            {activeTab === "overview" ? (
+              <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_250px]">
+                <section className="min-w-0">
+                  <h3 className="text-sm font-semibold text-content-primary">
+                    About
+                  </h3>
+                  {description ? (
+                    <div
+                      className="prose prose-invert mt-3 max-w-none text-sm leading-7 text-content-secondary prose-p:my-2"
+                      dangerouslySetInnerHTML={{ __html: description }}
+                    />
+                  ) : (
+                    <p className="mt-3 text-sm leading-7 text-content-muted">
+                      No game description is available yet.
+                    </p>
+                  )}
+                </section>
+
+                <aside className="divide-y divide-surface-border/55 rounded-xl border border-surface-border/65 bg-surface-card/35 px-4">
+                  <DetailRow
+                    icon={Tag}
+                    label="My genre"
+                    value={game.my_genre}
+                  />
+                  <DetailRow
+                    icon={Layers3}
+                    label="RAWG genres"
+                    value={game.genres}
+                  />
+                  <DetailRow
+                    icon={CalendarDays}
+                    label="Release date"
+                    value={releaseDate}
+                  />
+                  <DetailRow
+                    icon={Gamepad2}
+                    label="Source"
+                    value={game.steamOwned ? "Steam" : "Backlog"}
+                  />
+                </aside>
+              </div>
+            ) : null}
+
+            {activeTab === "achievements" ? (
+              <section className="max-w-2xl">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-content-primary">
+                      {game.steamOwned
+                        ? achievements.label
+                        : "Steam not linked"}
+                    </h3>
+                    <p className="mt-1 text-sm text-content-muted">
+                      {game.steamOwned
+                        ? achievements.detail
+                        : "Link this backlog entry to Steam to track achievements."}
+                    </p>
+                  </div>
+                  {game.steamOwned && !readOnly ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={syncAchievements}
+                      disabled={syncingAchievements}
+                    >
+                      <RefreshCw
+                        className={
+                          syncingAchievements
+                            ? "h-4 w-4 animate-spin"
+                            : "h-4 w-4"
+                        }
+                        aria-hidden="true"
+                      />
+                      {syncingAchievements ? "Syncing" : "Sync achievements"}
+                    </Button>
+                  ) : null}
+                </div>
+
+                {game.steamOwned && achievements.percent != null ? (
+                  <div className="mt-6">
+                    <div className="mb-2 flex items-center justify-between text-xs text-content-muted">
+                      <span>
+                        {achievements.remainingLabel || "Achievement progress"}
+                      </span>
+                      <span>{achievements.percent}%</span>
+                    </div>
+                    <div className="h-2.5 overflow-hidden rounded-full bg-surface-elevated">
+                      <div
+                        className="h-full rounded-full bg-primary shadow-pulse"
+                        style={{
+                          width: `${Math.min(Math.max(achievements.percent, 0), 100)}%`,
+                        }}
+                      />
+                    </div>
+                    {achievementSyncedAt ? (
+                      <div className="mt-3 text-xs text-content-muted">
+                        Last synced {achievementSyncedAt}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {activeTab === "notes" ? (
+              <section className="max-w-3xl">
+                <h3 className="text-sm font-semibold text-content-primary">
+                  Your thoughts
+                </h3>
+                {thoughts ? (
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-content-secondary">
+                    {thoughts}
+                  </p>
+                ) : (
+                  <p className="mt-3 text-sm text-content-muted">
+                    You have not added personal notes for this game.
+                  </p>
+                )}
+              </section>
+            ) : null}
+
+            {activeTab === "activity" ? (
+              <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2">
+                <DetailRow
+                  icon={CalendarDays}
+                  label="Started"
+                  value={startedAt}
+                />
+                <DetailRow
+                  icon={CalendarDays}
+                  label="Finished"
+                  value={finishedAt}
+                />
+                <DetailRow
+                  icon={Gamepad2}
+                  label="Steam last played"
+                  value={steamLastPlayed}
+                />
+                <DetailRow
+                  icon={Gamepad2}
+                  label="Steam activity first observed"
+                  value={steamFirstObserved}
+                />
+                {!startedAt &&
+                !finishedAt &&
+                !steamLastPlayed &&
+                !steamFirstObserved ? (
+                  <p className="col-span-full text-sm text-content-muted">
+                    No play activity has been recorded yet.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          {onEdit || onRefresh ? (
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:px-7">
+              <div>
+                {onRefresh ? (
+                  <Button type="button" variant="ghost" onClick={onRefresh}>
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    Surprise me again
+                  </Button>
+                ) : null}
+              </div>
+              {onEdit ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => onEdit(game)}
+                >
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                  Edit game
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

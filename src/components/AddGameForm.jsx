@@ -11,42 +11,7 @@ import {
 } from "./ui";
 import { splitCsv } from "../utils/gameList";
 import { searchGames } from "../services/gameService";
-
-function GameSearchResult({ result, selected, onSelect }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(result)}
-      className={[
-        "flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition-colors",
-        selected
-          ? "border-primary/45 bg-primary/10"
-          : "border-surface-border/70 bg-surface-bg/35 hover:border-primary/30 hover:bg-surface-elevated/55",
-      ].join(" ")}
-    >
-      {result.cover ? (
-        <img
-          src={result.cover}
-          alt=""
-          className="h-14 w-11 shrink-0 rounded-lg object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <div className="h-14 w-11 shrink-0 rounded-lg bg-surface-elevated" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-content-primary">
-          {result.name}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-content-muted">
-          {result.released ? <span>{result.released}</span> : null}
-          {result.rating ? <span>{result.rating}/5</span> : null}
-          {result.metacritic ? <span>MC {result.metacritic}</span> : null}
-        </div>
-      </div>
-    </button>
-  );
-}
+import GameSearchResult from "./GameSearchResult";
 
 const AddGameForm = ({
   addFormRef,
@@ -90,7 +55,9 @@ const AddGameForm = ({
       setSearchError("");
       searchGames(query, { signal: ac.signal })
         .then((payload) => {
-          setSearchResults(Array.isArray(payload?.results) ? payload.results : []);
+          setSearchResults(
+            Array.isArray(payload?.results) ? payload.results : [],
+          );
         })
         .catch((error) => {
           if (error?.name === "AbortError") return;
@@ -143,11 +110,10 @@ const AddGameForm = ({
 
   return (
     <Modal
-      title="Add New Game"
-      description="Create a backlog entry now; enrichment can fill in extra game data after it is saved."
+      title="Add game"
       onClose={doClose}
       panelRef={setPanelRef}
-      maxWidth="max-w-5xl"
+      size="3xl"
       bodyClassName="p-0"
     >
       <form onSubmit={handleAddGame}>
@@ -181,8 +147,15 @@ const AddGameForm = ({
                 {hasSelectedRawg ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-content-muted">
                     <span>Matched to RAWG</span>
-                    {newGame.rawg_released ? <span>{newGame.rawg_released}</span> : null}
-                    <Button type="button" size="sm" variant="ghost" onClick={clearRawgSelection}>
+                    {newGame.rawg_released ? (
+                      <span>{newGame.rawg_released}</span>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearRawgSelection}
+                    >
                       Clear match
                     </Button>
                   </div>
@@ -238,7 +211,8 @@ const AddGameForm = ({
                   Game details
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-content-muted">
-                  Start with the essentials. You can leave optional fields blank.
+                  Start with the essentials. You can leave optional fields
+                  blank.
                 </p>
               </div>
 

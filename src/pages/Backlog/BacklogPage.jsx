@@ -1,26 +1,29 @@
-﻿import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Gamepad2, PlusCircle, RefreshCw, SearchX } from "lucide-react";
+import { Gamepad2, PlusCircle, SearchX } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import GameGrid from "../../components/GameGrid";
 import DemoBanner from "../../components/DemoBanner";
 import { Button, EmptyState } from "../../components/ui";
+import { AppPage, PageError, PageLoading } from "../../components/layout";
 import { buildDisplayGames } from "../../utils/gameList";
 import { canReorderGames } from "../../utils/permissions";
-import {
-  normalizeUserPreferences,
-  preferredLandingPath,
-} from "../../utils/userPreferences";
+import { normalizeUserPreferences } from "../../utils/userPreferences";
 import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
 import { useStatuses } from "../../hooks/useStatuses";
 import { useFilters } from "../../hooks/useFilters";
-import { useUI } from "../../hooks/useUI";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import BacklogModals from "./BacklogModals";
 import BacklogPanels from "./BacklogPanels";
 import BacklogToolbar from "./BacklogToolbar";
 import useBacklogActions from "./useBacklogActions";
+
+function possessiveName(value) {
+  const name = String(value || "").trim();
+  if (!name) return "Your";
+  return /s$/i.test(name) ? `${name}’` : `${name}’s`;
+}
 
 export default function BacklogPage() {
   const {
@@ -29,8 +32,6 @@ export default function BacklogPage() {
     loading: authLoading,
     isGuest,
     discardDemo,
-    logout,
-    startDemo,
   } = useAuth();
 
   const nav = useNavigate();
@@ -43,14 +44,19 @@ export default function BacklogPage() {
     addGame,
     editGame,
     removeGame,
-    updateFavorites,
     refresh,
     reorderGame,
   } = useGames();
   const userPreferences = React.useMemo(
     () => normalizeUserPreferences(user?.preferences),
-    [user?.preferences]
+    [user?.preferences],
   );
+  const backlogTitle = React.useMemo(() => {
+    if (!isAuthenticated) return "Backlog";
+    if (isGuest) return "Your demo backlog";
+    const ownerName = user?.display_name?.trim() || user?.username;
+    return `${possessiveName(ownerName)} backlog`;
+  }, [isAuthenticated, isGuest, user?.display_name, user?.username]);
 
   const {
     statuses: allStatuses,
@@ -88,7 +94,6 @@ export default function BacklogPage() {
   } = useFilters(games, {
     initialSortKey: userPreferences.default_backlog_sort_key,
     initialReverse: userPreferences.default_backlog_sort_reversed,
-    statuses: allStatuses,
   });
 
   // Quick filter: Completed (finished + played alot but didnt finish)
@@ -96,7 +101,7 @@ export default function BacklogPage() {
 
   const completedActive = React.useMemo(() => {
     const set = new Set(
-      (selectedStatuses || []).map((s) => String(s).toLowerCase())
+      (selectedStatuses || []).map((s) => String(s).toLowerCase()),
     );
     return (
       set.size === COMPLETED_STATUSES.length &&
@@ -122,19 +127,15 @@ export default function BacklogPage() {
 
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
 
-  const {
-    showAddForm,
-    setShowAddForm,
-    showPublicSettings,
-    setShowPublicSettings,
-    showAdminLogin,
-    setShowAdminLogin,
-  } = useUI({ sidebarOpen: true });
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
 
   const [selectedGame, setSelectedGame] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showKeepDemo, setShowKeepDemo] = useState(false);
-  const [viewMode, setViewMode] = useState(userPreferences.default_backlog_view);
+  const [viewMode, setViewMode] = useState(
+    userPreferences.default_backlog_view,
+  );
 
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
@@ -180,7 +181,6 @@ export default function BacklogPage() {
     addGame,
     editGame,
     removeGame,
-    updateFavorites,
     refresh,
     reorderGame,
     setShowAddForm,
@@ -212,7 +212,7 @@ export default function BacklogPage() {
       return;
     }
     const ro = new ResizeObserver(([entry]) =>
-      setVar(entry?.contentRect?.height || 0)
+      setVar(entry?.contentRect?.height || 0),
     );
     ro.observe(bannerRef.current);
     return () => ro.disconnect();
@@ -229,25 +229,11 @@ export default function BacklogPage() {
     setSortKey("");
     setIsReversed(false);
   };
-  const goInsights = () => nav("/insights");
-  const goProfile = () => nav("/me");
-  const goSettings = (section) =>
-    nav(section ? `/settings?section=${section}` : "/settings");
-  const goTimeline = () => nav("/timeline");
-  const goReviews = () => nav("/reviews");
-  const goLists = () => nav("/lists");
-  const goDiscover = () => nav("/discover");
-  const goSteam = () => nav("/steam/import");
-  const startLiveDemo = async () => {
-    const res = await startDemo();
-    if (res?.success) nav(preferredLandingPath(res.user));
-  };
-
   if (authLoading || gamesLoading) {
     return (
-      <div className="flex h-screen bg-surface-bg text-content-primary items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary"></div>
-      </div>
+      <AppPage width="full" className="py-8">
+        <PageLoading rows={5} />
+      </AppPage>
     );
   }
 
@@ -258,22 +244,13 @@ export default function BacklogPage() {
   // Keep previous behavior for non-auth errors
   if (gamesError && !isAuthError) {
     return (
-      <div className="flex h-screen bg-surface-bg text-content-primary items-center justify-center px-6">
-        <div className="max-w-md text-center">
-          <h1 className="text-xl font-semibold">Could not load your backlog</h1>
-          <p className="mt-3 text-sm text-content-secondary">
-            {String(gamesError?.message || gamesError)}
-          </p>
-          <Button
-            className="mt-6"
-            variant="primary"
-            onClick={() => refresh().catch(() => {})}
-          >
-            <RefreshCw size={16} aria-hidden="true" />
-            Try again
-          </Button>
-        </div>
-      </div>
+      <AppPage width="standard" className="py-8">
+        <PageError
+          title="Could not load your backlog"
+          description={String(gamesError?.message || gamesError)}
+          onRetry={() => refresh().catch(() => {})}
+        />
+      </AppPage>
     );
   }
 
@@ -297,7 +274,7 @@ export default function BacklogPage() {
   const hasHoursFilter = Boolean(
     hoursBounds?.max > hoursBounds?.min &&
       hoursRange &&
-      (hoursRange.min > hoursBounds.min || hoursRange.max < hoursBounds.max)
+      (hoursRange.min > hoursBounds.min || hoursRange.max < hoursBounds.max),
   );
   const activeFilterCount =
     selectedStatuses.length +
@@ -313,12 +290,12 @@ export default function BacklogPage() {
       selectedMyGenres.length ||
       dateFilter ||
       sourceFilter !== "all" ||
-      hasHoursFilter
+      hasHoursFilter,
   );
 
   // removed guest-only extra top padding; wrapper handles it now
   const mainClass =
-    "h-screen bg-surface-bg text-content-primary overflow-auto max-w-[100vw] px-2 py-0 sm:px-6 pb-[env(safe-area-inset-bottom)]";
+    "min-h-screen overflow-x-clip bg-surface-bg px-3 pb-8 text-content-primary sm:px-6 lg:h-[calc(100vh-var(--demo-banner-h,0px))] lg:min-h-0 lg:overflow-y-auto lg:px-5 lg:pb-8";
 
   return (
     <>
@@ -335,118 +312,64 @@ export default function BacklogPage() {
       {/* Single wrapper that applies top padding equal to the banner height */}
       <div className={isGuest ? "pt-[var(--demo-banner-h,0px)]" : ""}>
         <main className={mainClass}>
-          <BacklogToolbar
-            search={{
-              query: searchQuery,
-              setQuery: setSearchQuery,
-              clear: clearSearch,
-            }}
-            sort={{
-              key: sortKey,
-              setKey: setSortKey,
-              isReversed,
-              setIsReversed,
-              clear: clearSort,
-            }}
-            filters={{
-              count: activeFilterCount,
-              allStatuses,
-              allGenres,
-              allMyGenres,
-              selectedStatuses,
-              selectedGenres,
-              selectedMyGenres,
-              dateFilter,
-              setDateFilter,
-              sourceFilter,
-              setSourceFilter,
-              setSelectedStatuses,
-              setSelectedGenres,
-              setSelectedMyGenres,
-              toggleStatus,
-              toggleGenre,
-              toggleMyGenre,
-              hoursBounds,
-              hoursRange,
-              setHoursRange,
-              clear: resetFilters,
-            }}
-            actions={{
-              add: () =>
-                isAuthenticated
-                  ? setShowAddForm(true)
-                  : setShowAdminLogin(true),
-              surprise: handleSurpriseMe,
-              steam: isAuthenticated && !isGuest ? goSteam : null,
-              completedActive,
-              toggleCompleted,
-            }}
-            account={{
-              user,
-              isAuthenticated,
-              showLogin: () => setShowAdminLogin(true),
-              showPublicSettings: () => goSettings("public"),
-              goProfile,
-              goSettings,
-              goInsights,
-              goTimeline,
-              goReviews,
-              goLists,
-              goDiscover,
-              goSteam,
-              isGuest,
-              startDemo: startLiveDemo,
-              logout,
-            }}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            resultCount={displayGames.length}
-            totalCount={games.length}
-            games={games}
-            onSelectGame={setSelectedGame}
-          />
+          <div className="sticky top-14 z-30 bg-surface-bg lg:top-0">
+            <BacklogToolbar
+              identity={{ title: backlogTitle }}
+              search={{
+                query: searchQuery,
+                setQuery: setSearchQuery,
+                clear: clearSearch,
+              }}
+              sort={{
+                key: sortKey,
+                setKey: setSortKey,
+                isReversed,
+                setIsReversed,
+                clear: clearSort,
+              }}
+              filters={{
+                count: activeFilterCount,
+                allStatuses,
+                allGenres,
+                allMyGenres,
+                selectedStatuses,
+                selectedGenres,
+                selectedMyGenres,
+                dateFilter,
+                setDateFilter,
+                sourceFilter,
+                setSourceFilter,
+                setSelectedStatuses,
+                setSelectedGenres,
+                setSelectedMyGenres,
+                toggleStatus,
+                toggleGenre,
+                toggleMyGenre,
+                hoursBounds,
+                hoursRange,
+                setHoursRange,
+                clear: resetFilters,
+              }}
+              actions={{
+                add: () =>
+                  isAuthenticated
+                    ? setShowAddForm(true)
+                    : setShowAdminLogin(true),
+                surprise: handleSurpriseMe,
+                completedActive,
+                toggleCompleted,
+              }}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              resultCount={displayGames.length}
+              totalCount={games.length}
+              games={games}
+              onSelectGame={setSelectedGame}
+            />
+          </div>
           <BacklogPanels
-            visibility={{
-              search: false,
-              sort: false,
-              filters: false,
-              addGame: showAddForm,
-            }}
-            refs={{ addFormRef }}
-            search={{
-              query: searchQuery,
-              setQuery: setSearchQuery,
-              clear: clearSearch,
-              resultCount: displayGames.length,
-            }}
-            sort={{
-              key: sortKey,
-              setKey: setSortKey,
-              isReversed,
-              setIsReversed,
-              clear: clearSort,
-            }}
-            filters={{
-              allStatuses,
-              allGenres,
-              allMyGenres,
-              selectedStatuses,
-              selectedGenres,
-              selectedMyGenres,
-              dateFilter,
-              setDateFilter,
-              hoursBounds,
-              hoursRange,
-              setHoursRange,
-              setSelectedStatuses,
-              setSelectedGenres,
-              setSelectedMyGenres,
-              reset: resetFilters,
-              toggleStatus,
-              toggleGenre,
-              toggleMyGenre,
-              onClose: () => {},
-            }}
+            showAddGame={showAddForm}
+            addFormRef={addFormRef}
             addGame={{
               newGame,
               setNewGame,
@@ -461,57 +384,67 @@ export default function BacklogPage() {
               onClose: () => setShowAddForm(false),
             }}
           />
-          {/* Main content */}
-          {displayGames.length ? (
-            <GameGrid
-              games={displayGames}
-              onSelectGame={setSelectedGame}
-              onEditGame={startEditing}
-              onDeleteGame={handleDeleteGame}
-              onReorder={canReorder ? handleReorderGames : null}
-              viewMode={viewMode}
-            />
-          ) : (
-            <EmptyState
-              icon={hasActiveFilters ? SearchX : Gamepad2}
-              title={
-                hasActiveFilters
-                  ? "No games match this view."
-                  : "Your backlog is ready."
-              }
-              description={
-                hasActiveFilters
-                  ? "Clear the current search and filters to bring the full library back."
-                  : "Add the first game and the grid will start filling in with covers, ratings, dates, and your own notes."
-              }
-              action={
-                hasActiveFilters ? (
-                  <Button type="button" variant="secondary" onClick={resetFilters}>
-                    Clear filters
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={() =>
-                      isAuthenticated
-                        ? setShowAddForm(true)
-                        : setShowAdminLogin(true)
-                    }
-                  >
-                    <PlusCircle className="h-4 w-4" aria-hidden="true" />
-                    {isAuthenticated ? "Add game" : "Sign in to add games"}
-                  </Button>
-                )
-              }
-              className="mx-auto max-w-3xl"
-            />
-          )}
+          {/* The page owns the full-height scrollbar while the toolbar remains sticky. */}
+          <div className="mx-auto w-full max-w-[1760px]">
+            {displayGames.length ? (
+              <GameGrid
+                games={displayGames}
+                onSelectGame={setSelectedGame}
+                onEditGame={startEditing}
+                onDeleteGame={handleDeleteGame}
+                onReorder={canReorder ? handleReorderGames : null}
+                viewMode={viewMode}
+              />
+            ) : (
+              <EmptyState
+                icon={hasActiveFilters ? SearchX : Gamepad2}
+                title={
+                  hasActiveFilters
+                    ? "No games match this view."
+                    : "Your backlog is ready."
+                }
+                description={
+                  hasActiveFilters
+                    ? "Clear the current search and filters to bring the full library back."
+                    : "Add the first game and the grid will start filling in with covers, ratings, dates, and your own notes."
+                }
+                action={
+                  hasActiveFilters ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={resetFilters}
+                    >
+                      Clear filters
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={() =>
+                        isAuthenticated
+                          ? setShowAddForm(true)
+                          : setShowAdminLogin(true)
+                      }
+                    >
+                      <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                      {isAuthenticated ? "Add game" : "Sign in to add games"}
+                    </Button>
+                  )
+                }
+                className="mx-auto max-w-3xl"
+              />
+            )}
+          </div>
 
           <BacklogModals
             selectedGame={selectedGame}
             onCloseSelectedGame={() => setSelectedGame(null)}
             onSteamLinked={() => refresh({ silent: true })}
+            onEditSelectedGame={(game) => {
+              setSelectedGame(null);
+              startEditing(game);
+            }}
             surpriseGame={surpriseGame}
             onCloseSurpriseGame={() => setSurpriseGame(null)}
             onRefreshSurpriseGame={handleSurpriseMe}
@@ -523,12 +456,8 @@ export default function BacklogPage() {
             isEditing={isEditing}
             statuses={allStatuses}
             allMyGenres={allMyGenres}
-            games={games}
-            onUpdateFavorites={updateFavorites}
             showAdminLogin={showAdminLogin}
             onCloseAdminLogin={() => setShowAdminLogin(false)}
-            showPublicSettings={showPublicSettings}
-            onClosePublicSettings={() => setShowPublicSettings(false)}
             showOnboarding={showOnboarding}
             onCloseOnboarding={() => setShowOnboarding(false)}
             onShowAuth={() => setShowAdminLogin(true)}
@@ -540,4 +469,3 @@ export default function BacklogPage() {
     </>
   );
 }
-

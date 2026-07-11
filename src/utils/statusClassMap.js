@@ -1,19 +1,26 @@
 export const statusClassMap = {
-  playing: "bg-[#f97316]/20 text-[#f97316] border-[#f97316]/30",
-  "plan to play soon": "bg-[#f59e0b]/20 text-[#f59e0b] border-[#f59e0b]/30",
-  "plan to play": "bg-[#eab308]/20 text-[#eab308] border-[#eab308]/30",
+  playing: "bg-status-active/20 text-status-active border-status-active/30",
+  "plan to play soon":
+    "bg-status-soon/20 text-status-soon border-status-soon/30",
+  "plan to play":
+    "bg-status-planned/20 text-status-planned border-status-planned/30",
   "played and should come back":
-    "bg-[#84cc16]/20 text-[#84cc16] border-[#84cc16]/30",
-  "play when in the mood": "bg-[#3b82f6]/20 text-[#3b82f6] border-[#3b82f6]/30",
-  "maybe in the future": "bg-[#8b5cf6]/20 text-[#8b5cf6] border-[#8b5cf6]/30",
+    "bg-status-return/20 text-status-return border-status-return/30",
+  "play when in the mood":
+    "bg-status-flexible/20 text-status-flexible border-status-flexible/30",
+  "maybe in the future":
+    "bg-status-future/20 text-status-future border-status-future/30",
   "recommended by someone":
-    "bg-[#06b6d4]/20 text-[#06b6d4] border-[#06b6d4]/30",
-  wishlist: "bg-[#06b6d4]/20 text-[#06b6d4] border-[#06b6d4]/30",
-  "not anytime soon": "bg-[#64748b]/20 text-[#64748b] border-[#64748b]/30",
-  finished: "bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]/30",
+    "bg-status-recommended/20 text-status-recommended border-status-recommended/30",
+  wishlist:
+    "bg-status-recommended/20 text-status-recommended border-status-recommended/30",
+  "not anytime soon":
+    "bg-status-idle/20 text-status-idle border-status-idle/30",
+  finished: "bg-status-done/20 text-status-done border-status-done/30",
   "played alot but didnt finish":
-    "bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]/30",
-  "played a bit": "bg-[#6b7280]/20 text-[#6b7280] border-[#6b7280]/30",
+    "bg-status-done/20 text-status-done border-status-done/30",
+  "played a bit":
+    "bg-status-sampled/20 text-status-sampled border-status-sampled/30",
   "played and wont come back":
-    "bg-[#ef4444]/20 text-[#ef4444] border-[#ef4444]/30",
+    "bg-status-dropped/20 text-status-dropped border-status-dropped/30",
 };

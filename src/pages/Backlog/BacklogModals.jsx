@@ -4,12 +4,12 @@ import EditGameForm from "../../components/EditGameForm";
 import GameModal from "../../components/GameModal";
 import KeepDemoModal from "../../components/KeepDemoModal";
 import OnboardingModal from "../../components/OnboardingModal";
-import PublicSettingsModal from "../../components/PublicSettingsModal";
 
 export default function BacklogModals({
   selectedGame,
   onCloseSelectedGame,
   onSteamLinked,
+  onEditSelectedGame,
   surpriseGame,
   onCloseSurpriseGame,
   onRefreshSurpriseGame,
@@ -21,12 +21,8 @@ export default function BacklogModals({
   isEditing,
   statuses,
   allMyGenres,
-  games,
-  onUpdateFavorites,
   showAdminLogin,
   onCloseAdminLogin,
-  showPublicSettings,
-  onClosePublicSettings,
   showOnboarding,
   onCloseOnboarding,
   onShowAuth,
@@ -40,6 +36,7 @@ export default function BacklogModals({
           game={selectedGame}
           onClose={onCloseSelectedGame}
           onGameRefresh={onSteamLinked}
+          onEdit={onEditSelectedGame}
         />
       )}
 
@@ -67,15 +64,6 @@ export default function BacklogModals({
       )}
 
       {showAdminLogin && <AdminLoginForm onClose={onCloseAdminLogin} />}
-
-      {showPublicSettings && (
-        <PublicSettingsModal
-          open={showPublicSettings}
-          onClose={onClosePublicSettings}
-          games={games}
-          onUpdateFavorites={onUpdateFavorites}
-        />
-      )}
 
       {showOnboarding && (
         <OnboardingModal

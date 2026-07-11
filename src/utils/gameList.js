@@ -1,6 +1,10 @@
 import { smartFuzzySearch } from "./fuzzySearch.js";
 import { parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
+import {
+  NO_PERSONAL_GENRE_FILTER,
+  NO_RAWG_GENRE_FILTER,
+} from "./filterOptions.js";
 
 const normalize = (value = "") => String(value).toLowerCase().trim();
 const titleCollator = new Intl.Collator(undefined, {
@@ -33,7 +37,7 @@ export function findDuplicateGameByTitle(title, games = []) {
     (Array.isArray(games) ? games : []).find((game) => {
       if (!game) return false;
       return [game.name, game.displayName].some(
-        (candidate) => normalizeGameTitle(candidate) === normalizedTitle
+        (candidate) => normalizeGameTitle(candidate) === normalizedTitle,
       );
     }) || null
   );
@@ -41,7 +45,10 @@ export function findDuplicateGameByTitle(title, games = []) {
 
 export function splitCsv(value) {
   if (Array.isArray(value)) {
-    return value.map(String).map((item) => item.trim()).filter(Boolean);
+    return value
+      .map(String)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   return String(value || "")
@@ -92,7 +99,7 @@ export function sortByDefaultOrder(a, b) {
 
 export function sortGames(
   games = [],
-  { sortKey = "", isReversed = false } = {}
+  { sortKey = "", isReversed = false } = {},
 ) {
   const dateSortKey =
     sortKey === "startedDate" ||
@@ -103,7 +110,10 @@ export function sortGames(
   const sorted = [...(Array.isArray(games) ? games : [])].sort((a, b) => {
     switch (sortKey) {
       case "name":
-        return titleCollator.compare(String(a?.name || ""), String(b?.name || ""));
+        return titleCollator.compare(
+          String(a?.name || ""),
+          String(b?.name || ""),
+        );
       case "hoursPlayed":
         return (
           numberOrNegativeInfinity(a?.hoursPlayed ?? hoursValueForList(a)) -
@@ -149,11 +159,7 @@ export function isHoursFilterActive(hoursRange, hoursBounds) {
 
 function subtractMonths(date, months) {
   return new Date(
-    Date.UTC(
-      date.getFullYear(),
-      date.getMonth() - months,
-      date.getDate()
-    )
+    Date.UTC(date.getFullYear(), date.getMonth() - months, date.getDate()),
   );
 }
 
@@ -182,7 +188,11 @@ export function matchesDateFilter(game, dateFilter, now = new Date()) {
   }
 }
 
-export function matchesSourceFilter(game, sourceFilter = "all", now = new Date()) {
+export function matchesSourceFilter(
+  game,
+  sourceFilter = "all",
+  now = new Date(),
+) {
   switch (sourceFilter) {
     case "steam_linked":
       return !!game?.steamOwned;
@@ -231,7 +241,9 @@ export function matchesSourceFilter(game, sourceFilter = "all", now = new Date()
     case "steam_achievements_unavailable":
       return (
         !!game?.steamOwned &&
-        ["private", "unavailable", "failed"].includes(game?.steamAchievements?.status)
+        ["private", "unavailable", "failed"].includes(
+          game?.steamAchievements?.status,
+        )
       );
     case "all":
     default:
@@ -250,16 +262,30 @@ export function applyGameFilters(
     dateFilter = null,
     sourceFilter = "all",
     now = new Date(),
-  } = {}
+  } = {},
 ) {
   const statuses = selectedStatuses.length
     ? new Set(selectedStatuses.map(normalize))
     : null;
-  const genres = selectedGenres.length
-    ? new Set(selectedGenres.map(normalize))
+  const wantsNoRawgGenre = selectedGenres.includes(NO_RAWG_GENRE_FILTER);
+  const genres = selectedGenres.some((value) => value !== NO_RAWG_GENRE_FILTER)
+    ? new Set(
+        selectedGenres
+          .filter((value) => value !== NO_RAWG_GENRE_FILTER)
+          .map(normalize),
+      )
     : null;
-  const myGenres = selectedMyGenres.length
-    ? new Set(selectedMyGenres.map(normalize))
+  const wantsNoPersonalGenre = selectedMyGenres.includes(
+    NO_PERSONAL_GENRE_FILTER,
+  );
+  const myGenres = selectedMyGenres.some(
+    (value) => value !== NO_PERSONAL_GENRE_FILTER,
+  )
+    ? new Set(
+        selectedMyGenres
+          .filter((value) => value !== NO_PERSONAL_GENRE_FILTER)
+          .map(normalize),
+      )
     : null;
   const hoursActive = isHoursFilterActive(hoursRange, hoursBounds);
 
@@ -268,14 +294,23 @@ export function applyGameFilters(
 
     if (statuses && !statuses.has(normalize(game.status))) return false;
 
-    if (genres) {
-      const gameGenres = splitCsv(game.genres).map(normalize);
-      if (!gameGenres.some((genre) => genres.has(genre))) return false;
+    if (genres || wantsNoRawgGenre) {
+      const gameGenres = splitCsv(game.genres).map(normalize).filter(Boolean);
+      const matchesKnownGenre =
+        !!genres && gameGenres.some((genre) => genres.has(genre));
+      const matchesMissingGenre = wantsNoRawgGenre && gameGenres.length === 0;
+      if (!matchesKnownGenre && !matchesMissingGenre) return false;
     }
 
-    if (myGenres) {
-      const gameMyGenres = splitCsv(game.my_genre).map(normalize);
-      if (!gameMyGenres.some((genre) => myGenres.has(genre))) return false;
+    if (myGenres || wantsNoPersonalGenre) {
+      const gameMyGenres = splitCsv(game.my_genre)
+        .map(normalize)
+        .filter(Boolean);
+      const matchesKnownGenre =
+        !!myGenres && gameMyGenres.some((genre) => myGenres.has(genre));
+      const matchesMissingGenre =
+        wantsNoPersonalGenre && gameMyGenres.length === 0;
+      if (!matchesKnownGenre && !matchesMissingGenre) return false;
     }
 
     if (hoursActive) {

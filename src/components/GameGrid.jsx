@@ -16,6 +16,7 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import GameCard from "./GameCard";
 import { EmptyState } from "./ui";
 import { buildRankReorderRequest } from "../utils/reorder";
@@ -58,10 +59,10 @@ const SortableGameCard = ({
 };
 
 const gridClasses = {
-  grid: "grid gap-4 w-full max-w-[480px] px-2 sm:px-0 mx-auto sm:max-w-none [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]",
+  grid: "grid gap-3 w-full max-w-[480px] px-2 sm:px-0 mx-auto sm:max-w-none [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(360px,1fr))]",
   compact:
-    "grid gap-3 w-full max-w-[420px] px-2 sm:px-0 mx-auto sm:max-w-none [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(250px,1fr))]",
-  list: "grid gap-3 w-full px-2 sm:px-0 lg:grid-cols-2",
+    "grid items-stretch gap-3 w-full max-w-[420px] px-2 sm:px-0 mx-auto sm:max-w-none [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(250px,1fr))]",
+  list: "grid grid-cols-1 gap-3 w-full px-2 sm:px-0",
 };
 
 const GameGrid = ({
@@ -82,7 +83,9 @@ const GameGrid = ({
     useSensor(TouchSensor, {
       activationConstraint: { delay: 180, tolerance: 8 },
     }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   React.useEffect(() => {
@@ -171,14 +174,18 @@ const GameGrid = ({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      modifiers={viewMode === "list" ? [restrictToVerticalAxis] : undefined}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
     >
       <SortableContext
         items={filteredGames.map((g) => String(g.id))}
         strategy={rectSortingStrategy}
       >
-        <div className={gridClasses[viewMode] || gridClasses.grid}>
+        <div
+          className={`${gridClasses[viewMode] || gridClasses.grid} overflow-x-clip`}
+        >
           {filteredGames.map((game) => (
             <SortableGameCard
               key={game.id}

@@ -15,7 +15,7 @@ import { canDeleteGame, canEditGame } from "../utils/permissions";
 import { splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
-import { IconButton, StatusBadge, useToast } from "./ui";
+import { Chip, IconButton, StatusBadge, useToast } from "./ui";
 
 function fmtDate(value) {
   if (!value) return null;
@@ -43,7 +43,9 @@ function daysSince(value) {
 }
 
 function statusIsAlreadyActiveOrDone(status) {
-  const value = String(status || "").toLowerCase().trim();
+  const value = String(status || "")
+    .toLowerCase()
+    .trim();
   return [
     "playing",
     "finished",
@@ -60,17 +62,24 @@ function MiniStat({ icon: Icon, label, value, tone = "default" }) {
         ? "text-state-success"
         : tone === "primary"
           ? "text-primary"
+          : tone === "integration"
+            ? "text-integration-steam"
           : tone === "muted"
             ? "text-content-muted"
             : "text-content-primary";
 
   return (
     <div
-      className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-surface-border/70 bg-surface-elevated/55 px-2.5 py-1.5"
+      className="inline-flex min-w-0 items-center gap-1 rounded-full border border-surface-border/70 bg-surface-elevated/55 px-2 py-1.5"
       title={label}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-content-muted" aria-hidden="true" />
-      <span className={`truncate text-xs font-semibold ${toneClass}`}>{value}</span>
+      <Icon
+        className="h-3.5 w-3.5 shrink-0 text-content-muted"
+        aria-hidden="true"
+      />
+      <span className={`truncate text-xs font-semibold ${toneClass}`}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -93,9 +102,15 @@ function TimelineRow({ startedAt, finishedAt }) {
         .join(" | ")}
     >
       {finishedAt && !startedAt ? (
-        <Flag className="h-3.5 w-3.5 shrink-0 text-content-muted" aria-hidden="true" />
+        <Flag
+          className="h-3.5 w-3.5 shrink-0 text-content-muted"
+          aria-hidden="true"
+        />
       ) : (
-        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-content-muted" aria-hidden="true" />
+        <CalendarDays
+          className="h-3.5 w-3.5 shrink-0 text-content-muted"
+          aria-hidden="true"
+        />
       )}
       <span className="truncate text-xs font-semibold text-content-primary">
         {value}
@@ -116,15 +131,22 @@ function ReleaseBadge({ value }) {
   if (!value) return null;
 
   return (
-    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/15 bg-black/45 px-2.5 py-1 text-xs font-semibold text-white shadow-md backdrop-blur">
-      <CalendarDays className="h-3.5 w-3.5 shrink-0 text-white/75" aria-hidden="true" />
+    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-media-border/15 bg-media-overlay/45 px-2.5 py-1 text-xs font-semibold text-media-text shadow-md backdrop-blur">
+      <CalendarDays
+        className="h-3.5 w-3.5 shrink-0 text-media-text/75"
+        aria-hidden="true"
+      />
       <span className="truncate">Released {value}</span>
     </div>
   );
 }
 
 function CoverFallback({ title, className = "", compact = false }) {
-  const initial = String(title || "?").trim().charAt(0).toUpperCase() || "?";
+  const initial =
+    String(title || "?")
+      .trim()
+      .charAt(0)
+      .toUpperCase() || "?";
   return (
     <div
       className={[
@@ -143,13 +165,22 @@ function CoverFallback({ title, className = "", compact = false }) {
             </div>
           ) : null}
         </div>
-        <ImageOff className="h-5 w-5 shrink-0 text-content-muted/70" aria-hidden="true" />
+        <ImageOff
+          className="h-5 w-5 shrink-0 text-content-muted/70"
+          aria-hidden="true"
+        />
       </div>
     </div>
   );
 }
 
-function CoverImage({ src, alt, className, fallbackClassName, compact = false }) {
+function CoverImage({
+  src,
+  alt,
+  className,
+  fallbackClassName,
+  compact = false,
+}) {
   const [failed, setFailed] = useState(false);
 
   if (!src || failed) {
@@ -167,6 +198,7 @@ function CoverImage({ src, alt, className, fallbackClassName, compact = false })
       src={src}
       alt={alt}
       loading="lazy"
+      decoding="async"
       className={className}
       onError={() => setFailed(true)}
     />
@@ -240,7 +272,9 @@ export default function GameCard({
         ? `Steam ${hours.secondarySteamHours}h`
         : "Owned on Steam"
       : null;
-  const steamLastPlayed = game.steamOwned ? fmtShortDate(game.steamLastPlayedAt) : null;
+  const steamLastPlayed = game.steamOwned
+    ? fmtShortDate(game.steamLastPlayedAt)
+    : null;
   const steamActivityDays = daysSince(game.steamFirstPlayObservedAt);
   const steamActivityStat =
     game.steamOwned &&
@@ -257,14 +291,15 @@ export default function GameCard({
   const achievements = game.steamOwned
     ? formatAchievementSummary(game.steamAchievements)
     : null;
-  const achievementStat = achievements?.isMeaningful && Number(achievements.percent) > 0
-    ? {
-        icon: Trophy,
-        label: "Achievements",
-        value: achievements.compact,
-        tone: achievements.percent >= 100 ? "success" : "primary",
-      }
-    : null;
+  const achievementStat =
+    achievements?.isMeaningful && Number(achievements.percent) > 0
+      ? {
+          icon: Trophy,
+          label: "Achievements",
+          value: achievements.compact,
+          tone: achievements.percent >= 100 ? "success" : "primary",
+        }
+      : null;
   const isCompact = variant === "compact";
   const isList = variant === "list";
   const genreLimit = isCompact ? 2 : 3;
@@ -272,8 +307,8 @@ export default function GameCard({
   const hiddenMyGenres = Math.max(0, myGenres.length - visibleMyGenres.length);
   const imageHeight = isCompact ? "h-44" : "h-64";
   const titleClass = isCompact
-    ? "line-clamp-2 max-w-full text-base font-semibold leading-tight text-white"
-    : "line-clamp-2 max-w-full text-xl font-semibold leading-tight text-white";
+    ? "line-clamp-2 max-w-full text-base font-semibold leading-tight text-media-text"
+    : "line-clamp-2 max-w-full text-xl font-semibold leading-tight text-media-text";
 
   const actionButtons =
     canEdit || canDelete ? (
@@ -282,7 +317,7 @@ export default function GameCard({
           <IconButton
             icon={Pencil}
             onClick={handleEdit}
-            className="action-button h-9 w-9 shadow-md hover:border-secondary hover:bg-secondary hover:text-white"
+            className="action-button h-9 w-9 shadow-md hover:border-secondary hover:bg-secondary hover:text-media-text"
             label="Edit game"
             title="Edit game"
           />
@@ -303,89 +338,98 @@ export default function GameCard({
   if (isList) {
     return (
       <article
-        className="group relative flex min-h-32 overflow-hidden rounded-2xl border border-surface-border bg-surface-card/95 shadow-sm transition-all duration-300 hover:border-primary/30 hover:bg-surface-card hover:shadow-glow-primary"
+        className="group relative overflow-hidden rounded-2xl border border-surface-border bg-surface-card shadow-sm transition-colors hover:border-primary/35"
         onClick={handleCardClick}
         style={{ WebkitTapHighlightColor: "transparent" }}
       >
         {actionButtons}
-        <CoverImage
-          src={game.cover}
-          alt={game.name}
-          className="h-32 w-24 shrink-0 object-cover sm:h-36 sm:w-28"
-          fallbackClassName="h-32 w-24 shrink-0 sm:h-36 sm:w-28"
-          compact
-        />
-        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 p-4 pr-14 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-          <div className="grid min-w-0 content-center gap-3">
-            <h3 className="line-clamp-2 text-lg font-semibold text-content-primary">
-              {game.name}
-            </h3>
-            <div className="grid min-h-[66px] min-w-0 content-start gap-2">
-              <div className="flex min-h-[30px] min-w-0 flex-wrap items-center gap-2">
-                {game.status ? <StatusBadge status={game.status} /> : null}
-                {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
+        <div className="relative min-h-[172px] sm:min-h-[184px]">
+          {game.cover ? (
+            <>
+              <CoverImage
+                src={game.cover}
+                alt={game.name}
+                className="absolute inset-0 h-full w-full object-cover opacity-35"
+                fallbackClassName="absolute inset-0 h-full w-full"
+                compact
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/72" />
+              <div className="absolute inset-0 bg-gradient-to-t from-surface-card/70 via-transparent to-transparent" />
+            </>
+          ) : null}
+
+          <div className="relative flex min-h-[172px] gap-4 p-4 pr-14 sm:min-h-[184px] sm:gap-5 sm:p-5 sm:pr-16">
+            <CoverImage
+              src={game.cover}
+              alt={game.name}
+              className="h-40 w-52 shrink-0 rounded-xl border border-media-border/10 object-cover shadow-lg sm:h-44 sm:w-64 lg:w-72"
+              fallbackClassName="h-40 w-52 shrink-0 rounded-xl border border-surface-border sm:h-44 sm:w-64 lg:w-72"
+              compact
+            />
+
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
+              <div className="min-w-0">
+                <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-content-primary sm:text-xl">
+                  {game.name}
+                </h3>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {game.status ? <StatusBadge status={game.status} /> : null}
+                  {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
+                </div>
               </div>
-              <div className="flex min-h-[30px] min-w-0 flex-wrap items-center gap-2">
-                {visibleMyGenres.map((genre) => (
-                  <span
-                    key={genre}
-                    className="max-w-full truncate rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-medium text-content-secondary"
-                    title={genre}
-                  >
-                    {genre}
-                  </span>
+
+              <div className="flex flex-wrap gap-1.5">
+                {cardStats.map((stat) => (
+                  <MiniStat
+                    key={stat.label}
+                    icon={stat.icon}
+                    label={stat.label}
+                    value={stat.value}
+                    tone={stat.tone}
+                  />
                 ))}
-                {hiddenMyGenres ? (
-                  <span className="rounded-full border border-surface-border bg-surface-elevated/60 px-2.5 py-1 text-xs font-medium text-content-muted">
-                    +{hiddenMyGenres}
-                  </span>
+                {steamPlaytime ? (
+                  <MiniStat
+                    icon={Gamepad2}
+                    label="Steam"
+                    value={steamPlaytime}
+                    tone="integration"
+                  />
                 ) : null}
+                {steamLastPlayed ? (
+                  <MiniStat
+                    icon={CalendarDays}
+                    label="Last played on Steam"
+                    value={steamLastPlayed}
+                    tone="integration"
+                  />
+                ) : null}
+                {achievementStat ? (
+                  <MiniStat
+                    icon={achievementStat.icon}
+                    label={achievementStat.label}
+                    value={achievementStat.value}
+                    tone={achievementStat.tone}
+                  />
+                ) : null}
+                <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
               </div>
+
+              {visibleMyGenres.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {visibleMyGenres.map((genre) => (
+                    <Chip key={genre} variant="genre" title={genre} className="truncate">
+                      {genre}
+                    </Chip>
+                  ))}
+                  {hiddenMyGenres ? (
+                    <span className="rounded-full border border-surface-border bg-surface-elevated/60 px-2.5 py-1 text-xs font-medium text-content-muted">
+                      +{hiddenMyGenres}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2 xl:justify-end">
-            {cardStats.map((stat) => (
-              <MiniStat
-                key={stat.label}
-                icon={stat.icon}
-                label={stat.label}
-                value={stat.value}
-                tone={stat.tone}
-              />
-            ))}
-            {steamPlaytime ? (
-              <MiniStat
-                icon={Gamepad2}
-                label="Steam"
-                value={steamPlaytime}
-                tone="primary"
-              />
-            ) : null}
-            {steamLastPlayed ? (
-              <MiniStat
-                icon={CalendarDays}
-                label="Last played on Steam"
-                value={steamLastPlayed}
-                tone="primary"
-              />
-            ) : null}
-            {steamActivityStat ? (
-              <MiniStat
-                icon={steamActivityStat.icon}
-                label={steamActivityStat.label}
-                value={steamActivityStat.value}
-                tone={steamActivityStat.tone}
-              />
-            ) : null}
-            {achievementStat ? (
-              <MiniStat
-                icon={achievementStat.icon}
-                label={achievementStat.label}
-                value={achievementStat.value}
-                tone={achievementStat.tone}
-              />
-            ) : null}
-            <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
           </div>
         </div>
       </article>
@@ -394,7 +438,7 @@ export default function GameCard({
 
   return (
     <article
-      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-surface-border bg-surface-card/95 shadow-sm transition-all duration-300 hover:border-primary/30 hover:bg-surface-card hover:shadow-glow-primary hover:-translate-y-0.5"
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-surface-border bg-surface-card/95 shadow-sm transition-all duration-300 hover:border-primary/30 hover:bg-surface-card hover:shadow-glow-primary hover:-translate-y-0.5 h-full`}
       onClick={handleCardClick}
       style={{ WebkitTapHighlightColor: "transparent" }}
     >
@@ -412,14 +456,15 @@ export default function GameCard({
             <div className="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/25 to-transparent" />
           </>
         ) : (
-          <CoverFallback title={game.name} className={`flex ${imageHeight} w-full`} />
+          <CoverFallback
+            title={game.name}
+            className={`flex ${imageHeight} w-full`}
+          />
         )}
 
         <div className="absolute inset-x-0 bottom-0 p-4">
           <div className="flex min-w-0 flex-col items-start gap-2">
-            <h3 className={titleClass}>
-              {game.name}
-            </h3>
+            <h3 className={titleClass}>{game.name}</h3>
             <div className="flex max-w-full flex-wrap items-center gap-2">
               {game.status ? <StatusBadge status={game.status} /> : null}
               {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
@@ -428,10 +473,10 @@ export default function GameCard({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-4 px-3.5 py-4">
         {isCompact ? (
-          <div className="grid min-h-[68px] content-start gap-2">
-            <div className="flex min-h-[30px] flex-wrap gap-2">
+          <div className="grid content-start gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {cardStats.map((stat) => (
                 <MiniStat
                   key={stat.label}
@@ -446,7 +491,7 @@ export default function GameCard({
                   icon={Gamepad2}
                   label="Steam"
                   value={steamPlaytime}
-                  tone="primary"
+                  tone="integration"
                 />
               ) : null}
               {steamLastPlayed ? (
@@ -454,7 +499,7 @@ export default function GameCard({
                   icon={CalendarDays}
                   label="Last played on Steam"
                   value={steamLastPlayed}
-                  tone="primary"
+                  tone="integration"
                 />
               ) : null}
               {steamActivityStat ? (
@@ -474,14 +519,10 @@ export default function GameCard({
                 />
               ) : null}
             </div>
-            <TimelineSlot
-              startedAt={startedAt}
-              finishedAt={finishedAt}
-              reserve
-            />
+            <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
           </div>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {cardStats.map((stat) => (
               <MiniStat
                 key={stat.label}
@@ -496,7 +537,7 @@ export default function GameCard({
                 icon={Gamepad2}
                 label="Steam"
                 value={steamPlaytime}
-                tone="primary"
+                tone="integration"
               />
             ) : null}
             {steamLastPlayed ? (
@@ -504,7 +545,7 @@ export default function GameCard({
                 icon={CalendarDays}
                 label="Last played on Steam"
                 value={steamLastPlayed}
-                tone="primary"
+                tone="integration"
               />
             ) : null}
             {steamActivityStat ? (
@@ -529,18 +570,19 @@ export default function GameCard({
 
         {visibleMyGenres.length ? (
           <div
-            className={`mt-auto flex min-h-[46px] items-start gap-2 border-t border-surface-border/70 pt-4 ${
+            className={`mt-auto flex items-start gap-2 border-t border-surface-border/70 pt-4 ${
               isCompact ? "flex-nowrap overflow-hidden" : "flex-wrap"
             }`}
           >
             {visibleMyGenres.map((genre) => (
-              <span
+              <Chip
                 key={genre}
-                className="max-w-full shrink-0 truncate rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-content-primary"
+                variant="genre"
                 title={genre}
+                className="shrink-0 truncate px-3"
               >
                 {genre}
-              </span>
+              </Chip>
             ))}
             {hiddenMyGenres ? (
               <span className="shrink-0 rounded-full border border-surface-border bg-surface-elevated/60 px-2.5 py-1 text-xs font-medium text-content-muted">

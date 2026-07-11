@@ -15,7 +15,7 @@ const needsHydration = (g) => !g?.cover || !g?.how_long_to_beat;
 
 function inferStatusRank(status, list) {
   const sample = list.find(
-    (g) => String(g?.status) === String(status) && g?.status_rank != null
+    (g) => String(g?.status) === String(status) && g?.status_rank != null,
   );
   return sample?.status_rank ?? 999;
 }
@@ -26,7 +26,7 @@ function nextPositionForStatus(status, list) {
   const sameStatus = list.filter((g) => String(g?.status) === String(status));
   if (sameStatus.length === 0) return 1000;
   const maxPos = Math.max(
-    ...sameStatus.map((g) => (g?.position == null ? 0 : Number(g.position)))
+    ...sameStatus.map((g) => (g?.position == null ? 0 : Number(g.position))),
   );
   return (isFinite(maxPos) ? maxPos : 0) + 1000;
 }
@@ -74,16 +74,18 @@ function applyRankOrder(prevList, payload) {
 }
 
 export function useGames() {
-  const {
-    getAuthHeaders,
-    isAuthenticated,
-    loading: authLoading,
-  } = useAuth();
+  const { getAuthHeaders, isAuthenticated, loading: authLoading } = useAuth();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // latest-wins guard for list loads/refreshes
   const reqSeq = useRef(0);
+  const gamesRef = useRef([]);
+  const editSeq = useRef(new Map());
+
+  useEffect(() => {
+    gamesRef.current = games;
+  }, [games]);
 
   // Initial load (latest-wins + abort)
   useEffect(() => {
@@ -161,21 +163,24 @@ export function useGames() {
         setGames((prev) => {
           if (!silent) return sortGames(list);
 
-          // silent refresh: merge new fields into existing rows by id, then re-sort
+          // Silent refresh remains authoritative while preserving in-flight
+          // optimistic creates that the server cannot know about yet.
           const byId = new Map(prev.map((g) => [g.id, g]));
-          for (const ng of list) {
+          const merged = list.map((ng) => {
             const old = byId.get(ng.id);
-            byId.set(ng.id, old ? { ...old, ...ng } : ng);
-          }
-          return sortGames(Array.from(byId.values()));
+            return old ? { ...old, ...ng } : ng;
+          });
+          const optimistic = prev.filter((game) => game?._optimistic);
+          return sortGames([...merged, ...optimistic]);
         });
       } catch (e) {
         if (!silent) setError(e);
+        throw e;
       } finally {
         if (!silent && seq === reqSeq.current) setLoading(false);
       }
     },
-    [getAuthHeaders, isAuthenticated]
+    [getAuthHeaders, isAuthenticated],
   );
 
   // --- Add (optimistic): insert immediately at end of the target status group
@@ -212,7 +217,7 @@ export function useGames() {
       // 3) Replace optimistic with authoritative row from server, then resort
       setGames((prev) => {
         const replaced = prev.map((g) =>
-          g.id === tempId ? { ...g, ...created, _optimistic: false } : g
+          g.id === tempId ? { ...g, ...created, _optimistic: false } : g,
         );
         return sortGames(replaced);
       });
@@ -228,10 +233,12 @@ export function useGames() {
   // --- Edit (optimistic): apply immediately; on status change, move to new group end
   const editGame = useCallback(
     async (id, patch) => {
-      // Snapshot for rollback
-      let before;
+      const mutationId = (editSeq.current.get(id) || 0) + 1;
+      editSeq.current.set(id, mutationId);
+      const beforeGame =
+        gamesRef.current.find((game) => game.id === id) || null;
+
       setGames((prev) => {
-        before = prev;
         const idx = prev.findIndex((g) => g.id === id);
         if (idx === -1) return prev;
 
@@ -262,12 +269,16 @@ export function useGames() {
           headers: getAuthHeaders(),
         });
       } catch (e) {
-        // Roll back on failure
-        if (before) setGames(before);
+        if (beforeGame && editSeq.current.get(id) === mutationId) {
+          setGames((prev) =>
+            sortGames(prev.map((game) => (game.id === id ? beforeGame : game))),
+          );
+        }
         throw e;
       }
 
       // Merge any server-provided fields back in (keep our placement if server omitted)
+      if (editSeq.current.get(id) !== mutationId) return updated ?? patch;
       setGames((prev) =>
         sortGames(
           prev.map((g) =>
@@ -282,9 +293,9 @@ export function useGames() {
                   position:
                     updated?.position != null ? updated.position : g.position,
                 }
-              : g
-          )
-        )
+              : g,
+          ),
+        ),
       );
 
       // If the name changed (new RAWG lookup likely) or still not hydrated, silent revalidate
@@ -298,7 +309,7 @@ export function useGames() {
 
       return updated ?? patch;
     },
-    [getAuthHeaders, refresh]
+    [getAuthHeaders, refresh],
   );
 
   const removeGame = useCallback(
@@ -306,7 +317,7 @@ export function useGames() {
       await deleteGameApi(id, { auth: false, headers: getAuthHeaders() });
       setGames((prev) => prev.filter((g) => g.id !== id));
     },
-    [getAuthHeaders]
+    [getAuthHeaders],
   );
 
   const updateFavorites = useCallback(
@@ -319,7 +330,7 @@ export function useGames() {
       setGames(sortGames(list));
       return list;
     },
-    [getAuthHeaders]
+    [getAuthHeaders],
   );
 
   // Reorder a single game:
@@ -329,7 +340,7 @@ export function useGames() {
     async (id, targetIndex, status) => {
       const payload = await reorderGamesApi(
         { id, targetIndex, status },
-        { auth: false, headers: getAuthHeaders() }
+        { auth: false, headers: getAuthHeaders() },
       );
       if (payload && payload.rank_order) {
         setGames((prev) => applyRankOrder(prev, payload));
@@ -338,7 +349,7 @@ export function useGames() {
         await refresh({ silent: true });
       }
     },
-    [getAuthHeaders, refresh]
+    [getAuthHeaders, refresh],
   );
 
   return {

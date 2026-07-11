@@ -1,6 +1,4 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { useDebouncedValue } from "./useDebouncedValue";
-import { matchesDateFilter, matchesSourceFilter } from "../utils/gameList";
 import { hoursValueForList } from "../utils/hours";
 
 function toArray(raw) {
@@ -8,11 +6,6 @@ function toArray(raw) {
   if (typeof raw === "string") return raw.split(",");
   return [];
 }
-
-const titleCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
-});
 
 export function useFilters(games, opts = {}) {
   // ----- basic state -----
@@ -25,24 +18,22 @@ export function useFilters(games, opts = {}) {
   const [sortKey, setSortKey] = useState(opts.initialSortKey || "");
   const [isReversed, setIsReversed] = useState(!!opts.initialReverse);
 
-  const debouncedSearch = useDebouncedValue(searchQuery, 200);
-
   // ----- togglers -----
   const toggleStatus = useCallback((status) => {
     setSelectedStatuses((prev) =>
       prev.includes(status)
         ? prev.filter((s) => s !== status)
-        : [...prev, status]
+        : [...prev, status],
     );
   }, []);
   const toggleGenre = useCallback((genre) => {
     setSelectedGenres((prev) =>
-      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
+      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre],
     );
   }, []);
   const toggleMyGenre = useCallback((genre) => {
     setSelectedMyGenres((prev) =>
-      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
+      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre],
     );
   }, []);
 
@@ -97,26 +88,17 @@ export function useFilters(games, opts = {}) {
     if (hoursInitialized && hoursRange) {
       const nextMin = Math.max(
         hoursBounds.min,
-        Math.min(hoursRange.min, hoursBounds.max)
+        Math.min(hoursRange.min, hoursBounds.max),
       );
       const nextMax = Math.min(
         hoursBounds.max,
-        Math.max(hoursRange.max, hoursBounds.min)
+        Math.max(hoursRange.max, hoursBounds.min),
       );
       if (nextMin !== hoursRange.min || nextMax !== hoursRange.max) {
         setHoursRange({ min: nextMin, max: nextMax });
       }
     }
   }, [hoursBounds, hoursInitialized, hoursRange]);
-
-  // debounce hours so filtering is smooth while dragging
-  const debouncedHoursRange = useDebouncedValue(hoursRange, 120);
-
-  const isHoursActive =
-    hoursBounds.max > hoursBounds.min &&
-    !!debouncedHoursRange &&
-    (debouncedHoursRange.min > hoursBounds.min ||
-      debouncedHoursRange.max < hoursBounds.max);
 
   // reset filters
   const clearFilters = useCallback(() => {
@@ -128,136 +110,6 @@ export function useFilters(games, opts = {}) {
     setSearchQuery("");
     if (hoursBounds.max > hoursBounds.min) setHoursRange(hoursBounds);
   }, [hoursBounds]);
-
-  // fast path when nothing active
-  const noFiltersActive =
-    !debouncedSearch &&
-    selectedStatuses.length === 0 &&
-    selectedGenres.length === 0 &&
-    selectedMyGenres.length === 0 &&
-    !dateFilter &&
-    sourceFilter === "all" &&
-    !isHoursActive &&
-    !sortKey;
-
-  // status rank map for fast default sorting
-  const statusRankMap = useMemo(() => {
-    const map = new Map();
-    for (const s of opts.statuses || []) {
-      map.set(String(s.status), Number.isFinite(s.rank) ? s.rank : 1e9);
-    }
-    return map;
-  }, [opts.statuses]);
-
-  // compute filtered + sorted list
-  const filteredGames = useMemo(() => {
-    if (!games?.length) return [];
-    if (noFiltersActive) return games;
-
-    const q = (debouncedSearch || "").trim().toLowerCase();
-
-    const statusesFilter = selectedStatuses.length
-      ? new Set(selectedStatuses.map((s) => String(s).trim().toLowerCase()))
-      : null;
-    const genresFilter = selectedGenres.length
-      ? new Set(selectedGenres.map((s) => String(s).trim().toLowerCase()))
-      : null;
-    const myGenresFilter = selectedMyGenres.length
-      ? new Set(selectedMyGenres.map((s) => String(s).trim().toLowerCase()))
-      : null;
-
-    const pass = (g) => {
-      if (statusesFilter) {
-        const s = String(g.status).trim().toLowerCase();
-        if (!statusesFilter.has(s)) return false;
-      }
-      if (genresFilter) {
-        const raw = toArray(g.genres);
-        if (!raw.some((x) => genresFilter.has(String(x).trim().toLowerCase())))
-          return false;
-      }
-      if (myGenresFilter) {
-        const raw = toArray(g.my_genre);
-        if (
-          !raw.some((x) => myGenresFilter.has(String(x).trim().toLowerCase()))
-        )
-          return false;
-      }
-      if (q) {
-        const name = String(g.name || "").toLowerCase();
-        if (!name.includes(q)) return false;
-      }
-      if (isHoursActive) {
-        const h = Number(hoursValueForList(g));
-        if (!Number.isFinite(h)) return false;
-        if (h < debouncedHoursRange.min || h > debouncedHoursRange.max)
-          return false;
-      }
-      if (dateFilter) {
-        if (!matchesDateFilter(g, dateFilter)) return false;
-      }
-      if (!matchesSourceFilter(g, sourceFilter)) return false;
-      return true;
-    };
-
-    const out = games.filter(pass);
-
-    const byNum = (v) =>
-      v == null || Number.isNaN(Number(v)) ? -Infinity : Number(v);
-    const byDate = (v) => (v ? Date.parse(v) || 0 : 0);
-    const rankOf = (s) => statusRankMap.get(String(s)) ?? 1e9;
-
-    const sorter = (a, b) => {
-      switch (sortKey) {
-        case "name":
-          return titleCollator.compare(String(a.name || ""), String(b.name || ""));
-        case "hoursPlayed":
-          return (
-            byNum(a.hoursPlayed ?? hoursValueForList(a)) -
-            byNum(b.hoursPlayed ?? hoursValueForList(b))
-          );
-        case "rawgRating":
-          return (
-            byNum(a.rawgRating ?? a.rating) - byNum(b.rawgRating ?? b.rating)
-          );
-        case "metacritic":
-          return byNum(a.metacritic) - byNum(b.metacritic);
-        case "releaseDate":
-          return (
-            byDate(a.releaseDate ?? a.released) -
-            byDate(b.releaseDate ?? b.released)
-          );
-        case "steamLastPlayed":
-          return byDate(a.steamLastPlayedAt) - byDate(b.steamLastPlayedAt);
-        default: {
-          const r = rankOf(a.status) - rankOf(b.status);
-          if (r !== 0) return r;
-          const pa = byNum(a.position);
-          const pb = byNum(b.position);
-          if (pa !== pb) return pa - pb;
-          return titleCollator.compare(String(a.name || ""), String(b.name || ""));
-        }
-      }
-    };
-
-    out.sort(sorter);
-    if (isReversed) out.reverse();
-    return out;
-  }, [
-    games,
-    noFiltersActive,
-    debouncedSearch,
-    selectedStatuses,
-    selectedGenres,
-    selectedMyGenres,
-    dateFilter,
-    sourceFilter,
-    sortKey,
-    isReversed,
-    isHoursActive,
-    debouncedHoursRange,
-    statusRankMap,
-  ]);
 
   return {
     // state
@@ -284,11 +136,9 @@ export function useFilters(games, opts = {}) {
     toggleMyGenre,
     clearFilters,
 
-    // derived
-    filteredGames,
+    // derived option lists
     allGenres,
     allMyGenres,
-    noFiltersActive,
 
     // hours API
     hoursBounds,

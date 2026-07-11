@@ -11,6 +11,10 @@ import {
   sortGames,
   splitCsv,
 } from "./gameList.js";
+import {
+  NO_PERSONAL_GENRE_FILTER,
+  NO_RAWG_GENRE_FILTER,
+} from "./filterOptions.js";
 
 const games = [
   {
@@ -72,7 +76,10 @@ test("normalizeGameTitle creates stable duplicate-detection keys", () => {
 });
 
 test("isSameGameTitle matches punctuation and casing variants", () => {
-  assert.equal(isSameGameTitle("Marvel's Spider-Man", "marvels spider man"), true);
+  assert.equal(
+    isSameGameTitle("Marvel's Spider-Man", "marvels spider man"),
+    true,
+  );
   assert.equal(isSameGameTitle("Hades", "Hades II"), false);
 });
 
@@ -84,40 +91,40 @@ test("findDuplicateGameByTitle returns an existing matching game", () => {
 test("sortGames uses status rank, position, then id by default", () => {
   assert.deepEqual(
     sortGames(games).map((game) => game.name),
-    ["Hades", "Elden Ring", "Celeste"]
+    ["Hades", "Elden Ring", "Celeste"],
   );
 });
 
 test("sortGames supports selected sort keys and reverse order", () => {
   assert.deepEqual(
     sortGames(games, { sortKey: "name" }).map((game) => game.name),
-    ["Celeste", "Elden Ring", "Hades"]
+    ["Celeste", "Elden Ring", "Hades"],
   );
   assert.deepEqual(
     sortGames(games, { sortKey: "metacritic", isReversed: true }).map(
-      (game) => game.name
+      (game) => game.name,
     ),
-    ["Elden Ring", "Hades", "Celeste"]
+    ["Elden Ring", "Hades", "Celeste"],
   );
 });
 
 test("sortGames supports started date with missing dates last", () => {
   assert.deepEqual(
     sortGames(games, { sortKey: "startedDate" }).map((game) => game.name),
-    ["Elden Ring", "Celeste", "Hades"]
+    ["Elden Ring", "Celeste", "Hades"],
   );
   assert.deepEqual(
     sortGames(games, { sortKey: "startedDate", isReversed: true }).map(
-      (game) => game.name
+      (game) => game.name,
     ),
-    ["Celeste", "Elden Ring", "Hades"]
+    ["Celeste", "Elden Ring", "Hades"],
   );
 });
 
 test("sortGames supports finished date with missing dates last", () => {
   assert.deepEqual(
     sortGames(games, { sortKey: "finishedDate" }).map((game) => game.name),
-    ["Hades", "Celeste", "Elden Ring"]
+    ["Hades", "Celeste", "Elden Ring"],
   );
   assert.deepEqual(
     sortGames(
@@ -131,9 +138,9 @@ test("sortGames supports finished date with missing dates last", () => {
           finished_at: "not-a-date",
         },
       ],
-      { sortKey: "finishedDate", isReversed: true }
+      { sortKey: "finishedDate", isReversed: true },
     ).map((game) => game.name),
-    ["Celeste", "Hades", "Invalid Date Game", "Elden Ring"]
+    ["Celeste", "Hades", "Invalid Date Game", "Elden Ring"],
   );
 });
 
@@ -144,14 +151,16 @@ test("sortGames supports Steam last played with missing dates last", () => {
     { id: 3, name: "Never", steamLastPlayedAt: null },
   ];
   assert.deepEqual(
-    sortGames(steamGames, { sortKey: "steamLastPlayed" }).map((game) => game.name),
-    ["Old", "Recent", "Never"]
+    sortGames(steamGames, { sortKey: "steamLastPlayed" }).map(
+      (game) => game.name,
+    ),
+    ["Old", "Recent", "Never"],
   );
   assert.deepEqual(
     sortGames(steamGames, { sortKey: "steamLastPlayed", isReversed: true }).map(
-      (game) => game.name
+      (game) => game.name,
     ),
-    ["Recent", "Old", "Never"]
+    ["Recent", "Old", "Never"],
   );
 });
 
@@ -164,7 +173,7 @@ test("applyGameFilters filters by status, genres, my genres, and hours", () => {
       hoursBounds: { min: 8, max: 60 },
       hoursRange: { min: 40, max: 60 },
     }).map((game) => game.name),
-    ["Elden Ring"]
+    ["Elden Ring"],
   );
 });
 
@@ -176,9 +185,9 @@ test("matchesSourceFilter supports recently played Steam games", () => {
         steamLastPlayedAt: "2026-06-15T00:00:00.000Z",
       },
       "steam_recent",
-      new Date("2026-07-01T00:00:00.000Z")
+      new Date("2026-07-01T00:00:00.000Z"),
     ),
-    true
+    true,
   );
   assert.equal(
     matchesSourceFilter(
@@ -187,9 +196,9 @@ test("matchesSourceFilter supports recently played Steam games", () => {
         steamLastPlayedAt: "2026-05-01T00:00:00.000Z",
       },
       "steam_recent",
-      new Date("2026-07-01T00:00:00.000Z")
+      new Date("2026-07-01T00:00:00.000Z"),
     ),
-    false
+    false,
   );
 });
 
@@ -210,24 +219,30 @@ test("matchesSourceFilter supports Steam achievement summary filters", () => {
   assert.equal(matchesSourceFilter(game, "steam_achievements_complete"), false);
   assert.equal(
     matchesSourceFilter(
-      { ...game, steamAchievements: { ...game.steamAchievements, percent: 100 } },
-      "steam_achievements_complete"
+      {
+        ...game,
+        steamAchievements: { ...game.steamAchievements, percent: 100 },
+      },
+      "steam_achievements_complete",
     ),
-    true
+    true,
   );
   assert.equal(
     matchesSourceFilter(
-      { steamOwned: true, steamAchievements: { status: "unknown", lastSyncedAt: null } },
-      "steam_achievements_not_synced"
+      {
+        steamOwned: true,
+        steamAchievements: { status: "unknown", lastSyncedAt: null },
+      },
+      "steam_achievements_not_synced",
     ),
-    true
+    true,
   );
   assert.equal(
     matchesSourceFilter(
       { steamOwned: true, steamAchievements: { status: "private" } },
-      "steam_achievements_unavailable"
+      "steam_achievements_unavailable",
     ),
-    true
+    true,
   );
 });
 
@@ -236,13 +251,13 @@ test("applyGameFilters supports date filters", () => {
     applyGameFilters(games, {
       dateFilter: { type: "startedYear", year: 2024 },
     }).map((game) => game.name),
-    ["Celeste", "Elden Ring"]
+    ["Celeste", "Elden Ring"],
   );
   assert.deepEqual(
     applyGameFilters(games, {
       dateFilter: { type: "finishedYear", year: 2023 },
     }).map((game) => game.name),
-    ["Hades"]
+    ["Hades"],
   );
 });
 
@@ -251,25 +266,25 @@ test("matchesDateFilter supports active unfinished aging", () => {
     matchesDateFilter(
       { started_at: "2025-01-01", finished_at: null },
       { type: "activeOlderThanMonths", months: 6 },
-      new Date("2026-05-09T00:00:00Z")
+      new Date("2026-05-09T00:00:00Z"),
     ),
-    true
+    true,
   );
   assert.equal(
     matchesDateFilter(
       { started_at: "2026-04-01", finished_at: null },
       { type: "activeOlderThanMonths", months: 6 },
-      new Date("2026-05-09T00:00:00Z")
+      new Date("2026-05-09T00:00:00Z"),
     ),
-    false
+    false,
   );
   assert.equal(
     matchesDateFilter(
       { started_at: "2025-01-01", finished_at: "2025-02-01" },
       { type: "activeOlderThanMonths", months: 6 },
-      new Date("2026-05-09T00:00:00Z")
+      new Date("2026-05-09T00:00:00Z"),
     ),
-    false
+    false,
   );
 });
 
@@ -280,6 +295,33 @@ test("buildDisplayGames combines filters, fuzzy search, and sorting", () => {
       searchQuery: "elden",
       selectedGenres: ["RPG"],
     }).map((game) => game.name),
-    ["Elden Ring"]
+    ["Elden Ring"],
+  );
+});
+
+test("applyGameFilters can select games with missing personal or RAWG genres", () => {
+  const games = [
+    { id: 1, name: "No genres", genres: null, my_genre: "" },
+    { id: 2, name: "Only RAWG", genres: "Action", my_genre: null },
+    { id: 3, name: "Both", genres: "RPG", my_genre: "Soulslike" },
+  ];
+
+  assert.deepEqual(
+    applyGameFilters(games, {
+      selectedMyGenres: [NO_PERSONAL_GENRE_FILTER],
+    }).map((game) => game.id),
+    [1, 2],
+  );
+  assert.deepEqual(
+    applyGameFilters(games, {
+      selectedGenres: [NO_RAWG_GENRE_FILTER],
+    }).map((game) => game.id),
+    [1],
+  );
+  assert.deepEqual(
+    applyGameFilters(games, {
+      selectedGenres: [NO_RAWG_GENRE_FILTER, "RPG"],
+    }).map((game) => game.id),
+    [1, 3],
   );
 });

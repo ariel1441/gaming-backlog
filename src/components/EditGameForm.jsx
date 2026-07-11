@@ -26,6 +26,13 @@ import {
   formatAchievementSyncDate,
 } from "../utils/steamAchievements";
 import { formatAchievementGameSyncMessage } from "../utils/steamSync";
+import GameSearchResult from "./GameSearchResult";
+import {
+  formatSteamDate,
+  formatSteamPlaytime,
+  steamCapsuleUrl,
+} from "../utils/steamDisplay";
+import EditGameSteamSection from "./EditGameSteamSection";
 
 const emptyForm = {
   id: "",
@@ -44,42 +51,6 @@ const emptyForm = {
   rawg_cover: "",
   rawg_released: "",
 };
-
-function GameSearchResult({ result, selected, onSelect }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(result)}
-      className={[
-        "flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition-colors",
-        selected
-          ? "border-primary/45 bg-primary/10"
-          : "border-surface-border/70 bg-surface-bg/35 hover:border-primary/30 hover:bg-surface-elevated/55",
-      ].join(" ")}
-    >
-      {result.cover ? (
-        <img
-          src={result.cover}
-          alt=""
-          className="h-14 w-11 shrink-0 rounded-lg object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <div className="h-14 w-11 shrink-0 rounded-lg bg-surface-elevated" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-content-primary">
-          {result.name}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-content-muted">
-          {result.released ? <span>{result.released}</span> : null}
-          {result.rating ? <span>{result.rating}/5</span> : null}
-          {result.metacritic ? <span>MC {result.metacritic}</span> : null}
-        </div>
-      </div>
-    </button>
-  );
-}
 
 function PreviewMetric({ label, value }) {
   return (
@@ -101,30 +72,11 @@ const hourSourceOptions = [
 ];
 
 function hourSourceHelp(value) {
-  if (value === "estimate") return "Use the estimate first, even when Steam actual time exists.";
-  if (value === "steam_actual") return "Use Steam actual time first when this game is linked.";
+  if (value === "estimate")
+    return "Use the estimate first, even when Steam actual time exists.";
+  if (value === "steam_actual")
+    return "Use Steam actual time first when this game is linked.";
   return "Use Steam actual time for finished-style statuses and estimates elsewhere.";
-}
-
-function hoursFromMinutes(minutes) {
-  const value = Number(minutes);
-  if (!Number.isFinite(value) || value <= 0) return "No Steam playtime";
-  return `${Math.round((value / 60) * 10) / 10}h played`;
-}
-
-function steamImageUrl(app) {
-  if (app?.steamIconUrl) return app.steamIconUrl;
-  if (app?.steamAppId) {
-    return `https://cdn.cloudflare.steamstatic.com/steam/apps/${app.steamAppId}/capsule_184x69.jpg`;
-  }
-  return "";
-}
-
-function shortDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString();
 }
 
 function toDateStr(value) {
@@ -170,7 +122,8 @@ export default function EditGameForm({
   const [localSteamAchievements, setLocalSteamAchievements] = useState(null);
   const [unlinkedSteamAppId, setUnlinkedSteamAppId] = useState(null);
   const [steamUnlinking, setSteamUnlinking] = useState(false);
-  const [steamAchievementsSyncing, setSteamAchievementsSyncing] = useState(false);
+  const [steamAchievementsSyncing, setSteamAchievementsSyncing] =
+    useState(false);
   const [showSteamSearch, setShowSteamSearch] = useState(false);
 
   useEffect(() => {
@@ -244,7 +197,9 @@ export default function EditGameForm({
       setSearchError("");
       searchGames(query, { signal: ac.signal })
         .then((payload) => {
-          setSearchResults(Array.isArray(payload?.results) ? payload.results : []);
+          setSearchResults(
+            Array.isArray(payload?.results) ? payload.results : [],
+          );
         })
         .catch((error) => {
           if (error?.name === "AbortError") return;
@@ -357,7 +312,8 @@ export default function EditGameForm({
         playtimeMinutes: linkedSteam.playtimeMinutes,
         lastPlayedAt: linkedSteam.lastPlayedAt,
         lastSyncedAt: null,
-        achievements: localSteamAchievements || linkedSteam.achievements || null,
+        achievements:
+          localSteamAchievements || linkedSteam.achievements || null,
       }
     : game.steamOwned && game.steamAppId !== unlinkedSteamAppId
       ? {
@@ -366,7 +322,8 @@ export default function EditGameForm({
           playtimeMinutes: game.steamPlaytimeMinutes,
           lastPlayedAt: game.steamLastPlayedAt,
           lastSyncedAt: game.steamLastSyncedAt,
-          achievements: localSteamAchievements || game.steamAchievements || null,
+          achievements:
+            localSteamAchievements || game.steamAchievements || null,
         }
       : null;
   const currentAchievements = currentSteam
@@ -383,7 +340,8 @@ export default function EditGameForm({
       const payload = await syncSteamGameAchievements(game.id);
       const result = formatAchievementGameSyncMessage(payload);
       toast[result.tone](result.message);
-      if (payload?.achievements) setLocalSteamAchievements(payload.achievements);
+      if (payload?.achievements)
+        setLocalSteamAchievements(payload.achievements);
       await onSteamLinked?.();
     } catch (error) {
       toast.error(error.message || "Could not sync Steam achievements.");
@@ -393,51 +351,82 @@ export default function EditGameForm({
   };
 
   return (
-    <Modal
-      title="Edit Game"
-      description="Update your notes, score, status, and dates."
-      onClose={onCancel}
-      maxWidth="max-w-5xl"
-      bodyClassName="p-0"
-    >
+    <Modal title="Edit game" onClose={onCancel} size="3xl" bodyClassName="p-0">
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,0.82fr)_1fr]">
-          <aside className="border-b border-surface-border bg-surface-bg/35 p-5 lg:border-b-0 lg:border-r lg:p-6">
-            <div className="flex h-full flex-col justify-between gap-6">
-              <div>
-                {formData.rawg_cover ? (
-                  <img
-                    src={formData.rawg_cover}
-                    alt={game.name || "Game cover"}
-                    className="mb-4 h-44 w-full rounded-2xl border border-surface-border object-cover shadow-panel"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="mb-4 flex h-44 items-end rounded-2xl border border-surface-border bg-gradient-to-br from-surface-elevated via-surface-card to-surface-bg p-4 text-sm text-content-muted">
-                    No cover available
-                  </div>
-                )}
+        <div className="relative h-64 overflow-hidden border-b border-surface-border bg-surface-card sm:h-72">
+          {formData.rawg_cover ? (
+            <img
+              src={formData.rawg_cover}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-surface-elevated via-surface-card to-surface-bg" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-r from-surface-bg/95 via-surface-bg/72 to-surface-bg/25" />
+          <div className="absolute inset-0 bg-gradient-to-t from-surface-bg via-transparent to-media-overlay/20" />
+          <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 p-5 sm:gap-6 sm:p-7">
+            <div className="hidden h-36 w-28 shrink-0 overflow-hidden rounded-2xl border border-media-border/15 bg-surface-card shadow-2xl sm:block">
+              {formData.rawg_cover ? (
+                <img
+                  src={formData.rawg_cover}
+                  alt={formData.name || game.name || "Game cover"}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-3xl font-semibold text-content-muted">
+                  {String(formData.name || game.name || "?").charAt(0)}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 pb-1">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-media-text/60">
+                Editing
+              </div>
+              <h3 className="mt-1 line-clamp-2 text-2xl font-semibold tracking-tight text-media-text drop-shadow sm:text-4xl">
+                {formData.name || game.name}
+              </h3>
+              <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                <Badge variant="primary">
+                  {formData.status || game.status || "No status"}
+                </Badge>
+                {formData.rawg_released ? (
+                  <span className="text-xs font-medium text-media-text/70">
+                    Released {formData.rawg_released}
+                  </span>
+                ) : null}
+                <span className="text-xs font-medium text-media-text/60">
+                  {formData.rawg_id ? "RAWG metadata linked" : "No RAWG match"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                <h3 className="break-words text-2xl font-semibold leading-tight text-content-primary">
-                  {formData.name || game.name}
-                </h3>
-                <div className="mt-3">
-                  <Badge variant="primary">
-                    {formData.status || game.status || "No status"}
-                  </Badge>
+        <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="border-b border-surface-border bg-surface-card/30 p-5 lg:border-b-0 lg:border-r lg:p-6">
+            <div className="flex h-full flex-col gap-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-content-primary">
+                    Game summary
+                  </div>
+                  <div className="mt-1 text-xs text-content-muted">
+                    Current values update as you edit.
+                  </div>
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-content-muted">
-                  {formData.rawg_id ? <span>Matched to RAWG</span> : <span>No RAWG match selected</span>}
-                  {formData.rawg_released ? <span>{formData.rawg_released}</span> : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowMetadataSearch((value) => !value)}
-                  >
-                    {showMetadataSearch ? "Hide search" : "Change metadata"}
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowMetadataSearch((value) => !value)}
+                >
+                  {showMetadataSearch ? "Hide metadata" : "Change metadata"}
+                </Button>
               </div>
 
               {showMetadataSearch ? (
@@ -505,15 +494,10 @@ export default function EditGameForm({
                 <PreviewMetric label="Started" value={formData.started_at} />
                 <PreviewMetric label="Finished" value={formData.finished_at} />
               </div>
-
-              <p className="text-sm leading-6 text-content-muted">
-                Update the fields on the right; the summary here keeps the game
-                context visible while editing.
-              </p>
             </div>
           </aside>
 
-          <div className="space-y-6 p-5 md:p-6">
+          <div className="space-y-5 p-5 md:p-6 lg:p-7">
             {formError?.message ? (
               <div
                 className="rounded-xl border border-state-error/35 bg-state-error/10 px-4 py-3 text-sm text-state-error"
@@ -523,7 +507,7 @@ export default function EditGameForm({
               </div>
             ) : null}
 
-            <section>
+            <section className="rounded-2xl border border-surface-border/70 bg-surface-card/35 p-4 sm:p-5">
               <div className="mb-4">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-content-secondary">
                   Game details
@@ -571,7 +555,7 @@ export default function EditGameForm({
               </div>
             </section>
 
-            <section>
+            <section className="rounded-2xl border border-surface-border/70 bg-surface-card/35 p-4 sm:p-5">
               <div className="mb-4">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-content-secondary">
                   Progress
@@ -620,7 +604,10 @@ export default function EditGameForm({
                     options={hourSourceOptions}
                     onChange={(hours_preferred_source) => {
                       onDraftChange?.();
-                      setFormData((prev) => ({ ...prev, hours_preferred_source }));
+                      setFormData((prev) => ({
+                        ...prev,
+                        hours_preferred_source,
+                      }));
                     }}
                     disabled={isSubmitting}
                   />
@@ -675,223 +662,28 @@ export default function EditGameForm({
               </div>
             </section>
 
-            <section className="rounded-2xl border border-surface-border bg-surface-bg/35 p-4">
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-content-secondary">
-                  Steam link
-                </h3>
-                <p className="mt-1 text-sm leading-6 text-content-muted">
-                  Attach a synced Steam app to this backlog game for ownership and actual playtime.
-                </p>
-              </div>
+            <EditGameSteamSection
+              currentSteam={currentSteam}
+              currentAchievements={currentAchievements}
+              currentAchievementsSyncedAt={currentAchievementsSyncedAt}
+              showSteamSearch={showSteamSearch}
+              setShowSteamSearch={setShowSteamSearch}
+              steamUnlinking={steamUnlinking}
+              unlinkSteam={unlinkSteam}
+              syncCurrentSteamAchievements={syncCurrentSteamAchievements}
+              steamAchievementsSyncing={steamAchievementsSyncing}
+              steamQuery={steamQuery}
+              setSteamQuery={setSteamQuery}
+              isSubmitting={isSubmitting}
+              searchSteamLinks={searchSteamLinks}
+              steamSearching={steamSearching}
+              steamResults={steamResults}
+              game={game}
+              steamAttachingId={steamAttachingId}
+              attachSteam={attachSteam}
+            />
 
-              {currentSteam ? (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-primary/30 bg-primary/10 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="flex min-w-0 gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-surface-card/60 text-primary">
-                          <Gamepad2 className="h-5 w-5" aria-hidden="true" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-content-primary">
-                            {currentSteam.steamName ||
-                              `Steam app ${currentSteam.steamAppId}`}
-                          </div>
-                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
-                            {currentSteam.steamAppId ? (
-                              <span>App {currentSteam.steamAppId}</span>
-                            ) : null}
-                            <span>{hoursFromMinutes(currentSteam.playtimeMinutes)}</span>
-                            {currentSteam.lastPlayedAt ? (
-                              <span>Last played {shortDate(currentSteam.lastPlayedAt)}</span>
-                            ) : null}
-                            {currentSteam.lastSyncedAt ? (
-                              <span>Synced {shortDate(currentSteam.lastSyncedAt)}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {currentSteam.steamAppId ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() =>
-                              window.open(
-                                `https://store.steampowered.com/app/${currentSteam.steamAppId}`,
-                                "_blank",
-                                "noopener,noreferrer"
-                              )
-                            }
-                          >
-                            <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                            Store
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setShowSteamSearch((value) => !value)}
-                          disabled={steamUnlinking}
-                        >
-                          Change link
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={unlinkSteam}
-                          disabled={steamUnlinking}
-                        >
-                          <Unlink className="h-4 w-4" aria-hidden="true" />
-                          {steamUnlinking ? "Unlinking..." : "Unlink"}
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="mt-4 rounded-xl border border-surface-border bg-surface-bg/45 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-content-primary">
-                            <Trophy className="h-4 w-4 text-primary" aria-hidden="true" />
-                            <span>{currentAchievements?.label || "Not synced"}</span>
-                          </div>
-                          <div className="mt-1 text-xs text-content-muted">
-                            {currentAchievements?.detail ||
-                              "Achievements have not been synced yet."}
-                            {currentAchievements?.remainingLabel
-                              ? ` ${currentAchievements.remainingLabel}.`
-                              : ""}
-                            {currentAchievementsSyncedAt
-                              ? ` Last synced ${currentAchievementsSyncedAt}.`
-                              : ""}
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={syncCurrentSteamAchievements}
-                          disabled={steamAchievementsSyncing || steamUnlinking}
-                        >
-                          <Trophy className="h-4 w-4" aria-hidden="true" />
-                          {steamAchievementsSyncing ? "Syncing..." : "Sync achievements"}
-                        </Button>
-                      </div>
-                      {currentAchievements?.percent != null ? (
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-elevated">
-                          <div
-                            className="h-full rounded-full bg-primary"
-                            style={{
-                              width: `${Math.min(
-                                Math.max(currentAchievements.percent, 0),
-                                100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      ) : null}
-                      <p className="mt-2 text-xs text-content-muted">
-                        Steam achievements are private here and update only when you sync.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {!currentSteam || showSteamSearch ? (
-                <div className={`space-y-3 ${currentSteam ? "mt-3" : ""}`}>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <div className="relative flex-1">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
-                      <TextInput
-                        value={steamQuery}
-                        onChange={(event) => setSteamQuery(event.target.value)}
-                        placeholder="Search synced Steam apps..."
-                        disabled={isSubmitting}
-                        className="pl-9"
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            searchSteamLinks();
-                          }
-                        }}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={searchSteamLinks}
-                      disabled={isSubmitting || steamSearching}
-                    >
-                      {steamSearching ? "Searching..." : "Search Steam"}
-                    </Button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {steamResults.map((candidate) => {
-                      const imageUrl = steamImageUrl(candidate);
-                      const linkedElsewhere =
-                        candidate.linkedGameId &&
-                        Number(candidate.linkedGameId) !== Number(game.id);
-                      return (
-                        <div
-                          key={candidate.id}
-                          className="flex items-center gap-3 rounded-xl border border-surface-border bg-surface-elevated/40 p-2"
-                        >
-                          {imageUrl ? (
-                            <img
-                              src={imageUrl}
-                              alt=""
-                              className="h-10 w-16 rounded object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex h-10 w-16 items-center justify-center rounded bg-surface-card text-content-muted">
-                              {String(candidate.steamName || "?").charAt(0)}
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-content-primary">
-                              {candidate.steamName}
-                            </div>
-                            <div className="flex flex-wrap gap-2 text-xs text-content-muted">
-                              <span>{hoursFromMinutes(candidate.playtimeMinutes)}</span>
-                              {candidate.lastPlayedAt ? (
-                                <span>Last played {shortDate(candidate.lastPlayedAt)}</span>
-                              ) : null}
-                              {candidate.linkedGameName ? (
-                                <span>
-                                  {linkedElsewhere ? "Currently linked to" : "Linked to"}{" "}
-                                  {candidate.linkedGameName}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant={linkedElsewhere ? "secondary" : "primary"}
-                            size="sm"
-                            onClick={() => attachSteam(candidate)}
-                            disabled={steamAttachingId === candidate.id}
-                          >
-                            {steamAttachingId === candidate.id
-                              ? "Linking..."
-                              : linkedElsewhere
-                                ? "Move link"
-                                : "Link"}
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </section>
-
-            <section>
+            <section className="rounded-2xl border border-surface-border/70 bg-surface-card/35 p-4 sm:p-5">
               <div className="mb-4">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-content-secondary">
                   Personal notes
@@ -936,7 +728,7 @@ export default function EditGameForm({
           </div>
         </div>
 
-        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-surface-border bg-surface-card/95 p-4 backdrop-blur">
+        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-surface-border bg-surface-card/95 px-5 py-4 shadow-sticky-footer">
           <Button type="button" onClick={onCancel} disabled={isSubmitting}>
             Cancel
           </Button>
