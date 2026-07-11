@@ -17,8 +17,10 @@ code when a note appears stale.
   skills, and hooks.
 - [`NEXT_TASKS.md`](NEXT_TASKS.md) - short active queue for current priorities
   and low-token new-chat startup context.
-- [`ROADMAP.md`](ROADMAP.md) - current improvement plan, priorities, and future
-  feature tracks.
+- [`ROADMAP.md`](ROADMAP.md) - remaining improvement plan and future feature
+  tracks; completed work is intentionally excluded.
+- [`DONE.md`](DONE.md) - compact archive of completed product and engineering
+  milestones.
 - [`SYSTEM_CONTEXT.md`](SYSTEM_CONTEXT.md) - compact architecture and current
   status handoff for new sessions.
 - [`../backend/migrations/README.md`](../backend/migrations/README.md) -
@@ -65,22 +67,21 @@ environment.
 
 ## Planning Notes
 
-- [`planning/ideas.md`](planning/ideas.md) - rough backlog ideas.
+- [`planning/ideas.md`](planning/ideas.md) - small unscheduled ideas that remain
+  open.
 - [`planning/metadata-catalog-refactor.md`](planning/metadata-catalog-refactor.md) -
-  historical V1 design notes and future extension guidance for metadata
-  refresh, catalog browsing, Steam import, wishlist, and ownership work.
+  unresolved catalog reliability, identity, hours, wishlist, and ownership
+  decisions.
 - [`planning/product-research-long-term-plan.md`](planning/product-research-long-term-plan.md) -
-  detailed research-backed plan for owner profile, settings, timeline/journal,
-  reviews, lists, next up, insights V2, public profile, activity/social,
-  catalog pages, goals, tags, data export, and discovery improvements.
+  remaining feature briefs for Next Up, Insights V2, reviews, activity, privacy,
+  organization, library, social, and discovery work.
 - [`planning/steam-integration-handoff.md`](planning/steam-integration-handoff.md) -
-  current Steam V1 implementation summary, known rough edges, next-work ideas,
-  and a prompt for continuing Steam integration in a new chat.
+  unresolved Steam hardening, QA, privacy, and future expansion work.
 - [`planning/production-migration-automation.md`](planning/production-migration-automation.md) -
-  future improvements for production migration safety.
+  remaining improvements for production migration safety.
 
-Planning notes are intentionally unverified. Before implementing one, inspect
-the current code and confirm the idea still makes sense.
+Planning notes contain open work only but are still proposals. Before
+implementing one, inspect the current code and confirm the idea still applies.
 
 ## Images
 

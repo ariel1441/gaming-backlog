@@ -332,3 +332,26 @@ Good examples of feature branches:
 - Ask AI tools for implementation plus tests/checks, not only code snippets.
 - Before merging, ask for a review against the diff and run `npm run check`.
 - Never paste live secrets into chat; use redacted env summaries instead.
+
+## Safety checks
+
+Run the fast validation suite before committing:
+
+```bash
+npm run check
+```
+
+This runs ESLint, the Node test suite, and the production build. ESLint includes
+undefined-variable checks, so missing component imports fail before reaching the
+browser.
+
+For route-level browser smoke coverage, install Playwright's Chromium build once
+and run the full check:
+
+```bash
+npx playwright install chromium
+npm run check:full
+```
+
+The smoke suite opens every routed page and fails on uncaught browser runtime
+errors or the application error-boundary fallback.
