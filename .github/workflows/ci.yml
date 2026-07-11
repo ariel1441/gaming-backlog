@@ -24,8 +24,11 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Use stable npm
+        run: npm install --global npm@10.9.4 --no-audit --no-fund
+
       - name: Install
-        run: npm ci
+        run: npm ci --include=dev --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
