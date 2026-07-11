@@ -4,6 +4,7 @@ import {
   deleteOwnedGameQuery,
   listOwnedGamesQuery,
   listOwnedGameTitlesQuery,
+  selectOwnedGameDetailsQuery,
   selectOwnedGameQuery,
   updateOwnedGameStatusQuery,
 } from "./gameAccess.js";
@@ -31,6 +32,16 @@ test("owned game list keeps Steam fields private-route only", () => {
   assert.match(query, /steam_achievements_status/);
   assert.match(query, /user_game_sources/);
   assert.match(query, /source\.user_id = g\.user_id/);
+});
+
+test("owned game detail query preserves Steam metadata for mutation responses", () => {
+  const query = selectOwnedGameDetailsQuery(12, 7);
+  const sql = compact(query.text);
+  assert.match(sql, /WHERE g\.id = \$1 AND g\.user_id = \$2/);
+  assert.match(sql, /LEFT JOIN LATERAL/);
+  assert.match(sql, /steam_owned/);
+  assert.match(sql, /steam_achievements_status/);
+  assert.deepEqual(query.values, [12, 7]);
 });
 
 test("duplicate title query scopes candidate rows to user_id", () => {

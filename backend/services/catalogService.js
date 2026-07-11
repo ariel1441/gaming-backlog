@@ -148,7 +148,9 @@ function isFullMetadataFresh(game) {
     return false;
   }
   const fetched = new Date(game.metadata_fetched_at).getTime();
-  return Number.isFinite(fetched) && Date.now() - fetched < metadataStaleMs(game);
+  return (
+    Number.isFinite(fetched) && Date.now() - fetched < metadataStaleMs(game)
+  );
 }
 
 function canRetryFailure(game) {
@@ -177,7 +179,7 @@ function rawgHours(rawg) {
       rawg?.time_to_beat?.main ??
       rawg?.time_to_beat?.main_story ??
       rawg?.playtime_hours ??
-      rawg?.average_playtime
+      rawg?.average_playtime,
   );
 }
 
@@ -201,7 +203,10 @@ function rawgStores(rawg) {
 
 function rawgTags(rawg) {
   return Array.isArray(rawg?.tags)
-    ? rawg.tags.map((tag) => tag?.name).filter(Boolean).slice(0, 40)
+    ? rawg.tags
+        .map((tag) => tag?.name)
+        .filter(Boolean)
+        .slice(0, 40)
     : [];
 }
 
@@ -229,13 +234,13 @@ function sortCollectionCandidates(results, collection) {
     dated.sort(
       (a, b) =>
         (parseDate(b.released)?.getTime() || 0) -
-        (parseDate(a.released)?.getTime() || 0)
+        (parseDate(a.released)?.getTime() || 0),
     );
   } else if (collection.key === "upcoming") {
     dated.sort(
       (a, b) =>
         (parseDate(a.released)?.getTime() || Number.MAX_SAFE_INTEGER) -
-        (parseDate(b.released)?.getTime() || Number.MAX_SAFE_INTEGER)
+        (parseDate(b.released)?.getTime() || Number.MAX_SAFE_INTEGER),
     );
   }
   return dated;
@@ -278,7 +283,10 @@ function normalizeRawgDetail(rawg) {
   };
 }
 
-function mapCatalogRow(row, { cacheStatus = "fresh", alreadyInBacklog = false } = {}) {
+function mapCatalogRow(
+  row,
+  { cacheStatus = "fresh", alreadyInBacklog = false } = {},
+) {
   if (!row) return null;
   const genres = jsonArray(row.genres_json);
   const stores = jsonArray(row.stores_json);
@@ -321,7 +329,30 @@ function mapCatalogRow(row, { cacheStatus = "fresh", alreadyInBacklog = false } 
   };
 }
 
-function steamOwnedSelect(userParamIndex) {
+function steamSourceMatchesCatalog(sourceAlias, userParamIndex) {
+  return `(
+    ${sourceAlias}.catalog_game_id = cg.id OR
+    EXISTS (
+      SELECT 1
+      FROM games steam_game
+      WHERE steam_game.id = ${sourceAlias}.game_id
+        AND ${ownedCatalogPredicate("steam_game", userParamIndex)}
+    ) OR
+    EXISTS (
+      SELECT 1
+      FROM steam_import_candidates steam_candidate
+      WHERE steam_candidate.user_id = ${sourceAlias}.user_id
+        AND steam_candidate.steam_app_id = ${sourceAlias}.provider_app_id
+        AND COALESCE(
+          steam_candidate.user_selected_catalog_game_id,
+          steam_candidate.proposed_catalog_game_id
+        ) = cg.id
+    )
+  )`;
+}
+
+export function steamOwnedSelect(userParamIndex) {
+  const sourceMatches = steamSourceMatchesCatalog("steam_src", userParamIndex);
   return `
            EXISTS (
              SELECT 1
@@ -329,7 +360,7 @@ function steamOwnedSelect(userParamIndex) {
              WHERE steam_src.user_id = $${userParamIndex}
                AND steam_src.provider = 'steam'
                AND steam_src.source_status = 'owned'
-               AND steam_src.catalog_game_id = cg.id
+               AND ${sourceMatches}
            ) AS steam_owned,
            (
              SELECT steam_src.provider_app_id
@@ -337,7 +368,11 @@ function steamOwnedSelect(userParamIndex) {
              WHERE steam_src.user_id = $${userParamIndex}
                AND steam_src.provider = 'steam'
                AND steam_src.source_status = 'owned'
-               AND steam_src.catalog_game_id = cg.id
+               AND ${sourceMatches}
+             ORDER BY
+               (steam_src.catalog_game_id = cg.id) DESC,
+               steam_src.last_synced_at DESC NULLS LAST,
+               steam_src.id DESC
              LIMIT 1
            ) AS steam_external_id`;
 }
@@ -398,7 +433,7 @@ async function selectCatalogById(id, userId) {
       ON e.catalog_game_id = cg.id AND e.source = 'rawg'
     WHERE cg.id = $1
     `,
-    [id, userId || null]
+    [id, userId || null],
   );
   return rows[0] || null;
 }
@@ -412,7 +447,7 @@ async function selectCatalogByExternal(source, externalId) {
     WHERE e.source = $1 AND e.external_id = $2
     LIMIT 1
     `,
-    [source, String(externalId)]
+    [source, String(externalId)],
   );
   return rows[0] || null;
 }
@@ -466,7 +501,7 @@ async function upsertCatalogFromRawgData(data) {
         JSON.stringify(data.stores || []),
         fullIncoming,
         JSON.stringify(data.tags || []),
-      ]
+      ],
     );
     await pool.query(
       `
@@ -474,7 +509,7 @@ async function upsertCatalogFromRawgData(data) {
          SET slug = COALESCE($3, slug), updated_at = NOW()
        WHERE source = $1 AND external_id = $2
       `,
-      [PROVIDER, String(data.rawgId), data.rawgSlug]
+      [PROVIDER, String(data.rawgId), data.rawgSlug],
     );
     return rows[0];
   }
@@ -529,7 +564,7 @@ async function upsertCatalogFromRawgData(data) {
       data.metadataQuality,
       String(data.rawgId),
       data.rawgSlug,
-    ]
+    ],
   );
   return rows[0] || selectCatalogByExternal(PROVIDER, String(data.rawgId));
 }
@@ -544,7 +579,7 @@ async function markCatalogFailure(catalogGameId, reason) {
            updated_at = NOW()
      WHERE id = $1
     `,
-    [catalogGameId, reason]
+    [catalogGameId, reason],
   );
 }
 
@@ -553,7 +588,7 @@ async function fetchRawgDetailCoalesced(rawgIdOrSlug) {
   if (!inflight.has(key)) {
     inflight.set(
       key,
-      fetchGameDataByIdOrSlug(rawgIdOrSlug).finally(() => inflight.delete(key))
+      fetchGameDataByIdOrSlug(rawgIdOrSlug).finally(() => inflight.delete(key)),
     );
   }
   return inflight.get(key);
@@ -564,7 +599,9 @@ async function searchRawgCoalesced(query) {
   if (!inflight.has(key)) {
     inflight.set(
       key,
-      searchRAWGGames(query, { pageSize: 12 }).finally(() => inflight.delete(key))
+      searchRAWGGames(query, { pageSize: 12 }).finally(() =>
+        inflight.delete(key),
+      ),
     );
   }
   return inflight.get(key);
@@ -587,7 +624,7 @@ async function catalogRowsForIds(ids, userId) {
       ON e.catalog_game_id = cg.id AND e.source = 'rawg'
     WHERE cg.id = ANY($1::int[])
     `,
-    [ids, userId || null]
+    [ids, userId || null],
   );
   const byId = new Map(rows.map((row) => [Number(row.id), row]));
   return ids.map((id) => byId.get(Number(id))).filter(Boolean);
@@ -600,7 +637,7 @@ async function getSearchCache(queryKey) {
     FROM catalog_search_cache
     WHERE provider = 'rawg' AND query_key = $1
     `,
-    [queryKey]
+    [queryKey],
   );
   return rows[0] || null;
 }
@@ -656,7 +693,7 @@ function browseWhere(filters, userId, { includeUserParam = false } = {}) {
     where.push("cg.released_at > CURRENT_DATE");
   } else if (filters.releaseWindow === "recent") {
     where.push(
-      "cg.released_at <= CURRENT_DATE AND cg.released_at >= CURRENT_DATE - INTERVAL '1 year'"
+      "cg.released_at <= CURRENT_DATE AND cg.released_at >= CURRENT_DATE - INTERVAL '1 year'",
     );
   } else if (filters.releaseWindow === "older") {
     where.push("cg.released_at < CURRENT_DATE - INTERVAL '1 year'");
@@ -668,20 +705,24 @@ function browseWhere(filters, userId, { includeUserParam = false } = {}) {
     if (!includeUserParam) params.push(userId || null);
     const userParam = includeUserParam ? 1 : params.length;
     where.push(
-      `EXISTS (SELECT 1 FROM games g WHERE ${ownedCatalogPredicate("g", userParam)})`
+      `EXISTS (SELECT 1 FROM games g WHERE ${ownedCatalogPredicate("g", userParam)})`,
     );
   } else if (filters.backlog === "not_in") {
     if (!includeUserParam) params.push(userId || null);
     const userParam = includeUserParam ? 1 : params.length;
     where.push(
-      `NOT EXISTS (SELECT 1 FROM games g WHERE ${ownedCatalogPredicate("g", userParam)})`
+      `NOT EXISTS (SELECT 1 FROM games g WHERE ${ownedCatalogPredicate("g", userParam)})`,
     );
   }
 
   return { params, where };
 }
 
-async function browseCatalogRows(filters, userId, { limit = 24, offset = 0 } = {}) {
+async function browseCatalogRows(
+  filters,
+  userId,
+  { limit = 24, offset = 0 } = {},
+) {
   const { params, where } = browseWhere(filters, userId, {
     includeUserParam: true,
   });
@@ -698,7 +739,7 @@ async function browseCatalogRows(filters, userId, { limit = 24, offset = 0 } = {
     LIMIT $${limitParam}
     OFFSET $${offsetParam}
     `,
-    params
+    params,
   );
   return rows;
 }
@@ -714,7 +755,7 @@ async function browseCatalogCount(filters, userId) {
       ON e.catalog_game_id = cg.id AND e.source = 'rawg'
     ${whereSql}
     `,
-    params
+    params,
   );
   return rows[0]?.total || 0;
 }
@@ -729,7 +770,7 @@ async function catalogGenreFacets() {
     GROUP BY genre
     ORDER BY count DESC, genre ASC
     LIMIT 16
-    `
+    `,
   );
   return rows;
 }
@@ -737,12 +778,9 @@ async function catalogGenreFacets() {
 async function collectionRows(userId, { limit = 8, key = "" } = {}) {
   const resultLimit = Math.min(
     Math.max(Number(limit) || 8, 1),
-    MAX_COLLECTION_GAMES
-  );
-  const params = [
-    userId || null,
     MAX_COLLECTION_GAMES,
-  ];
+  );
+  const params = [userId || null, MAX_COLLECTION_GAMES];
   const where = [
     `NOT EXISTS (
       SELECT 1 FROM games owned
@@ -784,7 +822,7 @@ async function collectionRows(userId, { limit = 8, key = "" } = {}) {
     WHERE ${where.join(" AND ")}
     ORDER BY c.id ASC, ccg.rank ASC
     `,
-    params
+    params,
   );
 
   const byKey = new Map();
@@ -806,13 +844,20 @@ async function collectionRows(userId, { limit = 8, key = "" } = {}) {
       mapCatalogRow(row, {
         cacheStatus: isFullMetadataFresh(row) ? "fresh" : "stale",
         alreadyInBacklog: row.already_in_backlog,
-      })
+      }),
     );
   }
-  return Array.from(byKey.values()).filter((collection) => collection.results.length);
+  return Array.from(byKey.values()).filter(
+    (collection) => collection.results.length,
+  );
 }
 
-async function upsertCollectionDefinition(client, collection, rawgParams, pageSize) {
+async function upsertCollectionDefinition(
+  client,
+  collection,
+  rawgParams,
+  pageSize,
+) {
   const { rows } = await client.query(
     `
     INSERT INTO catalog_collections (
@@ -853,7 +898,7 @@ async function upsertCollectionDefinition(client, collection, rawgParams, pageSi
         pageSize: pageSize || DEFAULT_COLLECTION_LIMIT,
       }),
       COLLECTION_TTL_MS,
-    ]
+    ],
   );
   return rows[0];
 }
@@ -882,7 +927,7 @@ async function markCollectionFailure(collection, reason) {
       collection.description || "",
       JSON.stringify(collectionParams(collection)),
       reason,
-    ]
+    ],
   );
 }
 
@@ -907,7 +952,7 @@ async function writeSearchCache(queryKey, ids) {
           failure_reason = NULL,
           updated_at = NOW()
     `,
-    [queryKey, JSON.stringify(ids), SEARCH_CACHE_TTL_MS]
+    [queryKey, JSON.stringify(ids), SEARCH_CACHE_TTL_MS],
   );
 }
 
@@ -927,7 +972,7 @@ async function markSearchFailure(queryKey, reason) {
           failure_reason = $2,
           updated_at = NOW()
     `,
-    [queryKey, reason]
+    [queryKey, reason],
   );
 }
 
@@ -946,7 +991,7 @@ export async function searchCatalog(query, user = {}) {
         mapCatalogRow(row, {
           cacheStatus: "fresh",
           alreadyInBacklog: row.already_in_backlog,
-        })
+        }),
       ),
       source: "cache",
       cacheStatus: "fresh",
@@ -960,7 +1005,7 @@ export async function searchCatalog(query, user = {}) {
         mapCatalogRow(row, {
           cacheStatus: "stale",
           alreadyInBacklog: row.already_in_backlog,
-        })
+        }),
       ),
       source: "cache",
       cacheStatus: rows.length ? "stale" : "unavailable",
@@ -972,24 +1017,24 @@ export async function searchCatalog(query, user = {}) {
     const catalogRows = [];
     for (const result of rawgResults || []) {
       const row = await upsertCatalogFromRawgData(
-        normalizeRawgSearchResult(result)
+        normalizeRawgSearchResult(result),
       );
       if (row) catalogRows.push(row);
     }
     await writeSearchCache(
       queryKey,
-      catalogRows.map((row) => row.id)
+      catalogRows.map((row) => row.id),
     );
     const rows = await catalogRowsForIds(
       catalogRows.map((row) => row.id),
-      user.id
+      user.id,
     );
     return {
       results: rows.map((row) =>
         mapCatalogRow(row, {
           cacheStatus: "live",
           alreadyInBacklog: row.already_in_backlog,
-        })
+        }),
       ),
       source: "rawg",
       cacheStatus: "live",
@@ -1002,7 +1047,7 @@ export async function searchCatalog(query, user = {}) {
         mapCatalogRow(row, {
           cacheStatus: "stale",
           alreadyInBacklog: row.already_in_backlog,
-        })
+        }),
       ),
       source: "cache",
       cacheStatus: rows.length ? "stale" : "unavailable",
@@ -1010,7 +1055,11 @@ export async function searchCatalog(query, user = {}) {
   }
 }
 
-export async function ensureCatalogGameFromRawg(rawgId, rawgSlug, options = {}) {
+export async function ensureCatalogGameFromRawg(
+  rawgId,
+  rawgSlug,
+  options = {},
+) {
   const id = String(rawgId || "").trim();
   if (!id) return null;
 
@@ -1035,7 +1084,8 @@ export async function ensureCatalogGameFromRawg(rawgId, rawgSlug, options = {}) 
     row = await upsertCatalogFromRawgData(normalizeRawgDetail(rawg));
     return row;
   } catch (error) {
-    if (row) await markCatalogFailure(row.id, error?.message || "rawg_detail_failed");
+    if (row)
+      await markCatalogFailure(row.id, error?.message || "rawg_detail_failed");
     return row;
   }
 }
@@ -1048,7 +1098,7 @@ async function rawgExternalForCatalog(catalogGameId) {
     WHERE catalog_game_id = $1 AND source = 'rawg'
     LIMIT 1
     `,
-    [catalogGameId]
+    [catalogGameId],
   );
   return rows[0] || null;
 }
@@ -1114,7 +1164,7 @@ export async function seedCatalogCollection(collection, options = {}) {
   const rawgParams = collectionParams(collection);
   const limit = Math.min(
     Math.max(Number(options.limit) || DEFAULT_COLLECTION_LIMIT, 1),
-    40
+    40,
   );
 
   try {
@@ -1129,7 +1179,7 @@ export async function seedCatalogCollection(collection, options = {}) {
       if (!result?.rawg_id || seen.has(result.rawg_id)) continue;
       seen.add(result.rawg_id);
       const row = await upsertCatalogFromRawgData(
-        normalizeRawgSearchResult(result)
+        normalizeRawgSearchResult(result),
       );
       if (row) catalogRows.push(row);
       if (catalogRows.length >= limit) break;
@@ -1146,11 +1196,11 @@ export async function seedCatalogCollection(collection, options = {}) {
         client,
         collection,
         rawgParams,
-        limit
+        limit,
       );
       await client.query(
         "DELETE FROM catalog_collection_games WHERE collection_id = $1",
-        [savedCollection.id]
+        [savedCollection.id],
       );
       for (const [index, row] of catalogRows.entries()) {
         await client.query(
@@ -1165,7 +1215,7 @@ export async function seedCatalogCollection(collection, options = {}) {
             SET rank = EXCLUDED.rank,
                 added_at = NOW()
           `,
-          [savedCollection.id, row.id, index + 1]
+          [savedCollection.id, row.id, index + 1],
         );
       }
       await client.query("COMMIT");
@@ -1183,7 +1233,7 @@ export async function seedCatalogCollection(collection, options = {}) {
   } catch (error) {
     await markCollectionFailure(
       collection,
-      error?.message || "rawg_collection_failed"
+      error?.message || "rawg_collection_failed",
     );
     return {
       key: collection.key,
@@ -1199,7 +1249,7 @@ export async function seedCatalogCollections(options = {}) {
     String(options.only || "")
       .split(",")
       .map((key) => key.trim())
-      .filter(Boolean)
+      .filter(Boolean),
   );
   const collections = wanted.size
     ? CATALOG_COLLECTIONS.filter((collection) => wanted.has(collection.key))
@@ -1213,13 +1263,15 @@ export async function seedCatalogCollections(options = {}) {
 }
 
 function collectionByKey(key) {
-  return CATALOG_COLLECTIONS.find((collection) => collection.key === key) || null;
+  return (
+    CATALOG_COLLECTIONS.find((collection) => collection.key === key) || null
+  );
 }
 
 async function selectCollectionByKey(key) {
   const { rows } = await pool.query(
     "SELECT * FROM catalog_collections WHERE key = $1 LIMIT 1",
-    [key]
+    [key],
   );
   return rows[0] || null;
 }
@@ -1246,7 +1298,7 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
     FROM catalog_collection_games
     WHERE collection_id = $1
     `,
-    [existing.id]
+    [existing.id],
   );
   const existingCount = countResult.rows[0]?.count || 0;
   const maxRank = countResult.rows[0]?.max_rank || 0;
@@ -1259,15 +1311,19 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
   }
 
   const rawConfig = existing.source_config_json || {};
-  const baseParams = rawConfig.params || rawConfig || collectionParams(collection);
+  const baseParams =
+    rawConfig.params || rawConfig || collectionParams(collection);
   const pageSize = Math.min(
-    Math.max(Number(rawConfig.pageSize || options.limit || DEFAULT_COLLECTION_LIMIT), 1),
-    40
+    Math.max(
+      Number(rawConfig.pageSize || options.limit || DEFAULT_COLLECTION_LIMIT),
+      1,
+    ),
+    40,
   );
   const page = Math.floor(existingCount / pageSize) + 1;
   const rawgResults = await fetchRAWGGames(
     { ...baseParams, page },
-    { pageSize: Math.min(pageSize * DEFAULT_COLLECTION_FETCH_MULTIPLIER, 40) }
+    { pageSize: Math.min(pageSize * DEFAULT_COLLECTION_FETCH_MULTIPLIER, 40) },
   );
 
   const candidates = sortCollectionCandidates(rawgResults || [], collection);
@@ -1286,7 +1342,7 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
         AND e.source = 'rawg'
         AND e.external_id = ANY($2::text[])
       `,
-      [existing.id, externalIds]
+      [existing.id, externalIds],
     );
     rows.forEach((row) => existingExternalIds.add(row.external_id));
   }
@@ -1296,7 +1352,9 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
     const externalId = String(result?.rawg_id || "");
     if (!externalId || existingExternalIds.has(externalId)) continue;
     if (!passesCollectionQuality(result, collection)) continue;
-    const row = await upsertCatalogFromRawgData(normalizeRawgSearchResult(result));
+    const row = await upsertCatalogFromRawgData(
+      normalizeRawgSearchResult(result),
+    );
     if (!row) continue;
     appended.push(row);
     existingExternalIds.add(externalId);
@@ -1319,12 +1377,12 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
           VALUES ($1, $2, $3)
           ON CONFLICT (collection_id, catalog_game_id) DO NOTHING
           `,
-          [existing.id, row.id, maxRank + index + 1]
+          [existing.id, row.id, maxRank + index + 1],
         );
       }
       await client.query(
         "UPDATE catalog_collections SET updated_at = NOW() WHERE id = $1",
-        [existing.id]
+        [existing.id],
       );
       await client.query("COMMIT");
     } catch (error) {
@@ -1344,7 +1402,7 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
 
 export async function seedExpiredCatalogCollections(options = {}) {
   const { rows } = await pool.query(
-    "SELECT key, expires_at FROM catalog_collections"
+    "SELECT key, expires_at FROM catalog_collections",
   );
   const existing = new Map(rows.map((row) => [row.key, row]));
   const only = CATALOG_COLLECTIONS.filter((collection) => {
@@ -1360,7 +1418,8 @@ export async function seedExpiredCatalogCollections(options = {}) {
 }
 
 export function startCatalogCollectionScheduler() {
-  const enabled = String(process.env.CATALOG_AUTO_SEED || "").toLowerCase() === "true";
+  const enabled =
+    String(process.env.CATALOG_AUTO_SEED || "").toLowerCase() === "true";
   if (!enabled || process.env.NODE_ENV === "test") return null;
 
   let running = false;
@@ -1369,12 +1428,14 @@ export function startCatalogCollectionScheduler() {
     running = true;
     try {
       const results = await seedExpiredCatalogCollections({
-        limit: Number(process.env.CATALOG_SEED_LIMIT || DEFAULT_COLLECTION_LIMIT),
+        limit: Number(
+          process.env.CATALOG_SEED_LIMIT || DEFAULT_COLLECTION_LIMIT,
+        ),
       });
       if (results.length) {
         console.log(
           "Catalog collection seed complete:",
-          results.map((result) => `${result.key}:${result.count}`).join(", ")
+          results.map((result) => `${result.key}:${result.count}`).join(", "),
         );
       }
     } catch (error) {
@@ -1409,24 +1470,27 @@ export async function recentCatalogGames(user = {}, limit = 12) {
     ORDER BY cg.updated_at DESC, cg.id DESC
     LIMIT $1
     `,
-    [Math.min(Math.max(Number(limit) || 12, 1), 24), user.id || null]
+    [Math.min(Math.max(Number(limit) || 12, 1), 24), user.id || null],
   );
   return rows.map((row) =>
     mapCatalogRow(row, {
       cacheStatus: isFullMetadataFresh(row) ? "fresh" : "stale",
       alreadyInBacklog: row.already_in_backlog,
-    })
+    }),
   );
 }
 
 export async function browseCatalog(options = {}, user = {}) {
   const limit = Math.min(Math.max(Number(options.limit) || 24, 1), 48);
-  const shelfLimit = Math.min(Math.max(Number(options.shelfLimit) || 24, 1), 24);
+  const shelfLimit = Math.min(
+    Math.max(Number(options.shelfLimit) || 24, 1),
+    24,
+  );
   const page = Math.max(Number(options.page) || 1, 1);
   const filters = {
     genre: String(options.genre || "").trim(),
     releaseWindow: ["all", "upcoming", "recent", "older", "unknown"].includes(
-      options.releaseWindow
+      options.releaseWindow,
     )
       ? options.releaseWindow
       : "all",
@@ -1460,7 +1524,7 @@ export async function browseCatalog(options = {}, user = {}) {
       mapCatalogRow(row, {
         cacheStatus: isFullMetadataFresh(row) ? "fresh" : "stale",
         alreadyInBacklog: row.already_in_backlog,
-      })
+      }),
     ),
     shelves,
     facets: { genres },
@@ -1486,7 +1550,9 @@ export function decorateGameWithCatalog(game, fallbackRawg = {}) {
     displayName: game.catalog_name || game.name,
     cover: game.catalog_cover_url || fallbackRawg?.background_image || null,
     releaseDate: game.catalog_released_at || fallbackRawg?.released || null,
-    description: game.catalog_description_html || sanitizeGameHtml(fallbackRawg?.description),
+    description:
+      game.catalog_description_html ||
+      sanitizeGameHtml(fallbackRawg?.description),
     rating:
       game.catalog_rawg_rating == null
         ? null
@@ -1494,7 +1560,10 @@ export function decorateGameWithCatalog(game, fallbackRawg = {}) {
     genres: genres.length ? genres.join(", ") : null,
     metacritic: game.catalog_metacritic ?? null,
     stores: stores.length
-      ? stores.map((store) => store?.name).filter(Boolean).join(", ")
+      ? stores
+          .map((store) => store?.name)
+          .filter(Boolean)
+          .join(", ")
       : null,
     features: tags.length ? tags.join(", ") : null,
   };
