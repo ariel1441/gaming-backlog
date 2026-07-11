@@ -59,8 +59,23 @@ async function parseJsonSafe(res) {
   }
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms, signal) {
+  if (!ms) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(resolve, ms);
+    if (!signal) return;
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+export function isTransientHttpStatus(status) {
+  return [408, 425, 429, 500, 502, 503, 504].includes(Number(status));
 }
 
 export function isNetworkFetchError(error) {
@@ -95,7 +110,7 @@ export async function apiFetch(
     keepalive,
     retries,
     retryDelayMs,
-  } = {}
+  } = {},
 ) {
   const requestMethod = String(method || "GET").toUpperCase();
   const isFormData =
@@ -106,7 +121,12 @@ export async function apiFetch(
     ...(headers || {}),
   };
 
-  const init = { method: requestMethod, headers: reqHeaders, signal, keepalive };
+  const init = {
+    method: requestMethod,
+    headers: reqHeaders,
+    signal,
+    keepalive,
+  };
 
   if (body != null) {
     if (isFormData) {
@@ -125,10 +145,11 @@ export async function apiFetch(
   let attempt = 0;
   let res;
 
+  const retryableMethod = requestMethod === "GET" || requestMethod === "HEAD";
+
   while (attempt <= maxRetries) {
     try {
       res = await fetch(buildUrl(path), init);
-      break;
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       if (!isNetworkFetchError(error) || attempt >= maxRetries) {
@@ -140,11 +161,24 @@ export async function apiFetch(
 
       attempt += 1;
       if (signal?.aborted) throw error;
-      await sleep(retryDelayForAttempt(attempt, retryDelayMs));
+      await sleep(retryDelayForAttempt(attempt, retryDelayMs), signal);
+      continue;
     }
-  }
 
-  if (res.ok) return await parseJsonSafe(res);
+    if (res.ok) return await parseJsonSafe(res);
+
+    if (
+      retryableMethod &&
+      isTransientHttpStatus(res.status) &&
+      attempt < maxRetries
+    ) {
+      attempt += 1;
+      await sleep(retryDelayForAttempt(attempt, retryDelayMs), signal);
+      continue;
+    }
+
+    break;
+  }
 
   const payload = await parseJsonSafe(res);
   const apiError = payload && payload.error;

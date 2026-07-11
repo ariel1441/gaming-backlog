@@ -77,3 +77,6 @@ backups/
 # 🧠 Local storage (in dev tools, optional)
 # -----------------------
 localStorage.json
+
+# Local AI handoff helper
+make_ai_handoff.py

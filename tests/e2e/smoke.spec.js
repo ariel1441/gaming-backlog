@@ -27,6 +27,7 @@ const games = [
     genres: "RPG, Adventure",
     how_long_to_beat: 70,
     my_score: 9,
+    thoughts: "A wonderfully reactive role-playing adventure.",
     started_at: "2026-01-10",
     finished_at: null,
     cover: "",
@@ -144,7 +145,7 @@ async function mockApi(page) {
           : 1;
 
   await page.route(`${API_BASE}/api/meta/status-groups`, (route) =>
-    route.fulfill({ json: statusGroups })
+    route.fulfill({ json: statusGroups }),
   );
   await page.route(`${API_BASE}/api/demo/start`, (route) =>
     route.fulfill({
@@ -157,13 +158,13 @@ async function mockApi(page) {
           is_public: false,
         },
       },
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/demo/discard`, (route) =>
-    route.fulfill({ json: { ok: true } })
+    route.fulfill({ json: { ok: true } }),
   );
   await page.route(`${API_BASE}/api/demo/heartbeat`, (route) =>
-    route.fulfill({ json: { ok: true } })
+    route.fulfill({ json: { ok: true } }),
   );
   await page.route(`${API_BASE}/api/auth/me`, (route) =>
     route.fulfill({
@@ -174,7 +175,7 @@ async function mockApi(page) {
         is_public: true,
         created_at: "2025-08-09T00:00:00.000Z",
       },
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/games/statuses-list`, (route) =>
     route.fulfill({
@@ -184,7 +185,7 @@ async function mockApi(page) {
         "played and should come back",
         "finished",
       ],
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/games/search**`, (route) =>
     route.fulfill({
@@ -201,12 +202,12 @@ async function mockApi(page) {
           },
         ],
       },
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/catalog/recent`, (route) =>
     route.fulfill({
       json: { results: [], source: "cache", cacheStatus: "fresh" },
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/catalog/browse**`, (route) =>
     route.fulfill({
@@ -219,7 +220,12 @@ async function mockApi(page) {
             results: catalogGames,
           },
         ],
-        facets: { genres: [{ genre: "Action", count: 1 }, { genre: "RPG", count: 1 }] },
+        facets: {
+          genres: [
+            { genre: "Action", count: 1 },
+            { genre: "RPG", count: 1 },
+          ],
+        },
         page: 1,
         limit: 24,
         total: 1,
@@ -227,18 +233,18 @@ async function mockApi(page) {
         source: "cache",
         cacheStatus: "fresh",
       },
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/catalog/search**`, (route) =>
     route.fulfill({
       json: { results: catalogGames, source: "rawg", cacheStatus: "live" },
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/catalog/501`, (route) =>
-    route.fulfill({ json: catalogGames[0] })
+    route.fulfill({ json: catalogGames[0] }),
   );
   await page.route(`${API_BASE}/api/catalog/501/refresh`, (route) =>
-    route.fulfill({ json: { ...catalogGames[0], cacheStatus: "fresh" } })
+    route.fulfill({ json: { ...catalogGames[0], cacheStatus: "fresh" } }),
   );
   await page.route(`${API_BASE}/api/catalog/501/add-to-backlog`, (route) => {
     const body = route.request().postDataJSON();
@@ -281,14 +287,16 @@ async function mockApi(page) {
             return created;
           })(),
         })
-      : route.fulfill({ json: serverGames })
+      : route.fulfill({ json: serverGames }),
   );
   await page.route(`${API_BASE}/api/games/favorites`, (route) => {
     const { favoriteIds = [] } = route.request().postDataJSON();
     state.favoritePayloads.push(favoriteIds);
     const favoriteIdSet = new Set(favoriteIds.map(Number));
     serverGames = serverGames.map((game) => {
-      const rank = favoriteIds.findIndex((id) => Number(id) === Number(game.id));
+      const rank = favoriteIds.findIndex(
+        (id) => Number(id) === Number(game.id),
+      );
       return {
         ...game,
         favorite_rank: favoriteIdSet.has(Number(game.id)) ? rank + 1 : null,
@@ -310,7 +318,9 @@ async function mockApi(page) {
         user_id: 99,
         status_rank: rankForStatus(body.status || current?.status),
       };
-      serverGames = serverGames.map((game) => (game.id === id ? updated : game));
+      serverGames = serverGames.map((game) =>
+        game.id === id ? updated : game,
+      );
       return route.fulfill({ json: updated });
     }
 
@@ -322,7 +332,12 @@ async function mockApi(page) {
     return route.fulfill({ json: serverGames.find((game) => game.id === id) });
   });
   await page.route(`${API_BASE}/api/games/*/position`, (route) => {
-    const id = Number(route.request().url().match(/\/games\/(\d+)\/position/)?.[1]);
+    const id = Number(
+      route
+        .request()
+        .url()
+        .match(/\/games\/(\d+)\/position/)?.[1],
+    );
     const body = route.request().postDataJSON();
     state.reorderPayloads.push({ id, body });
 
@@ -332,12 +347,14 @@ async function mockApi(page) {
     }
 
     const sameRank = serverGames
-      .filter((game) => Number(game.status_rank) === Number(dragged.status_rank))
+      .filter(
+        (game) => Number(game.status_rank) === Number(dragged.status_rank),
+      )
       .sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
     const withoutDragged = sameRank.filter((game) => Number(game.id) !== id);
     const targetIndex = Math.max(
       0,
-      Math.min(Number(body.targetIndex || 0), withoutDragged.length)
+      Math.min(Number(body.targetIndex || 0), withoutDragged.length),
     );
     const rankOrder = [
       ...withoutDragged.slice(0, targetIndex),
@@ -348,8 +365,12 @@ async function mockApi(page) {
       position: (index + 1) * 1000,
       status: body.status || game.status,
     }));
-    const rankOrderById = new Map(rankOrder.map((game) => [Number(game.id), game]));
-    serverGames = serverGames.map((game) => rankOrderById.get(Number(game.id)) || game);
+    const rankOrderById = new Map(
+      rankOrder.map((game) => [Number(game.id), game]),
+    );
+    serverGames = serverGames.map(
+      (game) => rankOrderById.get(Number(game.id)) || game,
+    );
 
     return route.fulfill({
       json: {
@@ -359,7 +380,7 @@ async function mockApi(page) {
     });
   });
   await page.route(`${API_BASE}/api/insights**`, (route) =>
-    route.fulfill({ json: insights })
+    route.fulfill({ json: insights }),
   );
   await page.route(`${API_BASE}/api/public/ariel1441`, (route) =>
     route.fulfill({
@@ -369,10 +390,10 @@ async function mockApi(page) {
         joined_at: "2025-08-09T00:00:00.000Z",
         game_count: games.length,
       },
-    })
+    }),
   );
   await page.route(`${API_BASE}/api/public/ariel1441/games`, (route) =>
-    route.fulfill({ json: games })
+    route.fulfill({ json: games }),
   );
 
   return state;
@@ -385,8 +406,9 @@ test.beforeEach(async ({ page }) => {
 test("starts the demo and renders the backlog", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "Welcome to Gaming Backlog" }))
-    .toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Welcome to Gaming Backlog" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: /try the full demo/i }).click();
 
   await expect(page.getByText("Baldur's Gate 3")).toBeVisible();
@@ -396,19 +418,27 @@ test("renders a public profile as read-only", async ({ page }) => {
   await page.goto("/u/ariel1441", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "@ariel1441" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Favorite games" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Currently playing" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Recently finished" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Favorite games" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Currently playing" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Recently finished" }),
+  ).toBeVisible();
   await expect(page.getByText("Favorite slot").first()).toBeVisible();
   await page.getByRole("button", { name: "View all games" }).click();
   await expect(page).toHaveURL(/view=games/);
   await expect(
-    page.getByRole("heading", { name: "Clair Obscur: Expedition 33" })
+    page.getByRole("heading", { name: "Clair Obscur: Expedition 33" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /add game/i })).toHaveCount(0);
 });
 
-test("links from insights active stats back to filtered backlog", async ({ page }) => {
+test("links from insights active stats back to filtered backlog", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("token", "demo-token");
     window.localStorage.setItem("seen_onboarding_v1", "1");
@@ -423,6 +453,22 @@ test("links from insights active stats back to filtered backlog", async ({ page 
   await expect(page.getByText("Clair Obscur: Expedition 33")).toHaveCount(0);
 });
 
+test("opens the restored Reviews page from application navigation", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("link", { name: "Reviews", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+  await expect(
+    page.getByText("A wonderfully reactive role-playing adventure."),
+  ).toBeVisible();
+});
+
 test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("token", "demo-token");
@@ -431,7 +477,7 @@ test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("button", { name: /add game/i }).click();
-  await expect(page.getByRole("heading", { name: "Add New Game" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add game" })).toBeVisible();
   await page.getByLabel("Name").fill("Hollow Knight");
   await page.getByLabel("Status").click();
   await page.getByRole("option", { name: "plan to play soon" }).click();
@@ -447,21 +493,27 @@ test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   await expect(addedCard).toBeVisible();
 
   await addedCard.getByLabel("Edit game").click();
-  await expect(page.getByRole("heading", { name: "Edit Game" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Edit game" })).toBeVisible();
   await page.getByLabel("My score").fill("9");
   await page.getByRole("button", { name: "Save Changes" }).click();
   await expect(page.getByText("Game updated.")).toBeVisible();
 
   await addedCard.getByLabel("Delete game").click();
-  await expect(page.getByRole("heading", { name: "Delete game?" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Delete game?" }),
+  ).toBeVisible();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(page.getByRole("heading", { name: "Hollow Knight" })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Hollow Knight" }),
+  ).toHaveCount(0);
 });
 
-test("reorders same-rank games without sending a status change", async ({ page }) => {
+test("reorders same-rank games without sending a status change", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("token", "demo-token");
     window.localStorage.setItem("seen_onboarding_v1", "1");
@@ -483,11 +535,18 @@ test("reorders same-rank games without sending a status change", async ({ page }
   expect(source).not.toBeNull();
   expect(target).not.toBeNull();
 
-  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+  await page.mouse.move(
+    source.x + source.width / 2,
+    source.y + source.height / 2,
+  );
   await page.mouse.down();
-  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, {
-    steps: 12,
-  });
+  await page.mouse.move(
+    target.x + target.width / 2,
+    target.y + target.height / 2,
+    {
+      steps: 12,
+    },
+  );
   await page.mouse.up();
 
   await expect
@@ -501,7 +560,9 @@ test("reorders same-rank games without sending a status change", async ({ page }
     .poll(async () =>
       page
         .locator("article h3")
-        .evaluateAll((headings) => headings.map((heading) => heading.textContent))
+        .evaluateAll((headings) =>
+          headings.map((heading) => heading.textContent),
+        ),
     )
     .toEqual([
       "Disco Elysium",
@@ -511,22 +572,27 @@ test("reorders same-rank games without sending a status change", async ({ page }
     ]);
 });
 
-test("updates favorite games from public profile settings", async ({ page }) => {
+test("updates favorite games from public profile settings", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("token", "demo-token");
     window.localStorage.setItem("seen_onboarding_v1", "1");
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("button", { name: "Open account menu" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Public profile" }).click();
   await expect(
-    page.getByRole("heading", { name: "Public Profile", exact: true })
+    page.getByRole("heading", { name: "Favorite games", level: 2 }),
   ).toBeVisible();
 
   await page.getByLabel("Move Disco Elysium up").click();
   await page.getByLabel("Remove Baldur's Gate 3 from favorites").click();
-  await page.getByRole("button", { name: "Clair Obscur: Expedition 33" }).click();
+  await page
+    .getByRole("button", { name: "Clair Obscur: Expedition 33" })
+    .click();
   await page.getByRole("button", { name: "Save favorites" }).click();
 
   await expect
@@ -536,23 +602,40 @@ test("updates favorite games from public profile settings", async ({ page }) => 
   await expect(page.getByText("Favorite games saved.")).toBeVisible();
 });
 
-test("discovers a catalog game and adds it to the backlog", async ({ page }) => {
+test("discovers a catalog game and adds it to the backlog", async ({
+  page,
+}) => {
+  const runtimeErrors = [];
+  page.on("pageerror", (error) =>
+    runtimeErrors.push(error.stack || error.message),
+  );
+  page.on("console", (message) => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
   await page.addInitScript(() => {
     window.localStorage.setItem("token", "demo-token");
     window.localStorage.setItem("seen_onboarding_v1", "1");
   });
   await page.goto("/discover", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(750);
+  expect(runtimeErrors, "Discover emitted runtime errors").toEqual([]);
 
   await expect(page.getByRole("heading", { name: "Discover" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Recently Cached" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Recently Cached" }),
+  ).toBeVisible();
   await page.getByPlaceholder("Search games...").fill("hades");
   const searchResults = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Search results" }),
   });
-  await expect(searchResults.getByRole("heading", { name: "Hades II" })).toBeVisible();
+  await expect(
+    searchResults.getByRole("heading", { name: "Hades II" }),
+  ).toBeVisible();
 
   await searchResults.getByRole("heading", { name: "Hades II" }).click();
-  await expect(page.getByRole("heading", { name: "Add to backlog" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Add to backlog" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Status" }).click();
   await page.getByRole("option", { name: "playing" }).click();
   await page.getByLabel("My Genre").fill("Action Roguelike");
@@ -560,6 +643,6 @@ test("discovers a catalog game and adds it to the backlog", async ({ page }) => 
   await expect(page.getByText("Game added to backlog.")).toBeVisible();
 
   await page.getByRole("button", { name: "Close" }).click();
-  await page.getByRole("button", { name: "Backlog", exact: true }).click();
+  await page.getByRole("link", { name: "Backlog", exact: true }).click();
   await expect(page.getByText("Hades II")).toBeVisible();
 });

@@ -15,6 +15,7 @@ module.exports = {
   extends: ["eslint:recommended"],
   ignorePatterns: ["dist/", "node_modules/"],
   rules: {
+    "jsx-no-undef": "error",
     "no-empty": "off",
     "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
   },
