@@ -210,6 +210,10 @@ Vercel and Railway are still expected to handle deployment from GitHub. Check
 their dashboards and make sure production deploys are connected to `main`, not a
 feature branch.
 
+The tracked `.npmrc` keeps development dependencies available during hosted
+builds even when the platform sets `NODE_ENV=production`; Vite and the bundle
+budget checker are build-time development dependencies.
+
 ## Local vs Production Database
 
 Use three mental buckets:
