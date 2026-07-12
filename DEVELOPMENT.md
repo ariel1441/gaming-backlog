@@ -190,6 +190,10 @@ The check job runs on pushes to `main` and `Dev`, and on pull requests:
 The production migration job runs only on pushes to `main`, after checks pass.
 It applies SQL files from `backend/migrations/`. The protected job fails when
 `PROD_DATABASE_URL` is missing so production cannot silently skip schema work.
+Railway public Postgres proxy connections use encrypted TLS with an untrusted
+certificate chain, so the migration job explicitly enables the production-only
+`PGSSL_ALLOW_UNVERIFIED_PROD` compatibility switch. Verified TLS remains the
+default for every other production database connection.
 
 Catalog/Discover data is cached in Postgres. For production Discover shelves,
 either:

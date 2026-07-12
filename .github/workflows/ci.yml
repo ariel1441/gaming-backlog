@@ -71,9 +71,13 @@ jobs:
       group: production-database-migrations
       cancel-in-progress: false
     env:
+      NODE_ENV: production
       PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
       PGSSL: "true"
       PGSSL_CA: ${{ secrets.PGSSL_CA }}
+      # Railway's public Postgres proxy encrypts traffic with an untrusted chain.
+      # Keep this explicit and scoped to the production migration job.
+      PGSSL_ALLOW_UNVERIFIED_PROD: "true"
 
     steps:
       - name: Checkout

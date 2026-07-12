@@ -14,22 +14,32 @@ export function buildPgConfig(connectionString, env = process.env) {
 
   if (!needSSL) return { connectionString, ssl: undefined };
 
-  const allowUnverified =
-    env.NODE_ENV !== "production" &&
+  const requestedUnverifiedDev =
     String(env.PGSSL_ALLOW_UNVERIFIED_DEV).toLowerCase() === "true";
+  const requestedUnverifiedProd =
+    String(env.PGSSL_ALLOW_UNVERIFIED_PROD).toLowerCase() === "true";
+  const allowUnverifiedDev =
+    env.NODE_ENV !== "production" && requestedUnverifiedDev;
+  const allowUnverifiedProd =
+    env.NODE_ENV === "production" && requestedUnverifiedProd;
   const inlineCa = String(env.PGSSL_CA || "").replace(/\\n/g, "\n").trim();
   const fileCa = env.PGSSL_CA_FILE
     ? fs.readFileSync(env.PGSSL_CA_FILE, "utf8").trim()
     : "";
 
-  if (env.NODE_ENV === "production" && env.PGSSL_ALLOW_UNVERIFIED_DEV) {
+  if (env.NODE_ENV === "production" && requestedUnverifiedDev) {
     throw new Error("PGSSL_ALLOW_UNVERIFIED_DEV cannot be used in production.");
+  }
+  if (env.NODE_ENV !== "production" && requestedUnverifiedProd) {
+    throw new Error(
+      "PGSSL_ALLOW_UNVERIFIED_PROD can only be used in production.",
+    );
   }
 
   return {
     connectionString,
     ssl: {
-      rejectUnauthorized: !allowUnverified,
+      rejectUnauthorized: !(allowUnverifiedDev || allowUnverifiedProd),
       ...(inlineCa || fileCa ? { ca: inlineCa || fileCa } : {}),
     },
   };

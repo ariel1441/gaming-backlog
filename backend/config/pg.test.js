@@ -36,3 +36,31 @@ test("unverified Postgres TLS is restricted to an explicit development escape ha
     /cannot be used in production/,
   );
 });
+
+test("unverified production TLS requires a production-only explicit escape hatch", () => {
+  assert.equal(
+    buildPgConfig("postgres://managed.example/db", {
+      PGSSL: "true",
+      NODE_ENV: "production",
+      PGSSL_ALLOW_UNVERIFIED_PROD: "true",
+    }).ssl.rejectUnauthorized,
+    false,
+  );
+  assert.throws(
+    () =>
+      buildPgConfig("postgres://managed.example/db", {
+        PGSSL: "true",
+        NODE_ENV: "development",
+        PGSSL_ALLOW_UNVERIFIED_PROD: "true",
+      }),
+    /can only be used in production/,
+  );
+  assert.equal(
+    buildPgConfig("postgres://managed.example/db", {
+      PGSSL: "true",
+      NODE_ENV: "development",
+      PGSSL_ALLOW_UNVERIFIED_PROD: "false",
+    }).ssl.rejectUnauthorized,
+    true,
+  );
+});
