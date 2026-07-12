@@ -13,6 +13,23 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: game_backlog
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d game_backlog"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/game_backlog
+      JWT_SECRET: ci-test-secret
 
     steps:
       - name: Checkout
@@ -39,6 +56,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: npm run test:e2e
+
   migrate-production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
@@ -50,6 +73,7 @@ jobs:
     env:
       PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
       PGSSL: "true"
+      PGSSL_CA: ${{ secrets.PGSSL_CA }}
 
     steps:
       - name: Checkout
@@ -64,8 +88,13 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Require production migration target
+        if: env.PROD_DATABASE_URL == ''
+        run: |
+          echo "PROD_DATABASE_URL is required for protected production migrations."
+          exit 1
+
       - name: Show pending production migrations
-        if: env.PROD_DATABASE_URL != ''
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
           CONFIRM_PROD_MIGRATIONS: "true"
@@ -73,13 +102,8 @@ jobs:
         run: npm run db:migrate:prod:status
 
       - name: Apply production migrations
-        if: env.PROD_DATABASE_URL != ''
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
           CONFIRM_PROD_MIGRATIONS: "true"
           PGSSL: "true"
         run: npm run db:migrate:prod
-
-      - name: Skip production migrations
-        if: env.PROD_DATABASE_URL == ''
-        run: echo "PROD_DATABASE_URL secret is not configured; skipping production migrations."

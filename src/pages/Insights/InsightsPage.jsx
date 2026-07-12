@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 
 // services
 import { fetchInsights } from "../../services/insightsService";
-import { api } from "../../services/apiClient";
+import { listGames } from "../../services/gameService";
 
 // context
 import { useStatusGroups } from "../../contexts/StatusGroupsContext";
@@ -107,10 +107,16 @@ export default function InsightsPage() {
   const [err, setErr] = useState("");
   const [data, setData] = useState(null);
   const [games, setGames] = useState([]);
+  const loadSequence = useRef(0);
+  const loadController = useRef(null);
 
   const { colorAt, axisTick, gridStroke, tooltipColors } = useChartTheme();
 
   const load = async (opts) => {
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setErr("");
     try {
@@ -118,9 +124,11 @@ export default function InsightsPage() {
         fetchInsights({
           weeklyHours: opts?.weeklyHours ?? weeklyHours,
           includeMissingNames: opts?.includeMissing ?? includeMissing,
-        }),
-        api.get("/api/games"),
+        }, { signal: controller.signal }),
+        listGames({ signal: controller.signal }),
       ]);
+
+      if (sequence !== loadSequence.current || controller.signal.aborted) return;
 
       setData(insights);
 
@@ -139,15 +147,23 @@ export default function InsightsPage() {
         : [];
       setGames(normalizedGames);
 
-      const serverWH =
-        insights?.eta?.weekly_hours ?? insights?.params?.weekly_hours;
-      if (Number.isFinite(serverWH)) setWeeklyHours(serverWH);
     } catch (e) {
+      if (e?.name === "AbortError" || sequence !== loadSequence.current) return;
       setErr(e?.message || "Failed to load insights");
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current && !controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   };
+
+  useEffect(
+    () => () => {
+      loadSequence.current += 1;
+      loadController.current?.abort();
+    },
+    [],
+  );
 
   // initial load
   useEffect(() => {

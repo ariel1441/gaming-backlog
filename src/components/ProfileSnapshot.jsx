@@ -16,24 +16,24 @@ import ProfileAvatar from "./ProfileAvatar";
 import { Button, StatusBadge } from "./ui";
 import { parseGameDate } from "../utils/gameDateInsights";
 import { profileDisplayName, profileHandle } from "../utils/userProfile";
+import { useStatusGroups } from "../contexts/StatusGroupsContext";
+import { defaultStatusSemantics } from "../utils/statusSemantics";
 
-const COMPLETED_STATUSES = ["finished", "played alot but didnt finish"];
-
-export function isCompletedGame(game) {
-  return COMPLETED_STATUSES.includes(String(game?.status || "").toLowerCase());
+export function isCompletedGame(game, statusGroupOf = defaultStatusSemantics.statusGroupOf) {
+  return statusGroupOf(game?.status) === "done";
 }
 
-export function isPlayingGame(game) {
-  const status = String(game?.status || "").toLowerCase();
+export function isPlayingGame(game, statusGroupOf = defaultStatusSemantics.statusGroupOf) {
   return (
-    status.includes("playing") ||
-    (parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at))
+    statusGroupOf(game?.status) === "playing" ||
+    (parseGameDate(game?.started_at) &&
+      !parseGameDate(game?.finished_at) &&
+      !isCompletedGame(game, statusGroupOf))
   );
 }
 
-export function isPlannedGame(game) {
-  const status = String(game?.status || "").toLowerCase();
-  return status.includes("plan") || status.includes("wishlist");
+export function isPlannedGame(game, statusGroupOf = defaultStatusSemantics.statusGroupOf) {
+  return statusGroupOf(game?.status) === "planned";
 }
 
 function scoreOf(game) {
@@ -57,13 +57,16 @@ function queueSortValue(game) {
   ];
 }
 
-export function buildProfileSnapshot(games = []) {
+export function buildProfileSnapshot(
+  games = [],
+  { statusGroupOf = defaultStatusSemantics.statusGroupOf } = {},
+) {
   const list = Array.isArray(games) ? games : [];
   const currentYear = new Date().getFullYear();
 
-  const playing = list.filter(isPlayingGame);
+  const playing = list.filter((game) => isPlayingGame(game, statusGroupOf));
   const planned = list
-    .filter(isPlannedGame)
+    .filter((game) => isPlannedGame(game, statusGroupOf))
     .sort((a, b) => {
       const aValues = queueSortValue(a);
       const bValues = queueSortValue(b);
@@ -79,7 +82,7 @@ export function buildProfileSnapshot(games = []) {
       return Number.isInteger(rank) && rank >= 1 && rank <= 5;
     })
     .sort((a, b) => Number(a.favorite_rank) - Number(b.favorite_rank));
-  const completed = list.filter(isCompletedGame);
+  const completed = list.filter((game) => isCompletedGame(game, statusGroupOf));
   const recentlyFinished = list
     .filter((game) => finishedTime(game) > 0)
     .sort((a, b) => finishedTime(b) - finishedTime(a));
@@ -116,7 +119,8 @@ export default function ProfileSnapshot({
   onOpenGames,
   onSelectGame,
 }) {
-  const snapshot = buildProfileSnapshot(games);
+  const { statusGroupOf } = useStatusGroups();
+  const snapshot = buildProfileSnapshot(games, { statusGroupOf });
   const displayName = profileDisplayName(profile);
   const handle = profileHandle(profile);
   const bio = String(profile?.bio || "").trim();

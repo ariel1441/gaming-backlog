@@ -1,4 +1,4 @@
-import React, { useId, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Plus, X } from "lucide-react";
 import Button from "./Button";
 import { TextInput } from "./inputs";
@@ -24,6 +24,8 @@ export default function MultiSelectMenu({
   const [query, setQuery] = useState("");
   const ref = useRef(null);
   const optionRefs = useRef([]);
+  const typeaheadRef = useRef({ value: "", timer: null });
+  const [announcement, setAnnouncement] = useState("");
   const generatedId = useId();
   const controlId = id || `${generatedId}-control`;
   const listboxId = `${controlId}-listbox`;
@@ -68,6 +70,11 @@ export default function MultiSelectMenu({
     restoreFocus: true,
   });
 
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => optionRefs.current[0]?.focus());
+  }, [open]);
+
   const handleListKeyDown = (event) => {
     const currentIndex = optionRefs.current.indexOf(document.activeElement);
     let nextIndex = currentIndex;
@@ -76,7 +83,19 @@ export default function MultiSelectMenu({
     else if (event.key === "ArrowUp") nextIndex = Math.max(0, currentIndex - 1);
     else if (event.key === "Home") nextIndex = 0;
     else if (event.key === "End") nextIndex = filtered.length - 1;
-    else return;
+    else if (event.key.length === 1 && /\S/.test(event.key)) {
+      const state = typeaheadRef.current;
+      clearTimeout(state.timer);
+      state.value += event.key.toLowerCase();
+      const matchIndex = filtered.findIndex((option) =>
+        option.toLowerCase().startsWith(state.value),
+      );
+      state.timer = setTimeout(() => {
+        state.value = "";
+      }, 600);
+      if (matchIndex >= 0) optionRefs.current[matchIndex]?.focus();
+      return;
+    } else return;
     event.preventDefault();
     optionRefs.current[nextIndex]?.focus();
   };
@@ -97,8 +116,10 @@ export default function MultiSelectMenu({
     const key = value.toLowerCase();
     if (selectedSet.has(key)) {
       emit(selected.filter((item) => item.toLowerCase() !== key));
+      setAnnouncement(`${value} removed`);
     } else {
       emit([...selected, value]);
+      setAnnouncement(`${value} selected`);
     }
   };
 
@@ -106,6 +127,7 @@ export default function MultiSelectMenu({
     const value = normalizeOption(query);
     if (!value) return;
     emit([...selected, value]);
+    setAnnouncement(`${value} added`);
     setQuery("");
   };
 
@@ -117,6 +139,9 @@ export default function MultiSelectMenu({
 
   return (
     <div ref={ref} className="relative">
+      <span className="sr-only" aria-live="polite">
+        {announcement}
+      </span>
       <button
         {...props}
         id={controlId}
@@ -162,6 +187,7 @@ export default function MultiSelectMenu({
               key={value}
               disabled={disabled}
               onClick={() => toggle(value)}
+              aria-label={`Remove ${value}`}
               className="inline-flex max-w-full items-center gap-1 rounded-full border border-secondary/35 bg-secondary/12 px-2.5 py-1 text-xs font-medium text-secondary-light hover:border-secondary/55 hover:bg-secondary/16"
             >
               <span className="truncate">{value}</span>

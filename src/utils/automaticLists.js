@@ -1,14 +1,7 @@
 import { parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
 import { sortByDefaultOrder, splitCsv } from "./gameList.js";
-
-const DONE_STATUSES = new Set([
-  "finished",
-  "played alot but didnt finish",
-  "played a lot but didn't finish",
-]);
-
-const PLAYING_STATUSES = new Set(["playing", "played and should come back"]);
+import { defaultStatusSemantics } from "./statusSemantics.js";
 
 const titleCollator = new Intl.Collator(undefined, {
   numeric: true,
@@ -181,14 +174,16 @@ function currentYear(now = new Date()) {
   return Number.isFinite(date.getFullYear()) ? date.getFullYear() : new Date().getFullYear();
 }
 
-function isDone(game) {
-  return DONE_STATUSES.has(normalize(game?.status));
+function isDone(game, statusGroupOf) {
+  return statusGroupOf(game?.status) === "done";
 }
 
-function isPlaying(game) {
+function isPlaying(game, statusGroupOf) {
   return (
-    PLAYING_STATUSES.has(normalize(game?.status)) ||
-    (!!parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at) && !isDone(game))
+    statusGroupOf(game?.status) === "playing" ||
+    (!!parseGameDate(game?.started_at) &&
+      !parseGameDate(game?.finished_at) &&
+      !isDone(game, statusGroupOf))
   );
 }
 
@@ -217,16 +212,16 @@ function genreMatches(game, genre) {
   return values.some((item) => normalize(item) === target);
 }
 
-function matchesStatus(game, status) {
+function matchesStatus(game, status, statusGroupOf) {
   switch (status) {
     case "finished":
-      return isDone(game);
+      return isDone(game, statusGroupOf);
     case "playing":
-      return isPlaying(game);
+      return isPlaying(game, statusGroupOf);
     case "started-unfinished":
-      return !!parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at) && !isDone(game);
+      return !!parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at) && !isDone(game, statusGroupOf);
     case "unfinished":
-      return !isDone(game);
+      return !isDone(game, statusGroupOf);
     default:
       return true;
   }
@@ -347,11 +342,15 @@ function smartListEmptyState(query = {}) {
   };
 }
 
-export function resolveSmartList(list, games = []) {
+export function resolveSmartList(
+  list,
+  games = [],
+  { statusGroupOf = defaultStatusSemantics.statusGroupOf } = {},
+) {
   const query = normalizeSmartQuery(list?.query || {});
   const sortKey = normalizeSmartSortKey(list?.sortKey || "score");
   const filtered = (Array.isArray(games) ? games : []).filter((game) => {
-    if (!matchesStatus(game, query.status)) return false;
+    if (!matchesStatus(game, query.status, statusGroupOf)) return false;
     if (query.finishedYear && parseGameDate(game?.finished_at)?.year !== Number(query.finishedYear)) return false;
     if (query.releasedYear && parseGameDate(game?.releaseDate || game?.released || game?.released_at)?.year !== Number(query.releasedYear)) return false;
     if (query.genre && !genreMatches(game, query.genre)) return false;

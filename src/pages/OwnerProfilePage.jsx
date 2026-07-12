@@ -24,6 +24,7 @@ import GameModal from "../components/GameModal";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { Button, EmptyState, StatusBadge } from "../components/ui";
 import { useAuth } from "../contexts/AuthContext";
+import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
 import { useGames } from "../hooks/useGames";
 import { buildProfileSnapshot } from "../components/ProfileSnapshot";
@@ -73,8 +74,12 @@ export default function OwnerProfilePage() {
     refresh,
   } = useGames();
   const [selectedGame, setSelectedGame] = useState(null);
+  const { statusGroupOf } = useStatusGroups();
 
-  const profile = useMemo(() => buildProfileSnapshot(games), [games]);
+  const profile = useMemo(
+    () => buildProfileSnapshot(games, { statusGroupOf }),
+    [games, statusGroupOf],
+  );
   const username = user?.username || "You";
   const publicUrl =
     !isGuest && user?.is_public ? publicProfileUrl(user?.username) : "";

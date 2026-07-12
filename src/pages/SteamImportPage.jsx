@@ -36,6 +36,7 @@ import {
 } from "../features/steam/hooks";
 import { filteredReasonLabel } from "../utils/steamImport";
 import {
+  buildSteamStatusSuggestionPayload,
   loadLastSteamSyncReview,
   saveLastSteamSyncReview,
 } from "../utils/steamSync";
@@ -252,7 +253,7 @@ export default function SteamImportPage() {
     const linked = searchParams.get("linked");
     const error = searchParams.get("error");
     if (linked) toast.success("Steam account linked.");
-    if (error) toast.error(error);
+    if (error) toast.error("Could not link Steam. Please start the link again.");
     if (searchParams.get("review") === "last") {
       const stored = loadLastSteamSyncReview();
       setLastSyncReview(stored);
@@ -390,17 +391,14 @@ export default function SteamImportPage() {
     if (!item?.gameId) return;
     setApplyingSuggestionId(item.gameId);
     try {
-      await applySteamStatusSuggestion(item.gameId, {
-        status: item.suggestedStatus || "playing",
-        setStartedAt,
-        startedAt: item.firstPlayObservedAt || item.lastPlayedAt || null,
-      });
+      await applySteamStatusSuggestion(
+        item.gameId,
+        buildSteamStatusSuggestionPayload(item, { setStartedAt }),
+      );
       toast.success(`${item.gameName || item.steamName} marked as playing.`);
-      setSyncReview((current) => {
-        const next = removeSyncReviewItem(current, item);
-        storeLastSyncReview(next);
-        return next;
-      });
+      const nextReview = removeSyncReviewItem(syncReview, item);
+      setSyncReview(nextReview);
+      storeLastSyncReview(nextReview);
       await loadCandidates();
     } catch (error) {
       toast.error(error.message || "Could not apply this Steam suggestion.");
@@ -410,11 +408,9 @@ export default function SteamImportPage() {
   };
 
   const dismissSyncReviewItem = (item) => {
-    setSyncReview((current) => {
-      const next = removeSyncReviewItem(current, item);
-      storeLastSyncReview(next);
-      return next;
-    });
+    const nextReview = removeSyncReviewItem(syncReview, item);
+    setSyncReview(nextReview);
+    storeLastSyncReview(nextReview);
   };
 
   const openLastSyncReview = () => {

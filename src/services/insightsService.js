@@ -10,12 +10,12 @@ import { api } from "./apiClient";
 export async function fetchInsights({
   weeklyHours,
   includeMissingNames = false,
-} = {}) {
+} = {}, requestOptions = {}) {
   const params = new URLSearchParams();
   if (Number.isFinite(weeklyHours))
     params.set("weekly_hours", String(weeklyHours));
   if (includeMissingNames) params.set("include_missing_names", "true");
   const qs = params.toString();
   const url = qs ? `/api/insights?${qs}` : "/api/insights";
-  return api.get(url);
+  return api.get(url, requestOptions);
 }

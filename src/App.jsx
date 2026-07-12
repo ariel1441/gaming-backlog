@@ -18,6 +18,7 @@ const SteamLibraryPage = lazy(() => import("./pages/SteamLibraryPage"));
 const TimelinePage = lazy(() => import("./pages/TimelinePage"));
 const ListsPage = lazy(() => import("./pages/Lists/ListsPage"));
 const CustomListPage = lazy(() => import("./pages/Lists/CustomListPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 function RouteLoading() {
   return (
@@ -47,6 +48,7 @@ const App = () => {
                   <Route path="/steam/library" element={<SteamLibraryPage />} />
                   <Route path="/steam/import" element={<SteamImportPage />} />
                   <Route path="/insights" element={<InsightsPage />} />
+                  <Route path="*" element={<NotFoundPage />} />
                 </Route>
                 <Route path="/u/:username" element={<PublicProfile />} />
               </Routes>

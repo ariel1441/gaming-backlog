@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { redactEnvironmentValue } from "./env-summary.js";
 
 dotenv.config();
 
@@ -7,15 +8,36 @@ const required = [
   "PORT",
   "DATABASE_URL",
   "JWT_SECRET",
-  "VITE_API_BASE_URL",
 ];
 
 const optional = [
   "RAWG_API_KEY",
+  "DB_USER",
+  "DB_HOST",
+  "DB_NAME",
+  "DB_PASSWORD",
+  "DB_PORT",
   "PGSSL",
+  "PGSSL_CA",
+  "PGSSL_CA_FILE",
+  "PGSSL_ALLOW_UNVERIFIED_DEV",
+  "VITE_API_BASE_URL",
+  "VITE_FRONTEND_BASE_URL",
+  "VITE_PORT",
+  "FRONTEND_BASE_URL",
+  "APP_BASE_URL",
   "ALLOWED_ORIGINS",
   "ALLOWED_ORIGIN_SUFFIXES",
   "MICROCACHE_TTL_MS",
+  "MICROCACHE_MAX_KEYS",
+  "RAWG_FAIL_TTL_MS",
+  "RAWG_TIMEOUT_MS",
+  "RAWG_MAX_RESPONSE_BYTES",
+  "RAWG_CACHE_MAX_ENTRIES",
+  "PUBLIC_RAWG_CONCURRENCY",
+  "PUBLIC_RAWG_HYDRATE_LIMIT",
+  "HLTB_DATA_PATH",
+  "HLTB_UNITS",
   "DEMO_ENABLED",
   "DEMO_TEMPLATE_USERNAME",
   "DEMO_GUEST_TTL_HOURS",
@@ -24,24 +46,17 @@ const optional = [
   "STEAM_WEB_API_KEY",
   "STEAM_OPENID_RETURN_URL",
   "STEAM_OPENID_REALM",
+  "STEAM_FRONTEND_RETURN_URL",
   "STEAM_MOCK_OWNED_GAMES_JSON",
+  "STEAM_MOCK_PLAYER_SUMMARY_JSON",
   "STEAM_DEV_SYNC_SAMPLE",
+  "STEAM_TIMEOUT_MS",
+  "STEAM_MAX_RESPONSE_BYTES",
+  "STEAM_SYNC_CHUNK_SIZE",
+  "ALLOW_REMOTE_DB_IN_DEV",
+  "CONFIRM_LOCAL_DB_OVERWRITE",
+  "CONFIRM_PROD_MIGRATIONS",
 ];
-
-function redact(key, value) {
-  if (!value) return "<missing>";
-  if (/SECRET|KEY|TOKEN|PASSWORD/i.test(key)) return "<set>";
-  if (key === "DATABASE_URL") {
-    try {
-      const parsed = new URL(value);
-      const user = parsed.username || "user";
-      return `${parsed.protocol}//${user}:***@${parsed.host}${parsed.pathname}`;
-    } catch {
-      return "<invalid>";
-    }
-  }
-  return value;
-}
 
 function isLocalDatabase(value) {
   try {
@@ -56,7 +71,7 @@ let failed = false;
 
 console.log("Environment summary:");
 for (const key of [...required, ...optional]) {
-  console.log(`- ${key}: ${redact(key, process.env[key])}`);
+  console.log(`- ${key}: ${redactEnvironmentValue(key, process.env[key])}`);
 }
 
 for (const key of required) {

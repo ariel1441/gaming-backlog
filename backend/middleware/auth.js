@@ -1,6 +1,6 @@
 // backend/middleware/auth.js
 import jwt from "jsonwebtoken";
-import { forbidden, unauthorized } from "../utils/httpError.js";
+import { unauthorized } from "../utils/httpError.js";
 
 export function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -16,6 +16,6 @@ export function verifyToken(req, res, next) {
     req.user = decoded; // contains { id, username }
     next();
   } catch (error) {
-    return next(forbidden("Invalid or expired token"));
+    return next(unauthorized("Invalid or expired token"));
   }
 }

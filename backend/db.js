@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import pkg from "pg";
+import { buildPgConfig } from "./config/pg.js";
 const { Pool, types } = pkg;
 
 // Keep DATE (OID 1082) as string (YYYY-MM-DD)
@@ -52,23 +53,8 @@ function assertSafeDevelopmentDatabase(value) {
 
 assertSafeDevelopmentDatabase(connectionString);
 
-// Allow forcing SSL off with PGSSL=false (rare, mostly for local DBs)
-const forceDisableSSL =
-  String(process.env.PGSSL || "").toLowerCase() === "false";
-
-// Auto-detect when SSL is needed (Railway/managed PG or sslmode=require in URL)
-const needSSL =
-  !forceDisableSSL &&
-  (/sslmode=require/i.test(connectionString || "") ||
-    /(railway|heroku|neon|supabase|render|azure|amazonaws|cockroach|gcp)/i.test(
-      connectionString || ""
-    ));
-
 export const pool = connectionString
-  ? new Pool({
-      connectionString,
-      ssl: needSSL ? { rejectUnauthorized: false } : undefined,
-    })
+  ? new Pool(buildPgConfig(connectionString))
   : new Pool({
       user: process.env.DB_USER,
       host: process.env.DB_HOST || "localhost",

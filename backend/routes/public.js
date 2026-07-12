@@ -10,13 +10,59 @@ import { listPublicGamesQuery } from "../utils/publicAccess.js";
 import { usernameParam } from "../validators/public.js";
 import { forbidden, notFound } from "../utils/httpError.js";
 const router = express.Router();
+const PUBLIC_RAWG_CONCURRENCY = Math.min(
+  Math.max(Number(process.env.PUBLIC_RAWG_CONCURRENCY) || 3, 1),
+  8,
+);
+const PUBLIC_RAWG_HYDRATE_LIMIT = Math.min(
+  Math.max(Number(process.env.PUBLIC_RAWG_HYDRATE_LIMIT) || 24, 0),
+  100,
+);
+const RAWG_CACHE_MAX_ENTRIES = Math.min(
+  Math.max(Number(process.env.RAWG_CACHE_MAX_ENTRIES) || 1000, 100),
+  10_000,
+);
+const RAWG_FAILURE_TTL_MS = 5 * 60 * 1000;
+
+async function mapWithConcurrency(items, concurrency, work) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await work(items[index], index);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, worker),
+  );
+  return results;
+}
+
+function pruneRawgCache(cache) {
+  const keys = Object.keys(cache);
+  const removeCount = keys.length - RAWG_CACHE_MAX_ENTRIES;
+  if (removeCount <= 0) return;
+  keys.slice(0, removeCount).forEach((key) => delete cache[key]);
+}
+
+function shouldFetchRawg(entry) {
+  if (!entry) return true;
+  return Boolean(
+    entry.__failedAt && Date.now() - entry.__failedAt > RAWG_FAILURE_TTL_MS,
+  );
+}
 
 // DRY-ish: hydrate with RAWG, mirroring /api/games behavior
-async function hydrateGamesWithRAWG(app, games) {
+export async function hydrateGamesWithRAWG(app, games) {
   const rawgCache = app.locals.rawgCache || {};
+  const inflight = app.locals.publicRawgInflight || new Map();
+  app.locals.publicRawgInflight = inflight;
 
-  const hydrated = await Promise.all(
-    games.map(async (game) => {
+  const hydrated = await mapWithConcurrency(
+    games,
+    PUBLIC_RAWG_CONCURRENCY,
+    async (game, index) => {
       const catalog = decorateGameWithCatalog(game);
       if (catalog) {
         return {
@@ -26,9 +72,24 @@ async function hydrateGamesWithRAWG(app, games) {
       }
 
       const cacheKey = (game.name || "").toLowerCase().trim();
-      if (!rawgCache[cacheKey]) {
-        const data = await fetchGameData(game.name);
-        rawgCache[cacheKey] = data || {};
+      if (
+        cacheKey &&
+        index < PUBLIC_RAWG_HYDRATE_LIMIT &&
+        shouldFetchRawg(rawgCache[cacheKey])
+      ) {
+        let request = inflight.get(cacheKey);
+        if (!request) {
+          request = fetchGameData(game.name)
+            .then((data) => {
+              rawgCache[cacheKey] = data || {};
+            })
+            .catch(() => {
+              rawgCache[cacheKey] = { __failedAt: Date.now() };
+            })
+            .finally(() => inflight.delete(cacheKey));
+          inflight.set(cacheKey, request);
+        }
+        await request;
       }
       const rawgData = rawgCache[cacheKey] || {};
       return {
@@ -53,11 +114,12 @@ async function hydrateGamesWithRAWG(app, games) {
           })) || [],
         features: rawgData?.tags?.map((t) => t.name) || [],
       };
-    })
+    },
   );
 
   // write-through save happens in your private route; also safe to save here:
   app.locals.rawgCache = rawgCache;
+  pruneRawgCache(rawgCache);
   return hydrated;
 }
 

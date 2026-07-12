@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import pg from "pg";
+import { buildPgConfig } from "../backend/config/pg.js";
 
 const args = new Set(process.argv.slice(2));
 const mode = args.has("--production") ? "production" : "local";
@@ -58,25 +59,6 @@ function describeDbUrl(value) {
   return `${parsed.protocol}//${parsed.username || "user"}:***@${parsed.host}${parsed.pathname}`;
 }
 
-function buildPgConfig(connectionString) {
-  const forceEnableSSL =
-    String(process.env.PGSSL || "").toLowerCase() === "true";
-  const forceDisableSSL =
-    String(process.env.PGSSL || "").toLowerCase() === "false";
-  const needSSL =
-    forceEnableSSL ||
-    (!forceDisableSSL &&
-    (/sslmode=require/i.test(connectionString || "") ||
-      /(railway|heroku|neon|supabase|render|azure|amazonaws|cockroach|gcp)/i.test(
-        connectionString || ""
-      )));
-
-  return {
-    connectionString,
-    ssl: needSSL ? { rejectUnauthorized: false } : undefined,
-  };
-}
-
 const files = (await fs.readdir(migrationsDir))
   .filter((file) => /^\d+_.+\.sql$/.test(file))
   .sort();
@@ -87,18 +69,16 @@ try {
   await client.connect();
   console.log(`Migration target: ${mode} ${describeDbUrl(process.env.DATABASE_URL)}`);
 
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      filename TEXT PRIMARY KEY,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  const applied = await client.query("SELECT filename FROM schema_migrations");
-  const appliedFiles = new Set(applied.rows.map((row) => row.filename));
-  const pendingFiles = files.filter((file) => !appliedFiles.has(file));
-
   if (statusOnly) {
+    let appliedFiles = new Set();
+    try {
+      const applied = await client.query("SELECT filename FROM schema_migrations");
+      appliedFiles = new Set(applied.rows.map((row) => row.filename));
+    } catch (error) {
+      if (error?.code !== "42P01") throw error;
+      console.log("Migration metadata table is missing; status made no changes.");
+    }
+    const pendingFiles = files.filter((file) => !appliedFiles.has(file));
     if (pendingFiles.length === 0) {
       console.log("No pending migrations.");
     } else {
@@ -107,6 +87,15 @@ try {
     }
     process.exitCode = 0;
   } else {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename TEXT PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    const applied = await client.query("SELECT filename FROM schema_migrations");
+    const appliedFiles = new Set(applied.rows.map((row) => row.filename));
+
     const lock = await client.query(
       "SELECT pg_try_advisory_lock($1) AS locked",
       [MIGRATION_LOCK_ID]
@@ -142,6 +131,25 @@ try {
       }
     } finally {
       await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_ID]);
+    }
+
+    const verified = await client.query(
+      `
+      SELECT
+        to_regclass('users') IS NOT NULL AS has_users,
+        to_regclass('games') IS NOT NULL AS has_games,
+        to_regclass('schema_migrations') IS NOT NULL AS has_metadata,
+        (SELECT COUNT(*)::int FROM schema_migrations) AS applied_count
+      `,
+    );
+    const state = verified.rows[0];
+    if (
+      !state?.has_users ||
+      !state?.has_games ||
+      !state?.has_metadata ||
+      Number(state.applied_count) !== files.length
+    ) {
+      throw new Error("Post-migration schema/version verification failed.");
     }
 
     console.log(`${mode} migrations complete.`);

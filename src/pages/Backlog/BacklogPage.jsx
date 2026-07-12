@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Gamepad2, PlusCircle, SearchX } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import GameGrid from "../../components/GameGrid";
 import DemoBanner from "../../components/DemoBanner";
 import { Button, EmptyState } from "../../components/ui";
@@ -36,6 +37,7 @@ export default function BacklogPage() {
 
   const nav = useNavigate();
   const loc = useLocation();
+  const { rawStatusesForGroup } = useStatusGroups();
 
   const {
     games,
@@ -96,26 +98,28 @@ export default function BacklogPage() {
     initialReverse: userPreferences.default_backlog_sort_reversed,
   });
 
-  // Quick filter: Completed (finished + played alot but didnt finish)
-  const COMPLETED_STATUSES = ["finished", "played alot but didnt finish"];
+  const completedStatuses = React.useMemo(
+    () => rawStatusesForGroup("done"),
+    [rawStatusesForGroup],
+  );
 
   const completedActive = React.useMemo(() => {
     const set = new Set(
       (selectedStatuses || []).map((s) => String(s).toLowerCase()),
     );
     return (
-      set.size === COMPLETED_STATUSES.length &&
-      COMPLETED_STATUSES.every((s) => set.has(s))
+      set.size === completedStatuses.length &&
+      completedStatuses.every((s) => set.has(s))
     );
-  }, [selectedStatuses]);
+  }, [completedStatuses, selectedStatuses]);
 
   const toggleCompleted = React.useCallback(() => {
     if (completedActive) {
       setSelectedStatuses([]);
     } else {
-      setSelectedStatuses(COMPLETED_STATUSES);
+      setSelectedStatuses(completedStatuses);
     }
-  }, [completedActive, setSelectedStatuses]);
+  }, [completedActive, completedStatuses, setSelectedStatuses]);
 
   // Apply URL filters from insights/status/genre links.
   useApplyFiltersFromQuery({
@@ -128,7 +132,7 @@ export default function BacklogPage() {
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
 
   const [selectedGame, setSelectedGame] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -196,9 +200,9 @@ export default function BacklogPage() {
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated && loc.pathname === "/") {
-      setShowAdminLogin(true);
+      setShowAuth(true);
     }
-  }, [authLoading, isAuthenticated, loc.pathname, setShowAdminLogin]);
+  }, [authLoading, isAuthenticated, loc.pathname, setShowAuth]);
 
   useLayoutEffect(() => {
     const setVar = (px) =>
@@ -292,6 +296,8 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       hasHoursFilter,
   );
+  const reorderEnabled =
+    canReorder && !hasActiveFilters && !sortKey && !isReversed;
 
   // removed guest-only extra top padding; wrapper handles it now
   const mainClass =
@@ -354,7 +360,7 @@ export default function BacklogPage() {
                 add: () =>
                   isAuthenticated
                     ? setShowAddForm(true)
-                    : setShowAdminLogin(true),
+                    : setShowAuth(true),
                 surprise: handleSurpriseMe,
                 completedActive,
                 toggleCompleted,
@@ -392,7 +398,8 @@ export default function BacklogPage() {
                 onSelectGame={setSelectedGame}
                 onEditGame={startEditing}
                 onDeleteGame={handleDeleteGame}
-                onReorder={canReorder ? handleReorderGames : null}
+                onReorder={reorderEnabled ? handleReorderGames : null}
+                canManage={canReorder}
                 viewMode={viewMode}
               />
             ) : (
@@ -424,7 +431,7 @@ export default function BacklogPage() {
                       onClick={() =>
                         isAuthenticated
                           ? setShowAddForm(true)
-                          : setShowAdminLogin(true)
+                          : setShowAuth(true)
                       }
                     >
                       <PlusCircle className="h-4 w-4" aria-hidden="true" />
@@ -435,6 +442,12 @@ export default function BacklogPage() {
                 className="mx-auto max-w-3xl"
               />
             )}
+            {canReorder && !reorderEnabled && displayGames.length > 1 ? (
+              <p className="mx-auto mt-3 max-w-[1760px] px-2 text-xs text-content-muted sm:px-0">
+                Manual reordering is available after clearing search, filters,
+                alternate sorting, and reverse order.
+              </p>
+            ) : null}
           </div>
 
           <BacklogModals
@@ -456,11 +469,11 @@ export default function BacklogPage() {
             isEditing={isEditing}
             statuses={allStatuses}
             allMyGenres={allMyGenres}
-            showAdminLogin={showAdminLogin}
-            onCloseAdminLogin={() => setShowAdminLogin(false)}
+            showAuth={showAuth}
+            onCloseAuth={() => setShowAuth(false)}
             showOnboarding={showOnboarding}
             onCloseOnboarding={() => setShowOnboarding(false)}
-            onShowAuth={() => setShowAdminLogin(true)}
+            onShowAuth={() => setShowAuth(true)}
             showKeepDemo={showKeepDemo}
             onCloseKeepDemo={() => setShowKeepDemo(false)}
           />

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CalendarDays,
   Clock3,
@@ -99,6 +100,7 @@ export default function GameModal({
   const [syncingAchievements, setSyncingAchievements] = useState(false);
   const [localAchievements, setLocalAchievements] = useState(null);
   const modalRef = useRef(null);
+  const titleId = `${useId()}-title`;
   const toast = useToast();
 
   useDismissibleLayer({
@@ -155,12 +157,12 @@ export default function GameModal({
     }
   };
 
-  return (
+  const dialog = (
     <div
       className="fixed inset-0 z-modal overflow-y-auto bg-backdrop/78 p-2 backdrop-blur-md sm:p-5"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="game-modal-title"
+      aria-labelledby={titleId}
     >
       <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center">
         <div
@@ -207,7 +209,7 @@ export default function GameModal({
 
               <div className="min-w-0 flex-1 pb-1">
                 <h2
-                  id="game-modal-title"
+                  id={titleId}
                   className="line-clamp-2 pr-10 text-2xl font-semibold tracking-tight text-media-text drop-shadow sm:text-4xl"
                 >
                   {game.name}
@@ -463,4 +465,8 @@ export default function GameModal({
       </div>
     </div>
   );
+
+  return typeof document === "undefined"
+    ? dialog
+    : createPortal(dialog, document.body);
 }

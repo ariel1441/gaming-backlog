@@ -4,7 +4,12 @@ import { pool } from "../db.js";
 import {
   applySteamStatusSuggestion,
   attachSteamCandidateToGame,
+  beginSteamLink,
   bestTitleSimilarity,
+  consumeSteamLink,
+  disconnectSteamAccount,
+  enqueueSteamSync,
+  getSteamSyncJob,
   importSteamCandidates,
   isLikelySteamDuplicateTitle,
   likelyFilteredReason,
@@ -18,6 +23,7 @@ import {
   titleVariants,
   unlinkSteamAppFromGame,
   updateSteamImportCandidate,
+  upsertSteamAccount,
 } from "./steamService.js";
 
 async function withMockClient(queryImpl, fn) {
@@ -57,6 +63,125 @@ async function withMockPoolQuery(queryImpl, fn) {
 function compact(sql) {
   return String(sql).replace(/\s+/g, " ").trim();
 }
+
+test("Steam link transactions bind signed state to a one-time browser nonce", async () => {
+  const originalSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "steam-link-test-secret";
+  let transaction;
+  try {
+    await withMockPoolQuery(
+      async (text, values) => {
+        assert.match(compact(text), /^INSERT INTO steam_link_transactions/);
+        assert.equal(values[1], 7);
+        assert.match(values[0], /^[0-9a-f-]{36}$/);
+        assert.match(values[2], /^[0-9a-f]{64}$/);
+        return { rows: [] };
+      },
+      async () => {
+        transaction = await beginSteamLink(7);
+      }
+    );
+
+    const providerUrl = new URL(transaction.url);
+    const returnTo = new URL(providerUrl.searchParams.get("openid.return_to"));
+    const state = returnTo.searchParams.get("state");
+
+    await withMockPoolQuery(
+      async (text, values) => {
+        assert.match(compact(text), /^UPDATE steam_link_transactions SET consumed_at/);
+        assert.match(values[0], /^[0-9a-f-]{36}$/);
+        assert.match(values[1], /^[0-9a-f]{64}$/);
+        return { rows: [{ user_id: 7 }] };
+      },
+      async () => {
+        assert.equal(await consumeSteamLink(state, transaction.nonce), 7);
+      }
+    );
+
+    await withMockPoolQuery(
+      async () => ({ rows: [] }),
+      async () => {
+        await assert.rejects(
+          consumeSteamLink(state, "wrong-browser-nonce"),
+          /expired or was already used/
+        );
+      }
+    );
+  } finally {
+    if (originalSecret == null) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalSecret;
+  }
+});
+
+test("upsertSteamAccount refuses to displace another user's active link", async () => {
+  await withMockClient(
+    async (text) => {
+      const sql = compact(text);
+      if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.startsWith("SELECT user_id FROM user_external_accounts")) {
+        return { rows: [{ user_id: 99 }] };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async (calls) => {
+      await assert.rejects(
+        upsertSteamAccount(7, "76561198000000000"),
+        /already linked to another account/
+      );
+      assert.equal(calls.some((call) => compact(call.text) === "ROLLBACK"), true);
+    }
+  );
+});
+
+test("Steam sync enqueue returns a durable job and job reads stay user scoped", async () => {
+  const jobRow = {
+    id: "40f1f5c4-0fe4-4b66-a953-4a58397fc875",
+    user_id: 7,
+    account_id: 12,
+    status: "queued",
+    cursor: 0,
+    total: null,
+    progress_json: {},
+    created_at: new Date().toISOString(),
+  };
+  await withMockPoolQuery(
+    async (text, values) => {
+      const sql = compact(text);
+      if (sql.startsWith("SELECT * FROM user_external_accounts")) {
+        assert.deepEqual(values, [7]);
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              provider: "steam",
+              provider_user_id: "76561198000000000",
+            },
+          ],
+        };
+      }
+      if (sql.startsWith("INSERT INTO steam_sync_jobs")) {
+        assert.equal(values[1], 7);
+        assert.equal(values[2], 12);
+        assert.equal(values[3], false);
+        return { rows: [{ ...jobRow, id: values[0] }] };
+      }
+      if (sql.startsWith("SELECT * FROM steam_sync_jobs WHERE id")) {
+        assert.deepEqual(values, [jobRow.id, 7]);
+        return { rows: [jobRow] };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async () => {
+      const queued = await enqueueSteamSync(7);
+      assert.match(queued.id, /^[0-9a-f-]{36}$/);
+      assert.equal(queued.status, "queued");
+      const fetched = await getSteamSyncJob(7, jobRow.id);
+      assert.equal(fetched.id, jobRow.id);
+      assert.equal(fetched.status, "queued");
+    },
+  );
+});
 
 test("normalizeOwnedGamesPayload maps Steam owned library rows", () => {
   const rows = normalizeOwnedGamesPayload({
@@ -291,9 +416,10 @@ test("likelyFilteredReason catches common non-game Steam app variants", () => {
 });
 
 test("updateSteamImportCandidate hides and restores both candidate and source rows", async () => {
-  await withMockPoolQuery(
+  await withMockClient(
     async (text, values) => {
       const sql = compact(text);
+      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
       if (sql.startsWith("UPDATE steam_import_candidates SET import_status = 'ignored'")) {
         assert.deepEqual(values, [12, 7]);
         return {
@@ -359,6 +485,49 @@ test("likelyFilteredReason flags common non-game Steam apps", () => {
   assert.equal(likelyFilteredReason("Some Game Documentary"), "steam_media");
 });
 
+test("Steam review transactions roll back when a related source write fails", async () => {
+  await withMockClient(
+    async (text) => {
+      const sql = compact(text);
+      if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.startsWith("UPDATE steam_import_candidates")) {
+        return {
+          rows: [{ id: 12, steam_app_id: "123", steam_name: "Game", import_status: "ignored" }],
+        };
+      }
+      if (sql.startsWith("UPDATE user_game_sources")) {
+        throw new Error("injected source failure");
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async (calls) => {
+      await assert.rejects(
+        updateSteamImportCandidate(7, 12, "ignore"),
+        /injected source failure/,
+      );
+      assert.equal(calls.some((call) => compact(call.text) === "ROLLBACK"), true);
+      assert.equal(calls.some((call) => compact(call.text) === "COMMIT"), false);
+    },
+  );
+});
+
+test("disconnectSteamAccount updates account and sources in one transaction", async () => {
+  await withMockClient(
+    async (text) => {
+      const sql = compact(text);
+      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql.startsWith("UPDATE user_external_accounts")) return { rows: [], rowCount: 1 };
+      if (sql.startsWith("UPDATE user_game_sources")) return { rows: [], rowCount: 2 };
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async (calls) => {
+      assert.deepEqual(await disconnectSteamAccount(7), { account: null });
+      assert.equal(compact(calls[0].text), "BEGIN");
+      assert.equal(compact(calls.at(-2).text), "COMMIT");
+    },
+  );
+});
+
 test("listSteamImportCandidates group filters match exclusive summary piles", async () => {
   await withMockPoolQuery(
     async (text) => {
@@ -402,6 +571,7 @@ test("applySteamStatusSuggestion updates only a Steam-linked game", async () => 
       if (sql.startsWith("UPDATE games g SET status = $3")) {
         assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03"]);
         assert.match(sql, /EXISTS \( SELECT 1 FROM user_game_sources ugs/);
+        assert.doesNotMatch(sql, /updated_at/);
         return {
           rows: [
             {
@@ -530,6 +700,10 @@ test("attachSteamCandidateToGame moves a Steam link and preserves stronger sourc
         call.text.includes("import_status = 'attached'")
       );
       assert.deepEqual(candidateUpdate.values, [12, 7, 31]);
+      assert.equal(
+        calls.some((call) => call.text.includes("INSERT INTO external_game_ids")),
+        false
+      );
     }
   );
 });
@@ -621,10 +795,21 @@ test("mergeBacklogDuplicateGames moves Steam links before deleting duplicate row
       );
       assert.deepEqual(candidateMove.values, [7, [42], 41]);
 
+      const listMove = calls.find((call) =>
+        call.text.includes("INSERT INTO user_list_games")
+      );
+      assert.deepEqual(listMove.values, [7, [42], 41]);
+      assert.match(listMove.text, /GROUP BY ulg\.list_id/);
+      assert.match(listMove.text, /ON CONFLICT \(list_id, game_id\) DO NOTHING/);
+
       const deleteCall = calls.find((call) => call.text.includes("DELETE FROM games"));
       assert.deepEqual(deleteCall.values, [7, [42]]);
       assert.ok(
         calls.findIndex((call) => call === sourceMove) <
+          calls.findIndex((call) => call === deleteCall)
+      );
+      assert.ok(
+        calls.findIndex((call) => call === listMove) <
           calls.findIndex((call) => call === deleteCall)
       );
     }

@@ -228,7 +228,9 @@ Routes:
 - `/discover` - catalog browse/search/add flow.
 - `/steam/import` - Steam account link/sync, reviewed import flow, and Steam
   Sync Review for newly detected activity.
+- `/steam/library` - private synced Steam library and match/link repair tools.
 - `/timeline` - private read-only chronological started/finished date feed.
+- `/reviews` - private completed-game review history with notes and scores.
 - `/insights` - analytics dashboard.
 - `/u/:username` - public read-only profile.
 

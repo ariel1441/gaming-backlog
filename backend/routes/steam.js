@@ -15,11 +15,13 @@ import {
   steamAchievementBatchSync as validateSteamAchievementBatchSync,
   steamGameAchievementSync as validateSteamGameAchievementSync,
   steamSync as validateSteamSync,
+  steamSyncJob as validateSteamSyncJob,
   unlinkSteamGame as validateUnlinkSteamGame,
   updateSteamCandidate as validateUpdateSteamCandidate,
 } from "../validators/steam.js";
 import {
-  createSteamOpenIdUrl,
+  beginSteamLink,
+  consumeSteamLink,
   applySteamStatusSuggestion,
   attachSteamCandidateToGame,
   autoMatchSteamCandidates,
@@ -36,12 +38,14 @@ import {
   mergeBacklogDuplicateGames,
   syncSteamAchievementsForGame,
   syncSteamAchievementsForLinkedGames,
-  syncSteamLibrary,
+  enqueueSteamSync,
+  getSteamSyncJob,
+  cancelSteamSyncJob,
   unlinkSteamAppFromGame,
   updateSteamImportCandidate,
   upsertSteamAccount,
   verifySteamOpenId,
-  verifySteamState,
+  STEAM_LINK_COOKIE,
 } from "../services/steamService.js";
 
 const router = express.Router();
@@ -55,9 +59,17 @@ function isLocalRequest(req) {
   );
 }
 
-router.get("/auth/start", verifyToken, (req, res, next) => {
+router.get("/auth/start", verifyToken, async (req, res, next) => {
   try {
-    res.json({ url: createSteamOpenIdUrl(req.user.id) });
+    const transaction = await beginSteamLink(req.user.id);
+    res.cookie(STEAM_LINK_COOKIE, transaction.nonce, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/api/steam/auth/callback",
+      maxAge: transaction.maxAge,
+    });
+    res.json({ url: transaction.url });
   } catch (err) {
     next(err);
   }
@@ -65,17 +77,22 @@ router.get("/auth/start", verifyToken, (req, res, next) => {
 
 router.get("/auth/callback", async (req, res) => {
   try {
-    const userId = verifySteamState(req.query.state);
     const steamId = await verifySteamOpenId(req.query);
+    const cookies = Object.fromEntries(
+      String(req.headers.cookie || "")
+        .split(";")
+        .map((part) => part.trim().split(/=(.*)/s).slice(0, 2))
+        .filter(([key]) => key)
+        .map(([key, value]) => [key, decodeURIComponent(value || "")])
+    );
+    const userId = await consumeSteamLink(req.query.state, cookies[STEAM_LINK_COOKIE]);
     const summary = await fetchPlayerSummary(steamId).catch(() => ({}));
     await upsertSteamAccount(userId, steamId, summary);
+    res.clearCookie(STEAM_LINK_COOKIE, { path: "/api/steam/auth/callback" });
     res.redirect(frontendSteamUrl({ linked: "1" }));
   } catch (err) {
-    res.redirect(
-      frontendSteamUrl({
-        error: err?.message || "Could not link Steam.",
-      })
-    );
+    res.clearCookie(STEAM_LINK_COOKIE, { path: "/api/steam/auth/callback" });
+    res.redirect(frontendSteamUrl({ error: "steam_link_failed" }));
   }
 });
 
@@ -122,26 +139,36 @@ router.delete("/account", verifyToken, async (req, res, next) => {
 
 router.post("/sync", verifyToken, validateSteamSync, async (req, res, next) => {
   try {
-    const payload = await syncSteamLibrary(req.user.id, {
+    const job = await enqueueSteamSync(req.user.id, {
       force: process.env.NODE_ENV !== "production" && req.body?.force === true,
     });
-    try {
-      payload.achievements = await syncSteamAchievementsForLinkedGames(req.user.id, {
-        force: process.env.NODE_ENV !== "production" && req.body?.force === true,
-      });
-    } catch (achievementErr) {
-      payload.achievements = {
-        failed: true,
-        errorCode: achievementErr?.code || "steam_achievements_sync_failed",
-        errorMessage:
-          achievementErr?.message || "Could not sync Steam achievements.",
-      };
-    }
-    cacheClear(req.user.id);
     res.setHeader("Cache-Control", "no-store");
-    res.json(payload);
+    res.status(202).json({ job });
   } catch (err) {
     next(err);
+  }
+});
+
+router.get("/sync/:jobId", verifyToken, validateSteamSyncJob, async (req, res, next) => {
+  try {
+    const job = await getSteamSyncJob(req.user.id, req.params.jobId);
+    if (!job) return next(notFound("Steam sync job not found."));
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ job });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.delete("/sync/:jobId", verifyToken, validateSteamSyncJob, async (req, res, next) => {
+  try {
+    const job = await cancelSteamSyncJob(req.user.id, req.params.jobId);
+    if (!job) return next(notFound("Steam sync job is not cancellable."));
+    cacheClear(req.user.id);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ job });
+  } catch (err) {
+    return next(err);
   }
 });
 

@@ -51,6 +51,7 @@ import {
   useToast,
 } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
+import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import { useGames } from "../../hooks/useGames";
 import {
   addGameToList,
@@ -113,11 +114,15 @@ export default function CustomListPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const { statusGroupOf } = useStatusGroups();
 
   const isSmart = list?.listType === "smart";
   const resolvedSmart = useMemo(
-    () => (isSmart ? resolveSmartList(list, backlogGames) : null),
-    [backlogGames, isSmart, list],
+    () =>
+      isSmart
+        ? resolveSmartList(list, backlogGames, { statusGroupOf })
+        : null,
+    [backlogGames, isSmart, list, statusGroupOf],
   );
   const displayGames = isSmart ? resolvedSmart?.games || [] : manualGames;
 

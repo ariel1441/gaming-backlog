@@ -1,5 +1,5 @@
 import React from "react";
-import AdminLoginForm from "../../components/AdminLoginForm";
+import AuthModal from "../../components/AuthModal";
 import EditGameForm from "../../components/EditGameForm";
 import GameModal from "../../components/GameModal";
 import KeepDemoModal from "../../components/KeepDemoModal";
@@ -21,8 +21,8 @@ export default function BacklogModals({
   isEditing,
   statuses,
   allMyGenres,
-  showAdminLogin,
-  onCloseAdminLogin,
+  showAuth,
+  onCloseAuth,
   showOnboarding,
   onCloseOnboarding,
   onShowAuth,
@@ -63,7 +63,7 @@ export default function BacklogModals({
         />
       )}
 
-      {showAdminLogin && <AdminLoginForm onClose={onCloseAdminLogin} />}
+      {showAuth && <AuthModal onClose={onCloseAuth} />}
 
       {showOnboarding && (
         <OnboardingModal

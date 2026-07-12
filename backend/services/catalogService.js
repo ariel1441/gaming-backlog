@@ -15,7 +15,6 @@ export const COLLECTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PROVIDER = "rawg";
 const inflight = new Map();
 const DEFAULT_COLLECTION_LIMIT = 24;
-const DEFAULT_COLLECTION_FETCH_MULTIPLIER = 3;
 const MAX_COLLECTION_GAMES = 96;
 const COLLECTION_SCHEDULER_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -438,8 +437,8 @@ async function selectCatalogById(id, userId) {
   return rows[0] || null;
 }
 
-async function selectCatalogByExternal(source, externalId) {
-  const { rows } = await pool.query(
+async function selectCatalogByExternal(source, externalId, db = pool) {
+  const { rows } = await db.query(
     `
     SELECT cg.*
     FROM catalog_games cg
@@ -455,14 +454,29 @@ async function selectCatalogByExternal(source, externalId) {
 async function upsertCatalogFromRawgData(data) {
   if (!data?.rawgId || !data?.name) return null;
 
-  const existing = await selectCatalogByExternal(PROVIDER, String(data.rawgId));
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+      [PROVIDER, String(data.rawgId)],
+    );
+
+  const existing = await selectCatalogByExternal(
+    PROVIDER,
+    String(data.rawgId),
+    client,
+  );
   if (existing) {
     const fullIncoming = data.metadataQuality === "full";
     const keepExistingFull =
       existing.metadata_quality === "full" && data.metadataQuality !== "full";
-    if (keepExistingFull) return existing;
+    if (keepExistingFull) {
+      await client.query("COMMIT");
+      return existing;
+    }
 
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `
       UPDATE catalog_games
          SET name = $2,
@@ -503,7 +517,7 @@ async function upsertCatalogFromRawgData(data) {
         JSON.stringify(data.tags || []),
       ],
     );
-    await pool.query(
+    await client.query(
       `
       UPDATE external_game_ids
          SET slug = COALESCE($3, slug), updated_at = NOW()
@@ -511,10 +525,11 @@ async function upsertCatalogFromRawgData(data) {
       `,
       [PROVIDER, String(data.rawgId), data.rawgSlug],
     );
+    await client.query("COMMIT");
     return rows[0];
   }
 
-  const { rows } = await pool.query(
+  const { rows } = await client.query(
     `
     WITH inserted AS (
       INSERT INTO catalog_games (
@@ -544,7 +559,9 @@ async function upsertCatalogFromRawgData(data) {
     external_insert AS (
       INSERT INTO external_game_ids (catalog_game_id, source, external_id, slug)
       SELECT id, 'rawg', $14, $15 FROM inserted
-      ON CONFLICT (source, external_id) DO NOTHING
+      ON CONFLICT (source, external_id) DO UPDATE
+        SET slug = COALESCE(EXCLUDED.slug, external_game_ids.slug),
+            updated_at = NOW()
     )
     SELECT * FROM inserted
     `,
@@ -566,7 +583,16 @@ async function upsertCatalogFromRawgData(data) {
       data.rawgSlug,
     ],
   );
-  return rows[0] || selectCatalogByExternal(PROVIDER, String(data.rawgId));
+  await client.query("COMMIT");
+  return rows[0];
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function markCatalogFailure(catalogGameId, reason) {
@@ -896,6 +922,8 @@ async function upsertCollectionDefinition(
       JSON.stringify({
         params: rawgParams,
         pageSize: pageSize || DEFAULT_COLLECTION_LIMIT,
+        nextPage: 2,
+        endReached: false,
       }),
       COLLECTION_TTL_MS,
     ],
@@ -984,7 +1012,7 @@ export async function searchCatalog(query, user = {}) {
 
   const cache = await getSearchCache(queryKey);
   const cachedIds = jsonArray(cache?.result_catalog_game_ids_json).map(Number);
-  if (cacheFresh(cache) && cachedIds.length) {
+  if (cacheFresh(cache)) {
     const rows = await catalogRowsForIds(cachedIds, user.id);
     return {
       results: rows.map((row) =>
@@ -1042,6 +1070,7 @@ export async function searchCatalog(query, user = {}) {
   } catch (error) {
     await markSearchFailure(queryKey, error?.message || "rawg_search_failed");
     const rows = await catalogRowsForIds(cachedIds, user.id);
+    if (!rows.length) throw error;
     return {
       results: rows.map((row) =>
         mapCatalogRow(row, {
@@ -1084,9 +1113,11 @@ export async function ensureCatalogGameFromRawg(
     row = await upsertCatalogFromRawgData(normalizeRawgDetail(rawg));
     return row;
   } catch (error) {
-    if (row)
+    if (row) {
       await markCatalogFailure(row.id, error?.message || "rawg_detail_failed");
-    return row;
+      return row;
+    }
+    throw error;
   }
 }
 
@@ -1169,7 +1200,7 @@ export async function seedCatalogCollection(collection, options = {}) {
 
   try {
     const rawgResults = await fetchRAWGGames(rawgParams, {
-      pageSize: Math.min(limit * DEFAULT_COLLECTION_FETCH_MULTIPLIER, 40),
+      pageSize: limit,
     });
     const catalogRows = [];
     const seen = new Set();
@@ -1185,10 +1216,6 @@ export async function seedCatalogCollection(collection, options = {}) {
       if (catalogRows.length >= limit) break;
     }
 
-    if (!catalogRows.length) {
-      throw new Error("rawg_collection_empty");
-    }
-
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -1197,6 +1224,19 @@ export async function seedCatalogCollection(collection, options = {}) {
         collection,
         rawgParams,
         limit,
+      );
+      await client.query(
+        `
+        UPDATE catalog_collections
+           SET source_config_json = jsonb_set(
+                 source_config_json,
+                 '{endReached}',
+                 to_jsonb($2::boolean),
+                 true
+               )
+         WHERE id = $1
+        `,
+        [savedCollection.id, rawgResults.length < limit],
       );
       await client.query(
         "DELETE FROM catalog_collection_games WHERE collection_id = $1",
@@ -1311,6 +1351,19 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
   }
 
   const rawConfig = existing.source_config_json || {};
+  if (!Number.isInteger(Number(rawConfig.nextPage))) {
+    const reseeded = await seedCatalogCollection(collection, {
+      limit: options.limit || DEFAULT_COLLECTION_LIMIT,
+    });
+    if (reseeded.error) {
+      const shelves = await collectionRows(user.id, {
+        key,
+        limit: options.returnLimit || MAX_COLLECTION_GAMES,
+      });
+      return shelves[0] || null;
+    }
+    return loadMoreCatalogCollection(key, user, options);
+  }
   const baseParams =
     rawConfig.params || rawConfig || collectionParams(collection);
   const pageSize = Math.min(
@@ -1320,10 +1373,17 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
     ),
     40,
   );
-  const page = Math.floor(existingCount / pageSize) + 1;
+  const page = Math.max(Number(rawConfig.nextPage) || 2, 1);
+  if (rawConfig.endReached === true) {
+    const shelves = await collectionRows(user.id, {
+      key,
+      limit: options.returnLimit || MAX_COLLECTION_GAMES,
+    });
+    return shelves[0] || null;
+  }
   const rawgResults = await fetchRAWGGames(
     { ...baseParams, page },
-    { pageSize: Math.min(pageSize * DEFAULT_COLLECTION_FETCH_MULTIPLIER, 40) },
+    { pageSize },
   );
 
   const candidates = sortCollectionCandidates(rawgResults || [], collection);
@@ -1362,10 +1422,10 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
     if (appended.length >= pageSize) break;
   }
 
-  if (appended.length) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    if (appended.length) {
       for (const [index, row] of appended.entries()) {
         await client.query(
           `
@@ -1380,17 +1440,27 @@ export async function loadMoreCatalogCollection(key, user = {}, options = {}) {
           [existing.id, row.id, maxRank + index + 1],
         );
       }
-      await client.query(
-        "UPDATE catalog_collections SET updated_at = NOW() WHERE id = $1",
-        [existing.id],
-      );
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
     }
+    await client.query(
+      `
+      UPDATE catalog_collections
+         SET source_config_json = jsonb_set(
+               jsonb_set(source_config_json, '{nextPage}', to_jsonb($2::int), true),
+               '{endReached}',
+               to_jsonb($3::boolean),
+               true
+             ),
+             updated_at = NOW()
+       WHERE id = $1
+      `,
+      [existing.id, page + 1, rawgResults.length < pageSize],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
 
   const shelves = await collectionRows(user.id, {

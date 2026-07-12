@@ -166,8 +166,14 @@ async function mockApi(page) {
   await page.route(`${API_BASE}/api/demo/heartbeat`, (route) =>
     route.fulfill({ json: { ok: true } }),
   );
-  await page.route(`${API_BASE}/api/auth/me`, (route) =>
-    route.fulfill({
+  await page.route(`${API_BASE}/api/auth/me`, (route) => {
+    if (!route.request().headers().authorization) {
+      return route.fulfill({
+        status: 401,
+        json: { error: { code: "unauthorized", message: "Unauthorized" } },
+      });
+    }
+    return route.fulfill({
       json: {
         id: 99,
         username: "e2e_user",
@@ -175,8 +181,8 @@ async function mockApi(page) {
         is_public: true,
         created_at: "2025-08-09T00:00:00.000Z",
       },
-    }),
-  );
+    });
+  });
   await page.route(`${API_BASE}/api/games/statuses-list`, (route) =>
     route.fulfill({
       json: [
@@ -404,6 +410,10 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("starts the demo and renders the backlog", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("token");
+    window.localStorage.removeItem("seen_onboarding_v1");
+  });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await expect(
@@ -434,6 +444,66 @@ test("renders a public profile as read-only", async ({ page }) => {
     page.getByRole("heading", { name: "Clair Obscur: Expedition 33" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /add game/i })).toHaveCount(0);
+});
+
+test("keyboard opens public games from the profile action", async ({ page }) => {
+  await page.goto("/u/ariel1441", { waitUntil: "domcontentloaded" });
+
+  const action = page.getByRole("button", { name: "View all games" });
+  await action.focus();
+  await expect(action).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(/view=games/);
+  await expect(
+    page.getByPlaceholder("Search this public backlog..."),
+  ).toBeVisible();
+});
+
+test("keyboard opens and closes a public game modal with focus restoration", async ({
+  page,
+}) => {
+  await page.goto("/u/ariel1441?view=games", {
+    waitUntil: "domcontentloaded",
+  });
+
+  const openGame = page.getByRole("button", {
+    name: "Open details for Baldur's Gate 3",
+  });
+  await openGame.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close game details" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(openGame).toBeFocused();
+});
+
+test("unknown routes render an accessible recovery page", async ({ page }) => {
+  await page.goto("/does-not-exist", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to backlog" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explore games" })).toBeVisible();
+});
+
+test("insights preserves all bookmarked query parameters", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto(
+    "/insights?wh=20&missing=true&genreMetric=hours&genreType=rawg&genreStatus=done",
+    { waitUntil: "domcontentloaded" },
+  );
+  await expect(page.getByRole("heading", { name: /Insights/i })).toBeVisible();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.toString())
+    .toContain("wh=20");
+  const params = new URL(page.url()).searchParams;
+  expect(params.get("missing")).toBe("true");
+  expect(params.get("genreMetric")).toBe("hours");
+  expect(params.get("genreType")).toBe("rawg");
+  expect(params.get("genreStatus")).toBe("done");
 });
 
 test("links from insights active stats back to filtered backlog", async ({
@@ -570,6 +640,22 @@ test("reorders same-rank games without sending a status change", async ({
       "Returnal",
       "Clair Obscur: Expedition 33",
     ]);
+});
+
+test("derived backlog views cannot mutate canonical manual order", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByPlaceholder(/search/i).fill("Baldur");
+  await expect(
+    page.getByText(/Manual reordering is available after clearing search/i),
+  ).toBeVisible();
+  expect(page.apiState.reorderPayloads).toEqual([]);
+  await expect(page.getByLabel("Edit game").first()).toBeVisible();
 });
 
 test("updates favorite games from public profile settings", async ({

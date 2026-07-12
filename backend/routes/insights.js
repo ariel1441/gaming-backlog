@@ -1,5 +1,6 @@
 // backend/routes/insights.js
 import express from "express";
+import { insightsQuery } from "../validators/insights.js";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 import { cacheGet, cacheSet } from "../utils/microCache.js";
@@ -193,21 +194,13 @@ function computeAggregates(rowsWithHours, weeklyHours) {
 }
 
 /* -------------------------------- Route -------------------------------- */
-router.get("/", verifyToken, async (req, res, next) => {
+router.get("/", verifyToken, insightsQuery, async (req, res, next) => {
   try {
     const userId = req.user.id;
 
     // Params
-    const weekly_hours = Math.max(
-      0,
-      Math.min(
-        200,
-        Number.parseInt(String(req.query.weekly_hours || ""), 10) || 0
-      )
-    );
-    const includeMissing =
-      String(req.query.include_missing_names || "false").toLowerCase() ===
-      "true";
+    const weekly_hours = req.query.weekly_hours;
+    const includeMissing = req.query.include_missing_names;
 
     // version bump to avoid stale payloads
     const cacheKey = `v4|wh=${weekly_hours}&missing=${includeMissing ? 1 : 0}`;
@@ -219,7 +212,6 @@ router.get("/", verifyToken, async (req, res, next) => {
     const accepted = [];
     const skipped = [];
     const sources = { db: 0, hltb: 0, rawg: 0, steam: 0 };
-    const hltbWrites = [];
 
     for (const r of baseRows) {
       const resolved = resolveHoursForRow(req, r);
@@ -231,26 +223,6 @@ router.get("/", verifyToken, async (req, res, next) => {
       accepted.push({ ...r, hours: resolved.hours });
       sources[resolved.source]++;
 
-      if (resolved.source === "hltb") {
-        hltbWrites.push({ id: r.id, hours: resolved.hours });
-      }
-    }
-
-    if (hltbWrites.length) {
-      const batch = hltbWrites.slice(0, 50);
-      const ids = batch.map((w) => w.id);
-      const hours = batch.map((w) => w.hours);
-      await pool.query(
-        `
-        UPDATE games AS g
-        SET how_long_to_beat = v.hours
-        FROM (
-          SELECT unnest($1::int[]) AS id, unnest($2::int[]) AS hours
-        ) AS v
-        WHERE g.id = v.id
-        `,
-        [ids, hours]
-      );
     }
 
     const agg = computeAggregates(accepted, weekly_hours);

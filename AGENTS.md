@@ -85,10 +85,12 @@ scripts, and current git state over older notes in markdown files.
 - Production schema changes must go through `backend/migrations/*.sql`.
 - Keep `backend/schema.sql` updated so fresh local installs match the latest
   schema.
-- Migrations should be schema-only, idempotent where practical, and
-  backward-compatible with the currently deployed app.
-- Do not put seed/demo/user data changes in migrations unless explicitly
-  requested.
+- Migrations should be backward-compatible with the currently deployed app and
+  idempotent where practical. Minimal deterministic schema-coupled reference
+  values or bounded backfills are allowed when required by the schema and
+  explicitly reviewed.
+- Do not put production copies, demo content, or user-specific seed data in
+  migrations unless explicitly requested.
 - Test schema work with `npm run db:migrate:local`; use
   `npm run db:reset:local` only for disposable local databases.
 
@@ -99,7 +101,7 @@ scripts, and current git state over older notes in markdown files.
 - Read `docs/SYSTEM_CONTEXT.md` early in a new session for the current
   architecture handoff. Use `docs/NEXT_TASKS.md` for the active queue and
   `docs/ROADMAP.md` only when broader planning or priorities are needed.
-- Preserve admin, guest/demo, and public read-only flows when changing shared
+- Preserve authenticated owner, guest/demo, and public read-only flows when changing shared
   UI.
 - Check responsive behavior for desktop and mobile when touching layout.
 - Long game titles, missing cover art, empty states, and auth errors should

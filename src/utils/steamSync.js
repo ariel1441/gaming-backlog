@@ -48,6 +48,21 @@ export function loadLastSteamSyncReview() {
   }
 }
 
+export function buildSteamStatusSuggestionPayload(item, { setStartedAt = false } = {}) {
+  const payload = {
+    status: "playing",
+    setStartedAt: Boolean(setStartedAt),
+  };
+  if (!payload.setStartedAt) return payload;
+
+  const rawDate = item?.firstPlayObservedAt || item?.lastPlayedAt;
+  const parsed = rawDate ? new Date(rawDate) : null;
+  if (parsed && Number.isFinite(parsed.getTime())) {
+    payload.startedAt = parsed.toISOString();
+  }
+  return payload;
+}
+
 export function formatSteamLibrarySyncMessage(payload) {
   const checked = Number(payload?.total || 0);
   const achievements = payload?.achievements;

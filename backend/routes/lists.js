@@ -128,6 +128,47 @@ async function listGamesForList(client, listId, userId, { limit, cache } = {}) {
   return rows.map((row) => serializeGame(row, cache));
 }
 
+async function previewGamesForLists(client, userId, cache = {}) {
+  const { rows } = await client.query(
+    `
+      WITH ranked AS (
+        SELECT ulg.list_id,
+               g.*,
+               ulg.position AS list_position,
+               ulg.added_at AS list_added_at,
+               s.rank AS status_rank,
+               cg.name AS catalog_name,
+               cg.cover_url AS catalog_cover_url,
+               cg.released_at AS catalog_released_at,
+               cg.rawg_rating AS catalog_rawg_rating,
+               cg.metacritic AS catalog_metacritic,
+               cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
+               cg.genres_json AS catalog_genres_json,
+               ROW_NUMBER() OVER (
+                 PARTITION BY ulg.list_id
+                 ORDER BY ulg.position NULLS LAST, ulg.added_at, g.id
+               ) AS preview_rank
+        FROM user_list_games ulg
+        JOIN user_lists l ON l.id = ulg.list_id
+        JOIN games g ON g.id = ulg.game_id AND g.user_id = l.user_id
+        LEFT JOIN statuses s ON s.status = g.status
+        LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
+        WHERE l.user_id = $1
+      )
+      SELECT * FROM ranked
+      WHERE preview_rank <= 4
+      ORDER BY list_id, preview_rank
+    `,
+    [userId],
+  );
+  const byList = new Map();
+  for (const row of rows) {
+    if (!byList.has(row.list_id)) byList.set(row.list_id, []);
+    byList.get(row.list_id).push(serializeGame(row, cache));
+  }
+  return byList;
+}
+
 async function touchList(client, listId, userId) {
   await client.query(
     `
@@ -155,14 +196,14 @@ router.get("/", verifyToken, async (req, res, next) => {
       [userId]
     );
 
-    const lists = [];
-    for (const row of rows) {
-      const previewGames = await listGamesForList(pool, row.id, userId, {
-        limit: 4,
-        cache: req.app.locals.rawgCache || {},
-      });
-      lists.push(serializeList(row, previewGames));
-    }
+    const previews = await previewGamesForLists(
+      pool,
+      userId,
+      req.app.locals.rawgCache || {},
+    );
+    const lists = rows.map((row) =>
+      serializeList(row, previews.get(row.id) || []),
+    );
 
     res.setHeader("Cache-Control", "no-store");
     res.json({ lists });

@@ -54,7 +54,8 @@ const corsOptions = {
   },
 
   // You use JWT in Authorization header, not cookies → keep credentials off.
-  credentials: false,
+  // Steam link start uses the same origin allowlist plus an HttpOnly nonce.
+  credentials: true,
 
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Authorization", "Content-Type"],

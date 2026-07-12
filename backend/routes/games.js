@@ -12,13 +12,14 @@ import {
 import fs from "fs/promises";
 import path from "path";
 
-import { toHourInt } from "../utils/time.js";
+import { toDateOrNull, toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
-import { normStatus } from "../utils/status.js";
+import { normStatus, statusGroupOf } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
+import { affectsInsights } from "../utils/insightsInvalidation.js";
 import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
 import { normalizeScore } from "../utils/normalize.js";
-import { badRequest, notFound, conflict } from "../utils/httpError.js";
+import { badRequest, notFound, conflict, httpError } from "../utils/httpError.js";
 import { findDuplicateGameTitle } from "../utils/gameTitle.js";
 import {
   decorateGameWithCatalog,
@@ -252,8 +253,8 @@ function cachedRawgForGame(cache, game) {
  * Allocate the next position at the END of the **rank group** (not single status).
  * This lets any statuses with the same `rank` share one manual ordering space.
  */
-const getNextPosition = async (status, userId) => {
-  const result = await pool.query(
+const getNextPosition = async (status, userId, db = pool) => {
+  const result = await db.query(
     `
       SELECT COALESCE(MAX(g.position), 0) AS max
       FROM games g
@@ -265,6 +266,16 @@ const getNextPosition = async (status, userId) => {
   );
   return (result.rows[0].max || 0) + DEFAULT_POSITION_SPACING;
 };
+
+async function lockUserRank(db, userId, status) {
+  const result = await db.query("SELECT rank FROM statuses WHERE status = $1", [status]);
+  const rank = result.rows[0]?.rank;
+  if (!Number.isInteger(rank)) {
+    throw httpError(422, "status is invalid", "validation_error");
+  }
+  await db.query("SELECT pg_advisory_xact_lock($1, $2)", [Number(userId), rank]);
+  return rank;
+}
 
 /* -------------- Simple concurrency helper for the first cold rebuild ---------- */
 const mapWithLimit = async (items, limit, fn) => {
@@ -583,6 +594,7 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
 
 // POST create a new game
 router.post("/", verifyToken, upsertGame, async (req, res, next) => {
+  let client;
   try {
     const userId = req.user.id;
     const {
@@ -601,6 +613,14 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
 
     const statusNorm = normStatus(status);
     const userTitle = String(name).trim();
+
+    const statusRow = await pool.query(
+      "SELECT 1 FROM statuses WHERE status = $1",
+      [statusNorm],
+    );
+    if (!statusRow.rows[0]) {
+      return next(httpError(422, "status is invalid", "validation_error"));
+    }
 
     const duplicateQuery = listOwnedGameTitlesQuery(userId);
     const duplicateRes = await pool.query(
@@ -648,8 +668,12 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     }
 
     // HLTB write-once logic (user value wins; else user name; else RAWG official name)
+    const hoursProvided = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "how_long_to_beat",
+    );
     let hours = toHourInt(how_long_to_beat);
-    if (hours == null) {
+    if (hours == null && !hoursProvided) {
       const pref = ["main", "plus", "comp"].includes(hltb_pref)
         ? hltb_pref
         : "main";
@@ -667,8 +691,6 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       }
     }
     // If still null -> leave DB NULL; client will display RAWG hours only.
-
-    const position = await getNextPosition(statusNorm, userId);
 
     // Did the client explicitly include these keys?
     const startedProvided = Object.prototype.hasOwnProperty.call(
@@ -693,12 +715,12 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
           $8, $9, $10, $11,
           CASE
             WHEN $12 THEN $13
-            WHEN $4 = 'playing' THEN ${TODAY_SQL}
+            WHEN $18 THEN ${TODAY_SQL}
             ELSE NULL
           END,
           CASE
             WHEN $14 THEN $15
-            WHEN $4 IN ('finished','played alot but didnt finish') THEN ${TODAY_SQL}
+            WHEN $19 THEN ${TODAY_SQL}
             ELSE NULL
           END,
           $16,
@@ -718,23 +740,47 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       hours, // $8
       hours_preferred_source || "auto", // $9
       !!hours_locked, // $10
-      position, // $11
+      0, // $11 allocated under the rank lock below
       startedProvided, // $12
       startedBody, // $13
       finishedProvided, // $14
       finishedBody, // $15
       rawg_id || null, // $16
       (rawg_slug || rawg?.slug || "").trim() || null, // $17
+      statusGroupOf(statusNorm) === "playing", // $18
+      statusGroupOf(statusNorm) === "done", // $19
     ];
 
-    const { rows } = await pool.query(insertSql, params);
+    client = await pool.connect();
+    await client.query("BEGIN");
+    await lockUserRank(client, userId, statusNorm);
+
+    const finalDuplicateQuery = listOwnedGameTitlesQuery(userId);
+    const finalDuplicates = await client.query(
+      finalDuplicateQuery.text,
+      finalDuplicateQuery.values,
+    );
+    const finalDuplicate = findDuplicateGameTitle(userTitle, finalDuplicates.rows);
+    if (finalDuplicate) {
+      throw conflict(`"${finalDuplicate.name}" is already in your backlog.`);
+    }
+
+    const position = await getNextPosition(statusNorm, userId, client);
+    params[10] = position;
+    const { rows } = await client.query(insertSql, params);
+    await client.query("COMMIT");
 
     // Invalidate Insights micro-cache for this user (new game affects analytics)
     cacheClear(userId);
 
     res.status(201).json(decorateGameForClient(rows[0], rawg));
   } catch (err) {
+    try {
+      await client?.query("ROLLBACK");
+    } catch {}
     next(err);
+  } finally {
+    client?.release();
   }
 });
 
@@ -765,6 +811,14 @@ router.put(
       const statusNorm = normStatus(status);
       const userTitle = String(name || "").trim();
 
+      const statusRow = await pool.query(
+        "SELECT 1 FROM statuses WHERE status = $1",
+        [statusNorm],
+      );
+      if (!statusRow.rows[0]) {
+        return next(httpError(422, "status is invalid", "validation_error"));
+      }
+
       // ensure ownership and get current row
       const existingQuery = selectOwnedGameQuery(gameId, userId);
       const existing = await pool.query(
@@ -793,12 +847,16 @@ router.put(
 
       // Respect rule: only store HLTB/user hours. If user didn't provide and name changed, retry HLTB.
       let newHLTB = toHourInt(how_long_to_beat);
+      const hoursProvided = Object.prototype.hasOwnProperty.call(
+        req.body,
+        "how_long_to_beat",
+      );
       const nameChanged = userTitle !== row.name;
 
       const isGuest = !!req.user?.is_guest;
       let catalogGameId = row.catalog_game_id || null;
 
-      if (newHLTB == null && nameChanged) {
+      if (newHLTB == null && !hoursProvided && nameChanged) {
         const cache = req.app.locals.rawgCache || {};
         let canonicalName;
         if (!isGuest) {
@@ -868,7 +926,29 @@ router.put(
       const startedBody = startedProvided ? req.body.started_at : null; // 'YYYY-MM-DD' or null
       const finishedBody = finishedProvided ? req.body.finished_at : null;
 
-      const hours_new = newHLTB ?? toHourInt(row.how_long_to_beat);
+      const hours_new = hoursProvided
+        ? newHLTB
+        : newHLTB ?? toHourInt(row.how_long_to_beat);
+
+      const effectiveStarted = startedProvided
+        ? startedBody
+        : toDateOrNull(row.started_at);
+      const effectiveFinished = finishedProvided
+        ? finishedBody
+        : toDateOrNull(row.finished_at);
+      if (
+        effectiveStarted &&
+        effectiveFinished &&
+        effectiveFinished < effectiveStarted
+      ) {
+        return next(
+          httpError(
+            422,
+            "finished_at cannot be before started_at",
+            "validation_error",
+          ),
+        );
+      }
 
       const updateSql = `
   UPDATE games g
@@ -887,13 +967,13 @@ router.put(
 
          started_at = CASE
            WHEN $11 THEN $18
-           WHEN $13 AND $2 = 'playing' AND g.started_at IS NULL THEN ${TODAY_SQL}
+           WHEN $13 AND $20 AND g.started_at IS NULL THEN ${TODAY_SQL}
            ELSE g.started_at
          END,
 
          finished_at = CASE
            WHEN $12 THEN $19
-           WHEN $13 AND $2 IN ('finished','played alot but didnt finish') AND g.finished_at IS NULL THEN ${TODAY_SQL}
+           WHEN $13 AND $21 AND g.finished_at IS NULL THEN ${TODAY_SQL}
            ELSE g.finished_at
          END
 
@@ -921,19 +1001,15 @@ router.put(
         catalogGameId, // $17
         startedBody, // $18
         finishedBody, // $19
+        statusGroupOf(statusNorm) === "playing", // $20
+        statusGroupOf(statusNorm) === "done", // $21
       ];
 
       const { rows } = await pool.query(updateSql, params);
       const nextRow = rows[0];
 
       // Invalidate Insights micro-cache if analytics-relevant fields changed
-      const prevHours = Number(row.how_long_to_beat) || 0;
-      const nextHours = Number(nextRow.how_long_to_beat) || 0;
-      if (
-        row.status !== nextRow.status ||
-        row.name !== nextRow.name ||
-        prevHours !== nextHours
-      ) {
+      if (affectsInsights(row, nextRow)) {
         cacheClear(userId);
       }
 
@@ -1044,6 +1120,11 @@ router.patch(
       );
       const targetRank = trgRows[0]?.rank;
       const currentRank = curRows[0]?.rank;
+
+      if (!Number.isInteger(targetRank)) {
+        await client.query("ROLLBACK");
+        return next(httpError(422, "status is invalid", "validation_error"));
+      }
 
       try {
         assertSameRank(currentRank, targetRank);

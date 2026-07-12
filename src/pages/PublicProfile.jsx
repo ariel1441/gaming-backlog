@@ -16,10 +16,9 @@ import { Button, EmptyState, useToast } from "../components/ui";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useFilters } from "../hooks/useFilters";
 import { useStatuses } from "../hooks/useStatuses";
+import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { getPublicProfile, listPublicGames } from "../services/publicService";
 import { buildDisplayGames } from "../utils/gameList";
-
-const COMPLETED_STATUSES = ["finished", "played alot but didnt finish"];
 
 export default function PublicProfile() {
   const { username } = useParams();
@@ -29,9 +28,15 @@ export default function PublicProfile() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [selectedGame, setSelectedGame] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
   const isGamesView = searchParams.get("view") === "games";
+  const { rawStatusesForGroup } = useStatusGroups();
+  const completedStatuses = useMemo(
+    () => rawStatusesForGroup("done"),
+    [rawStatusesForGroup],
+  );
 
   useEffect(() => {
     const ac = new AbortController();
@@ -39,6 +44,7 @@ export default function PublicProfile() {
       try {
         setLoading(true);
         setError("");
+        setIsPrivate(false);
         const [profileData, gameData] = await Promise.all([
           getPublicProfile(username, { signal: ac.signal, auth: false }),
           listPublicGames(username, { signal: ac.signal, auth: false }),
@@ -58,7 +64,8 @@ export default function PublicProfile() {
         setGames(list);
       } catch (err) {
         if (err.name !== "AbortError") {
-          setError(err.message || "Failed to load");
+          if (err.status === 403) setIsPrivate(true);
+          else setError(err.message || "Failed to load");
         }
       } finally {
         setLoading(false);
@@ -155,12 +162,12 @@ export default function PublicProfile() {
       (selectedStatuses || []).map((status) => String(status).toLowerCase()),
     );
     return (
-      set.size === COMPLETED_STATUSES.length &&
-      COMPLETED_STATUSES.every((status) => set.has(status))
+      set.size === completedStatuses.length &&
+      completedStatuses.every((status) => set.has(status))
     );
-  }, [selectedStatuses]);
+  }, [completedStatuses, selectedStatuses]);
   const toggleCompleted = () => {
-    setSelectedStatuses(completedActive ? [] : COMPLETED_STATUSES);
+    setSelectedStatuses(completedActive ? [] : completedStatuses);
   };
   const openGamesView = () => {
     setSearchParams((current) => {
@@ -200,13 +207,13 @@ export default function PublicProfile() {
     );
   }
 
-  if (error) {
+  if (isPrivate || (!error && profile && !profile.is_public)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
         <EmptyState
-          icon={AlertTriangle}
-          title="Could not load this profile."
-          description={error}
+          icon={LockKeyhole}
+          title="This profile is private."
+          description="The owner has not made this backlog public."
           action={
             <Button as={Link} to="/" variant="secondary">
               Back to app
@@ -218,13 +225,13 @@ export default function PublicProfile() {
     );
   }
 
-  if (!profile?.is_public) {
+  if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
         <EmptyState
-          icon={LockKeyhole}
-          title="This profile is private."
-          description="The owner has not made this backlog public."
+          icon={AlertTriangle}
+          title="Could not load this profile."
+          description={error}
           action={
             <Button as={Link} to="/" variant="secondary">
               Back to app
@@ -297,6 +304,7 @@ export default function PublicProfile() {
           <GameModal
             game={selectedGame}
             onClose={() => setSelectedGame(null)}
+            readOnly
           />
         )}
       </AppPage>

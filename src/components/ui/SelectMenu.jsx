@@ -17,6 +17,7 @@ export default function SelectMenu({
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const optionRefs = useRef([]);
+  const typeaheadRef = useRef({ value: "", timer: null });
   const generatedId = useId();
   const controlId = id || `${generatedId}-control`;
   const listboxId = `${controlId}-listbox`;
@@ -46,7 +47,21 @@ export default function SelectMenu({
     else if (event.key === "ArrowUp") nextIndex = Math.max(0, currentIndex - 1);
     else if (event.key === "Home") nextIndex = 0;
     else if (event.key === "End") nextIndex = options.length - 1;
-    else return;
+    else if (event.key.length === 1 && /\S/.test(event.key)) {
+      const state = typeaheadRef.current;
+      clearTimeout(state.timer);
+      state.value += event.key.toLowerCase();
+      const matchIndex = options.findIndex((option) =>
+        String(option.label || option.value)
+          .toLowerCase()
+          .startsWith(state.value),
+      );
+      state.timer = setTimeout(() => {
+        state.value = "";
+      }, 600);
+      if (matchIndex >= 0) optionRefs.current[matchIndex]?.focus();
+      return;
+    } else return;
     event.preventDefault();
     optionRefs.current[nextIndex]?.focus();
   };

@@ -18,6 +18,28 @@ const baseStatusSchema = Joi.string()
 
 const statusSchema = baseStatusSchema.required();
 
+function isCalendarDate(value) {
+  if (value === null) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+const calendarDateSchema = Joi.alternatives()
+  .try(
+    Joi.string().custom((value, helpers) =>
+      isCalendarDate(value) ? value : helpers.error("date.format")
+    ),
+    Joi.valid(null)
+  )
+  .optional()
+  .messages({ "date.format": "date must be a real YYYY-MM-DD calendar date" });
+
 function validateDateOrder(value, helpers) {
   if (
     value.started_at &&
@@ -110,18 +132,8 @@ export const gameSchemas = {
         "any.only": "hours_preferred_source must be auto, estimate, or steam_actual",
       }),
     hours_locked: Joi.boolean().optional(),
-    started_at: Joi.alternatives()
-      .try(Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/), Joi.valid(null))
-      .optional()
-      .messages({
-        "string.pattern.base": "started_at must be YYYY-MM-DD",
-      }),
-    finished_at: Joi.alternatives()
-      .try(Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/), Joi.valid(null))
-      .optional()
-      .messages({
-        "string.pattern.base": "finished_at must be YYYY-MM-DD",
-      }),
+    started_at: calendarDateSchema,
+    finished_at: calendarDateSchema,
     hltb_pref: Joi.string().valid("main", "plus", "comp").optional(),
     rawg_id: Joi.number().integer().positive().optional().allow(null).messages({
       "number.base": "rawg_id must be a number",

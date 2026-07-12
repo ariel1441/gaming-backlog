@@ -30,6 +30,14 @@ const AuthModal = ({ onClose }) => {
       setError("Username and password are required");
       return;
     }
+    if (mode === "register" && password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+    if (mode === "register" && new TextEncoder().encode(password).length > 72) {
+      setError("Password must be at most 72 UTF-8 bytes");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -134,6 +142,7 @@ const AuthModal = ({ onClose }) => {
               autoComplete={
                 mode === "login" ? "current-password" : "new-password"
               }
+              minLength={mode === "register" ? 8 : undefined}
             />
           </Field>
 

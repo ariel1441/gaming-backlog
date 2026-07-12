@@ -82,6 +82,17 @@ export function useGames() {
   const reqSeq = useRef(0);
   const gamesRef = useRef([]);
   const editSeq = useRef(new Map());
+  const hydrationTimerRef = useRef(null);
+  const refreshControllersRef = useRef(new Set());
+
+  useEffect(
+    () => () => {
+      if (hydrationTimerRef.current) clearTimeout(hydrationTimerRef.current);
+      refreshControllersRef.current.forEach((controller) => controller.abort());
+      refreshControllersRef.current.clear();
+    },
+    [],
+  );
 
   useEffect(() => {
     gamesRef.current = games;
@@ -140,6 +151,8 @@ export function useGames() {
 
       const silent = !!opts.silent; // default false
       const seq = ++reqSeq.current;
+      const controller = new AbortController();
+      refreshControllersRef.current.add(controller);
 
       if (!silent) setLoading(true);
       if (!silent) setError(null);
@@ -147,6 +160,7 @@ export function useGames() {
         const data = await listGamesApi({
           auth: false,
           headers: getAuthHeaders(),
+          signal: controller.signal,
         });
         if (seq !== reqSeq.current) return; // a newer refresh started → ignore
 
@@ -174,9 +188,11 @@ export function useGames() {
           return sortGames([...merged, ...optimistic]);
         });
       } catch (e) {
+        if (e?.name === "AbortError") return;
         if (!silent) setError(e);
         throw e;
       } finally {
+        refreshControllersRef.current.delete(controller);
         if (!silent && seq === reqSeq.current) setLoading(false);
       }
     },
@@ -302,7 +318,9 @@ export function useGames() {
       const nameChanged =
         typeof patch?.name === "string" && patch.name.trim() !== "";
       if (nameChanged || needsHydration(updated)) {
-        setTimeout(() => {
+        if (hydrationTimerRef.current) clearTimeout(hydrationTimerRef.current);
+        hydrationTimerRef.current = setTimeout(() => {
+          hydrationTimerRef.current = null;
           refresh({ silent: true }).catch(() => {});
         }, 400);
       }

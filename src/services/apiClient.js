@@ -15,6 +15,16 @@ const NETWORK_ERROR_MESSAGE =
 
 // Storage key unified with AuthContext
 const TOKEN_KEY = "token";
+const unauthorizedListeners = new Set();
+
+export function onUnauthorized(listener) {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+function notifyUnauthorized() {
+  for (const listener of unauthorizedListeners) listener();
+}
 
 export function getAuthToken() {
   try {
@@ -108,6 +118,7 @@ export async function apiFetch(
     signal,
     auth = true,
     keepalive,
+    credentials,
     retries,
     retryDelayMs,
   } = {},
@@ -126,6 +137,7 @@ export async function apiFetch(
     headers: reqHeaders,
     signal,
     keepalive,
+    credentials,
   };
 
   if (body != null) {
@@ -189,9 +201,11 @@ export async function apiFetch(
     res.statusText ||
     "Request failed";
 
-  // Auto sign-out on auth failures so the app falls back to "guest"
-  if (res.status === 401 || res.status === 403) {
-    setAuthToken(null);
+  // AuthContext owns session cleanup so its in-memory state and storage cannot
+  // diverge. Permission failures and explicitly public requests are local to
+  // their caller and must never invalidate an existing session.
+  if (res.status === 401 && auth && reqHeaders.Authorization) {
+    notifyUnauthorized();
   }
 
   throw new ApiError(message, { status: res.status, details: payload });

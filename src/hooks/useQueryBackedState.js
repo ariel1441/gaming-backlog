@@ -1,14 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-/**
- * Persist a piece of state into URLSearchParams (and optional localStorage).
- * @param {object} opts
- * @param {string} opts.key
- * @param {any} opts.defaultValue
- * @param {(raw:any, def:any)=>any} [opts.parse]
- * @param {(val:any)=>string} [opts.serialize]
- * @param {string} [opts.storageKey]
- */
+
+function readStorage(key) {
+  if (!key || typeof localStorage === "undefined") return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key, value) {
+  if (!key || typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // URL state remains authoritative when storage is unavailable.
+  }
+}
+
 export default function useQueryBackedState({
   key,
   defaultValue,
@@ -16,19 +26,43 @@ export default function useQueryBackedState({
   serialize,
   storageKey,
 }) {
-  const [sp, setSp] = useSearchParams();
-  const raw =
-    sp.get(key) ?? (storageKey ? localStorage.getItem(storageKey) : null);
-  const initial = parse ? parse(raw, defaultValue) : (raw ?? defaultValue);
-
-  const [value, setValue] = useState(initial);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlValue = searchParams.get(key);
+  const parseValue = (raw) =>
+    parse ? parse(raw, defaultValue) : (raw ?? defaultValue);
+  const serializeValue = (next) =>
+    serialize ? serialize(next) : String(next);
+  const [value, setValue] = useState(() =>
+    parseValue(urlValue ?? readStorage(storageKey)),
+  );
+  const previousUrlValue = useRef(urlValue);
+  const syncingFromUrl = useRef(false);
 
   useEffect(() => {
-    const next = new URLSearchParams(sp);
-    next.set(key, serialize ? serialize(value) : String(value));
-    setSp(next, { replace: true });
-    if (storageKey) localStorage.setItem(storageKey, String(value));
-  }, [value]);
+    if (urlValue === previousUrlValue.current) return;
+    previousUrlValue.current = urlValue;
+    syncingFromUrl.current = true;
+    setValue(parseValue(urlValue));
+  }, [urlValue]);
+
+  useEffect(() => {
+    const encoded = serializeValue(value);
+    if (syncingFromUrl.current) {
+      syncingFromUrl.current = false;
+      writeStorage(storageKey, encoded);
+      return;
+    }
+    setSearchParams(
+      (current) => {
+        if (current.get(key) === encoded) return current;
+        const next = new URLSearchParams(current);
+        next.set(key, encoded);
+        return next;
+      },
+      { replace: true },
+    );
+    writeStorage(storageKey, encoded);
+  }, [key, setSearchParams, storageKey, value]);
 
   return [value, setValue];
 }

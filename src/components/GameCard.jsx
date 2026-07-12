@@ -11,6 +11,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { canDeleteGame, canEditGame } from "../utils/permissions";
 import { splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
@@ -42,16 +43,8 @@ function daysSince(value) {
   return (Date.now() - date.getTime()) / (24 * 60 * 60 * 1000);
 }
 
-function statusIsAlreadyActiveOrDone(status) {
-  const value = String(status || "")
-    .toLowerCase()
-    .trim();
-  return [
-    "playing",
-    "finished",
-    "played alot but didnt finish",
-    "played a lot but didn't finish",
-  ].includes(value);
+function statusIsAlreadyActiveOrDone(status, statusGroupOf) {
+  return ["playing", "done"].includes(statusGroupOf(status));
 }
 
 function MiniStat({ icon: Icon, label, value, tone = "default" }) {
@@ -214,19 +207,20 @@ export default function GameCard({
   variant = "grid",
 }) {
   const { user, isAuthenticated } = useAuth();
+  const { statusGroupOf } = useStatusGroups();
   const toast = useToast();
   const canEdit = canEditGame({ user, game, isAuthenticated, readOnly });
   const canDelete = canDeleteGame({ user, game, isAuthenticated, readOnly });
 
   const handleCardClick = (event) => {
-    if (event.target.closest(".action-button")) return;
+    event.stopPropagation();
     onClick?.();
   };
 
   const handleEdit = (event) => {
     event.stopPropagation();
     if (!canEdit) {
-      toast.warning("Admin access required to edit games.");
+      toast.warning("Sign in to edit games in your backlog.");
       return;
     }
     onEdit?.();
@@ -235,7 +229,7 @@ export default function GameCard({
   const handleDelete = (event) => {
     event.stopPropagation();
     if (!canDelete) {
-      toast.warning("Admin access required to delete games.");
+      toast.warning("Sign in to delete games from your backlog.");
       return;
     }
     onDelete?.();
@@ -280,7 +274,7 @@ export default function GameCard({
     game.steamOwned &&
     steamActivityDays != null &&
     steamActivityDays <= 30 &&
-    !statusIsAlreadyActiveOrDone(game.status)
+    !statusIsAlreadyActiveOrDone(game.status, statusGroupOf)
       ? {
           icon: Gamepad2,
           label: "Steam activity",
@@ -334,14 +328,23 @@ export default function GameCard({
         )}
       </div>
     ) : null;
+  const openDetailsButton = onClick ? (
+    <button
+      type="button"
+      className="absolute inset-0 z-10 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+      onClick={handleCardClick}
+      onKeyDown={(event) => event.stopPropagation()}
+      aria-label={`Open details for ${game.name}`}
+    />
+  ) : null;
 
   if (isList) {
     return (
       <article
         className="group relative overflow-hidden rounded-2xl border border-surface-border bg-surface-card shadow-sm transition-colors hover:border-primary/35"
-        onClick={handleCardClick}
         style={{ WebkitTapHighlightColor: "transparent" }}
       >
+        {openDetailsButton}
         {actionButtons}
         <div className="relative min-h-[172px] sm:min-h-[184px]">
           {game.cover ? (
@@ -439,9 +442,9 @@ export default function GameCard({
   return (
     <article
       className={`group relative flex flex-col overflow-hidden rounded-2xl border border-surface-border bg-surface-card/95 shadow-sm transition-all duration-300 hover:border-primary/30 hover:bg-surface-card hover:shadow-glow-primary hover:-translate-y-0.5 h-full`}
-      onClick={handleCardClick}
       style={{ WebkitTapHighlightColor: "transparent" }}
     >
+      {openDetailsButton}
       {actionButtons}
 
       <div className="relative overflow-hidden border-b border-surface-border/70 bg-surface-card">

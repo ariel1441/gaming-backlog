@@ -1,10 +1,59 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildSteamStatusSuggestionPayload,
   formatAchievementGameSyncMessage,
   formatAchievementBatchSyncMessage,
   formatSteamLibrarySyncMessage,
+  normalizeSyncReview,
 } from "./steamSync.js";
+
+test("stored Steam reviews build a stable playing-status payload", () => {
+  assert.deepEqual(
+    buildSteamStatusSuggestionPayload(
+      { suggestedStatus: "finished", firstPlayObservedAt: "stale-invalid-date" },
+      { setStartedAt: true },
+    ),
+    { status: "playing", setStartedAt: true },
+  );
+  assert.deepEqual(
+    buildSteamStatusSuggestionPayload(
+      { lastPlayedAt: "2026-07-12T10:30:00.000Z" },
+      { setStartedAt: true },
+    ),
+    {
+      status: "playing",
+      setStartedAt: true,
+      startedAt: "2026-07-12T10:30:00.000Z",
+    },
+  );
+  assert.deepEqual(
+    buildSteamStatusSuggestionPayload(
+      { firstPlayObservedAt: "stale-invalid-date" },
+      { setStartedAt: false },
+    ),
+    { status: "playing", setStartedAt: false },
+  );
+});
+
+test("stored Steam reviews normalize array shape and recompute totals", () => {
+  assert.deepEqual(
+    normalizeSyncReview({
+      startedPlaying: [{ gameId: 6290 }],
+      statusSuggestions: "stale-invalid-value",
+      newSteamGames: [{ candidateId: 4 }],
+      total: 99,
+      savedAt: "2026-07-12T10:00:00.000Z",
+    }),
+    {
+      startedPlaying: [{ gameId: 6290 }],
+      statusSuggestions: [],
+      newSteamGames: [{ candidateId: 4 }],
+      total: 2,
+      savedAt: "2026-07-12T10:00:00.000Z",
+    },
+  );
+});
 
 test("formatSteamLibrarySyncMessage describes checks without implying every app changed", () => {
   assert.equal(

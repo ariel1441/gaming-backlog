@@ -23,8 +23,8 @@ npm run db:migrate:local
 npm run db:migrate:status
 ```
 
-Production migrations are run by GitHub Actions on pushes to `main` when the
-`PROD_DATABASE_URL` repository secret is configured. The workflow runs after CI
+Production migrations are run by GitHub Actions on pushes to `main`. A missing
+`PROD_DATABASE_URL` fails the protected production job. The workflow runs after CI
 passes, connects with SSL enabled through `PGSSL=true`, shows pending
 migrations, then applies them through:
 
@@ -44,12 +44,25 @@ Useful production status command:
 npm run db:migrate:prod:status
 ```
 
-Migrations should be schema-only and backward-compatible. Do not put production
-data copies or seed data here.
+Migrations should be backward-compatible. Minimal deterministic, schema-coupled
+reference data or backfills are allowed when required to make new schema valid,
+idempotent, bounded, and explicitly reviewed. Do not put production data copies,
+demo content, or user-specific seed data here.
+
+`000_core_baseline.sql` is the adoption-safe production bootstrap. It creates
+only the historical core tables when missing and inserts status reference values
+required by foreign keys. Never add destructive statements to it.
+
+Status commands are read-only. If `schema_migrations` is absent they report all
+migrations pending without creating metadata.
 
 For safe deploys, prefer additive changes first, deploy code that tolerates both
 old and new schema when practical, then clean up obsolete schema in a later
 migration.
+
+`018_add_steam_sync_jobs.sql` adds the durable, checkpointed Steam library sync
+queue. Deploy this migration before application code that serves
+`POST /api/steam/sync`.
 
 Future automation notes live in
 `docs/planning/production-migration-automation.md`.

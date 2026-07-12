@@ -183,12 +183,13 @@ The check job runs on pushes to `main` and `Dev`, and on pull requests:
 
 - `npm ci`
 - `npm run lint`
-- `npm test`
+- `npm test` (Node unit, route, and real-Postgres schema contracts)
 - `npm run build`
+- `npm run test:e2e` (desktop plus focused mobile/keyboard Chromium coverage)
 
 The production migration job runs only on pushes to `main`, after checks pass.
-It applies SQL files from `backend/migrations/` only if the GitHub secret
-`PROD_DATABASE_URL` is configured.
+It applies SQL files from `backend/migrations/`. The protected job fails when
+`PROD_DATABASE_URL` is missing so production cannot silently skip schema work.
 
 Catalog/Discover data is cached in Postgres. For production Discover shelves,
 either:
@@ -259,13 +260,15 @@ Use this order for schema work:
 `backend/schema.sql` currently drops and recreates tables, so it is for local
 fresh installs only.
 
-Production migrations must be schema-only and safe to run once:
+Production migrations must be backward-compatible and safe to run once:
 
 - Good: `CREATE TABLE`, `ALTER TABLE ADD COLUMN`, indexes, constraints added
   after data is valid.
 - Risky: dropping columns, renaming columns, changing meanings of existing data.
-- Never put seed/demo/user data changes in production migrations unless the
-  release explicitly calls for it.
+- Minimal deterministic schema-coupled reference values or bounded backfills
+  may be included when required by the schema and explicitly reviewed.
+- Never put production copies, demo content, or user-specific seed data in a
+  migration.
 
 Because Vercel/Railway deployment can happen near the same time as GitHub
 Actions, prefer backward-compatible migrations: old code should keep working

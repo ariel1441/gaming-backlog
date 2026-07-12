@@ -1,4 +1,5 @@
 import { celebrate, Segments, Joi } from "celebrate";
+import { passwordPolicyError } from "../utils/passwordPolicy.js";
 
 const opts = { convert: true, abortEarly: false, stripUnknown: true };
 
@@ -15,11 +16,16 @@ export const keepDemo = celebrate(
           "string.pattern.base":
             "username must be 3-30 characters and use only letters, numbers, underscores, dots, or dashes",
         }),
-      password: Joi.string().min(6).required().messages({
-        "any.required": "password is required",
-        "string.empty": "password cannot be empty",
-        "string.min": "password must be at least 6 characters",
-      }),
+      password: Joi.string()
+        .custom((value, helpers) => {
+          const message = passwordPolicyError(value);
+          return message ? helpers.message(message) : value;
+        })
+        .required()
+        .messages({
+          "any.required": "password is required",
+          "string.empty": "password cannot be empty",
+        }),
     }),
   },
   opts

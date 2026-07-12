@@ -26,6 +26,14 @@ export default function KeepDemoModal({ open, onClose }) {
       setErr("Username and password are required.");
       return;
     }
+    if (password.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+    if (new TextEncoder().encode(password).length > 72) {
+      setErr("Password must be at most 72 UTF-8 bytes.");
+      return;
+    }
     setLoading(true);
     const res = await keepDemo(username.trim(), password);
     setLoading(false);
@@ -79,6 +87,7 @@ export default function KeepDemoModal({ open, onClose }) {
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
               autoComplete="new-password"
+              minLength={8}
             />
           </Field>
 

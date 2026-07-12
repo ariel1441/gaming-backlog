@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { gameSchemas } from "./games.js";
 
+const base = { name: "Hades", status: "playing" };
+
 test("game id params require a positive integer id", () => {
   assert.equal(gameSchemas.idParams.validate({ id: 12 }).error, undefined);
   assert.match(
@@ -19,7 +21,10 @@ test("upsert body normalizes status and validates required fields", () => {
   assert.equal(error, undefined);
   assert.equal(value.name, "Hades");
   assert.equal(value.status, "playing");
-  assert.match(gameSchemas.upsertBody.validate({ status: "playing" }).error.message, /name is required/);
+  assert.match(
+    gameSchemas.upsertBody.validate({ status: "playing" }).error.message,
+    /name is required/
+  );
   assert.equal(
     gameSchemas.upsertBody.validate({ name: "Hades", status: " missing " })
       .value.status,
@@ -27,32 +32,28 @@ test("upsert body normalizes status and validates required fields", () => {
   );
 });
 
-test("upsert body validates dates", () => {
+test("game date validation accepts real dates and rejects impossible dates", () => {
   assert.equal(
+    gameSchemas.upsertBody.validate({ ...base, started_at: "2024-02-29" }).error,
+    undefined,
+  );
+  for (const value of ["2023-02-29", "2026-02-31", "2026-13-01", "not-date"]) {
+    const result = gameSchemas.upsertBody.validate({ ...base, started_at: value });
+    assert.ok(result.error, `${value} should be rejected`);
+  }
+});
+
+test("game date validation preserves nullable and ordered ranges", () => {
+  assert.equal(
+    gameSchemas.upsertBody.validate({ ...base, started_at: null, finished_at: null }).error,
+    undefined,
+  );
+  assert.ok(
     gameSchemas.upsertBody.validate({
-      name: "Hades",
-      status: "playing",
-      started_at: "2026-05-08",
-      finished_at: null,
+      ...base,
+      started_at: "2026-07-12",
+      finished_at: "2026-07-11",
     }).error,
-    undefined
-  );
-  assert.match(
-    gameSchemas.upsertBody.validate({
-      name: "Hades",
-      status: "playing",
-      started_at: "05/08/2026",
-    }).error.message,
-    /started_at must be YYYY-MM-DD/
-  );
-  assert.match(
-    gameSchemas.upsertBody.validate({
-      name: "Hades",
-      status: "playing",
-      started_at: "2026-05-08",
-      finished_at: "2026-05-07",
-    }).error.message,
-    /finished_at cannot be before started_at/
   );
 });
 

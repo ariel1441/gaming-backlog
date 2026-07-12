@@ -61,10 +61,17 @@ const listMetadataBody = Joi.object({
     .optional(),
 });
 
+const updateListBody = listMetadataBody.fork(["listType"], (field) =>
+  field.forbidden().messages({
+    "any.unknown": "listType cannot be changed; create a new list instead",
+  }),
+).unknown(false);
+
 export const listSchemas = {
   listParams: listParamsSchema[Segments.PARAMS],
   listGameParams: listGameParamsSchema[Segments.PARAMS],
   metadataBody: listMetadataBody,
+  updateBody: updateListBody,
   addGameBody: Joi.object({
     gameId: Joi.number().integer().positive().required().messages({
       "any.required": "gameId is required",
@@ -122,9 +129,9 @@ export const createList = celebrate(
 export const updateList = celebrate(
   {
     ...listParamsSchema,
-    [Segments.BODY]: listSchemas.metadataBody,
+    [Segments.BODY]: listSchemas.updateBody,
   },
-  opts
+  { ...opts, stripUnknown: false }
 );
 
 export const addListGame = celebrate(

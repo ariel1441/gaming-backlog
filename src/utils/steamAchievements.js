@@ -1,3 +1,5 @@
+import { defaultStatusSemantics } from "./statusSemantics.js";
+
 export function achievementPercent(value) {
   const percent = Number(value);
   if (!Number.isFinite(percent)) return null;
@@ -102,6 +104,7 @@ export function achievementStatusSuggestion({
   playtimeMinutes,
   lastPlayedAt,
   achievements,
+  statusGroupOf = defaultStatusSemantics.statusGroupOf,
 } = {}) {
   const currentStatus = String(status || "").trim().toLowerCase();
   const percent = achievementPercent(achievements?.percent);
@@ -113,7 +116,7 @@ export function achievementStatusSuggestion({
   const recent =
     Number.isFinite(lastPlayed) && lastPlayed > 0 && Date.now() - lastPlayed <= 14 * 24 * 60 * 60 * 1000;
 
-  if (hasAchievements && percent >= 100 && currentStatus !== "finished") {
+  if (hasAchievements && percent >= 100 && statusGroupOf(currentStatus) !== "done") {
     return {
       label: "Looks complete",
       targetStatus: "finished",
@@ -131,7 +134,7 @@ export function achievementStatusSuggestion({
     };
   }
 
-  if (recent && hours >= 2 && currentStatus !== "playing") {
+  if (recent && hours >= 2 && statusGroupOf(currentStatus) !== "playing") {
     return {
       label: "Recently played",
       targetStatus: "playing",
@@ -140,7 +143,7 @@ export function achievementStatusSuggestion({
     };
   }
 
-  if (hours >= 10 && !["finished", "played alot but didnt finish"].includes(currentStatus)) {
+  if (hours >= 10 && statusGroupOf(currentStatus) !== "done") {
     return {
       label: "Played a lot",
       targetStatus: "played alot but didnt finish",

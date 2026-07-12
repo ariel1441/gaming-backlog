@@ -1,7 +1,9 @@
 -- DEV RESET (optional)
 DROP TABLE IF EXISTS steam_import_candidates;
 DROP TABLE IF EXISTS user_game_sources;
+DROP TABLE IF EXISTS steam_sync_jobs;
 DROP TABLE IF EXISTS user_external_accounts;
+DROP TABLE IF EXISTS steam_link_transactions;
 DROP TABLE IF EXISTS user_list_games;
 DROP TABLE IF EXISTS user_lists;
 DROP TABLE IF EXISTS games;
@@ -199,26 +201,41 @@ CREATE INDEX idx_catalog_collection_games_catalog_game_id
   ON catalog_collection_games (catalog_game_id);
 
 -- Games, owned by a user
+CREATE OR REPLACE FUNCTION normalize_game_title_sql(value TEXT)
+RETURNS TEXT
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+AS $function$
+  SELECT trim(
+    replace(replace(replace(replace(replace(replace(
+      ' ' || trim(regexp_replace(translate(lower(COALESCE(value, '')), '''' || chr(8217) || chr(8216) || chr(700), ''), '[^a-z0-9]+', ' ', 'g')) || ' ',
+      ' vii ', ' 7 '), ' vi ', ' 6 '), ' v ', ' 5 '),
+      ' iv ', ' 4 '), ' iii ', ' 3 '), ' ii ', ' 2 ')
+  );
+$function$;
+
 CREATE TABLE games (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   catalog_game_id INTEGER REFERENCES catalog_games(id),
   name TEXT NOT NULL,
   status TEXT NOT NULL REFERENCES statuses(status),
-  position INTEGER NOT NULL DEFAULT 1000,
+  position INTEGER NOT NULL DEFAULT 1000 CHECK (position >= 0),
   my_genre TEXT,
-  how_long_to_beat INTEGER,
+  how_long_to_beat INTEGER CHECK (how_long_to_beat IS NULL OR how_long_to_beat >= 0),
   hours_preferred_source TEXT NOT NULL DEFAULT 'auto'
     CHECK (hours_preferred_source IN ('auto', 'estimate', 'steam_actual')),
   hours_locked BOOLEAN NOT NULL DEFAULT FALSE,
-  my_score NUMERIC(3,1),           
+  my_score NUMERIC(3,1) CHECK (my_score IS NULL OR my_score BETWEEN 0 AND 10),
   thoughts TEXT,
   cover TEXT,
   rawg_id INTEGER,
   rawg_slug TEXT,
   favorite_rank INTEGER CHECK (favorite_rank IS NULL OR favorite_rank BETWEEN 1 AND 5),
   started_at DATE,
-  finished_at DATE
+  finished_at DATE,
+  CHECK (started_at IS NULL OR finished_at IS NULL OR finished_at >= started_at)
 );
 
 CREATE UNIQUE INDEX games_user_favorite_rank_unique
@@ -226,6 +243,20 @@ CREATE UNIQUE INDEX games_user_favorite_rank_unique
   WHERE favorite_rank IS NOT NULL;
 
 CREATE INDEX idx_games_catalog_game_id ON games (catalog_game_id);
+CREATE INDEX idx_games_rawg_id ON games (rawg_id);
+
+CREATE UNIQUE INDEX games_user_catalog_unique
+  ON games (user_id, catalog_game_id) WHERE catalog_game_id IS NOT NULL;
+
+CREATE UNIQUE INDEX games_user_rawg_unique
+  ON games (user_id, rawg_id) WHERE rawg_id IS NOT NULL;
+
+CREATE UNIQUE INDEX games_user_unlinked_title_unique
+  ON games (
+    user_id,
+    normalize_game_title_sql(name)
+  )
+  WHERE catalog_game_id IS NULL AND rawg_id IS NULL;
 
 CREATE TABLE user_lists (
   id SERIAL PRIMARY KEY,
@@ -251,7 +282,7 @@ CREATE INDEX idx_user_lists_user_type_updated
 CREATE TABLE user_list_games (
   list_id INTEGER NOT NULL REFERENCES user_lists(id) ON DELETE CASCADE,
   game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-  position INTEGER NOT NULL DEFAULT 1000,
+  position INTEGER NOT NULL DEFAULT 1000 CHECK (position >= 0),
   added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (list_id, game_id)
 );
@@ -294,6 +325,48 @@ CREATE UNIQUE INDEX user_external_accounts_provider_user_active_unique
 CREATE INDEX idx_user_external_accounts_user_id
   ON user_external_accounts (user_id);
 
+CREATE TABLE steam_link_transactions (
+  id UUID PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  nonce_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_steam_link_transactions_expiry
+  ON steam_link_transactions (expires_at)
+  WHERE consumed_at IS NULL;
+
+CREATE TABLE steam_sync_jobs (
+  id UUID PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id INTEGER REFERENCES user_external_accounts(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+  force BOOLEAN NOT NULL DEFAULT FALSE,
+  cursor INTEGER NOT NULL DEFAULT 0 CHECK (cursor >= 0),
+  total INTEGER,
+  payload_json JSONB,
+  progress_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  result_json JSONB,
+  error_code TEXT,
+  error_message TEXT,
+  locked_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX steam_sync_jobs_one_active_per_user
+  ON steam_sync_jobs (user_id)
+  WHERE status IN ('queued', 'running');
+
+CREATE INDEX steam_sync_jobs_runnable
+  ON steam_sync_jobs (status, locked_at, created_at)
+  WHERE status IN ('queued', 'running');
+
 CREATE TABLE user_game_sources (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -305,13 +378,13 @@ CREATE TABLE user_game_sources (
     CHECK (relationship IN ('owned')),
   source_status TEXT NOT NULL DEFAULT 'owned'
     CHECK (source_status IN ('owned', 'ignored', 'disconnected')),
-  playtime_minutes_forever INTEGER,
+  playtime_minutes_forever INTEGER CHECK (playtime_minutes_forever IS NULL OR playtime_minutes_forever >= 0),
   last_played_at TIMESTAMPTZ,
   first_play_observed_at TIMESTAMPTZ,
-  first_play_observed_playtime_minutes INTEGER,
-  achievements_unlocked INTEGER,
-  achievements_total INTEGER,
-  achievements_percent NUMERIC(5,2),
+  first_play_observed_playtime_minutes INTEGER CHECK (first_play_observed_playtime_minutes IS NULL OR first_play_observed_playtime_minutes >= 0),
+  achievements_unlocked INTEGER CHECK (achievements_unlocked IS NULL OR achievements_unlocked >= 0),
+  achievements_total INTEGER CHECK (achievements_total IS NULL OR achievements_total >= 0),
+  achievements_percent NUMERIC(5,2) CHECK (achievements_percent IS NULL OR achievements_percent BETWEEN 0 AND 100),
   achievements_status TEXT NOT NULL DEFAULT 'unknown'
     CHECK (achievements_status IN ('unknown', 'synced', 'none', 'private', 'unavailable', 'failed')),
   achievements_last_synced_at TIMESTAMPTZ,
@@ -322,7 +395,8 @@ CREATE TABLE user_game_sources (
   ignored_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (user_id, provider, provider_app_id)
+  UNIQUE (user_id, provider, provider_app_id),
+  CHECK (achievements_unlocked IS NULL OR achievements_total IS NULL OR achievements_unlocked <= achievements_total)
 );
 
 CREATE INDEX idx_user_game_sources_user_catalog
@@ -347,7 +421,7 @@ CREATE TABLE steam_import_candidates (
   steam_app_id TEXT NOT NULL,
   steam_name TEXT NOT NULL,
   steam_icon_url TEXT,
-  playtime_minutes_forever INTEGER,
+  playtime_minutes_forever INTEGER CHECK (playtime_minutes_forever IS NULL OR playtime_minutes_forever >= 0),
   last_played_at TIMESTAMPTZ,
   proposed_catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE SET NULL,
   duplicate_game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
@@ -377,3 +451,83 @@ CREATE INDEX idx_steam_import_candidates_user_status
 
 CREATE INDEX idx_steam_import_candidates_user_match
   ON steam_import_candidates (user_id, match_confidence, import_status);
+
+CREATE OR REPLACE FUNCTION enforce_owned_game_relationship()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE game_owner INTEGER;
+BEGIN
+  IF NEW.game_id IS NULL THEN RETURN NEW; END IF;
+  SELECT user_id INTO game_owner FROM games WHERE id = NEW.game_id;
+  IF game_owner IS NULL OR game_owner <> NEW.user_id THEN
+    RAISE EXCEPTION 'game relationship owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION enforce_candidate_duplicate_owner()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE game_owner INTEGER;
+BEGIN
+  IF NEW.duplicate_game_id IS NULL THEN RETURN NEW; END IF;
+  SELECT user_id INTO game_owner FROM games WHERE id = NEW.duplicate_game_id;
+  IF game_owner IS NULL OR game_owner <> NEW.user_id THEN
+    RAISE EXCEPTION 'candidate duplicate owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION enforce_list_game_owner()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE list_owner INTEGER; game_owner INTEGER;
+BEGIN
+  SELECT user_id INTO list_owner FROM user_lists WHERE id = NEW.list_id;
+  SELECT user_id INTO game_owner FROM games WHERE id = NEW.game_id;
+  IF list_owner IS NULL OR game_owner IS NULL OR list_owner <> game_owner THEN
+    RAISE EXCEPTION 'list game owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER user_game_sources_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, game_id ON user_game_sources
+  FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
+
+CREATE TRIGGER steam_import_candidates_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, duplicate_game_id ON steam_import_candidates
+  FOR EACH ROW EXECUTE FUNCTION enforce_candidate_duplicate_owner();
+
+CREATE TRIGGER user_list_games_owner_guard
+  BEFORE INSERT OR UPDATE OF list_id, game_id ON user_list_games
+  FOR EACH ROW EXECUTE FUNCTION enforce_list_game_owner();
+
+CREATE OR REPLACE FUNCTION prevent_game_owner_change_with_relationships()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.user_id = OLD.user_id THEN RETURN NEW; END IF;
+  IF EXISTS (SELECT 1 FROM user_list_games WHERE game_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM user_game_sources WHERE game_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM steam_import_candidates WHERE duplicate_game_id = OLD.id) THEN
+    RAISE EXCEPTION 'cannot change game owner while owned relationships exist'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION prevent_list_owner_change_with_memberships()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.user_id = OLD.user_id THEN RETURN NEW; END IF;
+  IF EXISTS (SELECT 1 FROM user_list_games WHERE list_id = OLD.id) THEN
+    RAISE EXCEPTION 'cannot change list owner while memberships exist'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER games_owner_change_guard
+  BEFORE UPDATE OF user_id ON games
+  FOR EACH ROW EXECUTE FUNCTION prevent_game_owner_change_with_relationships();
+
+CREATE TRIGGER user_lists_owner_change_guard
+  BEFORE UPDATE OF user_id ON user_lists
+  FOR EACH ROW EXECUTE FUNCTION prevent_list_owner_change_with_memberships();

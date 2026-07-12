@@ -14,8 +14,8 @@ import catalogRouter from "./routes/catalog.js";
 import steamRouter from "./routes/steam.js";
 import listsRouter from "./routes/lists.js";
 import { startCatalogCollectionScheduler } from "./services/catalogService.js";
+import { startSteamSyncJobScheduler } from "./services/steamService.js";
 import errorHandler from "./middleware/errorHandler.js";
-import { errors as celebrateErrors } from "celebrate";
 import demoRouter from "./routes/demo.js";
 import { pool } from "./db.js";
 
@@ -25,6 +25,7 @@ registerSecurity(app);
 
 await initCache(app); // sets app.locals.rawgCache
 const stopCatalogCollectionScheduler = startCatalogCollectionScheduler();
+const stopSteamSyncJobScheduler = startSteamSyncJobScheduler();
 
 // Liveness probe for platform health checks
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -48,7 +49,6 @@ app.use((req, _res, next) => {
 });
 
 // Celebrate/Joi validation errors → JSON
-app.use(celebrateErrors());
 
 // Central error handler (consistent { error: { code, message, requestId } })
 app.use(errorHandler);
@@ -69,6 +69,7 @@ async function shutdown(exitCode = 0) {
   shuttingDown = true;
 
   stopCatalogCollectionScheduler?.();
+  stopSteamSyncJobScheduler?.();
 
   if (guestCleanupInterval) {
     clearInterval(guestCleanupInterval);

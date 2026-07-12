@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
+import { passwordPolicyError } from "../utils/passwordPolicy.js";
 import {
   badRequest,
   conflict,
@@ -246,6 +247,8 @@ router.post("/register", async (req, res, next) => {
     if (!username || !password) {
       return next(badRequest("username and password are required"));
     }
+    const passwordError = passwordPolicyError(password);
+    if (passwordError) return next(badRequest(passwordError));
 
     // basic username guard
     if (!/^[\w.-]{3,30}$/.test(username)) {

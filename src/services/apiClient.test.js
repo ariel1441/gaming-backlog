@@ -5,6 +5,7 @@ import {
   ApiError,
   isNetworkFetchError,
   isTransientHttpStatus,
+  onUnauthorized,
 } from "./apiClient.js";
 
 test("isNetworkFetchError detects browser fetch failures", () => {
@@ -110,5 +111,54 @@ test("apiFetch retries transient GET HTTP responses", async () => {
     assert.equal(calls, 3);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("apiFetch expires the session only for authenticated 401 responses", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalStorage = globalThis.localStorage;
+  const values = new Map([["token", "valid-token"]]);
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+
+  let status = 403;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: { message: "Denied" } }), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  let expirations = 0;
+  const unsubscribe = onUnauthorized(() => {
+    expirations += 1;
+  });
+
+  try {
+    await assert.rejects(apiFetch("/api/private", { retries: 0 }), ApiError);
+    assert.equal(expirations, 0, "authenticated 403 is a permission failure");
+
+    await assert.rejects(
+      apiFetch("/api/public", { retries: 0, auth: false }),
+      ApiError,
+    );
+    assert.equal(expirations, 0, "public 403 cannot expire a session");
+
+    status = 401;
+    await assert.rejects(
+      apiFetch("/api/public", { retries: 0, auth: false }),
+      ApiError,
+    );
+    assert.equal(expirations, 0, "public 401 cannot expire a session");
+
+    await assert.rejects(apiFetch("/api/private", { retries: 0 }), ApiError);
+    assert.equal(expirations, 1, "authenticated 401 expires the session once");
+    assert.equal(values.get("token"), "valid-token");
+  } finally {
+    unsubscribe();
+    globalThis.fetch = originalFetch;
+    globalThis.localStorage = originalLocalStorage;
   }
 });

@@ -6,7 +6,11 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { getAuthToken, setAuthToken } from "../services/apiClient";
+import {
+  getAuthToken,
+  onUnauthorized,
+  setAuthToken,
+} from "../services/apiClient";
 import * as authService from "../services/authService";
 import { normalizeUserWithPreferences } from "../utils/userPreferences";
 import { normalizeUserWithProfile } from "../utils/userProfile";
@@ -38,6 +42,8 @@ export const AuthProvider = ({ children }) => {
     } catch {}
   }, []);
 
+  useEffect(() => onUnauthorized(clearSession), [clearSession]);
+
   const applySession = useCallback((data, { demo = false } = {}) => {
     if (!data?.token) return false;
 
@@ -61,25 +67,6 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const isGuest = !!user?.is_guest;
-
-  useEffect(() => {
-    if (!isGuest) return;
-
-    let fired = false;
-    const discard = () => {
-      if (fired) return;
-      fired = true;
-      authService.discardDemo({ keepalive: true }).catch(() => {});
-    };
-
-    window.addEventListener("pagehide", discard);
-    window.addEventListener("beforeunload", discard);
-
-    return () => {
-      window.removeEventListener("pagehide", discard);
-      window.removeEventListener("beforeunload", discard);
-    };
-  }, [isGuest]);
 
   useEffect(() => {
     if (!isGuest) return;

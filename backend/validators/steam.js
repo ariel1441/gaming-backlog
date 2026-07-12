@@ -64,6 +64,9 @@ export const steamSchemas = {
   gameAchievementParams: Joi.object({
     gameId: id,
   }),
+  syncJobParams: Joi.object({
+    jobId: Joi.string().guid({ version: ["uuidv4"] }).required(),
+  }),
   unlinkParams: Joi.object({
     gameId: id,
     steamAppId,
@@ -239,6 +242,13 @@ export const attachSteamCandidate = celebrate(
     [Segments.BODY]: steamSchemas.attachBody,
   },
   opts
+);
+
+export const steamSyncJob = celebrate(
+  {
+    [Segments.PARAMS]: steamSchemas.syncJobParams,
+  },
+  opts,
 );
 
 export const applySteamStatusSuggestion = celebrate(

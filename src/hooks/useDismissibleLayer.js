@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 const activeLayers = [];
 let scrollLockCount = 0;
 let previousBodyOverflow = "";
+const backgroundStates = new Map();
 
 const focusableSelector = [
   "a[href]",
@@ -16,6 +17,36 @@ const focusableSelector = [
 function removeLayer(layer) {
   const index = activeLayers.lastIndexOf(layer);
   if (index >= 0) activeLayers.splice(index, 1);
+}
+
+function updateBackgroundIsolation() {
+  const topDialog = [...activeLayers]
+    .reverse()
+    .find((layer) => layer.isolateBackground);
+  if (!topDialog) {
+    backgroundStates.forEach(({ inert, ariaHidden }, element) => {
+      element.inert = inert;
+      if (ariaHidden === null) element.removeAttribute("aria-hidden");
+      else element.setAttribute("aria-hidden", ariaHidden);
+    });
+    backgroundStates.clear();
+    return;
+  }
+
+  for (const element of document.body.children) {
+    if (!backgroundStates.has(element)) {
+      backgroundStates.set(element, {
+        inert: element.inert,
+        ariaHidden: element.getAttribute("aria-hidden"),
+      });
+    }
+    const original = backgroundStates.get(element);
+    const hidden = element !== topDialog.portalRoot;
+    element.inert = hidden ? true : original.inert;
+    if (hidden) element.setAttribute("aria-hidden", "true");
+    else if (original.ariaHidden === null) element.removeAttribute("aria-hidden");
+    else element.setAttribute("aria-hidden", original.ariaHidden);
+  }
 }
 
 /**
@@ -40,8 +71,14 @@ export function useDismissibleLayer({
     if (!open || typeof dismissRef.current !== "function") return undefined;
 
     const previouslyFocused = document.activeElement;
-    const layer = { layerRef };
+    const layerNode = layerRef?.current;
+    const layer = {
+      layerRef,
+      isolateBackground: trapFocus,
+      portalRoot: layerNode?.closest?.("body > *"),
+    };
     activeLayers.push(layer);
+    if (trapFocus) updateBackgroundIsolation();
 
     if (lockScroll) {
       if (scrollLockCount === 0) {
@@ -120,6 +157,7 @@ export function useDismissibleLayer({
 
     return () => {
       removeLayer(layer);
+      if (trapFocus) updateBackgroundIsolation();
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("focusin", handleFocusIn);

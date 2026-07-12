@@ -24,7 +24,7 @@ play next, and sharing a read-only public profile.
 
 - Frontend: React 18, Vite, Tailwind CSS, React Router, Recharts.
 - Backend: Node.js, Express, PostgreSQL, JWT auth, Celebrate/Joi validation.
-- Tooling: ESLint, Vitest, Vite build, GitHub Actions.
+- Tooling: ESLint, Node's built-in test runner, Playwright, Vite build, GitHub Actions.
 - Deployment model: Vercel frontend plus Railway backend/Postgres.
 
 ## Quick Start

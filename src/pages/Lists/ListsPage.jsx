@@ -20,6 +20,7 @@ import {
   useToast,
 } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
+import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import { useGames } from "../../hooks/useGames";
 import { createUserList, listUserLists } from "../../services/listService";
 import {
@@ -64,6 +65,7 @@ export default function ListsPage() {
   const [creating, setCreating] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
+  const { statusGroupOf } = useStatusGroups();
 
   const loadLists = React.useCallback(async () => {
     if (!isAuthenticated) return;
@@ -87,7 +89,7 @@ export default function ListsPage() {
     () =>
       lists.map((list) => {
         if (list.listType !== "smart") return list;
-        const resolved = resolveSmartList(list, games);
+        const resolved = resolveSmartList(list, games, { statusGroupOf });
         return {
           ...list,
           gameCount: resolved.games.length,
@@ -95,7 +97,7 @@ export default function ListsPage() {
           description: list.description || resolved.ruleLabel,
         };
       }),
-    [games, lists],
+    [games, lists, statusGroupOf],
   );
 
   const applyTemplate = (templateKey) => {

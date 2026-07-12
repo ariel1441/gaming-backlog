@@ -17,45 +17,12 @@ import {
   useToast,
 } from "../../components/ui";
 import { getSteamAccount, startSteamLink } from "../../services/steamService";
-
-function csvValue(value) {
-  if (value == null) return "";
-  const text = String(value);
-  if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-}
-
-function exportBacklogCsv(games) {
-  const fields = [
-    ["id", "id"],
-    ["name", "name"],
-    ["status", "status"],
-    ["genre", "my_genre"],
-    ["score", "my_score"],
-    ["estimated_hours", "how_long_to_beat"],
-    ["started_at", "started_at"],
-    ["finished_at", "finished_at"],
-    ["thoughts", "thoughts"],
-    ["rawg_id", "rawg_id"],
-    ["rawg_slug", "rawg_slug"],
-    ["release_date", "releaseDate"],
-    ["cover", "cover"],
-    ["favorite_rank", "favorite_rank"],
-    ["catalog_game_id", "catalog_game_id"],
-  ];
-  const lines = [
-    fields.map(([label]) => csvValue(label)).join(","),
-    ...games.map((game) =>
-      fields.map(([, key]) => csvValue(game?.[key])).join(","),
-    ),
-  ];
-  return `${lines.join("\r\n")}\r\n`;
-}
+import { backlogCsv } from "../../utils/csv";
 export function DataSection({ games }) {
   const toast = useToast();
 
   const exportCsv = () => {
-    const csv = exportBacklogCsv(games);
+    const csv = backlogCsv(games);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

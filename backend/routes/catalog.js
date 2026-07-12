@@ -17,8 +17,8 @@ import {
   searchCatalog,
   decorateGameWithCatalog,
 } from "../services/catalogService.js";
-import { badRequest, conflict, notFound } from "../utils/httpError.js";
-import { normStatus } from "../utils/status.js";
+import { badRequest, conflict, notFound, httpError } from "../utils/httpError.js";
+import { normStatus, statusGroupOf } from "../utils/status.js";
 import { normalizeScore } from "../utils/normalize.js";
 import { toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
@@ -28,8 +28,8 @@ const router = express.Router();
 const DEFAULT_POSITION_SPACING = 1000;
 const TODAY_SQL = "(now() AT TIME ZONE 'Asia/Jerusalem')::date";
 
-const getNextPosition = async (status, userId) => {
-  const result = await pool.query(
+const getNextPosition = async (status, userId, db = pool) => {
+  const result = await db.query(
     `
       SELECT COALESCE(MAX(g.position), 0) AS max
       FROM games g
@@ -41,6 +41,15 @@ const getNextPosition = async (status, userId) => {
   );
   return (result.rows[0].max || 0) + DEFAULT_POSITION_SPACING;
 };
+
+async function lockUserRank(db, userId, status) {
+  const result = await db.query("SELECT rank FROM statuses WHERE status = $1", [status]);
+  const rank = result.rows[0]?.rank;
+  if (!Number.isInteger(rank)) {
+    throw httpError(422, "status is invalid", "validation_error");
+  }
+  await db.query("SELECT pg_advisory_xact_lock($1, $2)", [Number(userId), rank]);
+}
 
 async function selectGameWithCatalog(gameId, userId) {
   const { rows } = await pool.query(
@@ -176,6 +185,7 @@ router.post(
   verifyToken,
   addCatalogGameToBacklog,
   async (req, res, next) => {
+    let client;
     try {
       const userId = req.user.id;
       const catalogGameId = Number(req.params.id);
@@ -194,8 +204,12 @@ router.post(
       if (!statusNorm) return next(badRequest("status is required"));
 
       const score = normalizeScore(my_score);
+      const hoursProvided = Object.prototype.hasOwnProperty.call(
+        req.body,
+        "how_long_to_beat",
+      );
       let hours = toHourInt(how_long_to_beat);
-      if (hours == null) {
+      if (hours == null && !hoursProvided) {
         const pref = ["main", "plus", "comp"].includes(hltb_pref)
           ? hltb_pref
           : "main";
@@ -212,9 +226,12 @@ router.post(
         req.body,
         "finished_at"
       );
-      const position = await getNextPosition(statusNorm, userId);
+      client = await pool.connect();
+      await client.query("BEGIN");
+      await lockUserRank(client, userId, statusNorm);
+      const position = await getNextPosition(statusNorm, userId, client);
 
-      const external = await pool.query(
+      const external = await client.query(
         `
         SELECT external_id::int AS rawg_id, slug AS rawg_slug
         FROM external_game_ids
@@ -224,7 +241,7 @@ router.post(
         [catalogGameId]
       );
       const rawg = external.rows[0] || {};
-      const duplicate = await pool.query(
+      const duplicate = await client.query(
         `
         SELECT id
         FROM games
@@ -296,10 +313,10 @@ router.post(
         [userId, catalogGameId, rawg.rawg_id || null, catalog.name]
       );
       if (duplicate.rows.length) {
-        return next(conflict("This game is already in your backlog."));
+        throw conflict("This game is already in your backlog.");
       }
 
-      const { rows } = await pool.query(
+      const { rows } = await client.query(
         `
         INSERT INTO games (
           user_id,
@@ -320,12 +337,12 @@ router.post(
           $1, $2, $3, $4, $5, $6, $7, $8, $9,
           CASE
             WHEN $10 THEN $11
-            WHEN $4 = 'playing' THEN ${TODAY_SQL}
+            WHEN $16 THEN ${TODAY_SQL}
             ELSE NULL
           END,
           CASE
             WHEN $12 THEN $13
-            WHEN $4 IN ('finished','played alot but didnt finish') THEN ${TODAY_SQL}
+            WHEN $17 THEN ${TODAY_SQL}
             ELSE NULL
           END,
           $14,
@@ -349,14 +366,23 @@ router.post(
           finishedProvided ? req.body.finished_at : null,
           rawg.rawg_id || null,
           rawg.rawg_slug || null,
+          statusGroupOf(statusNorm) === "playing",
+          statusGroupOf(statusNorm) === "done",
         ]
       );
+
+      await client.query("COMMIT");
 
       cacheClear(userId);
       const game = await selectGameWithCatalog(rows[0].id, userId);
       res.status(201).json(serializeGame(game));
     } catch (err) {
+      try {
+        await client?.query("ROLLBACK");
+      } catch {}
       next(err);
+    } finally {
+      client?.release();
     }
   }
 );

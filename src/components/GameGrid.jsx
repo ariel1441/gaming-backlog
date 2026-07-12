@@ -71,6 +71,7 @@ const GameGrid = ({
   onEditGame,
   onDeleteGame,
   onReorder,
+  canManage = false,
   emptyState,
   viewMode = "grid",
 }) => {
@@ -140,9 +141,9 @@ const GameGrid = ({
             key={only.id}
             game={only}
             onClick={() => onSelectGame?.(only)}
-            readOnly={!onReorder}
-            onEdit={onReorder ? () => onEditGame?.(only) : undefined}
-            onDelete={onReorder ? () => onDeleteGame?.(only.id) : undefined}
+            readOnly={!canManage}
+            onEdit={canManage ? () => onEditGame?.(only) : undefined}
+            onDelete={canManage ? () => onDeleteGame?.(only.id) : undefined}
             variant={viewMode}
           />
         </div>
@@ -161,7 +162,9 @@ const GameGrid = ({
             <GameCard
               game={game}
               onClick={() => onSelectGame?.(game)}
-              readOnly
+              readOnly={!canManage}
+              onEdit={canManage ? () => onEditGame?.(game) : undefined}
+              onDelete={canManage ? () => onDeleteGame?.(game.id) : undefined}
               variant={viewMode}
             />
           </div>

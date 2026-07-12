@@ -5,7 +5,7 @@ export function getSteamAccount(opts = {}) {
 }
 
 export function startSteamLink(opts = {}) {
-  return api.get("/api/steam/auth/start", opts);
+  return api.get("/api/steam/auth/start", { credentials: "include", ...opts });
 }
 
 export function devLinkSteam(steamId, opts = {}) {
@@ -16,8 +16,51 @@ export function disconnectSteam(opts = {}) {
   return api.del("/api/steam/account", opts);
 }
 
-export function syncSteamLibrary(opts = {}) {
+export function startSteamLibrarySync(opts = {}) {
   return api.post("/api/steam/sync", {}, opts);
+}
+
+export function getSteamLibrarySyncJob(jobId, opts = {}) {
+  return api.get(`/api/steam/sync/${jobId}`, opts);
+}
+
+export function cancelSteamLibrarySync(jobId, opts = {}) {
+  return api.del(`/api/steam/sync/${jobId}`, opts);
+}
+
+function waitForPoll(milliseconds, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = globalThis.setTimeout(resolve, milliseconds);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        globalThis.clearTimeout(timer);
+        reject(signal.reason || new DOMException("Aborted", "AbortError"));
+      },
+      { once: true },
+    );
+  });
+}
+
+export async function syncSteamLibrary(opts = {}) {
+  const started = await startSteamLibrarySync(opts);
+  let job = started?.job;
+  if (!job?.id) throw new Error("Steam sync did not return a job ID.");
+
+  while (["queued", "running"].includes(job.status)) {
+    await waitForPoll(750, opts.signal);
+    const payload = await getSteamLibrarySyncJob(job.id, opts);
+    job = payload?.job;
+  }
+  if (job?.status === "completed") return job.result || {};
+  const error = new Error(
+    job?.errorMessage ||
+      (job?.status === "cancelled"
+        ? "Steam sync was cancelled."
+        : "Steam sync failed."),
+  );
+  error.code = job?.errorCode || `steam_sync_${job?.status || "failed"}`;
+  throw error;
 }
 
 export function syncSteamAchievements(opts = {}) {

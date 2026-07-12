@@ -2,9 +2,10 @@ import crypto from "node:crypto";
 
 export default function requestId(req, res, next) {
   const incoming = req.get("X-Request-Id");
+  const normalized = typeof incoming === "string" ? incoming.trim() : "";
   const id =
-    typeof incoming === "string" && incoming.trim()
-      ? incoming.trim().slice(0, 128)
+    normalized && /^[A-Za-z0-9._:-]{1,128}$/.test(normalized)
+      ? normalized
       : crypto.randomUUID();
 
   req.requestId = id;
