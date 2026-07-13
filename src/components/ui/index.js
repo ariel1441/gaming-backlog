@@ -2,6 +2,7 @@ export { default as Badge } from "./Badge";
 export { default as Button } from "./Button";
 export { default as Checkbox } from "./Checkbox";
 export { default as Chip } from "./Chip";
+export { default as DropdownChevron } from "./DropdownChevron";
 export { default as EmptyState } from "./EmptyState";
 export { default as Field } from "./Field";
 export { default as IconButton } from "./IconButton";

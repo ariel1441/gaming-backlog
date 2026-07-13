@@ -266,7 +266,12 @@ export function TimelineFilters({
             ))}
           </div>
           {hasActiveFilters ? (
-            <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+            <Button
+              type="button"
+              size="sm"
+              variant="dangerGhost"
+              onClick={onClear}
+            >
               <X className="h-4 w-4" aria-hidden="true" />
               Clear filters
             </Button>

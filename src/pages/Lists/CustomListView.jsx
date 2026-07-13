@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   CalendarDays,
   Clock3,
@@ -8,6 +9,7 @@ import {
   Star,
   Tag,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   DndContext,
@@ -38,6 +40,7 @@ import {
 import { hoursValueForList } from "../../utils/hours";
 import { splitCsv } from "../../utils/gameList";
 import { formatUpdatedDate } from "./ListPreview";
+import { GAME_ROW_COVER_SIZE } from "../../components/gameRowCoverStyles";
 function moveItem(array, fromIndex, toIndex) {
   const next = [...array];
   const [item] = next.splice(fromIndex, 1);
@@ -509,10 +512,12 @@ function RankedRow({
             src={cover}
             alt=""
             loading="lazy"
-            className="h-32 w-24 shrink-0 rounded-lg object-cover ring-1 ring-surface-border sm:h-36 sm:w-28"
+            className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl object-cover ring-1 ring-surface-border`}
           />
         ) : (
-          <div className="flex h-32 w-24 shrink-0 items-center justify-center rounded-lg bg-surface-elevated/70 text-xl font-semibold text-content-muted ring-1 ring-surface-border sm:h-36 sm:w-28">
+          <div
+            className={`flex ${GAME_ROW_COVER_SIZE} shrink-0 items-center justify-center rounded-xl bg-surface-elevated/70 text-xl font-semibold text-content-muted ring-1 ring-surface-border`}
+          >
             {String(title || "?").charAt(0)}
           </div>
         )}

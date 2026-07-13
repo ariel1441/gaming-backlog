@@ -10,6 +10,8 @@ const variants = {
     "border border-primary/45 bg-primary/18 text-content-primary shadow-sm shadow-primary/8 hover:border-primary/60 hover:bg-primary/24",
   danger:
     "border border-action-danger/80 bg-action-danger text-content-on-danger shadow-sm shadow-state-error/10 hover:bg-action-danger-hover disabled:bg-action-danger/60",
+  dangerGhost:
+    "border border-transparent bg-transparent text-state-error hover:border-state-error/30 hover:bg-state-error/10 hover:text-state-error",
   ghost:
     "border border-transparent bg-transparent text-content-secondary hover:border-surface-border hover:bg-surface-elevated/70 hover:text-content-primary",
 };

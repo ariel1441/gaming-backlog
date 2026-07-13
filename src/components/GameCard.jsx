@@ -17,6 +17,7 @@ import { splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
 import { Chip, IconButton, StatusBadge, useToast } from "./ui";
+import { GAME_ROW_COVER_SIZE } from "./gameRowCoverStyles";
 
 function fmtDate(value) {
   if (!value) return null;
@@ -365,8 +366,8 @@ export default function GameCard({
             <CoverImage
               src={game.cover}
               alt={game.name}
-              className="h-40 w-52 shrink-0 rounded-xl border border-media-border/10 object-cover shadow-lg sm:h-44 sm:w-64 lg:w-72"
-              fallbackClassName="h-40 w-52 shrink-0 rounded-xl border border-surface-border sm:h-44 sm:w-64 lg:w-72"
+              className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 object-cover shadow-lg`}
+              fallbackClassName={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-surface-border`}
               compact
             />
 

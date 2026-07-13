@@ -235,7 +235,12 @@ export default function TimelinePage() {
             }
             action={
               events.length ? (
-                <Button type="button" variant="primary" onClick={clearFilters}>
+                <Button
+                  type="button"
+                  variant="dangerGhost"
+                  onClick={clearFilters}
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
                   Clear filters
                 </Button>
               ) : (

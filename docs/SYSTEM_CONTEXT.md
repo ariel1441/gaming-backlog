@@ -245,8 +245,9 @@ Contexts:
 
 Hooks:
 
-- `src/hooks/useGames.js` - list, add, edit, delete, reorder, optimistic state,
-  silent rehydration.
+- `src/hooks/useGames.js` - shared private-route games provider plus list, add,
+  edit, delete, reorder, optimistic state, and silent rehydration. Private pages
+  reuse one collection instead of refetching it on every navigation.
 - `src/hooks/useFilters.js` - search/filter/sort/hour-range state and derived
   game lists.
 - `src/hooks/useApplyFiltersFromQuery.js` - maps query params from insights to
@@ -329,6 +330,8 @@ Styling:
   backend authorization remains the real security boundary.
 - Private game routes enrich with catalog metadata first when `catalog_game_id`
   exists, then fall back to legacy RAWG/HLTB behavior for older rows.
+- `GET /api/games` is database/cache-only and never waits for RAWG network
+  hydration. Optional provider metadata must not delay core backlog reads.
 - Guest users intentionally avoid live RAWG catalog/search/detail fetches to
   protect API quota.
 - RAWG calls should happen only for meaningful search/detail/refresh/load-more

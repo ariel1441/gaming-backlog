@@ -3,7 +3,6 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
-  ChevronDown,
   Grid2X2,
   LayoutGrid,
   List,
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  DropdownChevron,
   IconButton,
   PopoverPanel,
   SegmentedControl,
@@ -26,9 +26,9 @@ import {
   NO_RAWG_GENRE_FILTER,
 } from "../../utils/filterOptions";
 const viewOptions = [
-  { value: "grid", label: "Grid view", icon: LayoutGrid },
-  { value: "compact", label: "Compact grid", icon: Grid2X2 },
-  { value: "list", label: "List view", icon: List },
+  { value: "grid", label: "Cards", icon: LayoutGrid },
+  { value: "compact", label: "Compact cards", icon: Grid2X2 },
+  { value: "list", label: "Rows", icon: List },
 ];
 
 export function SearchBox({
@@ -222,7 +222,7 @@ export function FilterDropdown({
             {selected.length}
           </span>
         ) : null}
-        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        <DropdownChevron open={open} />
       </Button>
 
       {open ? (
@@ -242,7 +242,13 @@ export function FilterDropdown({
               </div>
             </div>
             {selected.length ? (
-              <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+              <Button
+                type="button"
+                size="sm"
+                variant="dangerGhost"
+                onClick={onClear}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
                 Clear
               </Button>
             ) : null}
@@ -333,10 +339,11 @@ export function HoursDropdown({ hoursBounds, hoursRange, setHoursRange }) {
         onClick={() => setOpen((value) => !value)}
         className="h-10 shrink-0 whitespace-nowrap rounded-xl"
         disabled={max <= min}
+        aria-expanded={open}
       >
         Hours
         {label ? <span className="text-xs opacity-80">{label}</span> : null}
-        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        <DropdownChevron open={open} />
       </Button>
 
       {open ? (
@@ -429,7 +436,7 @@ export function MoreFiltersDropdown({
             {activeCount}
           </span>
         ) : null}
-        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        <DropdownChevron open={open} />
       </Button>
 
       {open ? (
@@ -449,41 +456,21 @@ export function MoreFiltersDropdown({
             {activeCount ? (
               <Button
                 type="button"
-                variant="ghost"
+                variant="dangerGhost"
                 size="sm"
                 onClick={() => {
                   setDateFilter?.(null);
                   if (completedActive) toggleCompleted?.();
                 }}
               >
+                <X className="h-4 w-4" aria-hidden="true" />
                 Clear
               </Button>
             ) : null}
           </div>
 
-          {toggleCompleted ? (
-            <button
-              type="button"
-              onClick={toggleCompleted}
-              className={[
-                "mb-3 flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-colors",
-                completedActive
-                  ? "border-primary/40 bg-primary/12 text-content-primary"
-                  : "border-surface-border/65 bg-surface-elevated/35 text-content-secondary hover:bg-surface-elevated/70 hover:text-content-primary",
-              ].join(" ")}
-            >
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                Completed games
-              </span>
-              {completedActive ? (
-                <Check className="h-4 w-4 text-primary-light" />
-              ) : null}
-            </button>
-          ) : null}
-
           {setDateFilter ? (
-            <div>
+            <div className={toggleCompleted ? "mb-3" : ""}>
               <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-content-muted">
                 Date activity
               </div>
@@ -514,6 +501,27 @@ export function MoreFiltersDropdown({
                 })}
               </div>
             </div>
+          ) : null}
+
+          {toggleCompleted ? (
+            <button
+              type="button"
+              onClick={toggleCompleted}
+              className={[
+                "flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-colors",
+                completedActive
+                  ? "border-primary/40 bg-primary/12 text-content-primary"
+                  : "border-surface-border/65 bg-surface-elevated/35 text-content-secondary hover:bg-surface-elevated/70 hover:text-content-primary",
+              ].join(" ")}
+            >
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                Completed games
+              </span>
+              {completedActive ? (
+                <Check className="h-4 w-4 text-primary-light" />
+              ) : null}
+            </button>
           ) : null}
         </PopoverPanel>
       ) : null}
@@ -572,7 +580,7 @@ export function DateDropdown({ dateFilter, setDateFilter }) {
         {activeLabel ? (
           <span className="text-xs opacity-80">{activeLabel}</span>
         ) : null}
-        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        <DropdownChevron open={open} />
       </Button>
 
       {open ? (
@@ -605,11 +613,12 @@ export function DateDropdown({ dateFilter, setDateFilter }) {
           {dateFilter ? (
             <Button
               type="button"
-              variant="ghost"
+              variant="dangerGhost"
               size="sm"
               onClick={() => select(null)}
               className="mt-2"
             >
+              <X className="h-4 w-4" aria-hidden="true" />
               Clear dates
             </Button>
           ) : null}
@@ -634,10 +643,10 @@ export function ViewModeSwitch({ value, onChange }) {
     renderLabel: ({ value: optionValue }) => (
       <span className="hidden sm:inline">
         {optionValue === "grid"
-          ? "Grid"
+          ? "Cards"
           : optionValue === "compact"
             ? "Compact"
-            : "List"}
+            : "Rows"}
       </span>
     ),
   }));

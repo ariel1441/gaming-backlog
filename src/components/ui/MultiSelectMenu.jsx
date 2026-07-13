@@ -1,9 +1,10 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import Button from "./Button";
 import { TextInput } from "./inputs";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import PopoverPanel from "./PopoverPanel";
+import DropdownChevron from "./DropdownChevron";
 
 function normalizeOption(value) {
   return String(value || "").trim();
@@ -171,12 +172,7 @@ export default function MultiSelectMenu({
         >
           {label}
         </span>
-        <ChevronDown
-          className={[
-            "h-4 w-4 shrink-0 text-content-muted transition-transform",
-            open ? "rotate-180" : "",
-          ].join(" ")}
-        />
+        <DropdownChevron open={open} />
       </button>
 
       {selected.length ? (

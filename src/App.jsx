@@ -5,20 +5,22 @@ import { StatusGroupsProvider } from "./contexts/StatusGroupsContext";
 import { ConfirmProvider, ToastProvider } from "./components/ui";
 import { AppPage, PageLoading } from "./components/layout";
 import AppShell from "./components/AppShell";
+import { GamesProvider } from "./hooks/useGames";
+import { loadRoute } from "./config/routeLoaders";
 
-const BacklogPage = lazy(() => import("./pages/Backlog/BacklogPage"));
-const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
-const InsightsPage = lazy(() => import("./pages/Insights/InsightsPage"));
-const OwnerProfilePage = lazy(() => import("./pages/OwnerProfilePage"));
-const PublicProfile = lazy(() => import("./pages/PublicProfile"));
-const ReviewsPage = lazy(() => import("./pages/ReviewsPage"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const SteamImportPage = lazy(() => import("./pages/SteamImportPage"));
-const SteamLibraryPage = lazy(() => import("./pages/SteamLibraryPage"));
-const TimelinePage = lazy(() => import("./pages/TimelinePage"));
-const ListsPage = lazy(() => import("./pages/Lists/ListsPage"));
-const CustomListPage = lazy(() => import("./pages/Lists/CustomListPage"));
-const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const BacklogPage = lazy(() => loadRoute("/"));
+const DiscoverPage = lazy(() => loadRoute("/discover"));
+const InsightsPage = lazy(() => loadRoute("/insights"));
+const OwnerProfilePage = lazy(() => loadRoute("/me"));
+const PublicProfile = lazy(() => loadRoute("/u/:username"));
+const ReviewsPage = lazy(() => loadRoute("/reviews"));
+const SettingsPage = lazy(() => loadRoute("/settings"));
+const SteamImportPage = lazy(() => loadRoute("/steam/import"));
+const SteamLibraryPage = lazy(() => loadRoute("/steam/library"));
+const TimelinePage = lazy(() => loadRoute("/timeline"));
+const ListsPage = lazy(() => loadRoute("/lists"));
+const CustomListPage = lazy(() => loadRoute("/lists/:id"));
+const NotFoundPage = lazy(() => loadRoute("*"));
 
 function RouteLoading() {
   return (
@@ -36,7 +38,13 @@ const App = () => {
           <StatusGroupsProvider>
             <Suspense fallback={<RouteLoading />}>
               <Routes>
-                <Route element={<AppShell />}>
+                <Route
+                  element={
+                    <GamesProvider>
+                      <AppShell />
+                    </GamesProvider>
+                  }
+                >
                   <Route path="/" element={<BacklogPage />} />
                   <Route path="/me" element={<OwnerProfilePage />} />
                   <Route path="/settings" element={<SettingsPage />} />

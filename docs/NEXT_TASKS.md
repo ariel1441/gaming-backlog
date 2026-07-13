@@ -1,6 +1,6 @@
 # Next Tasks
 
-Last updated: 2026-07-11
+Last updated: 2026-07-13
 
 This is the short active queue. It intentionally contains no completed work.
 See [`ROADMAP.md`](ROADMAP.md) for all remaining candidates and
@@ -22,6 +22,16 @@ See [`ROADMAP.md`](ROADMAP.md) for all remaining candidates and
 7. Choose one product candidate: Next Up, Insights V2, or public-profile privacy
    controls are the strongest current options.
 
+## Selected UI/UX Consolidation Track
+
+The reviewed UI/UX, editing, navigation, media fallback, loading-state, and
+accessibility work is consolidated in
+[`planning/ui-ux-consistency-plan.md`](planning/ui-ux-consistency-plan.md).
+When this track is selected, implement one bounded phase at a time in the order
+documented there. Start with the small defects/media-resilience phase or the
+shared interaction-state foundation; do not combine the entire track into one
+change.
+
 ## Workflow Improvements
 
 - Install/adapt repo-local skill drafts only if the active Codex environment
@@ -36,6 +46,7 @@ See [`ROADMAP.md`](ROADMAP.md) for all remaining candidates and
 Follow AGENTS.md.
 Read docs/SYSTEM_CONTEXT.md for current architecture.
 Read docs/NEXT_TASKS.md only when choosing priorities.
+For the selected UI/UX track, read docs/planning/ui-ux-consistency-plan.md.
 Read one focused planning or audit section only when directly relevant.
 Mode:
 Goal:

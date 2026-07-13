@@ -133,6 +133,7 @@ async function mockApi(page) {
   ];
   const state = {
     favoritePayloads: [],
+    gamesListRequests: 0,
     reorderPayloads: [],
   };
   const rankForStatus = (status) =>
@@ -274,9 +275,9 @@ async function mockApi(page) {
     catalogGames[0] = { ...catalogGames[0], alreadyInBacklog: true };
     return route.fulfill({ status: 201, json: created });
   });
-  await page.route(`${API_BASE}/api/games`, (route) =>
-    route.request().method() === "POST"
-      ? route.fulfill({
+  await page.route(`${API_BASE}/api/games`, (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
           json: (() => {
             const body = route.request().postDataJSON();
             const created = {
@@ -292,9 +293,11 @@ async function mockApi(page) {
             serverGames = [...serverGames, created];
             return created;
           })(),
-        })
-      : route.fulfill({ json: serverGames }),
-  );
+        });
+    }
+    state.gamesListRequests += 1;
+    return route.fulfill({ json: serverGames });
+  });
   await page.route(`${API_BASE}/api/games/favorites`, (route) => {
     const { favoriteIds = [] } = route.request().postDataJSON();
     state.favoritePayloads.push(favoriteIds);
@@ -537,6 +540,26 @@ test("opens the restored Reviews page from application navigation", async ({
   await expect(
     page.getByText("A wonderfully reactive role-playing adventure."),
   ).toBeVisible();
+});
+
+test("reuses one games collection while navigating between private pages", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByText("Baldur's Gate 3")).toBeVisible();
+  await expect.poll(() => page.apiState.gamesListRequests).toBe(1);
+
+  await page.getByRole("link", { name: "Timeline", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  await page.getByRole("link", { name: "Reviews", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
+
+  expect(page.apiState.gamesListRequests).toBe(1);
 });
 
 test("adds, edits, and deletes a game in the backlog", async ({ page }) => {

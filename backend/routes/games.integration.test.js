@@ -42,17 +42,63 @@ async function withServer(queryImpl, fn, connectImpl) {
   }
 }
 
-async function request(baseUrl, path, { method = "GET", body } = {}) {
+async function request(
+  baseUrl,
+  path,
+  { method = "GET", body, authPayload = { is_guest: true } } = {},
+) {
   const res = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${makeToken({ is_guest: true })}`,
+      Authorization: `Bearer ${makeToken(authPayload)}`,
       "Content-Type": "application/json",
     },
     body: body == null ? undefined : JSON.stringify(body),
   });
   return { status: res.status, body: await res.json() };
 }
+
+test("GET /api/games never blocks on RAWG provider requests", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalRawgKey = process.env.RAWG_API_KEY;
+  let rawgRequests = 0;
+  process.env.RAWG_API_KEY = "test-key";
+  globalThis.fetch = async (input, init) => {
+    if (String(input).startsWith("https://api.rawg.io/")) {
+      rawgRequests += 1;
+      throw new Error("RAWG must not run on the games list hot path");
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    await withServer(
+      async () => ({
+        rows: [
+          {
+            id: 1,
+            user_id: 7,
+            name: "Hades",
+            rawg_id: 1145360,
+            status: "playing",
+          },
+        ],
+      }),
+      async (baseUrl) => {
+        const res = await request(baseUrl, "/api/games", {
+          authPayload: { is_guest: false },
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.body[0].name, "Hades");
+        assert.equal(rawgRequests, 0);
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalRawgKey == null) delete process.env.RAWG_API_KEY;
+    else process.env.RAWG_API_KEY = originalRawgKey;
+  }
+});
 
 test("POST /api/games rejects duplicate title through route middleware", async () => {
   await withServer(

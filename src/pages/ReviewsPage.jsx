@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { SearchX, Sparkles } from "lucide-react";
+import { MessageSquareText, SearchX, Sparkles, X } from "lucide-react";
 import GameModal from "../components/GameModal";
 import {
   AppPage,
@@ -237,9 +237,10 @@ export default function ReviewsPage() {
                 reviewedGames.length ? (
                   <Button
                     type="button"
-                    variant="primary"
+                    variant="dangerGhost"
                     onClick={clearFilters}
                   >
+                    <X className="h-4 w-4" aria-hidden="true" />
                     Clear filters
                   </Button>
                 ) : (

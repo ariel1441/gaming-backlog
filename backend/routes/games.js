@@ -277,23 +277,6 @@ async function lockUserRank(db, userId, status) {
   return rank;
 }
 
-/* -------------- Simple concurrency helper for the first cold rebuild ---------- */
-const mapWithLimit = async (items, limit, fn) => {
-  const out = new Array(items.length);
-  let i = 0;
-  const workers = Array.from(
-    { length: Math.min(limit, items.length) },
-    async () => {
-      while (i < items.length) {
-        const idx = i++;
-        out[idx] = await fn(items[idx], idx);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return out;
-};
-
 /* --------------------------- UI-safe game serializer -------------------------- */
 /**
  * We return how_long_to_beat as the *display* value:
@@ -390,7 +373,8 @@ const decorateGameForClient = (game, rawg) => {
 
 /* ----------------------------------- Routes ---------------------------------- */
 
-// GET all games for the authenticated user (fast cold rebuild)
+// GET all games for the authenticated user. This hot path is intentionally
+// database/cache-only: optional RAWG refreshes must never delay core user data.
 router.get("/", verifyToken, async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -400,35 +384,7 @@ router.get("/", verifyToken, async (req, res, next) => {
 
     const cache = req.app.locals.rawgCache || {};
 
-    const isGuest = !!req.user?.is_guest;
-
-    // Warm RAWG cache ONLY for non-guest users (protect quotas in demo)
-    if (!isGuest) {
-      let cacheUpdated = false;
-      const uniqueGames = new Map();
-      for (const row of rows) {
-        const key = row.rawg_id
-          ? rawgIdentityKey(row.rawg_id)
-          : lowerKey(row.name);
-        if (!uniqueGames.has(key)) uniqueGames.set(key, row);
-      }
-      await mapWithLimit([...uniqueGames.values()], 6, async (game) => {
-        const { changed } = await ensureRawgForGame(cache, game, {
-          persist: false,
-        });
-        if (changed) cacheUpdated = true;
-      });
-      // Persist only if we actually touched the cache (non-fatal)
-      if (cacheUpdated) {
-        try {
-          await saveCache(cache);
-        } catch (e) {
-          console.warn("saveCache(GET) failed:", e?.message || e);
-        }
-      }
-    }
-
-    // Now decorate from cache (no extra network)
+    // Decorate from Postgres catalog fields and any process-local cache hit.
     const out = rows.map((game) => {
       const rawg = cachedRawgForGame(cache, game);
       return decorateGameForClient(game, rawg);

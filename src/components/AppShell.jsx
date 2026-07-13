@@ -1,5 +1,5 @@
-import React from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import React, { Suspense } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Gamepad2, Settings, User2 } from "lucide-react";
 import Sidebar from "./Sidebar";
 import { useAuth } from "../contexts/AuthContext";
@@ -7,9 +7,12 @@ import {
   primaryNavigationItems,
   visibleNavigationItems,
 } from "../config/navigation";
+import { preloadRoute } from "../config/routeLoaders";
+import { AppPage, PageLoading } from "./layout";
 
 export default function AppShell() {
   const { isAuthenticated, isGuest } = useAuth();
+  const location = useLocation();
   const items = visibleNavigationItems(primaryNavigationItems, {
     isAuthenticated,
     isGuest,
@@ -47,7 +50,16 @@ export default function AppShell() {
         </div>
 
         <div className="min-h-[calc(100vh-3.5rem)] min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:min-h-screen lg:pb-0">
-          <Outlet />
+          <Suspense
+            key={location.pathname}
+            fallback={
+              <AppPage width="wide">
+                <PageLoading rows={5} />
+              </AppPage>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </div>
 
         <nav
@@ -58,11 +70,17 @@ export default function AppShell() {
         >
           {items.map((item) => {
             const Icon = item.icon;
+            const preload = () => {
+              preloadRoute(item.to).catch(() => {});
+            };
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                onFocus={preload}
+                onPointerDown={preload}
+                onTouchStart={preload}
                 className={({ isActive }) =>
                   [
                     "flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors",

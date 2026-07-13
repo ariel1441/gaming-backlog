@@ -1,6 +1,6 @@
 # Remaining Roadmap
 
-Last updated: 2026-07-11
+Last updated: 2026-07-13
 
 This file contains only work that is still open. Completed milestones belong in
 [`DONE.md`](DONE.md), while current architecture and product behavior belong in
@@ -69,6 +69,11 @@ change.
   migration policy.
 - Make setup and check commands reproducible.
 - Code-split the large frontend bundle.
+- Cache Discover browse/search responses by user, query, filters, sort, and page
+  so returning to `/discover` can show the last result immediately and
+  revalidate quietly in the background. Use a short TTL, invalidate or update
+  backlog-membership state after add-to-backlog mutations, and avoid keeping
+  the entire hidden route component mounted as a pseudo-cache.
 - Add pagination or virtualization for large libraries.
 - Remove manual-list preview N+1 queries.
 - Centralize remaining status semantics and remove dead legacy UI/admin naming.
@@ -79,6 +84,13 @@ change.
   health.
 
 ## Shared UI System And Visual Test Foundation — medium/large
+
+The concrete screen-level findings, persistence rules, list-editor redesign,
+unified game-modal direction, mobile navigation proposal, execution phases, and
+acceptance boundaries are maintained in
+[`planning/ui-ux-consistency-plan.md`](planning/ui-ux-consistency-plan.md).
+Use that focused plan when this track is selected; keep this section as the
+broader shared-system direction.
 
 Consolidate the improved frontend styling into a maintainable shared system
 without redesigning the product, changing behavior, or replacing specialized

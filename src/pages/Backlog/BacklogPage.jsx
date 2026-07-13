@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Gamepad2, PlusCircle, SearchX } from "lucide-react";
+import { Gamepad2, PlusCircle, SearchX, X } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import GameGrid from "../../components/GameGrid";
@@ -419,9 +419,10 @@ export default function BacklogPage() {
                   hasActiveFilters ? (
                     <Button
                       type="button"
-                      variant="secondary"
+                      variant="dangerGhost"
                       onClick={resetFilters}
                     >
+                      <X className="h-4 w-4" aria-hidden="true" />
                       Clear filters
                     </Button>
                   ) : (

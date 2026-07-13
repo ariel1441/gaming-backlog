@@ -1,5 +1,13 @@
 // src/hooks/useGames.js
-import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   listGames as listGamesApi,
@@ -73,7 +81,9 @@ function applyRankOrder(prevList, payload) {
   return sortGames(Array.from(byId.values()));
 }
 
-export function useGames() {
+const GamesContext = createContext(null);
+
+function useGamesState() {
   const { getAuthHeaders, isAuthenticated, loading: authLoading } = useAuth();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -382,4 +392,17 @@ export function useGames() {
     reorderGame,
     setGames, // kept for rare advanced flows
   };
+}
+
+export function GamesProvider({ children }) {
+  const gamesState = useGamesState();
+  return createElement(GamesContext.Provider, { value: gamesState }, children);
+}
+
+export function useGames() {
+  const gamesState = useContext(GamesContext);
+  if (!gamesState) {
+    throw new Error("useGames must be used within GamesProvider.");
+  }
+  return gamesState;
 }

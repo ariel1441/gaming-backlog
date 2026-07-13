@@ -1,7 +1,5 @@
-import { useNavigate } from "react-router-dom";
 import {
   ArrowDownAZ,
-  ArrowLeft,
   ArrowUpAZ,
   CheckCircle2,
   Clock3,
@@ -20,6 +18,7 @@ import {
 import {
   Badge,
   Button,
+  Chip,
   Field,
   IconButton,
   Modal,
@@ -82,18 +81,12 @@ export function ReviewsSkeleton() {
 }
 
 export function ReviewsHeader({ summary }) {
-  const navigate = useNavigate();
   return (
     <>
       <PageHeader
         title="Reviews"
         description="Games where you wrote thoughts, notes, or a personal review."
         icon={MessageSquareText}
-        actions={
-          <Button type="button" variant="ghost" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Backlog
-          </Button>
-        }
       />
       <div className="mt-5 flex flex-wrap gap-3">
         <StatPill
@@ -187,7 +180,12 @@ export function ReviewsControls({
             className="h-10 w-10"
           />
           {hasActiveFilters ? (
-            <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+            <Button
+              type="button"
+              size="sm"
+              variant="dangerGhost"
+              onClick={onClear}
+            >
               <X className="h-4 w-4" aria-hidden="true" /> Clear
             </Button>
           ) : null}
@@ -287,9 +285,9 @@ export function ReviewCard({ game, onOpen, onEdit }) {
                 </Badge>
               ) : null}
               {myGenres.map((genre) => (
-                <Badge key={`my-${genre}`} variant="secondary">
+                <Chip key={`my-${genre}`} variant="genre">
                   {genre}
-                </Badge>
+                </Chip>
               ))}
             </div>
           </div>

@@ -9,7 +9,6 @@ import { useNavigate } from "react-router-dom";
 
 // services
 import { fetchInsights } from "../../services/insightsService";
-import { listGames } from "../../services/gameService";
 
 // context
 import { useStatusGroups } from "../../contexts/StatusGroupsContext";
@@ -38,6 +37,7 @@ import {
 import useQueryBackedState from "../../hooks/useQueryBackedState";
 import useMedia from "../../hooks/useMedia";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useGames } from "../../hooks/useGames";
 
 // utils
 import { useChartTheme } from "../../utils/chartTheme";
@@ -57,6 +57,12 @@ export default function InsightsPage() {
   const nav = useNavigate();
   const { ready, statusGroupOf, toGroup, groupKeys } = useStatusGroups();
   const { user } = useAuth();
+  const {
+    games: sharedGames,
+    loading: gamesLoading,
+    error: gamesError,
+    refresh: refreshGames,
+  } = useGames();
   const displayName = useMemo(
     () => user?.name || user?.username || user?.email || "You",
     [user],
@@ -106,7 +112,6 @@ export default function InsightsPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [data, setData] = useState(null);
-  const [games, setGames] = useState([]);
   const loadSequence = useRef(0);
   const loadController = useRef(null);
 
@@ -120,33 +125,17 @@ export default function InsightsPage() {
     setLoading(true);
     setErr("");
     try {
-      const [insights, gamesRes] = await Promise.all([
-        fetchInsights({
+      const insights = await fetchInsights(
+        {
           weeklyHours: opts?.weeklyHours ?? weeklyHours,
           includeMissingNames: opts?.includeMissing ?? includeMissing,
-        }, { signal: controller.signal }),
-        listGames({ signal: controller.signal }),
-      ]);
+        },
+        { signal: controller.signal },
+      );
 
       if (sequence !== loadSequence.current || controller.signal.aborted) return;
 
       setData(insights);
-
-      const normalizedGames = Array.isArray(gamesRes)
-        ? gamesRes.map((x) => ({
-            my_genre: x.my_genre ?? null,
-            rawg_genres: x.genres ?? null,
-            hours: Number.isFinite(x.how_long_to_beat)
-              ? x.how_long_to_beat
-              : null,
-            status: x.status || null,
-            name: x.name || null,
-            started_at: x.started_at || null,
-            finished_at: x.finished_at || null,
-          }))
-        : [];
-      setGames(normalizedGames);
-
     } catch (e) {
       if (e?.name === "AbortError" || sequence !== loadSequence.current) return;
       setErr(e?.message || "Failed to load insights");
@@ -198,6 +187,21 @@ export default function InsightsPage() {
   const byStatus = data?.byStatus || [];
   const eta = data?.eta || {};
   const missing = data?.meta?.missing_names || [];
+  const games = useMemo(
+    () =>
+      (Array.isArray(sharedGames) ? sharedGames : []).map((game) => ({
+        my_genre: game.my_genre ?? null,
+        rawg_genres: game.genres ?? null,
+        hours: Number.isFinite(game.how_long_to_beat)
+          ? game.how_long_to_beat
+          : null,
+        status: game.status || null,
+        name: game.name || null,
+        started_at: game.started_at || null,
+        finished_at: game.finished_at || null,
+      })),
+    [sharedGames],
+  );
 
   // ---------- Status data (full names) ----------
   const statusData = useMemo(
@@ -331,7 +335,8 @@ export default function InsightsPage() {
     [byStatus],
   );
 
-  const showSkeletons = !ready || loading;
+  const pageError = err || gamesError?.message || "";
+  const showSkeletons = !ready || loading || gamesLoading;
 
   return (
     <AppPage width="full">
@@ -342,11 +347,14 @@ export default function InsightsPage() {
           meta={displayName}
         />
 
-        {err ? (
+        {pageError ? (
           <PageError
             title="Could not load insights."
-            description={err}
-            onRetry={() => load()}
+            description={pageError}
+            onRetry={() => {
+              load();
+              refreshGames().catch(() => {});
+            }}
             className="min-h-[160px]"
           />
         ) : null}

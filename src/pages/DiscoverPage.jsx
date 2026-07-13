@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  X,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useStatuses } from "../hooks/useStatuses";
@@ -412,7 +413,7 @@ export default function DiscoverPage() {
               <div className="mt-3 flex justify-end">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="dangerGhost"
                   onClick={() =>
                     setFilters({
                       genre: "",
@@ -422,6 +423,7 @@ export default function DiscoverPage() {
                     })
                   }
                 >
+                  <X className="h-4 w-4" aria-hidden="true" />
                   Clear filters
                 </Button>
               </div>

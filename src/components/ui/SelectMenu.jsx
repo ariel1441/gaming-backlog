@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check } from "lucide-react";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import PopoverPanel from "./PopoverPanel";
+import DropdownChevron from "./DropdownChevron";
 
 export default function SelectMenu({
   id,
@@ -93,12 +94,7 @@ export default function SelectMenu({
         <span className={selected ? "truncate" : "truncate text-content-muted"}>
           {selected?.buttonLabel || selected?.label || placeholder}
         </span>
-        <ChevronDown
-          className={[
-            "h-4 w-4 shrink-0 text-content-muted transition-transform",
-            open ? "rotate-180" : "",
-          ].join(" ")}
-        />
+        <DropdownChevron open={open} />
       </button>
 
       {open ? (

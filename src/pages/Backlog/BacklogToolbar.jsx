@@ -5,7 +5,6 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
-  ChevronDown,
   Dice5,
   Grid2X2,
   LayoutGrid,
@@ -234,6 +233,12 @@ export default function BacklogToolbar({
               />
 
               <div className="hidden 2xl:block">
+                <DateDropdown
+                  dateFilter={filters.dateFilter}
+                  setDateFilter={filters.setDateFilter}
+                />
+              </div>
+              <div className="hidden 2xl:block">
                 <Button
                   type="button"
                   variant={actions?.completedActive ? "selected" : "secondary"}
@@ -251,12 +256,6 @@ export default function BacklogToolbar({
                   ) : null}
                 </Button>
               </div>
-              <div className="hidden 2xl:block">
-                <DateDropdown
-                  dateFilter={filters.dateFilter}
-                  setDateFilter={filters.setDateFilter}
-                />
-              </div>
               <div className="2xl:hidden">
                 <MoreFiltersDropdown
                   dateFilter={filters.dateFilter}
@@ -268,10 +267,10 @@ export default function BacklogToolbar({
               {filters.count ? (
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="dangerGhost"
                   size="sm"
                   onClick={filters.clear}
-                  className="h-10 rounded-xl text-content-muted"
+                  className="h-10 rounded-xl"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                   Clear

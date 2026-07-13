@@ -6,9 +6,9 @@ export const DEFAULT_USER_PREFERENCES = {
 };
 
 export const backlogViewOptions = [
-  { value: "grid", label: "Grid view" },
-  { value: "compact", label: "Compact grid" },
-  { value: "list", label: "List view" },
+  { value: "grid", label: "Cards" },
+  { value: "compact", label: "Compact cards" },
+  { value: "list", label: "Rows" },
 ];
 
 export const backlogSortOptions = [

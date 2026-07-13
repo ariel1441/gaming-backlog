@@ -15,6 +15,7 @@ import {
   Field,
   Modal,
   SelectMenu,
+  Skeleton,
   Textarea,
   TextInput,
   useToast,
@@ -34,7 +35,6 @@ import {
 import {
   AppPage,
   PageHeader,
-  PageLoading,
   PageSection,
 } from "../../components/layout";
 import { CoverCollage, formatUpdatedDate } from "./ListPreview";
@@ -58,7 +58,7 @@ export default function ListsPage() {
     refresh,
   } = useGames();
   const [lists, setLists] = useState([]);
-  const [listsLoading, setListsLoading] = useState(false);
+  const [listsLoading, setListsLoading] = useState(true);
   const [listsError, setListsError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [draft, setDraft] = useState(defaultManualDraft);
@@ -207,11 +207,8 @@ export default function ListsPage() {
 
       <div className="pt-7">
         <PageSection title="Saved lists">
-          {authLoading || gamesLoading ? (
-            <PageLoading
-              rows={4}
-              className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
-            />
+          {authLoading || gamesLoading || listsLoading ? (
+            <ListsSkeleton />
           ) : gamesError ? (
             <EmptyState
               icon={AlertTriangle}
@@ -385,6 +382,32 @@ export default function ListsPage() {
         </Modal>
       ) : null}
     </AppPage>
+  );
+}
+
+function ListsSkeleton() {
+  return (
+    <div
+      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+      role="status"
+      aria-label="Loading saved lists"
+      aria-busy="true"
+    >
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="min-w-0 rounded-lg border border-surface-border bg-surface-card p-3"
+        >
+          <Skeleton className="aspect-[4/3] w-full rounded-lg" />
+          <div className="mt-3 space-y-2">
+            <Skeleton className="h-5 w-2/3" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-4/5" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

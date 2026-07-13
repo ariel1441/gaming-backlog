@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   BarChart3,
   CalendarDays,
-  ChevronDown,
   CheckCircle2,
   Clock3,
   Compass,
@@ -22,7 +21,12 @@ import {
 import { AppPage, PageHeader } from "../components/layout";
 import GameModal from "../components/GameModal";
 import ProfileAvatar from "../components/ProfileAvatar";
-import { Button, EmptyState, StatusBadge } from "../components/ui";
+import {
+  Button,
+  DropdownChevron,
+  EmptyState,
+  StatusBadge,
+} from "../components/ui";
 import { useAuth } from "../contexts/AuthContext";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
@@ -526,7 +530,7 @@ function QuickLinks({ isGuest }) {
         aria-expanded={open}
       >
         Shortcuts
-        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        <DropdownChevron open={open} />
       </Button>
       {open ? (
         <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 grid w-56 gap-1 rounded-2xl border border-surface-border bg-surface-card p-2 shadow-2xl">

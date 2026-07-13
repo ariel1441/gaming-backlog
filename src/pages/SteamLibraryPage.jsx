@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Search,
   Trophy,
+  X,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -719,9 +720,10 @@ export default function SteamLibraryPage() {
                 hasActiveTools ? (
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="dangerGhost"
                     onClick={resetTools}
                   >
+                    <X className="h-4 w-4" aria-hidden="true" />
                     Clear filters
                   </Button>
                 ) : (

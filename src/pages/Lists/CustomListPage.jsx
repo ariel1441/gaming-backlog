@@ -45,6 +45,7 @@ import {
   IconButton,
   Modal,
   SelectMenu,
+  SegmentedControl,
   Textarea,
   TextInput,
   useConfirm,
@@ -84,8 +85,8 @@ import {
 } from "./CustomListView";
 
 const viewOptions = [
-  { value: "posters", label: "Posters" },
-  { value: "rows", label: "Rows" },
+  { value: "posters", label: "Posters", icon: Grid2X2 },
+  { value: "rows", label: "Rows", icon: List },
 ];
 
 export default function CustomListPage() {
@@ -409,7 +410,7 @@ export default function CustomListPage() {
                     <>
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="secondary"
                         onClick={cancelManualEdit}
                         disabled={saving}
                       >
@@ -476,22 +477,15 @@ export default function CustomListPage() {
           ) : (
             <div />
           )}
-          <div className="flex items-center gap-2">
-            {viewMode === "posters" ? (
-              <Grid2X2
-                className="h-4 w-4 text-content-muted"
-                aria-hidden="true"
-              />
-            ) : (
-              <List className="h-4 w-4 text-content-muted" aria-hidden="true" />
-            )}
-            <SelectMenu
-              value={viewMode}
-              onChange={setViewMode}
-              options={viewOptions}
-              className="w-40"
-            />
-          </div>
+          <SegmentedControl
+            value={viewMode}
+            onChange={setViewMode}
+            options={viewOptions}
+            ariaLabel="List view"
+            className="h-10 border-surface-border/75 bg-surface-card/45"
+            itemClassName="h-8 px-3 text-xs"
+            activeClassName="bg-primary/18 text-primary-light shadow-sm shadow-primary/10"
+          />
         </section>
 
         {displayGames.length ? (
@@ -607,7 +601,7 @@ export default function CustomListPage() {
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
-                variant="ghost"
+                variant="secondary"
                 onClick={() => setShowEdit(false)}
               >
                 Cancel
