@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { useGames } from "../hooks/useGames";
 import { useStatuses } from "../hooks/useStatuses";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
@@ -81,6 +82,7 @@ const backlogOptions = [
 
 export default function DiscoverPage() {
   const { isAuthenticated, loading: authLoading, getAuthHeaders } = useAuth();
+  const { upsertGame } = useGames();
   const { statuses } = useStatuses();
   const toast = useToast();
   const navigate = useNavigate();
@@ -259,10 +261,11 @@ export default function DiscoverPage() {
             : Number(addDraft.how_long_to_beat),
         my_score: addDraft.my_score === "" ? null : Number(addDraft.my_score),
       };
-      await addCatalogGameToBacklog(selected.id, payload, {
+      const createdGame = await addCatalogGameToBacklog(selected.id, payload, {
         auth: false,
         headers: getAuthHeaders(),
       });
+      upsertGame(createdGame);
       toast.success("Game added to backlog.");
       setSelected((game) => ({ ...game, alreadyInBacklog: true }));
       setResults((list) =>

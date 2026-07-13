@@ -209,6 +209,23 @@ function useGamesState() {
     [getAuthHeaders, isAuthenticated],
   );
 
+  // Merge a game created by another private workflow (for example Discover)
+  // into the shared collection without refetching the full backlog.
+  const upsertGame = useCallback((game) => {
+    if (game?.id == null) return;
+    setGames((prev) => {
+      const id = String(game.id);
+      const existingIndex = prev.findIndex(
+        (current) => String(current?.id) === id,
+      );
+      if (existingIndex < 0) return sortGames([...prev, game]);
+
+      const next = [...prev];
+      next[existingIndex] = { ...next[existingIndex], ...game };
+      return sortGames(next);
+    });
+  }, []);
+
   // --- Add (optimistic): insert immediately at end of the target status group
   const addGame = useCallback(async (payload) => {
     // 1) Optimistic add at the end of the chosen status group
@@ -385,6 +402,7 @@ function useGamesState() {
     loading,
     error,
     refresh,
+    upsertGame,
     addGame,
     editGame,
     removeGame,
