@@ -81,6 +81,16 @@ test("GET /api/games never blocks on RAWG provider requests", async () => {
             name: "Hades",
             rawg_id: 1145360,
             status: "playing",
+            cover: "https://img.example/hades.jpg",
+          },
+          {
+            id: 2,
+            user_id: 7,
+            name: "Steam Legacy",
+            rawg_id: 55,
+            status: "playing",
+            cover: null,
+            steam_app_id: "12345",
           },
         ],
       }),
@@ -90,7 +100,80 @@ test("GET /api/games never blocks on RAWG provider requests", async () => {
         });
         assert.equal(res.status, 200);
         assert.equal(res.body[0].name, "Hades");
+        assert.equal(res.body[0].cover, "https://img.example/hades.jpg");
+        assert.equal(res.body[0].coverNeedsHydration, false);
+        assert.equal(
+          res.body[1].cover,
+          "https://cdn.cloudflare.steamstatic.com/steam/apps/12345/header.jpg",
+        );
+        assert.equal(res.body[1].coverNeedsHydration, true);
         assert.equal(rawgRequests, 0);
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalRawgKey == null) delete process.env.RAWG_API_KEY;
+    else process.env.RAWG_API_KEY = originalRawgKey;
+  }
+});
+
+test("POST /api/games/hydrate-covers repairs and persists a cold-cache legacy cover", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalRawgKey = process.env.RAWG_API_KEY;
+  process.env.RAWG_API_KEY = "test-key";
+  const cover = "https://img.example/legacy-cover.jpg";
+  let persisted;
+
+  globalThis.fetch = async (input, init) => {
+    if (String(input).startsWith("https://api.rawg.io/api/games/42")) {
+      return new Response(
+        JSON.stringify({
+          id: 42,
+          slug: "legacy-game",
+          name: "Legacy Game",
+          background_image: cover,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    await withServer(
+      async (text, values) => {
+        if (String(text).includes("UPDATE games")) {
+          persisted = values;
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Legacy Game",
+              rawg_id: 42,
+              rawg_slug: "legacy-game",
+              status: "playing",
+              cover: null,
+              catalog_cover_url: null,
+            },
+          ],
+        };
+      },
+      async (baseUrl) => {
+        const res = await request(baseUrl, "/api/games/hydrate-covers", {
+          method: "POST",
+          body: {},
+          authPayload: { is_guest: false },
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.games[0].cover, cover);
+        assert.equal(res.body.games[0].coverNeedsHydration, false);
+        assert.deepEqual(persisted, [cover, 12, 7]);
       },
     );
   } finally {

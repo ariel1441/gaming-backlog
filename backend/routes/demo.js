@@ -42,12 +42,14 @@ async function cloneTemplateGames(client, templateUserId, toUserId) {
   await client.query(
     `
     INSERT INTO games (
-      user_id, name, status, position, my_genre, how_long_to_beat,
-      my_score, thoughts, started_at, finished_at
+      user_id, catalog_game_id, name, status, position, my_genre,
+      how_long_to_beat, my_score, thoughts, cover, rawg_id, rawg_slug,
+      started_at, finished_at
     )
     SELECT
-      $1, name, status, position, my_genre, how_long_to_beat,
-      my_score, thoughts, started_at, finished_at
+      $1, catalog_game_id, name, status, position, my_genre,
+      how_long_to_beat, my_score, thoughts, cover, rawg_id, rawg_slug,
+      started_at, finished_at
     FROM games
     WHERE user_id = $2
   `,

@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import {
   listGames as listGamesApi,
+  hydrateGameCovers as hydrateGameCoversApi,
   createGame as createGameApi,
   updateGame as updateGameApi,
   updateFavoriteGames as updateFavoriteGamesApi,
@@ -138,6 +139,39 @@ function useGamesState() {
                 ? data.rows
                 : [];
         setGames(sortGames(list));
+
+        if (
+          list.some((game) => !game?.cover || game?.coverNeedsHydration)
+        ) {
+          hydrateGameCoversApi({
+            auth: false,
+            headers: getAuthHeaders(),
+            signal: ac.signal,
+          })
+            .then((payload) => {
+              if (seq !== reqSeq.current) return;
+              const repaired = Array.isArray(payload?.games)
+                ? payload.games
+                : [];
+              if (!repaired.length) return;
+              const repairedById = new Map(
+                repaired.map((game) => [String(game.id), game]),
+              );
+              setGames((current) =>
+                sortGames(
+                  current.map((game) => {
+                    const repair = repairedById.get(String(game.id));
+                    return repair ? { ...game, ...repair } : game;
+                  }),
+                ),
+              );
+            })
+            .catch((error) => {
+              if (error?.name !== "AbortError") {
+                console.warn("Cover repair failed:", error?.message || error);
+              }
+            });
+        }
       })
       .catch((e) => {
         if (e.name !== "AbortError") setError(e);

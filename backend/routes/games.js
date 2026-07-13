@@ -44,6 +44,7 @@ const router = express.Router();
 
 const CACHE_PATH = path.resolve("backend/data/cached_rawg_data.json");
 const DEFAULT_POSITION_SPACING = 1000;
+const COVER_HYDRATION_CONCURRENCY = 6;
 
 // retry failed/empty cache entries after this many ms (default 1h)
 const RAWG_FAIL_TTL_MS = Number(process.env.RAWG_FAIL_TTL_MS || 60 * 60 * 1000);
@@ -248,6 +249,38 @@ function cachedRawgForGame(cache, game) {
   return cache[lowerKey(game?.name)] || {};
 }
 
+const rawgCover = (rawg) =>
+  rawg?.cover || rawg?.background_image || null;
+
+const steamCover = (game) => {
+  const appId = String(game?.steam_app_id || "").trim();
+  return appId
+    ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${encodeURIComponent(appId)}/header.jpg`
+    : null;
+};
+
+const resolvedCover = (game, rawg) =>
+  game?.catalog_cover_url || game?.cover || rawgCover(rawg) || steamCover(game);
+
+const needsCoverHydration = (game, rawg) =>
+  !game?.catalog_cover_url && !game?.cover && !rawgCover(rawg);
+
+const mapWithLimit = async (items, limit, fn) => {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex++;
+        results[index] = await fn(items[index], index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+};
+
 /* ------------------------------- Position helper ------------------------------ */
 /**
  * Allocate the next position at the END of the **rank group** (not single status).
@@ -329,6 +362,8 @@ const decorateGameForClient = (game, rawg) => {
     return {
       ...game,
       ...catalogDecorated,
+      cover: resolvedCover(game, rawg),
+      coverNeedsHydration: needsCoverHydration(game, rawg),
       ...steamFields,
     };
   }
@@ -353,7 +388,8 @@ const decorateGameForClient = (game, rawg) => {
     how_long_to_beat: displayHLTB,
     displayHLTB,
     displayName: rawg?.name || game.name,
-    cover: rawg?.cover ?? rawg?.background_image ?? null,
+    cover: resolvedCover(game, rawg),
+    coverNeedsHydration: needsCoverHydration(game, rawg),
     releaseDate: rawg?.released ?? null,
     description: sanitizeGameHtml(rawg?.description),
     rating:
@@ -392,6 +428,55 @@ router.get("/", verifyToken, async (req, res, next) => {
 
     res.setHeader("Cache-Control", "no-store");
     res.json(out);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// One-time repair path for legacy rows whose cover only lived in the old
+// process-local RAWG cache. The normal list request stays database-only; the
+// client calls this in the background and merges the repaired rows.
+router.post("/hydrate-covers", verifyToken, async (req, res, next) => {
+  try {
+    if (req.user?.is_guest) {
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ games: [] });
+    }
+
+    const userId = req.user.id;
+    const { text, values } = listOwnedGamesQuery(userId);
+    const { rows } = await pool.query(text, values);
+    const cache = req.app.locals.rawgCache || {};
+    const missing = rows.filter((game) => {
+      const cached = cachedRawgForGame(cache, game);
+      return needsCoverHydration(game, cached);
+    });
+
+    const repaired = (
+      await mapWithLimit(
+        missing,
+        COVER_HYDRATION_CONCURRENCY,
+        async (game) => {
+          const ensured = await ensureRawgForGame(cache, game, {
+            persist: false,
+          });
+          const cover = rawgCover(ensured.rawg);
+          if (!cover) return null;
+          await pool.query(
+            `UPDATE games
+                SET cover = $1
+              WHERE id = $2
+                AND user_id = $3
+                AND (cover IS NULL OR btrim(cover) = '')`,
+            [cover, game.id, userId],
+          );
+          return decorateGameForClient({ ...game, cover }, ensured.rawg);
+        },
+      )
+    ).filter(Boolean);
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ games: repaired });
   } catch (err) {
     next(err);
   }
@@ -664,7 +749,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       INSERT INTO games
         (user_id, catalog_game_id, name, status, my_genre, thoughts, my_score,
          how_long_to_beat, hours_preferred_source, hours_locked, position,
-         started_at, finished_at, rawg_id, rawg_slug)
+         started_at, finished_at, rawg_id, rawg_slug, cover)
       VALUES
         (
           $1, $2, $3, $4, $5, $6, $7,
@@ -680,7 +765,8 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
             ELSE NULL
           END,
           $16,
-          $17
+          $17,
+          $20
         )
       RETURNING *;
     `;
@@ -705,6 +791,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       (rawg_slug || rawg?.slug || "").trim() || null, // $17
       statusGroupOf(statusNorm) === "playing", // $18
       statusGroupOf(statusNorm) === "done", // $19
+      rawgCover(rawg), // $20
     ];
 
     client = await pool.connect();
