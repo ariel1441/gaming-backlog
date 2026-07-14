@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-6 implemented locally through a dry-run historical-cache importer, production rollout pending
+Status: architecture approved; Stages 0-7 implemented and verified locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -81,12 +81,24 @@ As of 2026-07-14:
   `CONFIRM_PROD_METADATA_IMPORT=true` after the separate backup/release gate.
 - Dry-run validation of the ignored local cache found 716 valid entries covering
   602 distinct embedded RAWG IDs, with 20 byte-equivalent aliases and 94
-  alternate payloads. No database was contacted and no import was applied.
+  alternate payloads. The subsequent localhost-only apply stored 602 durable
+  snapshots; no RAWG request or production connection was used.
 - Stage 6 tests cover planning/deduplication, resume checkpoints, promotion of
   partial catalog rows, and preservation of existing full catalog projections.
 - Remaining work includes the reviewed production import, exact backlog-link
   repair, ambiguous candidate review, controlled refresh, and runtime JSON-cache
   retirement.
+- Stage 7 adds aggregate-only exact-link auditing and an idempotent repair tool.
+  It links only an unlinked game whose stored RAWG ID resolves to the unique
+  global RAWG identity, skips owner-level catalog collisions, and never touches
+  title-only or conflicting rows. Apply mode uses one transaction and an
+  advisory lock.
+- The post-import localhost audit found 79 games with exact RAWG IDs, all already
+  linked correctly, with zero safe repairs, zero owner collisions, and zero
+  conflicts. Across all local users, 225 games now link to full catalog rows,
+  305 link to search-result rows, and 493 remain unlinked title-only games.
+- Production exact repair remains a separate release operation requiring both a
+  command flag and `CONFIRM_PROD_EXACT_LINK_REPAIR=true`; it has not been run.
 - No production migration or production data write has been performed.
 
 ## Purpose
@@ -844,7 +856,7 @@ Implemented command contract:
 
 ```text
 npm run metadata:import-cache
-npm run metadata:import-cache -- --apply
+npm run metadata:import-cache:local
 ```
 
 The first command is the default aggregate-only dry run and does not query the
@@ -861,6 +873,17 @@ in the script and must wait for backup verification and a reviewed release plan.
 4. Fetch remaining exact details within the provider budget.
 5. Audit historical Steam mappings before trusting them globally.
 6. Report aggregate completion and failures.
+
+Implemented local commands:
+
+```text
+npm run metadata:repair-exact
+npm run metadata:repair-exact:local
+```
+
+The first command is aggregate-only. The second performs only the exact safe
+links reported by the audit and is a no-op when none exist. Production apply is
+deliberately gated separately and is not part of the local workflow.
 
 The production audit currently found no unlinked rows with an existing exact
 RAWG ID, but linked rows may still point to partial catalog records.
