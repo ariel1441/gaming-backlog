@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-4 and initial Stage 5 route integration implemented locally, production rollout pending
+Status: architecture approved; Stages 0-6 implemented locally through a dry-run historical-cache importer, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -70,6 +70,23 @@ As of 2026-07-14:
 - Stage 5 does not yet implement historical-cache import, backlog repair jobs,
   ambiguous candidate review, controlled refresh, or retirement of all runtime
   JSON-cache compatibility reads.
+- Stage 6 adds a one-time historical RAWG cache importer. It validates through
+  the canonical normalizer, trusts only embedded RAWG IDs, deduplicates aliases
+  by payload hash, selects the most complete evidence for each ID, imports in
+  bounded resumable batches, and preserves an existing full projection while
+  archiving distinct historical snapshots.
+- The Stage 6 command defaults to validation-only dry run and reports aggregates
+  without titles or personal data. Local apply requires `--apply`; production
+  apply additionally requires `--production`, `--confirm-production`, and
+  `CONFIRM_PROD_METADATA_IMPORT=true` after the separate backup/release gate.
+- Dry-run validation of the ignored local cache found 716 valid entries covering
+  602 distinct embedded RAWG IDs, with 20 byte-equivalent aliases and 94
+  alternate payloads. No database was contacted and no import was applied.
+- Stage 6 tests cover planning/deduplication, resume checkpoints, promotion of
+  partial catalog rows, and preservation of existing full catalog projections.
+- Remaining work includes the reviewed production import, exact backlog-link
+  repair, ambiguous candidate review, controlled refresh, and runtime JSON-cache
+  retirement.
 - No production migration or production data write has been performed.
 
 ## Purpose
@@ -822,6 +839,19 @@ Build an explicit one-time import tool with:
 Do not commit the cache file or turn it into a migration payload. Do not assume
 the local cache is complete or current. Treat it as valuable historical provider
 evidence.
+
+Implemented command contract:
+
+```text
+npm run metadata:import-cache
+npm run metadata:import-cache -- --apply
+```
+
+The first command is the default aggregate-only dry run and does not query the
+database. The second targets localhost only and writes an ignored resumable
+checkpoint. A production run is intentionally not part of normal development;
+it requires the additional production flags/environment confirmation documented
+in the script and must wait for backup verification and a reviewed release plan.
 
 ### Phase 3: Exact-identity backlog repair
 

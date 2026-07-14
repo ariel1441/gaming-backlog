@@ -234,7 +234,16 @@ async function markFailure(dbPool, catalogGameId, error) {
   );
 }
 
-async function persistNormalizedDetail(dbPool, detail, { force = false } = {}) {
+async function persistNormalizedDetail(
+  dbPool,
+  detail,
+  {
+    force = false,
+    preserveExistingFull = false,
+    archiveSnapshot = false,
+    providerFetched = true,
+  } = {},
+) {
   const client = await dbPool.connect();
   try {
     await client.query("BEGIN");
@@ -244,18 +253,20 @@ async function persistNormalizedDetail(dbPool, detail, { force = false } = {}) {
     );
 
     let existing = await selectExisting(client, detail.rawgId);
-    if (reusable(existing) && !force) {
+    if (reusable(existing) && !force && !archiveSnapshot) {
       await client.query("COMMIT");
       return {
         catalogGame: existing,
-        providerFetched: true,
+        providerFetched,
         reused: true,
         snapshotStored: false,
       };
     }
 
     let catalogGame;
-    if (existing) {
+    if (existing?.metadata_quality === "full" && preserveExistingFull) {
+      catalogGame = existing;
+    } else if (existing) {
       const { rows } = await client.query(
         `
         UPDATE catalog_games
@@ -405,7 +416,7 @@ async function persistNormalizedDetail(dbPool, detail, { force = false } = {}) {
     await client.query("COMMIT");
     return {
       catalogGame,
-      providerFetched: true,
+      providerFetched,
       reused: Boolean(existing),
       snapshotStored: snapshot.rows.length > 0,
     };
@@ -475,10 +486,34 @@ export function createMetadataIngestionService({
     return inflight.get(key);
   }
 
-  return { ingestRawgGame };
+  async function ingestRawgSnapshot(payload, options = {}) {
+    const expectedId = options.expectedRawgId ?? payload?.id ?? payload?.rawg_id;
+    const detail = normalizeRawgDetailSnapshot(payload, expectedId);
+    const suppliedDate = options.fetchedAt
+      ? new Date(options.fetchedAt)
+      : now();
+    if (Number.isNaN(suppliedDate.getTime())) {
+      throw new MetadataIngestionError(
+        "invalid_snapshot_date",
+        "Provider snapshot date is invalid.",
+        { status: 400 },
+      );
+    }
+    detail.fetchedAt = suppliedDate;
+    return persistNormalizedDetail(dbPool, detail, {
+      preserveExistingFull: options.preserveExistingFull !== false,
+      archiveSnapshot: true,
+      providerFetched: false,
+    });
+  }
+
+  return { ingestRawgGame, ingestRawgSnapshot };
 }
 
 const defaultService = createMetadataIngestionService();
 
 export const ingestRawgGameMetadata = (...args) =>
   defaultService.ingestRawgGame(...args);
+
+export const ingestRawgMetadataSnapshot = (...args) =>
+  defaultService.ingestRawgSnapshot(...args);

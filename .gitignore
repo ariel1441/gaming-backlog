@@ -28,6 +28,7 @@ build/
 # -----------------------
 backend/data/cached_rawg_data.json
 backend/data/cached_rawg_data_copy.json
+backend/data/rawg-import-checkpoint.json
 
 # -----------------------
 # 📜 Logs

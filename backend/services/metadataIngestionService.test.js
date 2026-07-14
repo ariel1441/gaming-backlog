@@ -75,6 +75,59 @@ test("provider payload hashing is stable across object key order", () => {
   assert.equal(providerPayloadHash(first), providerPayloadHash(second));
 });
 
+test("historical snapshots promote partial rows but preserve existing full projections", async () => {
+  await withMetadataSchema(async (dbPool) => {
+    await dbPool.query(
+      `
+      WITH catalog AS (
+        INSERT INTO catalog_games (
+          name, canonical_title, metadata_quality, metadata_source
+        ) VALUES ('Partial Game', 'Partial Game', 'search_result', 'rawg')
+        RETURNING id
+      )
+      INSERT INTO external_game_ids (catalog_game_id, source, external_id, slug)
+      SELECT id, 'rawg', '42', 'partial-game' FROM catalog
+      `,
+    );
+
+    let fetchCount = 0;
+    const service = createMetadataIngestionService({
+      dbPool,
+      fetchRawgDetail: async () => {
+        fetchCount += 1;
+        return rawgDetail(42);
+      },
+      now: () => new Date("2026-07-14T12:00:00.000Z"),
+    });
+
+    const promoted = await service.ingestRawgSnapshot(rawgDetail(42), {
+      fetchedAt: "2025-01-01T00:00:00Z",
+    });
+    assert.equal(promoted.providerFetched, false);
+    assert.equal(promoted.snapshotStored, true);
+    assert.equal(promoted.catalogGame.metadata_quality, "full");
+    assert.equal(promoted.catalogGame.cover_url, "https://img.example/42.jpg");
+    assert.equal(fetchCount, 0);
+
+    const archived = await service.ingestRawgSnapshot(
+      rawgDetail(42, {
+        background_image: "https://img.example/historical.jpg",
+        rating: 1.5,
+        updated: "2024-01-01T00:00:00Z",
+      }),
+      { fetchedAt: "2024-01-01T00:00:00Z" },
+    );
+    assert.equal(archived.snapshotStored, true);
+    assert.equal(archived.catalogGame.cover_url, "https://img.example/42.jpg");
+    assert.equal(Number(archived.catalogGame.rawg_rating), 4.25);
+
+    const snapshots = await dbPool.query(
+      "SELECT COUNT(*)::int AS count FROM catalog_provider_snapshots",
+    );
+    assert.equal(snapshots.rows[0].count, 2);
+  });
+});
+
 test("exact RAWG ingestion persists, reuses, refreshes safely, and records failures", async () => {
   await withMetadataSchema(async (dbPool) => {
     let response = rawgDetail(42);
