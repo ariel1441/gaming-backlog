@@ -211,9 +211,6 @@ async function mockApi(page) {
       },
     }),
   );
-  await page.route(`${API_BASE}/api/games/hydrate-covers`, (route) =>
-    route.fulfill({ json: { games: [] } }),
-  );
   await page.route(`${API_BASE}/api/catalog/recent`, (route) =>
     route.fulfill({
       json: { results: [], source: "cache", cacheStatus: "fresh" },

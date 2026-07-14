@@ -2,22 +2,18 @@
 import express from "express";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
-import { fetchGameData, fetchGameDataByIdOrSlug } from "../utils/fetchRAWG.js";
 import {
   favoriteGames,
   gameIdParam,
   upsertGame,
   reorderGame,
 } from "../validators/games.js";
-import fs from "fs/promises";
-import path from "path";
 
 import { toDateOrNull, toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { normStatus, statusGroupOf } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
 import { affectsInsights } from "../utils/insightsInvalidation.js";
-import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
 import { normalizeScore } from "../utils/normalize.js";
 import { badRequest, notFound, conflict, httpError } from "../utils/httpError.js";
 import { findDuplicateGameTitle } from "../utils/gameTitle.js";
@@ -42,215 +38,10 @@ import {
 
 const router = express.Router();
 
-const CACHE_PATH = path.resolve("backend/data/cached_rawg_data.json");
 const DEFAULT_POSITION_SPACING = 1000;
-const COVER_HYDRATION_CONCURRENCY = 6;
-
-// retry failed/empty cache entries after this many ms (default 1h)
-const RAWG_FAIL_TTL_MS = Number(process.env.RAWG_FAIL_TTL_MS || 60 * 60 * 1000);
 
 // Use DB local day (Israel) to avoid UTC "yesterday" issues.
 const TODAY_SQL = "(now() AT TIME ZONE 'Asia/Jerusalem')::date";
-
-/* -------------------------------- RAWG cache -------------------------------- */
-
-const loadCache = async (app) => {
-  try {
-    const data = await fs.readFile(CACHE_PATH, "utf-8");
-    app.locals.rawgCache = JSON.parse(data);
-  } catch (e) {
-    console.warn(
-      "RAWG cache missing or unreadable, starting empty:",
-      e?.message || e,
-    );
-    app.locals.rawgCache = {};
-  }
-};
-
-// compact JSON, written atomically to avoid corruption
-const saveCache = async (cache) => {
-  const data = JSON.stringify(cache);
-  const dir = path.dirname(CACHE_PATH);
-  await fs.mkdir(dir, { recursive: true }); // ensure folder exists
-
-  const tmp = path.join(dir, `.rawg-cache.${process.pid}.${Date.now()}.tmp`);
-
-  // Write to temp + fsync to improve durability
-  const fh = await fs.open(tmp, "w");
-  try {
-    await fh.writeFile(data, "utf8");
-    await fh.sync(); // flush data/metadata to disk
-  } finally {
-    await fh.close();
-  }
-
-  // Atomic swap into place
-  await fs.rename(tmp, CACHE_PATH);
-};
-
-const lowerKey = (s) =>
-  String(s || "")
-    .trim()
-    .toLowerCase();
-
-const rawgIdentityKey = (rawgId) => {
-  const value = String(rawgId || "").trim();
-  return value ? `rawg:${value}` : "";
-};
-
-/** Read a reasonable RAWG hours value from a few likely places (do NOT store to DB). */
-const getRawgHours = (rawg) => {
-  const candidates = [
-    rawg?.playtime, // common RAWG field (hours)
-    rawg?.time_to_beat?.main, // some wrappers
-    rawg?.time_to_beat?.main_story, // alt
-    rawg?.playtime_hours, // alt
-    rawg?.average_playtime, // alt
-  ];
-  for (const v of candidates) {
-    const h = toHourInt(v);
-    if (h != null) return h;
-  }
-  return null;
-};
-
-const isEmptyObject = (obj) =>
-  obj &&
-  typeof obj === "object" &&
-  !Array.isArray(obj) &&
-  Object.keys(obj).length === 0;
-
-const isStaleMiss = (entry) => {
-  if (!entry) return true;
-  if (isEmptyObject(entry)) return true; // legacy empty cache entries: refetch
-  if (entry.__failedAt && Date.now() - entry.__failedAt > RAWG_FAIL_TTL_MS)
-    return true;
-  return false;
-};
-
-// coalesce concurrent RAWG fetches for the same title (process-local)
-const inflightRawg = new Map(); // key: lower(title) -> Promise<void>
-
-/**
- * Ensure a RAWG entry; returns { rawg, canonicalName, changed }.
- * If `persist` is true, writes immediately (for POST/PUT). For GET list use persist:false.
- */
-async function ensureRawgEntry(cache, userTitle, { persist = true } = {}) {
-  const key = lowerKey(userTitle);
-  let entry = cache[key];
-  let changed = false;
-
-  if (isStaleMiss(entry)) {
-    let p = inflightRawg.get(key);
-    if (!p) {
-      p = (async () => {
-        try {
-          const data = await fetchGameData(userTitle);
-          cache[key] = data ?? {};
-        } catch (e) {
-          cache[key] = { __failedAt: Date.now() };
-        }
-      })().finally(() => inflightRawg.delete(key));
-      inflightRawg.set(key, p);
-    }
-    await p;
-    changed = true;
-
-    if (persist) {
-      try {
-        await saveCache(cache); // POST/PUT etc
-      } catch (e) {
-        console.warn("saveCache(persist) failed:", e?.message || e);
-      }
-    }
-    entry = cache[key];
-  }
-
-  const rawg = entry || {};
-  const canonicalName = (rawg?.name || rawg?.slug || userTitle || "")
-    .toString()
-    .trim();
-  return { rawg, canonicalName, changed };
-}
-
-async function ensureRawgIdentityEntry(
-  cache,
-  { rawgId, rawgSlug, fallbackTitle },
-  { persist = true } = {},
-) {
-  const identityKey = rawgIdentityKey(rawgId);
-  if (!identityKey) {
-    return ensureRawgEntry(cache, fallbackTitle, { persist });
-  }
-
-  let entry = cache[identityKey];
-  let changed = false;
-
-  if (isStaleMiss(entry)) {
-    try {
-      const data = await fetchGameDataByIdOrSlug(rawgId || rawgSlug);
-      cache[identityKey] = data ?? {};
-    } catch (e) {
-      cache[identityKey] = { __failedAt: Date.now() };
-    }
-    changed = true;
-
-    if (persist) {
-      try {
-        await saveCache(cache);
-      } catch (e) {
-        console.warn("saveCache(identity) failed:", e?.message || e);
-      }
-    }
-    entry = cache[identityKey];
-  }
-
-  const rawg = entry || {};
-  const titleKey = lowerKey(fallbackTitle);
-  if (titleKey && rawg && !isEmptyObject(rawg) && !cache[titleKey]) {
-    cache[titleKey] = rawg;
-    changed = true;
-    if (persist) {
-      try {
-        await saveCache(cache);
-      } catch (e) {
-        console.warn("saveCache(identity alias) failed:", e?.message || e);
-      }
-    }
-  }
-
-  const canonicalName = (rawg?.name || rawg?.slug || fallbackTitle || "")
-    .toString()
-    .trim();
-  return { rawg, canonicalName, changed };
-}
-
-async function ensureRawgForGame(cache, game, options) {
-  if (game?.rawg_id) {
-    return ensureRawgIdentityEntry(
-      cache,
-      {
-        rawgId: game.rawg_id,
-        rawgSlug: game.rawg_slug,
-        fallbackTitle: game.name,
-      },
-      options,
-    );
-  }
-  return ensureRawgEntry(cache, game?.name, options);
-}
-
-function cachedRawgForGame(cache, game) {
-  if (game?.rawg_id) {
-    return (
-      cache[rawgIdentityKey(game.rawg_id)] || cache[lowerKey(game.name)] || {}
-    );
-  }
-  return cache[lowerKey(game?.name)] || {};
-}
-
-const rawgCover = (rawg) =>
-  rawg?.cover || rawg?.background_image || null;
 
 const steamCover = (game) => {
   const appId = String(game?.steam_app_id || "").trim();
@@ -259,30 +50,8 @@ const steamCover = (game) => {
     : null;
 };
 
-const resolvedCover = (game, rawg) =>
-  game?.catalog_cover_url || game?.cover || rawgCover(rawg) || steamCover(game);
-
-const needsCoverHydration = (game, rawg) =>
-  Boolean(game?.rawg_id) &&
-  !game?.catalog_cover_url &&
-  !game?.cover &&
-  !rawgCover(rawg);
-
-const mapWithLimit = async (items, limit, fn) => {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(limit, items.length) },
-    async () => {
-      while (nextIndex < items.length) {
-        const index = nextIndex++;
-        results[index] = await fn(items[index], index);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-};
+const resolvedCover = (game) =>
+  game?.catalog_cover_url || game?.cover || steamCover(game);
 
 /* ------------------------------- Position helper ------------------------------ */
 /**
@@ -319,7 +88,7 @@ async function lockUserRank(db, userId, status) {
  *   DB how_long_to_beat  OR  RAWG hours  OR  null
  * We also include displayHLTB and displayName for future UI uses.
  */
-const decorateGameForClient = (game, rawg) => {
+const decorateGameForClient = (game) => {
   const steamPlaytimeMinutes = Number.isFinite(
     Number(game.steam_playtime_minutes),
   )
@@ -365,47 +134,27 @@ const decorateGameForClient = (game, rawg) => {
     return {
       ...game,
       ...catalogDecorated,
-      cover: resolvedCover(game, rawg),
-      coverNeedsHydration: needsCoverHydration(game, rawg),
+      cover: resolvedCover(game),
       ...steamFields,
     };
   }
 
   const dbHours = toHourInt(game.how_long_to_beat);
-  const rawgHours = getRawgHours(rawg);
-
-  const genreNames = Array.isArray(rawg?.genres)
-    ? rawg.genres.map((g) => g?.name).filter(Boolean)
-    : [];
-  const storeNames = Array.isArray(rawg?.stores)
-    ? rawg.stores.map((s) => s?.store?.name ?? s?.name).filter(Boolean)
-    : [];
-  const tagNames = Array.isArray(rawg?.tags)
-    ? rawg.tags.map((t) => t?.name).filter(Boolean)
-    : [];
-
-  const displayHLTB = dbHours ?? rawgHours ?? null;
+  const displayHLTB = dbHours ?? null;
 
   return {
     ...game,
     how_long_to_beat: displayHLTB,
     displayHLTB,
-    displayName: rawg?.name || game.name,
-    cover: resolvedCover(game, rawg),
-    coverNeedsHydration: needsCoverHydration(game, rawg),
-    releaseDate: rawg?.released ?? null,
-    description: sanitizeGameHtml(rawg?.description),
-    rating:
-      rawg && typeof rawg.rating === "number" && rawg.rating > 0
-        ? rawg.rating
-        : null,
-    genres: genreNames.length ? genreNames.join(", ") : null,
-    metacritic:
-      rawg && typeof rawg.metacritic === "number" && rawg.metacritic > 0
-        ? rawg.metacritic
-        : null,
-    stores: storeNames.length ? storeNames.join(", ") : null,
-    features: tagNames.length ? tagNames.join(", ") : null,
+    displayName: game.name,
+    cover: resolvedCover(game),
+    releaseDate: null,
+    description: "",
+    rating: null,
+    genres: null,
+    metacritic: null,
+    stores: null,
+    features: null,
     ...steamFields,
   };
 };
@@ -421,59 +170,10 @@ router.get("/", verifyToken, async (req, res, next) => {
     const { text, values } = listOwnedGamesQuery(userId);
     const { rows } = await pool.query(text, values);
 
-    const out = rows.map((game) => decorateGameForClient(game, {}));
+    const out = rows.map((game) => decorateGameForClient(game));
 
     res.setHeader("Cache-Control", "no-store");
     res.json(out);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// One-time repair path for legacy rows whose cover only lived in the old
-// process-local RAWG cache. The normal list request stays database-only; the
-// client calls this in the background and merges the repaired rows.
-router.post("/hydrate-covers", verifyToken, async (req, res, next) => {
-  try {
-    if (req.user?.is_guest) {
-      res.setHeader("Cache-Control", "no-store");
-      return res.json({ games: [] });
-    }
-
-    const userId = req.user.id;
-    const { text, values } = listOwnedGamesQuery(userId);
-    const { rows } = await pool.query(text, values);
-    const cache = req.app.locals.rawgCache || {};
-    const missing = rows.filter((game) => {
-      const cached = cachedRawgForGame(cache, game);
-      return needsCoverHydration(game, cached);
-    });
-
-    const repaired = (
-      await mapWithLimit(
-        missing,
-        COVER_HYDRATION_CONCURRENCY,
-        async (game) => {
-          const ensured = await ensureRawgForGame(cache, game, {
-            persist: false,
-          });
-          const cover = rawgCover(ensured.rawg);
-          if (!cover) return null;
-          await pool.query(
-            `UPDATE games
-                SET cover = $1
-              WHERE id = $2
-                AND user_id = $3
-                AND (cover IS NULL OR btrim(cover) = '')`,
-            [cover, game.id, userId],
-          );
-          return decorateGameForClient({ ...game, cover }, ensured.rawg);
-        },
-      )
-    ).filter(Boolean);
-
-    res.setHeader("Cache-Control", "no-store");
-    res.json({ games: repaired });
   } catch (err) {
     next(err);
   }
@@ -611,7 +311,7 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
 
     await client.query("COMMIT");
 
-    const out = rows.map((game) => decorateGameForClient(game, {}));
+    const out = rows.map((game) => decorateGameForClient(game));
 
     res.setHeader("Cache-Control", "no-store");
     res.json(out);
@@ -796,7 +496,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
 
     const detailsQuery = selectOwnedGameDetailsQuery(rows[0].id, userId);
     const detailsRes = await pool.query(detailsQuery.text, detailsQuery.values);
-    res.status(201).json(decorateGameForClient(detailsRes.rows[0] || rows[0], {}));
+    res.status(201).json(decorateGameForClient(detailsRes.rows[0] || rows[0]));
   } catch (err) {
     try {
       await client?.query("ROLLBACK");
@@ -1025,7 +725,7 @@ router.put(
       );
       const responseRow = detailsRes.rows[0] || nextRow;
 
-      res.json(decorateGameForClient(responseRow, {}));
+      res.json(decorateGameForClient(responseRow));
     } catch (err) {
       next(err);
     }
@@ -1047,7 +747,7 @@ router.delete("/:id", verifyToken, gameIdParam, async (req, res, next) => {
     cacheClear(userId);
 
     // Decorate for consistency (harmless even if UI doesn't use it)
-    res.json(decorateGameForClient(result.rows[0], {}));
+    res.json(decorateGameForClient(result.rows[0]));
   } catch (err) {
     next(err);
   }
@@ -1190,7 +890,7 @@ router.patch(
 
       res.setHeader("Cache-Control", "no-store");
       res.json({
-        game: decorateGameForClient(movedRowRes.rows[0], {}),
+        game: decorateGameForClient(movedRowRes.rows[0]),
         rank: targetRank,
         rank_order: rankOrderRes.rows, // [{id, status, position}, ...]
       });
@@ -1207,8 +907,7 @@ router.patch(
 
 /* ---------------------------------- Startup ---------------------------------- */
 
-export const initCache = async (app) => {
-  await loadCache(app); // RAWG cache JSON
+export const initLocalData = async (app) => {
   await loadHLTBLocal(app); // HLTB local JSON (uses your dataset keys)
 };
 

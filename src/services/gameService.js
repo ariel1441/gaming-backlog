@@ -7,10 +7,6 @@ export function listGames(opts = {}) {
   return getLatest("/api/games", opts, "games-list");
 }
 
-export function hydrateGameCovers(opts = {}) {
-  return api.post("/api/games/hydrate-covers", {}, opts);
-}
-
 // Create a game
 export function createGame(payload, opts = {}) {
   return api.post("/api/games", payload, opts);

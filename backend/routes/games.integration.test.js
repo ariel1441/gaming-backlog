@@ -104,12 +104,10 @@ test("GET /api/games never blocks on RAWG provider requests", async () => {
         assert.equal(res.body[0].cover, "https://img.example/hades.jpg");
         assert.equal(res.body[0].displayName, "Hades");
         assert.equal(res.body[0].releaseDate, null);
-        assert.equal(res.body[0].coverNeedsHydration, false);
         assert.equal(
           res.body[1].cover,
           "https://cdn.cloudflare.steamstatic.com/steam/apps/12345/header.jpg",
         );
-        assert.equal(res.body[1].coverNeedsHydration, true);
         assert.equal(rawgRequests, 0);
       },
       null,
@@ -121,134 +119,6 @@ test("GET /api/games never blocks on RAWG provider requests", async () => {
             background_image: "https://img.example/wrong.jpg",
           },
         },
-      },
-    );
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (originalRawgKey == null) delete process.env.RAWG_API_KEY;
-    else process.env.RAWG_API_KEY = originalRawgKey;
-  }
-});
-
-test("POST /api/games/hydrate-covers repairs and persists a cold-cache legacy cover", async () => {
-  const originalFetch = globalThis.fetch;
-  const originalRawgKey = process.env.RAWG_API_KEY;
-  process.env.RAWG_API_KEY = "test-key";
-  const cover = "https://img.example/legacy-cover.jpg";
-  let persisted;
-
-  globalThis.fetch = async (input, init) => {
-    if (String(input).startsWith("https://api.rawg.io/api/games/42")) {
-      return new Response(
-        JSON.stringify({
-          id: 42,
-          slug: "legacy-game",
-          name: "Legacy Game",
-          background_image: cover,
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-    return originalFetch(input, init);
-  };
-
-  try {
-    await withServer(
-      async (text, values) => {
-        if (String(text).includes("UPDATE games")) {
-          persisted = values;
-          return { rows: [] };
-        }
-        return {
-          rows: [
-            {
-              id: 12,
-              user_id: 7,
-              name: "Legacy Game",
-              rawg_id: 42,
-              rawg_slug: "legacy-game",
-              status: "playing",
-              cover: null,
-              catalog_cover_url: null,
-            },
-          ],
-        };
-      },
-      async (baseUrl) => {
-        const res = await request(baseUrl, "/api/games/hydrate-covers", {
-          method: "POST",
-          body: {},
-          authPayload: { is_guest: false },
-        });
-        assert.equal(res.status, 200);
-        assert.equal(res.body.games[0].cover, cover);
-        assert.equal(res.body.games[0].coverNeedsHydration, false);
-        assert.deepEqual(persisted, [cover, 12, 7]);
-      },
-    );
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (originalRawgKey == null) delete process.env.RAWG_API_KEY;
-    else process.env.RAWG_API_KEY = originalRawgKey;
-  }
-});
-
-test("POST /api/games/hydrate-covers never title-matches a game without an exact RAWG id", async () => {
-  const originalFetch = globalThis.fetch;
-  const originalRawgKey = process.env.RAWG_API_KEY;
-  process.env.RAWG_API_KEY = "test-key";
-  let rawgRequests = 0;
-  let updateRequests = 0;
-
-  globalThis.fetch = async (input, init) => {
-    if (String(input).startsWith("https://api.rawg.io/")) {
-      rawgRequests += 1;
-      throw new Error("title-only cover hydration must not call RAWG");
-    }
-    return originalFetch(input, init);
-  };
-
-  try {
-    await withServer(
-      async (text) => {
-        if (String(text).includes("UPDATE games")) {
-          updateRequests += 1;
-          return { rows: [] };
-        }
-        return {
-          rows: [
-            {
-              id: 13,
-              user_id: 7,
-              name: "Ambiguous Legacy Game",
-              rawg_id: null,
-              rawg_slug: null,
-              status: "playing",
-              cover: null,
-              catalog_cover_url: null,
-            },
-          ],
-        };
-      },
-      async (baseUrl) => {
-        const list = await request(baseUrl, "/api/games", {
-          authPayload: { is_guest: false },
-        });
-        assert.equal(list.status, 200);
-        assert.equal(list.body[0].coverNeedsHydration, false);
-
-        const res = await request(baseUrl, "/api/games/hydrate-covers", {
-          method: "POST",
-          body: {},
-          authPayload: { is_guest: false },
-        });
-        assert.equal(res.status, 200);
-        assert.deepEqual(res.body.games, []);
-        assert.equal(rawgRequests, 0);
-        assert.equal(updateRequests, 0);
       },
     );
   } finally {

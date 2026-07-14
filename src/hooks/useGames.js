@@ -11,16 +11,12 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import {
   listGames as listGamesApi,
-  hydrateGameCovers as hydrateGameCoversApi,
   createGame as createGameApi,
   updateGame as updateGameApi,
   updateFavoriteGames as updateFavoriteGamesApi,
   deleteGame as deleteGameApi,
   reorderGames as reorderGamesApi, // PATCH /api/games/:id/position
 } from "../services/gameService";
-
-// Consider a row "not hydrated" until we have a cover or HLTB minutes
-const needsHydration = (g) => !g?.cover || !g?.how_long_to_beat;
 
 function inferStatusRank(status, list) {
   const sample = list.find(
@@ -93,12 +89,12 @@ function useGamesState() {
   const reqSeq = useRef(0);
   const gamesRef = useRef([]);
   const editSeq = useRef(new Map());
-  const hydrationTimerRef = useRef(null);
+  const refreshTimerRef = useRef(null);
   const refreshControllersRef = useRef(new Set());
 
   useEffect(
     () => () => {
-      if (hydrationTimerRef.current) clearTimeout(hydrationTimerRef.current);
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshControllersRef.current.forEach((controller) => controller.abort());
       refreshControllersRef.current.clear();
     },
@@ -140,36 +136,6 @@ function useGamesState() {
                 : [];
         setGames(sortGames(list));
 
-        if (list.some((game) => game?.coverNeedsHydration === true)) {
-          hydrateGameCoversApi({
-            auth: false,
-            headers: getAuthHeaders(),
-            signal: ac.signal,
-          })
-            .then((payload) => {
-              if (seq !== reqSeq.current) return;
-              const repaired = Array.isArray(payload?.games)
-                ? payload.games
-                : [];
-              if (!repaired.length) return;
-              const repairedById = new Map(
-                repaired.map((game) => [String(game.id), game]),
-              );
-              setGames((current) =>
-                sortGames(
-                  current.map((game) => {
-                    const repair = repairedById.get(String(game.id));
-                    return repair ? { ...game, ...repair } : game;
-                  }),
-                ),
-              );
-            })
-            .catch((error) => {
-              if (error?.name !== "AbortError") {
-                console.warn("Cover repair failed:", error?.message || error);
-              }
-            });
-        }
       })
       .catch((e) => {
         if (e.name !== "AbortError") setError(e);
@@ -373,13 +339,13 @@ function useGamesState() {
         ),
       );
 
-      // If the name changed (new RAWG lookup likely) or still not hydrated, silent revalidate
+      // Revalidate after a title change so server-side identity state remains authoritative.
       const nameChanged =
         typeof patch?.name === "string" && patch.name.trim() !== "";
-      if (nameChanged || needsHydration(updated)) {
-        if (hydrationTimerRef.current) clearTimeout(hydrationTimerRef.current);
-        hydrationTimerRef.current = setTimeout(() => {
-          hydrationTimerRef.current = null;
+      if (nameChanged) {
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = setTimeout(() => {
+          refreshTimerRef.current = null;
           refresh({ silent: true }).catch(() => {});
         }, 400);
       }

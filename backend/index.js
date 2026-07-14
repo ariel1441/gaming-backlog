@@ -5,7 +5,7 @@ dotenv.config();
 import express from "express";
 import { registerSecurity } from "./middleware/security.js";
 import { authLimiter, publicLimiter } from "./middleware/rateLimit.js";
-import gamesRouter, { initCache } from "./routes/games.js";
+import gamesRouter, { initLocalData } from "./routes/games.js";
 import authRouter from "./routes/auth.js";
 import publicRouter from "./routes/public.js";
 import insightsRouter from "./routes/insights.js";
@@ -26,7 +26,7 @@ const app = express();
 
 registerSecurity(app);
 
-await initCache(app); // sets app.locals.rawgCache
+await initLocalData(app);
 const stopCatalogCollectionScheduler = startCatalogCollectionScheduler();
 const stopSteamSyncJobScheduler = startSteamSyncJobScheduler();
 const stopMetadataRepairScheduler = startMetadataRepairScheduler();

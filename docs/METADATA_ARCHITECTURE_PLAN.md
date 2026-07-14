@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-11 implemented locally, production rollout pending
+Status: architecture approved; Stages 0-12 implemented locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -137,10 +137,15 @@ As of 2026-07-14:
   from `catalog_games`; unresolved rows use only durable legacy columns and
   explicit Steam artwork fallback where that private surface already supports
   it. Warm or missing RAWG JSON cache entries cannot change these responses.
-- The old JSON cache remains temporarily loaded only for the explicit legacy
-  `hydrate-covers` compatibility endpoint. Removing that endpoint, the startup
-  loader, and filesystem writes is isolated to Stage 12 after release readiness
-  and production repair coverage are reviewed.
+- Stage 12 retires the RAWG JSON cache from runtime application behavior. The
+  legacy cover-hydration endpoint and frontend background request are removed;
+  backend startup no longer reads the file; no add/edit/reorder path writes it;
+  and obsolete cache settings are gone. A contract test prevents the runtime
+  dependency from returning.
+- `cached_rawg_data.json` remains ignored and is referenced only by the guarded
+  offline historical importer. A new aggregate-only metadata audit command runs
+  inside a PostgreSQL read-only transaction for local or explicitly confirmed
+  production release checks.
 - No production migration or production data write has been performed.
 
 ## Purpose
@@ -975,7 +980,7 @@ All should use common normalized catalog serialization and explicit fallbacks.
 
 ### Phase 8: Retire runtime JSON-cache behavior
 
-Only after completeness and cold-start gates pass:
+Implemented locally; production verification remains pending:
 
 1. stop reading `cached_rawg_data.json` for application responses;
 2. stop writing it during add/edit/reorder behavior;
@@ -983,6 +988,9 @@ Only after completeness and cold-start gates pass:
 4. retain only disposable bounded in-memory request coalescing if useful;
 5. archive/delete local historical import material according to project policy;
 6. verify clean Railway restart with no cache file.
+
+Items 1-5 are complete on the feature branch. Item 6 is a production release
+smoke gate and must be verified after the backend deployment.
 
 ## API design guidance
 
