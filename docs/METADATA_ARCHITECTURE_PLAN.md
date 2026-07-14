@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-3 implemented locally, production rollout pending
+Status: architecture approved; Stages 0-4 implemented locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -41,6 +41,20 @@ As of 2026-07-14:
 - Stage 3 was applied to localhost and the full `npm run check` passed again.
 - Stage 3 intentionally adds no provider calls, routes, or user-visible
   behavior; service integration begins in Stage 4.
+- Stage 4 adds `backend/services/metadataIngestionService.js`, the canonical
+  exact-RAWG-ID ingestion path. It validates provider identity, canonicalizes
+  and hashes full payloads, coalesces duplicate work, bounds provider
+  concurrency, and atomically persists catalog projection plus snapshots.
+- The Stage 4 service reuses complete snapshot-backed catalog identities
+  without a provider call. Forced refresh preserves existing good optional
+  values and canonical artwork when a new provider response omits them.
+- Provider failures store only a non-sensitive error code on an existing
+  catalog record and never replace its last good metadata.
+- Stage 4 integration tests use isolated localhost PostgreSQL schemas and cover
+  stable hashing, ingestion/reuse, safe refresh, failure preservation, identity
+  mismatch rejection, same-ID coalescing, and cross-ID concurrency limits.
+- Stage 4 is not connected to existing routes yet; that behavior transition is
+  Stage 5.
 - No production migration or production data write has been performed.
 
 ## Purpose
