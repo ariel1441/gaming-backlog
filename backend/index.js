@@ -16,6 +16,7 @@ import listsRouter from "./routes/lists.js";
 import metadataRouter from "./routes/metadata.js";
 import { startCatalogCollectionScheduler } from "./services/catalogService.js";
 import { startMetadataRepairScheduler } from "./services/metadataRepairService.js";
+import { startCatalogRefreshScheduler } from "./services/metadataRefreshService.js";
 import { startSteamSyncJobScheduler } from "./services/steamService.js";
 import errorHandler from "./middleware/errorHandler.js";
 import demoRouter from "./routes/demo.js";
@@ -29,6 +30,7 @@ await initCache(app); // sets app.locals.rawgCache
 const stopCatalogCollectionScheduler = startCatalogCollectionScheduler();
 const stopSteamSyncJobScheduler = startSteamSyncJobScheduler();
 const stopMetadataRepairScheduler = startMetadataRepairScheduler();
+const stopCatalogRefreshScheduler = startCatalogRefreshScheduler();
 
 // Liveness probe for platform health checks
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -75,6 +77,7 @@ async function shutdown(exitCode = 0) {
   stopCatalogCollectionScheduler?.();
   stopSteamSyncJobScheduler?.();
   stopMetadataRepairScheduler?.();
+  stopCatalogRefreshScheduler?.();
 
   if (guestCleanupInterval) {
     clearInterval(guestCleanupInterval);

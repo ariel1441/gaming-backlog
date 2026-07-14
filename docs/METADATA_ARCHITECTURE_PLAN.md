@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-9 implemented locally, production rollout pending
+Status: architecture approved; Stages 0-10 implemented locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -120,6 +120,17 @@ As of 2026-07-14:
 - In-app browser discovery was unavailable during Stage 9 implementation, so
   screenshot-based desktop/mobile smoke testing remains an explicit pre-merge
   gate even though lint, component utility tests, and production builds pass.
+- Stage 10 adds controlled global catalog refresh jobs. Eligible exact RAWG
+  identities currently linked from a backlog are refreshed in small resumable
+  batches with a hard per-job
+  provider budget, database leases, deterministic freshness intervals, and
+  bounded failure backoff. Successful refreshes schedule their next eligibility;
+  failures retain the last good projection and schedule a later retry.
+- The refresh scheduler is deliberately disabled by default through
+  `METADATA_REFRESH_ENABLED=false`. There is no ordinary-user global refresh
+  endpoint or button because the application does not yet have an administrator
+  authorization boundary. Enabling production scheduling remains a separately
+  reviewed operational release decision after provider-budget verification.
 - No production migration or production data write has been performed.
 
 ## Purpose

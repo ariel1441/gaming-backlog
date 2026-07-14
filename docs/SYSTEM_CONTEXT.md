@@ -342,6 +342,10 @@ Styling:
   protect API quota.
 - RAWG calls should happen only for meaningful search/detail/refresh/load-more
   or catalog seeding actions, never simply because the Discover page opened.
+- Global catalog detail refresh uses resumable `catalog_refresh` metadata jobs
+  with provider budgets and freshness/backoff scheduling. Its scheduler is
+  opt-in through `METADATA_REFRESH_ENABLED`; normal deployments and all page
+  rendering remain database-only when it is disabled.
 - Discover shelves are cached in Postgres. Automatic shelf refresh is opt-in via
   `CATALOG_AUTO_SEED=true`; `CATALOG_SEED_LIMIT` controls the per-shelf seed
   size. The scheduler checks daily and only refreshes missing/expired shelves.
