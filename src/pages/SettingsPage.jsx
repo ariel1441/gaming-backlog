@@ -70,6 +70,7 @@ import { ProfileSection } from "./Settings/ProfileSettings";
 import { PreferencesSection } from "./Settings/PreferencesSettings";
 import { ThemeSettings } from "./Settings/ThemeSettings";
 import { PublicProfileSection } from "./Settings/PublicProfileSettings";
+import MetadataSettings from "./Settings/MetadataSettings";
 
 const MAX_FAVORITES = 5;
 
@@ -224,6 +225,13 @@ export default function SettingsPage() {
                 />
               ) : null}
               {activeSection === "data" ? <DataSection games={games} /> : null}
+              {activeSection === "metadata" ? (
+                <MetadataSettings
+                  games={games}
+                  isGuest={isGuest}
+                  refreshGames={() => refresh({ silent: true })}
+                />
+              ) : null}
               {activeSection === "integrations" ? (
                 <IntegrationsSection isGuest={isGuest} />
               ) : null}

@@ -85,7 +85,8 @@ deliberately set.
   and order, plus private smart lists saved from user-chosen backlog rules.
 - Manage settings at `/settings`: account context, account-backed backlog
   preferences, profile basics, public-profile visibility, favorite
-  public-profile games, CSV export, and Steam integration shortcuts.
+  public-profile games, CSV export, durable metadata repair/review, and Steam
+  integration shortcuts.
 - View a private read-only Timeline page grouped by month from existing
   started and finished game dates.
 - Detect obvious duplicate titles before adding a game. The backend repeats the
@@ -118,6 +119,8 @@ Routes:
 - `backend/routes/insights.js` - analytics aggregation and micro-cache.
 - `backend/routes/public.js` - public profile metadata and read-only games.
 - `backend/routes/meta.js` - status group definitions with ETag caching.
+- `backend/routes/metadata.js` - owner-scoped metadata repair jobs, progress,
+  candidate decisions, and exact alternative selection.
 
 Middleware and utilities:
 
@@ -153,6 +156,9 @@ Middleware and utilities:
 - `backend/services/steamService.js` - Steam OpenID/Web API helpers, owned-game
   response normalization, account/source persistence, import matching, candidate
   decisions, and reviewed import.
+- `backend/services/metadataRepairService.js` - resumable bounded backlog
+  metadata repair, exact identity promotion, candidate generation, and
+  owner-scoped review decisions.
 
 Database:
 

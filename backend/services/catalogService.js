@@ -1637,5 +1637,6 @@ export function decorateGameWithCatalog(game, fallbackRawg = {}) {
           .join(", ")
       : null,
     features: tags.length ? tags.join(", ") : null,
+    metadataQuality: game.catalog_metadata_quality || null,
   };
 }

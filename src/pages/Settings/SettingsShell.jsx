@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import {
   Database,
+  DatabaseZap,
   Globe,
   LibraryBig,
   Link as LinkIcon,
@@ -16,6 +17,7 @@ export const settingsSections = [
   { id: "preferences", label: "Preferences", icon: SlidersHorizontal },
   { id: "public", label: "Public profile", icon: Globe },
   { id: "data", label: "Data", icon: Database },
+  { id: "metadata", label: "Game metadata", icon: DatabaseZap },
   { id: "integrations", label: "Integrations", icon: LinkIcon },
 ];
 

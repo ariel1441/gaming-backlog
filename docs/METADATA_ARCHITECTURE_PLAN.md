@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-8 implemented locally, Stage 9 UI in progress, production rollout pending
+Status: architecture approved; Stages 0-9 implemented locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -111,6 +111,15 @@ As of 2026-07-14:
   accept, reject, skip-game, and an exact manually selected alternative.
   Acceptance ingests full detail before linking and rejects owner-level catalog
   duplicates.
+- Stage 9 adds a dedicated **Game metadata** Settings tab. It starts/resumes the
+  background repair, polls durable progress, reports repaired/review/unmatched
+  counts, and opens a responsive owner-only candidate review modal.
+- The review UI shows candidate artwork, title, release date, ratings, and
+  confidence; supports accept, reject, skip game, and alternative RAWG search;
+  and refreshes shared game state after a successful link or completed job.
+- In-app browser discovery was unavailable during Stage 9 implementation, so
+  screenshot-based desktop/mobile smoke testing remains an explicit pre-merge
+  gate even though lint, component utility tests, and production builds pass.
 - No production migration or production data write has been performed.
 
 ## Purpose

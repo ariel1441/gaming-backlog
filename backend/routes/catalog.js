@@ -67,6 +67,7 @@ async function selectGameWithCatalog(gameId, userId) {
            cg.genres_json AS catalog_genres_json,
            cg.stores_json AS catalog_stores_json,
            cg.tags_json AS catalog_tags_json,
+           cg.metadata_quality AS catalog_metadata_quality,
            ugs.provider_app_id AS steam_app_id,
            ugs.playtime_minutes_forever AS steam_playtime_minutes,
            ugs.last_synced_at AS steam_last_synced_at,
