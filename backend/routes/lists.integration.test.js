@@ -69,7 +69,7 @@ test("GET /api/lists/:id hides lists outside the authenticated user", async () =
   );
 });
 
-test("GET /api/lists/:id decorates manual list games from RAWG cache", async () => {
+test("GET /api/lists/:id decorates manual list games from PostgreSQL catalog", async () => {
   let calls = 0;
   await withServer(
     async (text) => {
@@ -94,14 +94,17 @@ test("GET /api/lists/:id decorates manual list games from RAWG cache", async () 
             {
               id: 3,
               user_id: 7,
-              name: "Cache Cover Game",
+              name: "Private List Name",
               status: "finished",
               rawg_id: 123,
               rawg_slug: "cache-cover-game",
               cover: null,
-              catalog_cover_url: null,
-              catalog_released_at: null,
-              catalog_genres_json: null,
+              catalog_game_id: 44,
+              catalog_name: "Durable Catalog Name",
+              catalog_cover_url: "https://img.example/catalog.jpg",
+              catalog_released_at: "2024-01-02",
+              catalog_genres_json: ["RPG"],
+              catalog_metadata_quality: "full",
               list_position: 1000,
             },
           ],
@@ -113,21 +116,20 @@ test("GET /api/lists/:id decorates manual list games from RAWG cache", async () 
       const res = await request(baseUrl, "/api/lists/9");
 
       assert.equal(res.status, 200);
-      assert.equal(res.body.games[0].cover, "https://img.example/cache.jpg");
-      assert.equal(res.body.games[0].displayName, "Decorated Name");
+      assert.equal(res.body.games[0].cover, "https://img.example/catalog.jpg");
+      assert.equal(res.body.games[0].displayName, "Durable Catalog Name");
       assert.equal(res.body.games[0].releaseDate, "2024-01-02");
       assert.equal(res.body.games[0].genres, "RPG");
-      assert.equal(res.body.list.previewGames[0].cover, "https://img.example/cache.jpg");
+      assert.equal(res.body.games[0].metadataQuality, "full");
+      assert.equal(res.body.list.previewGames[0].cover, "https://img.example/catalog.jpg");
       assert.equal(calls, 2);
     },
     null,
     {
       rawgCache: {
         "rawg:123": {
-          name: "Decorated Name",
-          background_image: "https://img.example/cache.jpg",
-          released: "2024-01-02",
-          genres: [{ name: "RPG" }],
+          name: "Ephemeral Wrong Name",
+          background_image: "https://img.example/cache-wrong.jpg",
         },
       },
     }

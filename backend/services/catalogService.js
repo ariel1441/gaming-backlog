@@ -1608,7 +1608,7 @@ export async function browseCatalog(options = {}, user = {}) {
   };
 }
 
-export function decorateGameWithCatalog(game, fallbackRawg = {}) {
+export function decorateGameWithCatalog(game) {
   if (!game?.catalog_game_id) return null;
   const genres = jsonArray(game.catalog_genres_json);
   const stores = jsonArray(game.catalog_stores_json);
@@ -1619,11 +1619,9 @@ export function decorateGameWithCatalog(game, fallbackRawg = {}) {
     how_long_to_beat: dbHours ?? rawgHours ?? null,
     displayHLTB: dbHours ?? rawgHours ?? null,
     displayName: game.catalog_name || game.name,
-    cover: game.catalog_cover_url || fallbackRawg?.background_image || null,
-    releaseDate: game.catalog_released_at || fallbackRawg?.released || null,
-    description:
-      game.catalog_description_html ||
-      sanitizeGameHtml(fallbackRawg?.description),
+    cover: game.catalog_cover_url || null,
+    releaseDate: game.catalog_released_at || null,
+    description: game.catalog_description_html || "",
     rating:
       game.catalog_rawg_rating == null
         ? null

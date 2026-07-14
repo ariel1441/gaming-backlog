@@ -346,6 +346,10 @@ Styling:
   with provider budgets and freshness/backoff scheduling. Its scheduler is
   opt-in through `METADATA_REFRESH_ENABLED`; normal deployments and all page
   rendering remain database-only when it is disabled.
+- Normal metadata rendering is PostgreSQL-only across private backlog state,
+  Lists, public profiles, and Insights. The process-local RAWG JSON cache is no
+  longer a display fallback; its remaining use is the explicit temporary
+  legacy cover-repair endpoint pending final retirement.
 - Discover shelves are cached in Postgres. Automatic shelf refresh is opt-in via
   `CATALOG_AUTO_SEED=true`; `CATALOG_SEED_LIMIT` controls the per-shelf seed
   size. The scheduler checks daily and only refreshes missing/expired shelves.

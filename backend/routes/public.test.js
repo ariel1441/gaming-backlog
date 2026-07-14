@@ -1,45 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("public RAWG hydration bounds work, concurrency, and cache size", async () => {
+test("public game serialization is database-only even with a warm RAWG cache", async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.RAWG_API_KEY;
-  process.env.RAWG_API_KEY = "test-key";
   let calls = 0;
-  let active = 0;
-  let maxActive = 0;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async () => {
     calls += 1;
-    active += 1;
-    maxActive = Math.max(maxActive, active);
-    await new Promise((resolve) => setTimeout(resolve, 2));
-    active -= 1;
-    const parsed = new URL(url);
-    const isDetail = /\/games\/[^/]+$/.test(parsed.pathname);
-    return new Response(
-      JSON.stringify(
-        isDetail
-          ? { name: "Hydrated", slug: "hydrated", genres: [] }
-          : { results: [{ id: 1, slug: "hydrated", name: "Hydrated" }] },
-      ),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
+    throw new Error("public profiles must not call RAWG");
   };
-  const rawgCache = Object.fromEntries(
-    Array.from({ length: 1000 }, (_, index) => [`old-${index}`, { name: "old" }]),
-  );
+  const rawgCache = {
+    "catalog game": { background_image: "https://img.example/wrong.jpg" },
+    "legacy game": { background_image: "https://img.example/wrong-legacy.jpg" },
+  };
   const app = { locals: { rawgCache } };
-  const games = Array.from({ length: 30 }, (_, index) => ({
-    id: index + 1,
-    name: `Game ${index + 1}`,
-  }));
+  const games = [
+    {
+      id: 1,
+      name: "Private Name",
+      catalog_game_id: 10,
+      catalog_name: "Catalog Game",
+      catalog_cover_url: "https://img.example/catalog.jpg",
+      catalog_released_at: "2024-01-02",
+      catalog_genres_json: ["RPG"],
+      catalog_metadata_quality: "full",
+    },
+    {
+      id: 2,
+      name: "Legacy Game",
+      cover: "https://img.example/persisted.jpg",
+    },
+  ];
   try {
-    const { hydrateGamesWithRAWG } = await import("./public.js");
-    const hydrated = await hydrateGamesWithRAWG(app, games);
-    assert.equal(hydrated.length, 30);
-    assert.equal(calls, 48);
-    assert.ok(maxActive <= 3);
-    assert.ok(Object.keys(app.locals.rawgCache).length <= 1000);
+    const { serializePublicGames } = await import("./public.js");
+    const hydrated = serializePublicGames(games);
+    assert.equal(hydrated.length, 2);
+    assert.equal(calls, 0);
+    assert.equal(hydrated[0].displayName, "Catalog Game");
+    assert.equal(hydrated[0].cover, "https://img.example/catalog.jpg");
+    assert.equal(hydrated[0].genres, "RPG");
+    assert.equal(hydrated[0].metadataQuality, "full");
+    assert.equal(hydrated[1].cover, "https://img.example/persisted.jpg");
+    assert.equal(hydrated[1].releaseDate, null);
+    assert.equal(Object.keys(app.locals.rawgCache).length, 2);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.RAWG_API_KEY;

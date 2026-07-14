@@ -102,6 +102,8 @@ test("GET /api/games never blocks on RAWG provider requests", async () => {
         assert.equal(res.status, 200);
         assert.equal(res.body[0].name, "Hades");
         assert.equal(res.body[0].cover, "https://img.example/hades.jpg");
+        assert.equal(res.body[0].displayName, "Hades");
+        assert.equal(res.body[0].releaseDate, null);
         assert.equal(res.body[0].coverNeedsHydration, false);
         assert.equal(
           res.body[1].cover,
@@ -109,6 +111,16 @@ test("GET /api/games never blocks on RAWG provider requests", async () => {
         );
         assert.equal(res.body[1].coverNeedsHydration, true);
         assert.equal(rawgRequests, 0);
+      },
+      null,
+      {
+        rawgCache: {
+          "rawg:1145360": {
+            name: "Ephemeral Wrong Name",
+            released: "2099-01-01",
+            background_image: "https://img.example/wrong.jpg",
+          },
+        },
       },
     );
   } finally {

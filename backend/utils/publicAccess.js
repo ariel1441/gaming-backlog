@@ -12,7 +12,8 @@ export function listPublicGamesQuery(userId) {
              cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
              cg.genres_json AS catalog_genres_json,
              cg.stores_json AS catalog_stores_json,
-             cg.tags_json AS catalog_tags_json
+             cg.tags_json AS catalog_tags_json,
+             cg.metadata_quality AS catalog_metadata_quality
       FROM games g
       LEFT JOIN statuses s ON g.status = s.status
       LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id

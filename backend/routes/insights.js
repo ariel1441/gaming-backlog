@@ -10,28 +10,6 @@ import { statusGroupOf } from "../utils/status.js";
 const router = express.Router();
 
 /* ------------------------------- Utilities ----------------------------- */
-function lowerKey(s) {
-  return String(s || "")
-    .trim()
-    .toLowerCase();
-}
-
-function getRawgHours(rawg) {
-  if (!rawg || typeof rawg !== "object") return null;
-  const candidates = [
-    rawg?.playtime,
-    rawg?.time_to_beat?.main,
-    rawg?.time_to_beat?.main_story,
-    rawg?.playtime_hours,
-    rawg?.average_playtime,
-  ];
-  for (const v of candidates) {
-    const n = Number(v);
-    if (Number.isFinite(n) && n > 0) return Math.round(n); // ← round, not trunc
-  }
-  return null;
-}
-
 const fmtDate = (d) => d.toISOString().slice(0, 10);
 const roundWeeks = (x) => (x == null ? null : Math.round(x * 10) / 10);
 
@@ -74,15 +52,10 @@ async function fetchBaseRows(userId) {
   return rows;
 }
 
-/* ------------------------ HLTB / RAWG resolvers ----------------------- */
+/* ----------------------------- HLTB resolver -------------------------- */
 function getHLTBHours(app, title) {
   const h = lookupHLTBHoursByPref(app, title, "main");
   return Number.isFinite(h) && h > 0 ? Math.round(h) : null; // ← round, not trunc
-}
-
-function getRawgPlaytime(app, title) {
-  const entry = (app?.locals?.rawgCache || {})[lowerKey(title)];
-  return getRawgHours(entry);
 }
 
 /* ----------------------- Per-row hours resolution ---------------------- */
@@ -110,9 +83,6 @@ function resolveHoursForRow(req, row) {
 
   const catalogRawg = toHoursInt(row.catalog_rawg_playtime_hours);
   if (catalogRawg > 0) return { hours: catalogRawg, source: "rawg" };
-
-  const rawg = getRawgPlaytime(req.app, row.name);
-  if (rawg && rawg > 0) return { hours: rawg, source: "rawg" };
 
   return null; // excluded from stats
 }
@@ -203,7 +173,7 @@ router.get("/", verifyToken, insightsQuery, async (req, res, next) => {
     const includeMissing = req.query.include_missing_names;
 
     // version bump to avoid stale payloads
-    const cacheKey = `v4|wh=${weekly_hours}&missing=${includeMissing ? 1 : 0}`;
+    const cacheKey = `v5|wh=${weekly_hours}&missing=${includeMissing ? 1 : 0}`;
     const hit = cacheGet(userId, cacheKey);
     if (hit) return res.json(hit);
 

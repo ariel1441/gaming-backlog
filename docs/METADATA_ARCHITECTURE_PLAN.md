@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-10 implemented locally, production rollout pending
+Status: architecture approved; Stages 0-11 implemented locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -131,6 +131,16 @@ As of 2026-07-14:
   endpoint or button because the application does not yet have an administrator
   authorization boundary. Enabling production scheduling remains a separately
   reviewed operational release decision after provider-budget verification.
+- Stage 11 makes all normal game-display surfaces PostgreSQL-first and
+  process-cache independent. Private backlog/favorites/reorder responses,
+  Lists, public profiles, and Insights now serialize catalog-linked metadata
+  from `catalog_games`; unresolved rows use only durable legacy columns and
+  explicit Steam artwork fallback where that private surface already supports
+  it. Warm or missing RAWG JSON cache entries cannot change these responses.
+- The old JSON cache remains temporarily loaded only for the explicit legacy
+  `hydrate-covers` compatibility endpoint. Removing that endpoint, the startup
+  loader, and filesystem writes is isolated to Stage 12 after release readiness
+  and production repair coverage are reviewed.
 - No production migration or production data write has been performed.
 
 ## Purpose

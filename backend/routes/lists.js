@@ -10,59 +10,19 @@ import {
   updateList,
 } from "../validators/lists.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
+import { decorateGameWithCatalog } from "../services/catalogService.js";
 
 const router = express.Router();
 const POSITION_SPACING = 1000;
 
-function normalizeCacheKey(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function rawgForGame(cache = {}, row = {}) {
-  const keys = [
-    row.rawg_id ? `rawg:${row.rawg_id}` : "",
-    row.rawg_slug,
-    row.name,
-    row.catalog_name,
-  ]
-    .map(normalizeCacheKey)
-    .filter(Boolean);
-
-  for (const key of keys) {
-    const entry = cache[key];
-    if (entry && typeof entry === "object" && !entry.__failedAt) return entry;
-  }
-  return null;
-}
-
-function serializeGame(row = {}, cache = {}) {
-  const rawg = rawgForGame(cache, row);
-  const catalogGenres = Array.isArray(row.catalog_genres_json)
-    ? row.catalog_genres_json
-    : [];
-  const rawgGenres = Array.isArray(rawg?.genres)
-    ? rawg.genres.map((genre) => genre?.name).filter(Boolean)
-    : [];
+function serializeGame(row = {}) {
+  const catalog = decorateGameWithCatalog(row);
   return {
     ...row,
-    displayName: row.catalog_name || rawg?.name || row.name,
-    cover:
-      row.catalog_cover_url ||
-      row.cover ||
-      rawg?.cover ||
-      rawg?.background_image ||
-      null,
-    releaseDate: row.catalog_released_at || rawg?.released || null,
-    rating: row.catalog_rawg_rating == null ? null : Number(row.catalog_rawg_rating),
-    rawgRating:
-      row.catalog_rawg_rating == null ? null : Number(row.catalog_rawg_rating),
-    metacritic: row.catalog_metacritic ?? null,
-    genres: catalogGenres
-      .map((genre) => genre?.name || genre)
-      .filter(Boolean)
-      .join(", ") || rawgGenres.join(", ") || null,
-    how_long_to_beat:
-      row.how_long_to_beat ?? row.catalog_rawg_playtime_hours ?? null,
+    ...(catalog || {}),
+    displayName: catalog?.displayName || row.name,
+    cover: catalog?.cover || row.cover || null,
+    rawgRating: catalog?.rating ?? null,
     list_position: row.list_position ?? null,
     list_added_at: row.list_added_at ?? null,
   };
@@ -97,7 +57,7 @@ async function selectOwnedList(client, listId, userId, columns = "l.*") {
   return rows[0] || null;
 }
 
-async function listGamesForList(client, listId, userId, { limit, cache } = {}) {
+async function listGamesForList(client, listId, userId, { limit } = {}) {
   const limitSql = limit ? "LIMIT $3" : "";
   const values = limit ? [listId, userId, limit] : [listId, userId];
   const { rows } = await client.query(
@@ -112,7 +72,11 @@ async function listGamesForList(client, listId, userId, { limit, cache } = {}) {
              cg.rawg_rating AS catalog_rawg_rating,
              cg.metacritic AS catalog_metacritic,
              cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
-             cg.genres_json AS catalog_genres_json
+             cg.genres_json AS catalog_genres_json,
+             cg.description_html AS catalog_description_html,
+             cg.stores_json AS catalog_stores_json,
+             cg.tags_json AS catalog_tags_json,
+             cg.metadata_quality AS catalog_metadata_quality
       FROM user_list_games ulg
       JOIN user_lists l ON l.id = ulg.list_id
       JOIN games g ON g.id = ulg.game_id AND g.user_id = l.user_id
@@ -125,10 +89,10 @@ async function listGamesForList(client, listId, userId, { limit, cache } = {}) {
     `,
     values
   );
-  return rows.map((row) => serializeGame(row, cache));
+  return rows.map((row) => serializeGame(row));
 }
 
-async function previewGamesForLists(client, userId, cache = {}) {
+async function previewGamesForLists(client, userId) {
   const { rows } = await client.query(
     `
       WITH ranked AS (
@@ -144,6 +108,10 @@ async function previewGamesForLists(client, userId, cache = {}) {
                cg.metacritic AS catalog_metacritic,
                cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
                cg.genres_json AS catalog_genres_json,
+               cg.description_html AS catalog_description_html,
+               cg.stores_json AS catalog_stores_json,
+               cg.tags_json AS catalog_tags_json,
+               cg.metadata_quality AS catalog_metadata_quality,
                ROW_NUMBER() OVER (
                  PARTITION BY ulg.list_id
                  ORDER BY ulg.position NULLS LAST, ulg.added_at, g.id
@@ -164,7 +132,7 @@ async function previewGamesForLists(client, userId, cache = {}) {
   const byList = new Map();
   for (const row of rows) {
     if (!byList.has(row.list_id)) byList.set(row.list_id, []);
-    byList.get(row.list_id).push(serializeGame(row, cache));
+    byList.get(row.list_id).push(serializeGame(row));
   }
   return byList;
 }
@@ -196,11 +164,7 @@ router.get("/", verifyToken, async (req, res, next) => {
       [userId]
     );
 
-    const previews = await previewGamesForLists(
-      pool,
-      userId,
-      req.app.locals.rawgCache || {},
-    );
+    const previews = await previewGamesForLists(pool, userId);
     const lists = rows.map((row) =>
       serializeList(row, previews.get(row.id) || []),
     );
@@ -262,9 +226,7 @@ router.get("/:id", verifyToken, listParams, async (req, res, next) => {
     const list = rows[0];
     if (!list) return next(notFound("List not found"));
 
-    const games = await listGamesForList(pool, listId, userId, {
-      cache: req.app.locals.rawgCache || {},
-    });
+    const games = await listGamesForList(pool, listId, userId);
     res.setHeader("Cache-Control", "no-store");
     res.json({ list: serializeList(list, games.slice(0, 4)), games });
   } catch (err) {
@@ -293,7 +255,6 @@ router.put("/:id", verifyToken, updateList, async (req, res, next) => {
     if (!rows[0]) return next(notFound("List not found"));
     const games = await listGamesForList(pool, listId, userId, {
       limit: 4,
-      cache: req.app.locals.rawgCache || {},
     });
     res.json({ list: serializeList(rows[0], games) });
   } catch (err) {
@@ -376,9 +337,7 @@ router.post("/:id/games", verifyToken, addListGame, async (req, res, next) => {
     await touchList(client, listId, userId);
     await client.query("COMMIT");
 
-    const games = await listGamesForList(pool, listId, userId, {
-      cache: req.app.locals.rawgCache || {},
-    });
+    const games = await listGamesForList(pool, listId, userId);
     res.status(201).json({ games });
   } catch (err) {
     try {
@@ -431,9 +390,7 @@ router.delete(
       await touchList(client, listId, userId);
       await client.query("COMMIT");
 
-      const games = await listGamesForList(pool, listId, userId, {
-        cache: req.app.locals.rawgCache || {},
-      });
+      const games = await listGamesForList(pool, listId, userId);
       res.json({ games });
     } catch (err) {
       try {
@@ -532,9 +489,7 @@ router.patch(
       await touchList(client, listId, userId);
       await client.query("COMMIT");
 
-      const games = await listGamesForList(pool, listId, userId, {
-        cache: req.app.locals.rawgCache || {},
-      });
+      const games = await listGamesForList(pool, listId, userId);
       res.json({ games });
     } catch (err) {
       try {

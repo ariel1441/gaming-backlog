@@ -360,7 +360,7 @@ const decorateGameForClient = (game, rawg) => {
       errorMessage: game.steam_achievements_last_error_message || null,
     },
   };
-  const catalogDecorated = decorateGameWithCatalog(game, rawg);
+  const catalogDecorated = decorateGameWithCatalog(game);
   if (catalogDecorated) {
     return {
       ...game,
@@ -413,7 +413,7 @@ const decorateGameForClient = (game, rawg) => {
 /* ----------------------------------- Routes ---------------------------------- */
 
 // GET all games for the authenticated user. This hot path is intentionally
-// database/cache-only: optional RAWG refreshes must never delay core user data.
+// database-only: optional RAWG refreshes must never affect core user data.
 router.get("/", verifyToken, async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -421,13 +421,7 @@ router.get("/", verifyToken, async (req, res, next) => {
     const { text, values } = listOwnedGamesQuery(userId);
     const { rows } = await pool.query(text, values);
 
-    const cache = req.app.locals.rawgCache || {};
-
-    // Decorate from Postgres catalog fields and any process-local cache hit.
-    const out = rows.map((game) => {
-      const rawg = cachedRawgForGame(cache, game);
-      return decorateGameForClient(game, rawg);
-    });
+    const out = rows.map((game) => decorateGameForClient(game, {}));
 
     res.setHeader("Cache-Control", "no-store");
     res.json(out);
@@ -617,11 +611,7 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
 
     await client.query("COMMIT");
 
-    const cache = req.app.locals.rawgCache || {};
-    const out = rows.map((game) => {
-      const rawg = cachedRawgForGame(cache, game);
-      return decorateGameForClient(game, rawg);
-    });
+    const out = rows.map((game) => decorateGameForClient(game, {}));
 
     res.setHeader("Cache-Control", "no-store");
     res.json(out);
@@ -1057,9 +1047,7 @@ router.delete("/:id", verifyToken, gameIdParam, async (req, res, next) => {
     cacheClear(userId);
 
     // Decorate for consistency (harmless even if UI doesn't use it)
-    const cache = req.app.locals.rawgCache || {};
-    const rawg = cachedRawgForGame(cache, result.rows[0]);
-    res.json(decorateGameForClient(result.rows[0], rawg));
+    res.json(decorateGameForClient(result.rows[0], {}));
   } catch (err) {
     next(err);
   }
@@ -1189,18 +1177,6 @@ router.patch(
       // Return the moved game and the full rank order so the client can apply it immediately
       const movedQuery = selectOwnedGameDetailsQuery(gameId, userId);
       const movedRowRes = await pool.query(movedQuery.text, movedQuery.values);
-      const cache = req.app.locals.rawgCache || {};
-      const isGuest = !!req.user?.is_guest;
-      let rawg;
-      if (!isGuest) {
-        const ensured = await ensureRawgForGame(cache, movedRowRes.rows[0], {
-          persist: true,
-        });
-        rawg = ensured.rawg;
-      } else {
-        rawg = cachedRawgForGame(cache, movedRowRes.rows[0]);
-      }
-
       const rankOrderRes = await pool.query(
         `
         SELECT g.id, g.status, g.position
@@ -1214,7 +1190,7 @@ router.patch(
 
       res.setHeader("Cache-Control", "no-store");
       res.json({
-        game: decorateGameForClient(movedRowRes.rows[0], rawg),
+        game: decorateGameForClient(movedRowRes.rows[0], {}),
         rank: targetRank,
         rank_order: rankOrderRes.rows, // [{id, status, position}, ...]
       });

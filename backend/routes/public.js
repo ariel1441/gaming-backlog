@@ -1,126 +1,30 @@
 // backend/routes/public.js
 import express from "express";
 import { pool } from "../db.js";
-import { fetchGameData } from "../utils/fetchRAWG.js";
-import {
-  sanitizeGameHtml /* or sanitizeGameHtmlWithLinks */,
-} from "../utils/sanitizeHtml.js";
 import { decorateGameWithCatalog } from "../services/catalogService.js";
 import { listPublicGamesQuery } from "../utils/publicAccess.js";
 import { usernameParam } from "../validators/public.js";
 import { forbidden, notFound } from "../utils/httpError.js";
 const router = express.Router();
-const PUBLIC_RAWG_CONCURRENCY = Math.min(
-  Math.max(Number(process.env.PUBLIC_RAWG_CONCURRENCY) || 3, 1),
-  8,
-);
-const PUBLIC_RAWG_HYDRATE_LIMIT = Math.min(
-  Math.max(Number(process.env.PUBLIC_RAWG_HYDRATE_LIMIT) || 24, 0),
-  100,
-);
-const RAWG_CACHE_MAX_ENTRIES = Math.min(
-  Math.max(Number(process.env.RAWG_CACHE_MAX_ENTRIES) || 1000, 100),
-  10_000,
-);
-const RAWG_FAILURE_TTL_MS = 5 * 60 * 1000;
-
-async function mapWithConcurrency(items, concurrency, work) {
-  const results = new Array(items.length);
-  let cursor = 0;
-  async function worker() {
-    while (cursor < items.length) {
-      const index = cursor++;
-      results[index] = await work(items[index], index);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return results;
-}
-
-function pruneRawgCache(cache) {
-  const keys = Object.keys(cache);
-  const removeCount = keys.length - RAWG_CACHE_MAX_ENTRIES;
-  if (removeCount <= 0) return;
-  keys.slice(0, removeCount).forEach((key) => delete cache[key]);
-}
-
-function shouldFetchRawg(entry) {
-  if (!entry) return true;
-  return Boolean(
-    entry.__failedAt && Date.now() - entry.__failedAt > RAWG_FAILURE_TTL_MS,
-  );
-}
-
-// DRY-ish: hydrate with RAWG, mirroring /api/games behavior
-export async function hydrateGamesWithRAWG(app, games) {
-  const rawgCache = app.locals.rawgCache || {};
-  const inflight = app.locals.publicRawgInflight || new Map();
-  app.locals.publicRawgInflight = inflight;
-
-  const hydrated = await mapWithConcurrency(
-    games,
-    PUBLIC_RAWG_CONCURRENCY,
-    async (game, index) => {
-      const catalog = decorateGameWithCatalog(game);
-      if (catalog) {
-        return {
-          ...game,
-          ...catalog,
-        };
-      }
-
-      const cacheKey = (game.name || "").toLowerCase().trim();
-      if (
-        cacheKey &&
-        index < PUBLIC_RAWG_HYDRATE_LIMIT &&
-        shouldFetchRawg(rawgCache[cacheKey])
-      ) {
-        let request = inflight.get(cacheKey);
-        if (!request) {
-          request = fetchGameData(game.name)
-            .then((data) => {
-              rawgCache[cacheKey] = data || {};
-            })
-            .catch(() => {
-              rawgCache[cacheKey] = { __failedAt: Date.now() };
-            })
-            .finally(() => inflight.delete(cacheKey));
-          inflight.set(cacheKey, request);
-        }
-        await request;
-      }
-      const rawgData = rawgCache[cacheKey] || {};
-      return {
-        ...game,
-        cover: rawgData?.background_image || "",
-        releaseDate: rawgData?.released || "",
-        description: sanitizeGameHtml(rawgData?.description),
-        how_long_to_beat:
-          typeof game.how_long_to_beat === "number" && game.how_long_to_beat > 0
-            ? game.how_long_to_beat
-            : typeof rawgData?.playtime === "number" && rawgData.playtime > 0
-              ? rawgData.playtime
-              : null,
-        rating: rawgData?.rating || "",
-        genres: rawgData?.genres?.map((g) => g.name).join(", ") || "Unknown",
-        metacritic: rawgData?.metacritic || "N/A",
-        stores:
-          rawgData?.stores?.map((s) => ({
-            store_id: s.store?.id,
-            store_name: s.store?.name,
-            url: s.url,
-          })) || [],
-        features: rawgData?.tags?.map((t) => t.name) || [],
-      };
-    },
-  );
-
-  // write-through save happens in your private route; also safe to save here:
-  app.locals.rawgCache = rawgCache;
-  pruneRawgCache(rawgCache);
-  return hydrated;
+// Public profile rendering is strictly PostgreSQL-backed and never hydrates RAWG.
+export function serializePublicGames(games) {
+  return games.map((game) => {
+    const catalog = decorateGameWithCatalog(game);
+    return {
+      ...game,
+      ...(catalog || {}),
+      displayName: catalog?.displayName || game.name,
+      cover: catalog?.cover || game.cover || null,
+      releaseDate: catalog?.releaseDate || null,
+      description: catalog?.description || "",
+      rating: catalog?.rating ?? null,
+      rawgRating: catalog?.rating ?? null,
+      genres: catalog?.genres || null,
+      metacritic: catalog?.metacritic ?? null,
+      stores: catalog?.stores || null,
+      features: catalog?.features || null,
+    };
+  });
 }
 
 // GET /api/public/:username (profile header info)
@@ -192,8 +96,8 @@ router.get("/:username/games", usernameParam, async (req, res, next) => {
     const publicGamesQuery = listPublicGamesQuery(user.id);
     const gamesRes = await pool.query(publicGamesQuery.text, publicGamesQuery.values);
 
-    // 3) Hydrate with RAWG to match the private payload shape
-    const hydrated = await hydrateGamesWithRAWG(req.app, gamesRes.rows);
+    // 3) Serialize durable catalog metadata without provider requests.
+    const hydrated = serializePublicGames(gamesRes.rows);
 
     // 4) For public response you may omit sensitive columns
     const scrubbed = hydrated.map(({ user_id: _user_id, ...rest }) => rest);
