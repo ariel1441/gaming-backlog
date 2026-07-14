@@ -13,7 +13,9 @@ import metaRouter from "./routes/meta.js";
 import catalogRouter from "./routes/catalog.js";
 import steamRouter from "./routes/steam.js";
 import listsRouter from "./routes/lists.js";
+import metadataRouter from "./routes/metadata.js";
 import { startCatalogCollectionScheduler } from "./services/catalogService.js";
+import { startMetadataRepairScheduler } from "./services/metadataRepairService.js";
 import { startSteamSyncJobScheduler } from "./services/steamService.js";
 import errorHandler from "./middleware/errorHandler.js";
 import demoRouter from "./routes/demo.js";
@@ -26,6 +28,7 @@ registerSecurity(app);
 await initCache(app); // sets app.locals.rawgCache
 const stopCatalogCollectionScheduler = startCatalogCollectionScheduler();
 const stopSteamSyncJobScheduler = startSteamSyncJobScheduler();
+const stopMetadataRepairScheduler = startMetadataRepairScheduler();
 
 // Liveness probe for platform health checks
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -39,6 +42,7 @@ app.use("/api/lists", listsRouter);
 app.use("/api/games", gamesRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/meta", metaRouter);
+app.use("/api/metadata", metadataRouter);
 app.use("/api/demo", publicLimiter, demoRouter);
 
 // 404 for any unmatched route (forward to error handler)
@@ -70,6 +74,7 @@ async function shutdown(exitCode = 0) {
 
   stopCatalogCollectionScheduler?.();
   stopSteamSyncJobScheduler?.();
+  stopMetadataRepairScheduler?.();
 
   if (guestCleanupInterval) {
     clearInterval(guestCleanupInterval);

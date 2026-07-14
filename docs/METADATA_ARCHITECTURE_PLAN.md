@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-7 implemented and verified locally, production rollout pending
+Status: architecture approved; Stages 0-8 implemented locally, Stage 9 UI in progress, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -99,6 +99,18 @@ As of 2026-07-14:
   305 link to search-result rows, and 493 remain unlinked title-only games.
 - Production exact repair remains a separate release operation requiring both a
   command flag and `CONFIRM_PROD_EXACT_LINK_REPAIR=true`; it has not been run.
+- Stage 8 adds the authenticated owner-scoped repair-job API and resumable
+  worker. Starting repair returns immediately; PostgreSQL stores job progress,
+  leases, bounded provider-search usage, failures, and private review
+  candidates.
+- The worker processes small batches, promotes exact linked identities through
+  canonical ingestion, prefers existing normalized-title catalog candidates,
+  and only searches RAWG when no local candidate exists and the per-job budget
+  permits it. Title-only matches always require review.
+- Candidate APIs list only the authenticated owner's records and support
+  accept, reject, skip-game, and an exact manually selected alternative.
+  Acceptance ingests full detail before linking and rejects owner-level catalog
+  duplicates.
 - No production migration or production data write has been performed.
 
 ## Purpose
