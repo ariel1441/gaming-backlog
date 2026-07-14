@@ -23,6 +23,7 @@ import { normalizeScore } from "../utils/normalize.js";
 import { toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { cacheClear } from "../utils/microCache.js";
+import { ingestRawgGameMetadata } from "../services/metadataIngestionService.js";
 
 const router = express.Router();
 const DEFAULT_POSITION_SPACING = 1000;
@@ -189,7 +190,28 @@ router.post(
     try {
       const userId = req.user.id;
       const catalogGameId = Number(req.params.id);
-      const catalog = await getCatalogGame(catalogGameId, req.user);
+      const external = await pool.query(
+        `
+        SELECT external_id::int AS rawg_id, slug AS rawg_slug
+        FROM external_game_ids
+        WHERE catalog_game_id = $1 AND source = 'rawg'
+        LIMIT 1
+        `,
+        [catalogGameId],
+      );
+      const rawg = external.rows[0] || {};
+      if (!req.user?.is_guest && rawg.rawg_id) {
+        const ingestMetadata =
+          req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata;
+        const ingested = await ingestMetadata(rawg.rawg_id);
+        if (Number(ingested.catalogGame.id) !== catalogGameId) {
+          throw conflict("Catalog identity no longer matches this RAWG game.");
+        }
+      }
+
+      const catalog = await getCatalogGame(catalogGameId, req.user, {
+        fetchMetadata: false,
+      });
       if (!catalog) return next(notFound("Catalog game not found"));
 
       const {
@@ -231,16 +253,6 @@ router.post(
       await lockUserRank(client, userId, statusNorm);
       const position = await getNextPosition(statusNorm, userId, client);
 
-      const external = await client.query(
-        `
-        SELECT external_id::int AS rawg_id, slug AS rawg_slug
-        FROM external_game_ids
-        WHERE catalog_game_id = $1 AND source = 'rawg'
-        LIMIT 1
-        `,
-        [catalogGameId]
-      );
-      const rawg = external.rows[0] || {};
       const duplicate = await client.query(
         `
         SELECT id

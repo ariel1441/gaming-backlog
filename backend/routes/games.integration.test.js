@@ -16,7 +16,7 @@ function makeToken(payload = {}) {
   );
 }
 
-async function withServer(queryImpl, fn, connectImpl) {
+async function withServer(queryImpl, fn, connectImpl, appLocals = {}) {
   const originalQuery = pool.query;
   const originalConnect = pool.connect;
   pool.query = queryImpl;
@@ -24,6 +24,7 @@ async function withServer(queryImpl, fn, connectImpl) {
 
   const app = express();
   app.locals.rawgCache = {};
+  Object.assign(app.locals, appLocals);
   app.use(express.json());
   app.use("/api/games", gamesRouter);
   app.use(errorHandler);
@@ -259,6 +260,254 @@ test("POST /api/games rejects duplicate title through route middleware", async (
         res.body.error.message,
         '"Elden Ring" is already in your backlog.',
       );
+    },
+  );
+});
+
+test("POST /api/games keeps title-only additions unresolved and provider-free", async () => {
+  let ingestionCalls = 0;
+  let insertParams;
+  const client = {
+    query: async (text, values) => {
+      const sql = String(text);
+      if (sql.includes("SELECT rank FROM statuses")) {
+        return { rows: [{ rank: 1 }] };
+      }
+      if (sql.includes("SELECT COALESCE(MAX(g.position)")) {
+        return { rows: [{ max: 0 }] };
+      }
+      if (sql.includes("SELECT id, name FROM games")) return { rows: [] };
+      if (sql.includes("INSERT INTO games")) {
+        insertParams = values;
+        return { rows: [{ id: 91, user_id: 7, name: "Unmatched Title" }] };
+      }
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+
+  await withServer(
+    async (text) => {
+      const sql = String(text);
+      if (sql.includes("SELECT 1 FROM statuses")) return { rows: [{}] };
+      if (sql.includes("SELECT id, name FROM games")) return { rows: [] };
+      if (sql.includes("LEFT JOIN catalog_games")) {
+        return {
+          rows: [
+            {
+              id: 91,
+              user_id: 7,
+              name: "Unmatched Title",
+              status: "playing",
+              catalog_game_id: null,
+              rawg_id: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games", {
+        method: "POST",
+        body: { name: "Unmatched Title", status: "playing" },
+        authPayload: { is_guest: false },
+      });
+
+      assert.equal(res.status, 201);
+      assert.equal(res.body.catalog_game_id, null);
+      assert.equal(res.body.rawg_id, null);
+      assert.equal(insertParams[1], null);
+      assert.equal(insertParams[15], null);
+      assert.equal(ingestionCalls, 0);
+    },
+    async () => client,
+    {
+      ingestRawgGameMetadata: async () => {
+        ingestionCalls += 1;
+        throw new Error("title-only add must not ingest RAWG metadata");
+      },
+    },
+  );
+});
+
+test("POST /api/games durably ingests an explicitly selected RAWG identity", async () => {
+  const ingestionCalls = [];
+  let insertParams;
+  const client = {
+    query: async (text, values) => {
+      const sql = String(text);
+      if (sql.includes("SELECT rank FROM statuses")) {
+        return { rows: [{ rank: 1 }] };
+      }
+      if (sql.includes("SELECT COALESCE(MAX(g.position)")) {
+        return { rows: [{ max: 0 }] };
+      }
+      if (sql.includes("SELECT id, name FROM games")) return { rows: [] };
+      if (sql.includes("INSERT INTO games")) {
+        insertParams = values;
+        return {
+          rows: [{ id: 92, user_id: 7, name: "Grand Theft Auto V" }],
+        };
+      }
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+
+  await withServer(
+    async (text) => {
+      const sql = String(text);
+      if (sql.includes("SELECT 1 FROM statuses")) return { rows: [{}] };
+      if (sql.includes("SELECT id, name FROM games")) return { rows: [] };
+      if (sql.includes("LEFT JOIN catalog_games")) {
+        return {
+          rows: [
+            {
+              id: 92,
+              user_id: 7,
+              name: "Grand Theft Auto V",
+              status: "playing",
+              catalog_game_id: 501,
+              rawg_id: 3498,
+              rawg_slug: "grand-theft-auto-v",
+              catalog_name: "Grand Theft Auto V",
+              catalog_cover_url: "https://img.example/gta-v.jpg",
+              catalog_description_html: "Durable detail",
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games", {
+        method: "POST",
+        body: {
+          name: "Grand Theft Auto V",
+          status: "playing",
+          rawg_id: 3498,
+          rawg_slug: "grand-theft-auto-v",
+          rawg_selection_confirmed: true,
+        },
+        authPayload: { is_guest: false },
+      });
+
+      assert.equal(res.status, 201);
+      assert.deepEqual(ingestionCalls, [3498]);
+      assert.equal(insertParams[1], 501);
+      assert.equal(insertParams[15], 3498);
+      assert.equal(insertParams[19], null);
+      assert.equal(res.body.catalog_game_id, 501);
+      assert.equal(res.body.cover, "https://img.example/gta-v.jpg");
+      assert.equal(res.body.description, "Durable detail");
+    },
+    async () => client,
+    {
+      ingestRawgGameMetadata: async (rawgId) => {
+        ingestionCalls.push(rawgId);
+        return {
+          catalogGame: {
+            id: 501,
+            name: "Grand Theft Auto V",
+            slug: "grand-theft-auto-v",
+          },
+        };
+      },
+    },
+  );
+});
+
+test("PUT /api/games/:id does not refresh an unchanged RAWG identity", async () => {
+  let ingestionCalls = 0;
+  let updateParams;
+  let poolCalls = 0;
+
+  await withServer(
+    async (text, values) => {
+      poolCalls += 1;
+      const sql = String(text);
+      if (sql.includes("SELECT 1 FROM statuses")) return { rows: [{}] };
+      if (sql.includes("SELECT * FROM games")) {
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "playing",
+              position: 1000,
+              rawg_id: 1145360,
+              rawg_slug: "hades",
+              catalog_game_id: 44,
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT id, name FROM games")) {
+        return { rows: [{ id: 12, name: "Hades" }] };
+      }
+      if (sql.includes("UPDATE games g")) {
+        updateParams = values;
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "playing",
+              position: 1000,
+              rawg_id: 1145360,
+              rawg_slug: "hades",
+              catalog_game_id: 44,
+            },
+          ],
+        };
+      }
+      if (sql.includes("LEFT JOIN catalog_games")) {
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "playing",
+              position: 1000,
+              rawg_id: 1145360,
+              rawg_slug: "hades",
+              catalog_game_id: 44,
+              catalog_name: "Hades",
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/12", {
+        method: "PUT",
+        body: {
+          name: "Hades",
+          status: "playing",
+          rawg_id: 1145360,
+          rawg_slug: "hades",
+          rawg_selection_confirmed: false,
+        },
+        authPayload: { is_guest: false },
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(ingestionCalls, 0);
+      assert.equal(updateParams[14], 1145360);
+      assert.equal(updateParams[16], 44);
+      assert.equal(poolCalls, 5);
+    },
+    undefined,
+    {
+      ingestRawgGameMetadata: async () => {
+        ingestionCalls += 1;
+        throw new Error("ordinary edit must not refresh global metadata");
+      },
     },
   );
 });

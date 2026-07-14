@@ -15,6 +15,7 @@ export const emptyGameForm = {
   rawg_slug: "",
   rawg_cover: "",
   rawg_released: "",
+  rawg_selection_confirmed: false,
 };
 
 export const canonDate = (value) =>
@@ -134,8 +135,15 @@ export function buildEditGamePayload(draft, original = {}) {
   };
   const rawgId = pick("rawg_id", "rawgId");
   const rawgSlug = pick("rawg_slug", "rawgSlug");
+  const rawgSelectionConfirmed = pick(
+    "rawg_selection_confirmed",
+    "rawgSelectionConfirmed"
+  );
   if (rawgId !== undefined) payload.rawg_id = rawgId || null;
   if (rawgSlug !== undefined) payload.rawg_slug = rawgSlug || "";
+  if (rawgSelectionConfirmed !== undefined) {
+    payload.rawg_selection_confirmed = !!rawgSelectionConfirmed;
+  }
 
   const startedDraftRaw =
     draft?.started_at !== undefined ? draft.started_at : draft?.startedAt;

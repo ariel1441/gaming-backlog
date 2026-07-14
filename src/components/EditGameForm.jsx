@@ -50,6 +50,7 @@ const emptyForm = {
   rawg_slug: "",
   rawg_cover: "",
   rawg_released: "",
+  rawg_selection_confirmed: false,
 };
 
 function PreviewMetric({ label, value }) {
@@ -145,6 +146,7 @@ export default function EditGameForm({
       rawg_slug: game.rawg_slug || "",
       rawg_cover: game.cover || "",
       rawg_released: game.releaseDate || "",
+      rawg_selection_confirmed: false,
     });
     setMetadataQuery(game.name || "");
     setSteamQuery(game.name || "");
@@ -225,6 +227,7 @@ export default function EditGameForm({
       rawg_slug: result.rawg_slug || "",
       rawg_cover: result.cover || "",
       rawg_released: result.released || "",
+      rawg_selection_confirmed: true,
     }));
     setMetadataQuery(result.name);
   };
@@ -237,6 +240,7 @@ export default function EditGameForm({
       rawg_slug: "",
       rawg_cover: "",
       rawg_released: "",
+      rawg_selection_confirmed: true,
     }));
   };
 

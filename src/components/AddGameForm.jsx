@@ -82,6 +82,7 @@ const AddGameForm = ({
       rawg_slug: result.rawg_slug || "",
       rawg_cover: result.cover || "",
       rawg_released: result.released || "",
+      rawg_selection_confirmed: true,
     }));
   };
 
@@ -92,6 +93,7 @@ const AddGameForm = ({
       rawg_slug: "",
       rawg_cover: "",
       rawg_released: "",
+      rawg_selection_confirmed: false,
     }));
   };
 
@@ -235,6 +237,7 @@ const AddGameForm = ({
                         rawg_slug: "",
                         rawg_cover: "",
                         rawg_released: "",
+                        rawg_selection_confirmed: false,
                       }))
                     }
                     placeholder="e.g., Elden Ring"

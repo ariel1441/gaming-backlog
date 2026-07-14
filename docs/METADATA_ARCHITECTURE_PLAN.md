@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-4 implemented locally, production rollout pending
+Status: architecture approved; Stages 0-4 and initial Stage 5 route integration implemented locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -53,8 +53,23 @@ As of 2026-07-14:
 - Stage 4 integration tests use isolated localhost PostgreSQL schemas and cover
   stable hashing, ingestion/reuse, safe refresh, failure preservation, identity
   mismatch rejection, same-ID coalescing, and cross-ID concurrency limits.
-- Stage 4 is not connected to existing routes yet; that behavior transition is
-  Stage 5.
+- Initial Stage 5 integration connects exact RAWG selections in backlog add,
+  metadata-change, and Discover add-to-backlog flows to the canonical ingestion
+  service. These paths reuse snapshot-backed identities or persist full detail
+  before linking a private game row.
+- A title-only add now stays unresolved and does not call RAWG or guess an
+  identity. The private row can be matched later by the reviewed repair flow.
+- Ordinary personal edits preserve their existing catalog/RAWG link and do not
+  refresh global metadata. The client sends an explicit confirmation marker
+  only when the user selects or clears a metadata result.
+- Newly linked games render the catalog cover instead of duplicating it into
+  the legacy `games.cover` compatibility field.
+- Route integration tests cover title-only adds, exact selected adds, ordinary
+  no-refresh edits, and Discover catalog additions. The full local check passes
+  with 225 tests, lint, and a production build.
+- Stage 5 does not yet implement historical-cache import, backlog repair jobs,
+  ambiguous candidate review, controlled refresh, or retirement of all runtime
+  JSON-cache compatibility reads.
 - No production migration or production data write has been performed.
 
 ## Purpose

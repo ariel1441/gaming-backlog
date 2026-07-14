@@ -137,6 +137,7 @@ test("buildEditGamePayload includes changed RAWG identity", () => {
       status: "playing",
       rawg_id: 123,
       rawg_slug: "hades",
+      rawg_selection_confirmed: true,
     },
     { id: 1, name: "Hades", status: "playing" }
   );
@@ -144,6 +145,7 @@ test("buildEditGamePayload includes changed RAWG identity", () => {
   assert.equal(result.ok, true);
   assert.equal(result.payload.rawg_id, 123);
   assert.equal(result.payload.rawg_slug, "hades");
+  assert.equal(result.payload.rawg_selection_confirmed, true);
 });
 
 test("buildEditGamePayload validates required fields and date order", () => {

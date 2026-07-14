@@ -23,9 +23,9 @@ import { badRequest, notFound, conflict, httpError } from "../utils/httpError.js
 import { findDuplicateGameTitle } from "../utils/gameTitle.js";
 import {
   decorateGameWithCatalog,
-  ensureCatalogGameFromRawg,
   searchCatalog,
 } from "../services/catalogService.js";
+import { ingestRawgGameMetadata } from "../services/metadataIngestionService.js";
 import {
   assertSameRank,
   buildReorderedRankList,
@@ -678,37 +678,21 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
 
     const score = normalizeScore(my_score);
 
-    const cache = req.app.locals.rawgCache || {};
     const isGuest = !!req.user?.is_guest;
 
-    // For guests: NEVER fetch RAWG; read from cache only.
-    // For real users: persist immediately on single-item routes.
-    let rawg, canonicalName;
+    // Only an explicit RAWG identity may create a durable catalog link. A
+    // title-only add remains unresolved and must never guess the first search
+    // result. Guest/demo writes remain provider-free.
+    let canonicalName = userTitle;
     let catalogGameId = null;
-    if (!isGuest) {
-      const ensured = rawg_id
-        ? await ensureRawgIdentityEntry(
-            cache,
-            { rawgId: rawg_id, rawgSlug: rawg_slug, fallbackTitle: userTitle },
-            { persist: true },
-          )
-        : await ensureRawgEntry(cache, userTitle, {
-            persist: true,
-          });
-      rawg = ensured.rawg;
-      canonicalName = ensured.canonicalName;
-      if (rawg_id) {
-        const catalogRow = await ensureCatalogGameFromRawg(rawg_id, rawg_slug, {
-          allowSearchResult: true,
-        });
-        catalogGameId = catalogRow?.id ?? null;
-      }
-    } else {
-      const cached = cache[lowerKey(userTitle)] || {};
-      rawg = cached;
-      canonicalName = (cached?.name || cached?.slug || userTitle)
-        .toString()
-        .trim();
+    let catalogRow = null;
+    if (!isGuest && rawg_id) {
+      const ingestMetadata =
+        req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata;
+      const ingested = await ingestMetadata(rawg_id);
+      catalogRow = ingested.catalogGame;
+      catalogGameId = catalogRow.id;
+      canonicalName = catalogRow.name || userTitle;
     }
 
     // HLTB write-once logic (user value wins; else user name; else RAWG official name)
@@ -791,10 +775,10 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       finishedProvided, // $14
       finishedBody, // $15
       rawg_id || null, // $16
-      (rawg_slug || rawg?.slug || "").trim() || null, // $17
+      (catalogRow?.slug || rawg_slug || "").trim() || null, // $17
       statusGroupOf(statusNorm) === "playing", // $18
       statusGroupOf(statusNorm) === "done", // $19
-      rawgCover(rawg), // $20
+      null, // $20: new linked games render the canonical catalog cover
     ];
 
     client = await pool.connect();
@@ -819,7 +803,9 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     // Invalidate Insights micro-cache for this user (new game affects analytics)
     cacheClear(userId);
 
-    res.status(201).json(decorateGameForClient(rows[0], rawg));
+    const detailsQuery = selectOwnedGameDetailsQuery(rows[0].id, userId);
+    const detailsRes = await pool.query(detailsQuery.text, detailsQuery.values);
+    res.status(201).json(decorateGameForClient(detailsRes.rows[0] || rows[0], {}));
   } catch (err) {
     try {
       await client?.query("ROLLBACK");
@@ -852,6 +838,7 @@ router.put(
         hltb_pref,
         rawg_id,
         rawg_slug,
+        rawg_selection_confirmed = false,
       } = req.body || {};
 
       const statusNorm = normStatus(status);
@@ -903,45 +890,12 @@ router.put(
       let catalogGameId = row.catalog_game_id || null;
 
       if (newHLTB == null && !hoursProvided && nameChanged) {
-        const cache = req.app.locals.rawgCache || {};
-        let canonicalName;
-        if (!isGuest) {
-          const ensured = rawg_id
-            ? await ensureRawgIdentityEntry(
-                cache,
-                {
-                  rawgId: rawg_id,
-                  rawgSlug: rawg_slug,
-                  fallbackTitle: userTitle,
-                },
-                { persist: true },
-              )
-            : await ensureRawgEntry(cache, userTitle, {
-                persist: true,
-              });
-          canonicalName = ensured.canonicalName;
-        } else {
-          const cached = cache[lowerKey(userTitle)] || {};
-          canonicalName = (cached?.name || cached?.slug || userTitle)
-            .toString()
-            .trim();
-        }
-
         const pref = ["main", "plus", "comp"].includes(hltb_pref)
           ? hltb_pref
           : "main";
 
-        // 1) try with new user-entered title
+        // HLTB is local-only. Renaming a game must not implicitly contact RAWG.
         newHLTB = lookupHLTBHoursByPref(req.app, userTitle, pref);
-
-        // 2) fallback to RAWG official name (for lookup only)
-        if (
-          newHLTB == null &&
-          canonicalName &&
-          canonicalName.toLowerCase() !== userTitle.toLowerCase()
-        ) {
-          newHLTB = lookupHLTBHoursByPref(req.app, canonicalName, pref);
-        }
       }
 
       const score = normalizeScore(my_score);
@@ -949,11 +903,24 @@ router.put(
         req.body,
         "rawg_id",
       );
-      if (!isGuest && rawg_id) {
-        const catalogRow = await ensureCatalogGameFromRawg(rawg_id, rawg_slug, {
-          allowSearchResult: true,
-        });
-        catalogGameId = catalogRow?.id ?? catalogGameId;
+      const effectiveRawgId = rawgProvided ? rawg_id || null : row.rawg_id;
+      let effectiveRawgSlug = rawgProvided
+        ? (rawg_slug || "").trim() || null
+        : row.rawg_slug;
+      const identityChanged =
+        rawgProvided && String(rawg_id || "") !== String(row.rawg_id || "");
+      const shouldIngest =
+        !isGuest &&
+        effectiveRawgId &&
+        (rawg_selection_confirmed || identityChanged || !catalogGameId);
+
+      if (shouldIngest) {
+        const ingestMetadata =
+          req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata;
+        const ingested = await ingestMetadata(effectiveRawgId);
+        catalogGameId = ingested.catalogGame.id;
+        effectiveRawgSlug =
+          ingested.catalogGame.slug || effectiveRawgSlug || null;
       } else if (rawgProvided && !rawg_id) {
         catalogGameId = null;
       }
@@ -1042,8 +1009,8 @@ router.put(
         finishedProvided, // $12
         statusChanged, // $13
         userId, // $14
-        rawg_id || null, // $15
-        (rawg_slug || "").trim() || null, // $16
+        effectiveRawgId, // $15
+        effectiveRawgSlug, // $16
         catalogGameId, // $17
         startedBody, // $18
         finishedBody, // $19
@@ -1067,19 +1034,7 @@ router.put(
       );
       const responseRow = detailsRes.rows[0] || nextRow;
 
-      // Ensure RAWG for (possibly updated) name, then decorate.
-      const cache = req.app.locals.rawgCache || {};
-      let rawg;
-      if (!isGuest) {
-        const ensured = await ensureRawgForGame(cache, responseRow, {
-          persist: true,
-        });
-        rawg = ensured.rawg;
-      } else {
-        rawg = cachedRawgForGame(cache, responseRow);
-      }
-
-      res.json(decorateGameForClient(responseRow, rawg));
+      res.json(decorateGameForClient(responseRow, {}));
     } catch (err) {
       next(err);
     }

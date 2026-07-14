@@ -1139,6 +1139,7 @@ export async function getCatalogGame(catalogGameId, user = {}, options = {}) {
   if (!row) return null;
 
   const shouldFetch =
+    options.fetchMetadata !== false &&
     !user?.is_guest &&
     (options.force ||
       row.metadata_quality !== "full" ||

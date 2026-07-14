@@ -143,6 +143,7 @@ export const gameSchemas = {
     rawg_slug: Joi.string().trim().max(160).optional().allow(null, "").messages({
       "string.max": "rawg_slug must be <= 160 chars",
     }),
+    rawg_selection_confirmed: Joi.boolean().optional(),
   })
     .custom(validateDateOrder, "validate date order")
     .messages({
