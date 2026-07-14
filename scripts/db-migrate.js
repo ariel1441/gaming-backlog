@@ -139,6 +139,9 @@ try {
         to_regclass('users') IS NOT NULL AS has_users,
         to_regclass('games') IS NOT NULL AS has_games,
         to_regclass('schema_migrations') IS NOT NULL AS has_metadata,
+        to_regclass('catalog_provider_snapshots') IS NOT NULL AS has_provider_snapshots,
+        to_regclass('metadata_jobs') IS NOT NULL AS has_metadata_jobs,
+        to_regclass('game_metadata_candidates') IS NOT NULL AS has_metadata_candidates,
         EXISTS (
           SELECT 1
             FROM information_schema.columns
@@ -171,6 +174,20 @@ try {
              AND ccu.table_name = 'statuses'
              AND ccu.column_name = 'status'
         ) AS games_has_status_fk,
+        (
+          SELECT COUNT(*) = 6
+            FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'catalog_games'
+             AND column_name IN (
+               'cover_source',
+               'cover_external_id',
+               'cover_pinned',
+               'metadata_normalization_version',
+               'metadata_next_refresh_at',
+               'metadata_retired_at'
+             )
+        ) AS catalog_metadata_foundation_ready,
         (SELECT COUNT(*)::int FROM schema_migrations) AS applied_count
       `,
     );
@@ -182,6 +199,10 @@ try {
       !state?.games_has_cover ||
       !state?.games_position_ready ||
       !state?.games_has_status_fk ||
+      !state?.has_provider_snapshots ||
+      !state?.has_metadata_jobs ||
+      !state?.has_metadata_candidates ||
+      !state?.catalog_metadata_foundation_ready ||
       Number(state.applied_count) !== files.length
     ) {
       throw new Error("Post-migration schema/version verification failed.");

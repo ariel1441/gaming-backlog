@@ -1,6 +1,6 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-2 implemented locally, production rollout pending
+Status: architecture approved; Stages 0-3 implemented locally, production rollout pending
 
 Last reviewed: 2026-07-14
 
@@ -31,6 +31,16 @@ As of 2026-07-14:
 - Both migrations were applied successfully to localhost PostgreSQL.
 - Focused route/schema verification and the full `npm run check` passed
   locally (215 tests, lint, and production build).
+- Stage 3 adds the durable schema foundation through migrations `022` and
+  `023`: catalog cover provenance/freshness fields, append-only provider
+  snapshots, resumable metadata jobs, and owner-scoped match candidates.
+- `backend/schema.sql` contains the same Stage 3 foundation, and the migration
+  runner now verifies the new tables and catalog columns.
+- Schema contracts cover snapshot deduplication/immutability, one-active-job
+  enforcement, candidate ownership isolation, and accepted exact candidates.
+- Stage 3 was applied to localhost and the full `npm run check` passed again.
+- Stage 3 intentionally adds no provider calls, routes, or user-visible
+  behavior; service integration begins in Stage 4.
 - No production migration or production data write has been performed.
 
 ## Purpose

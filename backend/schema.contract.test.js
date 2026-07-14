@@ -103,6 +103,65 @@ test("fresh schema enforces game identity, dates, metrics, and relationship owne
       client.query("UPDATE user_lists SET user_id = $1 WHERE id = $2", [userB, listA.rows[0].id]),
       (error) => error.code === "23514",
     );
+
+    const catalog = await client.query(
+      "INSERT INTO catalog_games (name) VALUES ('Catalog Contract Game') RETURNING id",
+    );
+    const catalogGameId = catalog.rows[0].id;
+    await client.query(
+      `INSERT INTO catalog_provider_snapshots
+        (catalog_game_id, provider, provider_game_id, payload_json, payload_hash, fetched_at)
+       VALUES ($1, 'rawg', '42', $2, 'snapshot-hash', NOW())`,
+      [catalogGameId, { id: 42, name: "Catalog Contract Game" }],
+    );
+    await assert.rejects(
+      client.query(
+        `INSERT INTO catalog_provider_snapshots
+          (catalog_game_id, provider, provider_game_id, payload_json, payload_hash, fetched_at)
+         VALUES ($1, 'rawg', '42', $2, 'snapshot-hash', NOW())`,
+        [catalogGameId, { id: 42, name: "Catalog Contract Game" }],
+      ),
+      (error) => error.code === "23505",
+    );
+    await assert.rejects(
+      client.query(
+        `UPDATE catalog_provider_snapshots
+            SET payload_json = $1
+          WHERE catalog_game_id = $2`,
+        [{ id: 42, name: "Changed" }, catalogGameId],
+      ),
+      (error) => error.code === "23514",
+    );
+
+    await client.query(
+      "INSERT INTO metadata_jobs (job_type, scope_user_id) VALUES ('backlog_repair', $1)",
+      [userA],
+    );
+    await assert.rejects(
+      client.query(
+        "INSERT INTO metadata_jobs (job_type, scope_user_id) VALUES ('backlog_repair', $1)",
+        [userA],
+      ),
+      (error) => error.code === "23505",
+    );
+
+    await assert.rejects(
+      client.query(
+        `INSERT INTO game_metadata_candidates
+          (user_id, game_id, provider, provider_game_id, candidate_rank)
+         VALUES ($1, $2, 'rawg', '42', 1)`,
+        [userA, gameB.rows[0].id],
+      ),
+      (error) => error.code === "23514",
+    );
+
+    await client.query(
+      `INSERT INTO game_metadata_candidates
+        (user_id, game_id, catalog_game_id, provider, provider_game_id,
+         candidate_rank, confidence_score, confidence_level, decision, decided_at)
+       VALUES ($1, $2, $3, 'rawg', '42', 1, 1, 'exact', 'accepted', NOW())`,
+      [userA, gameA.rows[0].id, catalogGameId],
+    );
   } finally {
     await client.query("SET search_path TO public").catch(() => {});
     await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => {});
@@ -149,6 +208,16 @@ test("ordered migrations bootstrap an empty database and status stays read-only"
       assert.ok(
         (await client.query("SELECT COUNT(*)::int AS count FROM statuses")).rows[0].count > 0,
       );
+      for (const table of [
+        "catalog_provider_snapshots",
+        "metadata_jobs",
+        "game_metadata_candidates",
+      ]) {
+        assert.equal(
+          (await client.query("SELECT to_regclass($1) AS name", [table])).rows[0].name,
+          table,
+        );
+      }
     } finally {
       await client.end();
     }
