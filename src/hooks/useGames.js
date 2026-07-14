@@ -140,9 +140,7 @@ function useGamesState() {
                 : [];
         setGames(sortGames(list));
 
-        if (
-          list.some((game) => !game?.cover || game?.coverNeedsHydration)
-        ) {
+        if (list.some((game) => game?.coverNeedsHydration === true)) {
           hydrateGameCoversApi({
             auth: false,
             headers: getAuthHeaders(),

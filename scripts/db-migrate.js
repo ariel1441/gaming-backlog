@@ -139,6 +139,38 @@ try {
         to_regclass('users') IS NOT NULL AS has_users,
         to_regclass('games') IS NOT NULL AS has_games,
         to_regclass('schema_migrations') IS NOT NULL AS has_metadata,
+        EXISTS (
+          SELECT 1
+            FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'games'
+             AND column_name = 'cover'
+        ) AS games_has_cover,
+        EXISTS (
+          SELECT 1
+            FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'games'
+             AND column_name = 'position'
+             AND is_nullable = 'NO'
+             AND column_default IS NOT NULL
+        ) AS games_position_ready,
+        EXISTS (
+          SELECT 1
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON kcu.constraint_schema = tc.constraint_schema
+             AND kcu.constraint_name = tc.constraint_name
+            JOIN information_schema.constraint_column_usage ccu
+              ON ccu.constraint_schema = tc.constraint_schema
+             AND ccu.constraint_name = tc.constraint_name
+           WHERE tc.table_schema = 'public'
+             AND tc.table_name = 'games'
+             AND tc.constraint_type = 'FOREIGN KEY'
+             AND kcu.column_name = 'status'
+             AND ccu.table_name = 'statuses'
+             AND ccu.column_name = 'status'
+        ) AS games_has_status_fk,
         (SELECT COUNT(*)::int FROM schema_migrations) AS applied_count
       `,
     );
@@ -147,6 +179,9 @@ try {
       !state?.has_users ||
       !state?.has_games ||
       !state?.has_metadata ||
+      !state?.games_has_cover ||
+      !state?.games_position_ready ||
+      !state?.games_has_status_fk ||
       Number(state.applied_count) !== files.length
     ) {
       throw new Error("Post-migration schema/version verification failed.");

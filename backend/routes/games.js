@@ -263,7 +263,10 @@ const resolvedCover = (game, rawg) =>
   game?.catalog_cover_url || game?.cover || rawgCover(rawg) || steamCover(game);
 
 const needsCoverHydration = (game, rawg) =>
-  !game?.catalog_cover_url && !game?.cover && !rawgCover(rawg);
+  Boolean(game?.rawg_id) &&
+  !game?.catalog_cover_url &&
+  !game?.cover &&
+  !rawgCover(rawg);
 
 const mapWithLimit = async (items, limit, fn) => {
   const results = new Array(items.length);

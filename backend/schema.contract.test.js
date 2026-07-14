@@ -154,3 +154,87 @@ test("ordered migrations bootstrap an empty database and status stays read-only"
     }
   });
 });
+
+test("ordered migrations reconcile a historical games table missing core schema details", async () => {
+  await withTemporaryDatabase(async (target) => {
+    const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+    const seed = new pg.Client({ connectionString: target });
+    await seed.connect();
+    try {
+      await seed.query(`
+        CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL
+        );
+
+        CREATE TABLE statuses (
+          id SERIAL PRIMARY KEY,
+          status TEXT UNIQUE NOT NULL,
+          rank INTEGER NOT NULL
+        );
+
+        CREATE TABLE games (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          position INTEGER,
+          my_genre TEXT,
+          how_long_to_beat INTEGER,
+          my_score NUMERIC(3,1),
+          thoughts TEXT,
+          started_at DATE,
+          finished_at DATE
+        );
+
+        INSERT INTO users (username, password_hash)
+        VALUES ('historical_user', 'x');
+
+        INSERT INTO statuses (status, rank)
+        VALUES ('playing', 1);
+
+        INSERT INTO games (user_id, name, status, position)
+        VALUES (1, 'Historical Game', 'playing', NULL);
+      `);
+    } finally {
+      await seed.end();
+    }
+
+    await execFileAsync(process.execPath, [path.join(root, "scripts", "db-migrate.js")], {
+      cwd: root,
+      env: { ...process.env, DATABASE_URL: target, PGSSL: "false" },
+    });
+
+    const client = new pg.Client({ connectionString: target });
+    await client.connect();
+    try {
+      const columns = await client.query(`
+        SELECT column_name, is_nullable, column_default
+          FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'games'
+           AND column_name IN ('cover', 'position')
+         ORDER BY column_name
+      `);
+      const byName = new Map(columns.rows.map((column) => [column.column_name, column]));
+      assert.ok(byName.has("cover"));
+      assert.equal(byName.get("position")?.is_nullable, "NO");
+      assert.match(byName.get("position")?.column_default || "", /1000/);
+
+      const historical = await client.query(
+        "SELECT position FROM games WHERE name = 'Historical Game'",
+      );
+      assert.equal(historical.rows[0].position, 1000);
+
+      await assert.rejects(
+        client.query(
+          "INSERT INTO games (user_id, name, status) VALUES (1, 'Bad Status', 'missing')",
+        ),
+        (error) => error.code === "23503",
+      );
+    } finally {
+      await client.end();
+    }
+  });
+});
