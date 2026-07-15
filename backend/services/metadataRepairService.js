@@ -73,6 +73,12 @@ export async function enqueueMetadataRepair(userId, db = pool) {
         FROM games game
         LEFT JOIN catalog_games catalog ON catalog.id = game.catalog_game_id
        WHERE game.user_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM game_metadata_candidates candidate
+            WHERE candidate.game_id = game.id
+              AND candidate.user_id = $1
+              AND candidate.decision = 'pending'
+         )
          AND (
            game.catalog_game_id IS NULL OR
            catalog.metadata_quality IS DISTINCT FROM 'full'
@@ -199,6 +205,12 @@ async function nextGames(job, limit, db = pool) {
        AND external.source = 'rawg'
      WHERE game.user_id = $1
        AND game.id > $2
+       AND NOT EXISTS (
+         SELECT 1 FROM game_metadata_candidates candidate
+          WHERE candidate.game_id = game.id
+            AND candidate.user_id = $1
+            AND candidate.decision = 'pending'
+       )
        AND (
          game.catalog_game_id IS NULL OR
          catalog.metadata_quality IS DISTINCT FROM 'full'
@@ -291,6 +303,18 @@ async function saveCandidates(db, game, candidates) {
   return unique.length;
 }
 
+export function singleExactTitleCandidate(game, candidates = []) {
+  const valid = (Array.isArray(candidates) ? candidates : []).filter((candidate) => {
+    const rawgId = Number(candidate?.rawg_id ?? candidate?.rawgId);
+    const catalogId = Number(candidate?.id ?? candidate?.catalog_game_id);
+    return Number.isInteger(rawgId) && Number.isInteger(catalogId);
+  });
+  if (valid.length !== 1 || !isSameGameTitle(game?.name, valid[0]?.name)) {
+    return null;
+  }
+  return valid[0];
+}
+
 async function exactRepairOutcome(game, rawgId, rawgSlug, dependencies) {
   const ingested = await dependencies.ingestRawgGameMetadata(rawgId);
   const catalogId = Number(ingested.catalogGame.id);
@@ -345,6 +369,16 @@ async function processGame(job, game, dependencies) {
       candidateSource: payload.source || "rawg_search",
     }));
     providerSearches = 1;
+  }
+  const automaticCandidate = singleExactTitleCandidate(game, candidates);
+  if (automaticCandidate) {
+    const outcome = await exactRepairOutcome(
+      game,
+      Number(automaticCandidate.rawg_id ?? automaticCandidate.rawgId),
+      automaticCandidate.rawg_slug ?? automaticCandidate.rawgSlug,
+      dependencies,
+    );
+    return { ...outcome, providerSearches };
   }
   const saved = await saveCandidates(dependencies.db, game, candidates);
   return saved

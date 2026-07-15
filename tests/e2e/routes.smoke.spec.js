@@ -170,6 +170,14 @@ test("settings game metadata batch review stays open and advances", async ({
       confidenceLevel: "high",
       candidateRank: 1,
     },
+    ...Array.from({ length: 49 }, (_, index) => ({
+      id: 100 + index,
+      gameId: 1000 + index,
+      gameName: `Extra Game ${index + 1}`,
+      candidateName: `Extra Game ${index + 1}`,
+      confidenceLevel: "high",
+      candidateRank: 1,
+    })),
   ];
 
   await page.addInitScript(() => {
@@ -218,17 +226,41 @@ test("settings game metadata batch review stays open and advances", async ({
   await page.goto("/settings?section=metadata", {
     waitUntil: "domcontentloaded",
   });
-  await expect(page.getByText("2 games to review")).toBeVisible();
-  await expect(page.getByText("3 suggestions across 2 backlog games")).toBeVisible();
+  await expect(page.getByText("51 games to review")).toBeVisible();
+  await expect(page.getByText("52 suggestions across 51 backlog games")).toBeVisible();
 
   await page.getByRole("button", { name: /Review matches/ }).click();
-  await expect(page.getByText("2 backlog games", { exact: true })).toBeVisible();
+  await expect(page.getByText("51 backlog games", { exact: true })).toBeVisible();
+  const toolbar = page.getByRole("toolbar", { name: "Batch review controls" });
+  await expect(toolbar).toBeVisible();
   await page.getByRole("button", { name: "Select first high matches" }).click();
+  await expect(page.getByRole("button", { name: "Apply selected (50)" })).toBeVisible();
+  const lastGroup = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Extra Game 49", exact: true }),
+  });
+  await lastGroup.getByText("Add to batch", { exact: true }).click();
+  await expect(page.getByText("Choose up to 50 games per batch.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review metadata matches" })).toBeVisible();
+  await expect(toolbar).toBeVisible();
+  await page.getByRole("button", { name: "Clear" }).click();
+  const hadesGroup = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Hades", exact: true }),
+  });
+  const celesteGroup = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Celeste", exact: true }),
+  });
+  await hadesGroup.getByText("Add to batch", { exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Review metadata matches" })).toBeVisible();
+  await celesteGroup.getByText("Add to batch", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Review metadata matches" })).toBeVisible();
   await page.getByRole("button", { name: "Apply selected (2)" }).click();
 
   await expect(
     page.getByRole("heading", { name: "Review metadata matches" }),
   ).toBeVisible();
-  await expect(page.getByText("No matches need review.")).toBeVisible();
+  await expect(page.getByText("49 backlog games", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply selected (0)" })).toBeDisabled();
+  await expect(hadesGroup).toHaveCount(0);
+  await expect(celesteGroup).toHaveCount(0);
   expect(accepted).toEqual([1, 3]);
 });

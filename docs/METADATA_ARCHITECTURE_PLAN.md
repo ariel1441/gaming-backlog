@@ -106,7 +106,8 @@ As of 2026-07-14:
 - The worker processes small batches, promotes exact linked identities through
   canonical ingestion, prefers existing normalized-title catalog candidates,
   and only searches RAWG when no local candidate exists and the per-job budget
-  permits it. Title-only matches always require review.
+  permits it. A single valid candidate with the exact normalized backlog title
+  may be accepted automatically; every ambiguous title match requires review.
 - Candidate APIs list only the authenticated owner's records and support
   accept, reject, skip-game, and an exact manually selected alternative.
   Acceptance ingests full detail before linking and rejects owner-level catalog
@@ -670,7 +671,8 @@ Automatic acceptance policy:
 - exact trusted external-ID mapping: accept;
 - previously confirmed catalog identity: reuse;
 - title/year/platform high-confidence result: recommend for review initially;
-- title-only result: require review;
+- one valid result with the exact normalized title: accept;
+- all other title-only results: require review;
 - remaster/edition/DLC/demo disagreement: always require review.
 
 The UI should show durable progress, for example:
@@ -1056,7 +1058,8 @@ internal stack traces to clients.
 
 - Exact RAWG ID auto-links.
 - Trusted existing mapping is reused.
-- Title-only match creates candidates, not an automatic link.
+- A sole exact normalized-title match auto-links; multiple or inexact title
+  matches create candidates instead.
 - Remaster/DLC/demo ambiguity requires review.
 - Job resumes after process restart.
 - Rate limiting pauses and resumes without duplicated work.

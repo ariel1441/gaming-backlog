@@ -10,6 +10,7 @@ import {
   getLatestMetadataRepair,
   listMetadataCandidates,
   processNextMetadataRepairBatch,
+  singleExactTitleCandidate,
 } from "./metadataRepairService.js";
 
 dotenv.config();
@@ -98,6 +99,10 @@ test("repair jobs are resumable, budgeted, and owner-scoped", async () => {
           ],
         };
       },
+      ingestRawgGameMetadataFn: async (rawgId) => {
+        assert.equal(rawgId, 100);
+        return { catalogGame: { id: 10, slug: "exact-local" } };
+      },
     });
     assert.equal(batch.processed, 2);
     assert.equal(searches, 1);
@@ -106,18 +111,47 @@ test("repair jobs are resumable, budgeted, and owner-scoped", async () => {
     const status = await getLatestMetadataRepair(1, db);
     assert.equal(status.job.status, "completed");
     assert.equal(status.job.processedCount, 2);
-    assert.equal(status.job.reviewCount, 2);
-    assert.equal(status.pendingCandidateCount, 2);
-    assert.equal(status.pendingReviewGameCount, 2);
+    assert.equal(status.job.linkedCount, 1);
+    assert.equal(status.job.reviewCount, 1);
+    assert.equal(status.pendingCandidateCount, 1);
+    assert.equal(status.pendingReviewGameCount, 1);
 
     const ownerCandidates = await listMetadataCandidates(1, {}, db);
     const otherCandidates = await listMetadataCandidates(2, {}, db);
-    assert.equal(ownerCandidates.length, 2);
+    assert.equal(ownerCandidates.length, 1);
     assert.equal(otherCandidates.length, 0);
     assert.deepEqual(
       ownerCandidates.map((candidate) => candidate.gameId),
-      [20, 21],
+      [21],
     );
+  });
+});
+
+test("automatic title repair requires exactly one valid normalized-title result", () => {
+  const game = { name: "Black Mesa" };
+  const exact = { id: 10, rawg_id: 100, name: "black mesa" };
+  assert.equal(singleExactTitleCandidate(game, [exact]), exact);
+  assert.equal(
+    singleExactTitleCandidate(game, [exact, { id: 11, rawg_id: 101, name: "Black Mesa" }]),
+    null,
+  );
+  assert.equal(
+    singleExactTitleCandidate(game, [{ id: 12, rawg_id: 102, name: "Black Mesa: Definitive Edition" }]),
+    null,
+  );
+});
+
+test("a retry excludes incomplete games that already have pending review candidates", async () => {
+  await withRepairSchema(async (db) => {
+    await seed(db);
+    await db.query(`
+      INSERT INTO game_metadata_candidates (
+        user_id, game_id, catalog_game_id, provider, provider_game_id,
+        candidate_rank, confidence_level
+      ) VALUES (1, 20, 10, 'rawg', '100', 1, 'high')
+    `);
+    const job = await enqueueMetadataRepair(1, db);
+    assert.equal(job.totalCount, 1);
   });
 });
 

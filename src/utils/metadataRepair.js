@@ -25,7 +25,7 @@ export function groupMetadataCandidates(candidates = []) {
   return [...groups.values()];
 }
 
-export const METADATA_REVIEW_BATCH_LIMIT = 20;
+export const METADATA_REVIEW_BATCH_LIMIT = 50;
 
 export function firstHighConfidenceCandidates(
   groups = [],

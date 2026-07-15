@@ -219,17 +219,22 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
   const [selectedByGame, setSelectedByGame] = useState({});
   const [batchProgress, setBatchProgress] = useState("");
   const groups = useMemo(() => groupMetadataCandidates(candidates), [candidates]);
-  const selectedCandidates = Object.values(selectedByGame);
+  const selectedCandidates = candidates.filter(
+    (candidate) => selectedByGame[String(candidate.gameId)] === candidate.id,
+  );
 
   useEffect(() => {
     const available = new Set(candidates.map((candidate) => String(candidate.id)));
-    setSelectedByGame((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([, candidate]) =>
-          available.has(String(candidate.id)),
+    setSelectedByGame((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([, candidateId]) =>
+          available.has(String(candidateId)),
         ),
-      ),
-    );
+      );
+      return Object.keys(next).length === Object.keys(current).length
+        ? current
+        : next;
+    });
   }, [candidates]);
 
   const mutate = async (key, action, success, refreshBacklog = false) => {
@@ -249,18 +254,22 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
   };
 
   const toggleSelected = (candidate, checked) => {
+    const key = String(candidate.gameId);
+    if (
+      checked &&
+      !selectedByGame[key] &&
+      Object.keys(selectedByGame).length >= METADATA_REVIEW_BATCH_LIMIT
+    ) {
+      toast.warning(`Choose up to ${METADATA_REVIEW_BATCH_LIMIT} games per batch.`);
+      return;
+    }
     setSelectedByGame((current) => {
-      const key = String(candidate.gameId);
       if (!checked) {
         const next = { ...current };
         delete next[key];
         return next;
       }
-      if (!current[key] && Object.keys(current).length >= METADATA_REVIEW_BATCH_LIMIT) {
-        toast.warning(`Choose up to ${METADATA_REVIEW_BATCH_LIMIT} games per batch.`);
-        return current;
-      }
-      return { ...current, [key]: candidate };
+      return { ...current, [key]: candidate.id };
     });
   };
 
@@ -268,7 +277,7 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
     const selections = firstHighConfidenceCandidates(groups);
     setSelectedByGame(
       Object.fromEntries(
-        selections.map((candidate) => [String(candidate.gameId), candidate]),
+        selections.map((candidate) => [String(candidate.gameId), candidate.id]),
       ),
     );
     if (!selections.length) {
@@ -277,7 +286,7 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
   };
 
   const applySelected = async () => {
-    const selections = Object.values(selectedByGame);
+    const selections = selectedCandidates;
     if (!selections.length) return;
     let applied = 0;
     let failed = 0;
@@ -324,7 +333,11 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
         />
       ) : (
         <div className="space-y-5">
-          <div className="sticky top-0 z-10 rounded-xl border border-surface-border bg-surface-card/95 p-3 shadow-panel backdrop-blur">
+          <div
+            className="sticky top-0 z-20 -mx-5 -mt-5 border-b border-surface-border bg-surface-card px-5 py-3 shadow-panel"
+            role="toolbar"
+            aria-label="Batch review controls"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm text-content-muted">
                 <span className="font-semibold text-content-primary">
@@ -407,7 +420,7 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
                     key={candidate.id}
                     candidate={candidate}
                     busy={!!busyKey}
-                    selected={selectedByGame[String(group.gameId)]?.id === candidate.id}
+                    selected={selectedByGame[String(group.gameId)] === candidate.id}
                     onSelect={toggleSelected}
                     onAccept={(selected) =>
                       mutate(
@@ -564,7 +577,8 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
             </h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-content-muted">
               Find durable RAWG metadata for incomplete backlog games. Exact IDs
-              are repaired automatically; title matches always wait for review.
+              and unique exact-title results repair automatically; ambiguous
+              title matches always wait for review.
             </p>
           </div>
           <Badge variant={pendingGames ? "warning" : incomplete ? "metadata" : "success"}>
@@ -608,12 +622,19 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
                 <div className="mt-3 flex flex-wrap gap-3 text-xs text-content-muted">
                   <span>{job.linkedCount} repaired</span>
                   <span>{job.reviewCount} sent to review</span>
-                  <span>{job.unmatchedCount} unmatched</span>
+                  <span>{job.unmatchedCount} without suggestions</span>
                   {job.failedCount ? <span>{job.failedCount} failed</span> : null}
                 </div>
                 {pendingGames ? (
                   <div className="mt-3 text-xs text-content-muted">
                     {pendingCandidates} suggestions across {pendingGames} backlog games await review.
+                  </div>
+                ) : null}
+                {job.unmatchedCount ? (
+                  <div className="mt-3 text-xs leading-5 text-content-muted">
+                    Games without suggestions are not in Review matches. Run the
+                    repair again to retry them; each run uses a limited RAWG
+                    search budget.
                   </div>
                 ) : null}
               </div>
@@ -635,7 +656,13 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
                   className={`h-4 w-4 ${progress.active ? "animate-spin" : ""}`}
                   aria-hidden="true"
                 />
-                {progress.active ? "Repair running" : starting ? "Starting..." : "Repair missing metadata"}
+                {progress.active
+                  ? "Repair running"
+                  : starting
+                    ? "Starting..."
+                    : job?.status === "completed" && job.unmatchedCount
+                      ? "Retry games without matches"
+                      : "Repair missing metadata"}
               </Button>
               <Button
                 type="button"
