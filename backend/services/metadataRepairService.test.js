@@ -108,6 +108,7 @@ test("repair jobs are resumable, budgeted, and owner-scoped", async () => {
     assert.equal(status.job.processedCount, 2);
     assert.equal(status.job.reviewCount, 2);
     assert.equal(status.pendingCandidateCount, 2);
+    assert.equal(status.pendingReviewGameCount, 2);
 
     const ownerCandidates = await listMetadataCandidates(1, {}, db);
     const otherCandidates = await listMetadataCandidates(2, {}, db);

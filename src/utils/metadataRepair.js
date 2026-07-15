@@ -24,3 +24,15 @@ export function groupMetadataCandidates(candidates = []) {
   }
   return [...groups.values()];
 }
+
+export const METADATA_REVIEW_BATCH_LIMIT = 20;
+
+export function firstHighConfidenceCandidates(
+  groups = [],
+  limit = METADATA_REVIEW_BATCH_LIMIT,
+) {
+  return (Array.isArray(groups) ? groups : [])
+    .map((group) => group?.candidates?.[0])
+    .filter((candidate) => candidate?.confidenceLevel === "high")
+    .slice(0, Math.max(0, limit));
+}

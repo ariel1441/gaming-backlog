@@ -121,7 +121,11 @@ export async function getLatestMetadataRepair(userId, db = pool) {
     SELECT job.*,
            (SELECT COUNT(*)::int FROM game_metadata_candidates candidate
              WHERE candidate.user_id = $1 AND candidate.decision = 'pending')
-             AS pending_candidate_count
+             AS pending_candidate_count,
+           (SELECT COUNT(DISTINCT candidate.game_id)::int
+              FROM game_metadata_candidates candidate
+             WHERE candidate.user_id = $1 AND candidate.decision = 'pending')
+             AS pending_review_game_count
       FROM metadata_jobs job
      WHERE job.job_type = $2 AND job.scope_user_id = $1
      ORDER BY job.id DESC LIMIT 1
@@ -131,6 +135,7 @@ export async function getLatestMetadataRepair(userId, db = pool) {
   return {
     job: serializeJob(rows[0]),
     pendingCandidateCount: Number(rows[0]?.pending_candidate_count || 0),
+    pendingReviewGameCount: Number(rows[0]?.pending_review_game_count || 0),
   };
 }
 

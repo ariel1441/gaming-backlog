@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  firstHighConfidenceCandidates,
   groupMetadataCandidates,
   metadataJobProgress,
 } from "./metadataRepair.js";
@@ -14,6 +15,19 @@ test("metadataJobProgress clamps progress and identifies active jobs", () => {
     metadataJobProgress({ status: "completed", totalCount: 2, processedCount: 9 })
       .percent,
     100,
+  );
+});
+
+test("firstHighConfidenceCandidates chooses one safe first option per game", () => {
+  const groups = groupMetadataCandidates([
+    { id: 1, gameId: 10, confidenceLevel: "high" },
+    { id: 2, gameId: 10, confidenceLevel: "high" },
+    { id: 3, gameId: 11, confidenceLevel: "medium" },
+    { id: 4, gameId: 12, confidenceLevel: "high" },
+  ]);
+  assert.deepEqual(
+    firstHighConfidenceCandidates(groups, 1).map((candidate) => candidate.id),
+    [1],
   );
 });
 

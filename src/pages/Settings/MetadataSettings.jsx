@@ -10,6 +10,7 @@ import {
 import {
   Badge,
   Button,
+  Checkbox,
   EmptyState,
   Modal,
   Skeleton,
@@ -25,7 +26,9 @@ import {
   startMetadataRepair,
 } from "../../services/metadataService";
 import {
+  firstHighConfidenceCandidates,
   groupMetadataCandidates,
+  METADATA_REVIEW_BATCH_LIMIT,
   metadataJobProgress,
 } from "../../utils/metadataRepair";
 
@@ -64,7 +67,14 @@ function SearchArtwork({ result }) {
   );
 }
 
-function CandidateCard({ candidate, busy, onAccept, onReject }) {
+function CandidateCard({
+  candidate,
+  busy,
+  selected,
+  onSelect,
+  onAccept,
+  onReject,
+}) {
   return (
     <article className="rounded-xl border border-surface-border bg-surface-bg/35 p-3">
       <div className="flex gap-3">
@@ -90,6 +100,14 @@ function CandidateCard({ candidate, busy, onAccept, onReject }) {
             <span>Metacritic {candidate.metacritic ?? "—"}</span>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
+            <Checkbox
+              checked={selected}
+              disabled={busy}
+              onChange={(checked) => onSelect(candidate, checked)}
+              label="Add to batch"
+              ariaLabel={`Add ${candidate.candidateName} to batch`}
+              className="mr-1 self-center"
+            />
             <Button
               type="button"
               size="sm"
@@ -198,17 +216,89 @@ function AlternativeSearch({ group, busy, onSelect }) {
 function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGames }) {
   const toast = useToast();
   const [busyKey, setBusyKey] = useState("");
+  const [selectedByGame, setSelectedByGame] = useState({});
+  const [batchProgress, setBatchProgress] = useState("");
   const groups = useMemo(() => groupMetadataCandidates(candidates), [candidates]);
+  const selectedCandidates = Object.values(selectedByGame);
 
-  const mutate = async (key, action, success) => {
+  useEffect(() => {
+    const available = new Set(candidates.map((candidate) => String(candidate.id)));
+    setSelectedByGame((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([, candidate]) =>
+          available.has(String(candidate.id)),
+        ),
+      ),
+    );
+  }, [candidates]);
+
+  const mutate = async (key, action, success, refreshBacklog = false) => {
     try {
       setBusyKey(key);
       await action();
       toast.success(success);
-      await onChanged();
+      await Promise.all([
+        onChanged(),
+        refreshBacklog ? refreshGames() : Promise.resolve(),
+      ]);
     } catch (error) {
       toast.error(error?.message || "Could not update metadata.");
     } finally {
+      setBusyKey("");
+    }
+  };
+
+  const toggleSelected = (candidate, checked) => {
+    setSelectedByGame((current) => {
+      const key = String(candidate.gameId);
+      if (!checked) {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      }
+      if (!current[key] && Object.keys(current).length >= METADATA_REVIEW_BATCH_LIMIT) {
+        toast.warning(`Choose up to ${METADATA_REVIEW_BATCH_LIMIT} games per batch.`);
+        return current;
+      }
+      return { ...current, [key]: candidate };
+    });
+  };
+
+  const selectHighConfidence = () => {
+    const selections = firstHighConfidenceCandidates(groups);
+    setSelectedByGame(
+      Object.fromEntries(
+        selections.map((candidate) => [String(candidate.gameId), candidate]),
+      ),
+    );
+    if (!selections.length) {
+      toast.info("No first suggestions marked high confidence are loaded.");
+    }
+  };
+
+  const applySelected = async () => {
+    const selections = Object.values(selectedByGame);
+    if (!selections.length) return;
+    let applied = 0;
+    let failed = 0;
+    setBusyKey("batch");
+    try {
+      for (const [index, candidate] of selections.entries()) {
+        setBatchProgress(`Applying ${index + 1} of ${selections.length}`);
+        try {
+          await decideMetadataCandidate(candidate.id, "accept");
+          applied += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      await Promise.all([onChanged(), refreshGames()]);
+      if (applied) toast.success(`${applied} metadata matches linked.`);
+      if (failed) toast.error(`${failed} matches could not be linked.`);
+    } catch (error) {
+      toast.error(error?.message || "Matches were applied, but the review list could not refresh.");
+    } finally {
+      setBatchProgress("");
       setBusyKey("");
     }
   };
@@ -234,6 +324,52 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
         />
       ) : (
         <div className="space-y-5">
+          <div className="sticky top-0 z-10 rounded-xl border border-surface-border bg-surface-card/95 p-3 shadow-panel backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-content-muted">
+                <span className="font-semibold text-content-primary">
+                  {groups.length} backlog games
+                </span>{" "}
+                · {candidates.length} suggestions loaded
+                <div className="mt-1 text-xs">
+                  Selects up to {METADATA_REVIEW_BATCH_LIMIT} games. Confirm the
+                  choices before applying.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!!busyKey}
+                  onClick={selectHighConfidence}
+                >
+                  Select first high matches
+                </Button>
+                {selectedCandidates.length ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={!!busyKey}
+                    onClick={() => setSelectedByGame({})}
+                  >
+                    Clear
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  disabled={!!busyKey || !selectedCandidates.length}
+                  onClick={applySelected}
+                >
+                  <Check className="h-4 w-4" aria-hidden="true" />
+                  {batchProgress || `Apply selected (${selectedCandidates.length})`}
+                </Button>
+              </div>
+            </div>
+          </div>
           {groups.map((group) => (
             <section
               key={group.gameId}
@@ -271,12 +407,15 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
                     key={candidate.id}
                     candidate={candidate}
                     busy={!!busyKey}
+                    selected={selectedByGame[String(group.gameId)]?.id === candidate.id}
+                    onSelect={toggleSelected}
                     onAccept={(selected) =>
                       mutate(
                         `accept-${selected.id}`,
                         () => decideMetadataCandidate(selected.id, "accept"),
                         "Metadata linked.",
-                      ).then(() => refreshGames())
+                        true,
+                      )
                     }
                     onReject={(selected) =>
                       mutate(
@@ -297,7 +436,8 @@ function ReviewModal({ open, candidates, loading, onClose, onChanged, refreshGam
                       `manual-${selectedGroup.gameId}`,
                       () => selectGameMetadata(selectedGroup.gameId, result.rawg_id),
                       "Selected metadata linked.",
-                    ).then(() => refreshGames())
+                      true,
+                    )
                   }
                 />
               </div>
@@ -326,14 +466,14 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
     return payload;
   }, [isGuest]);
 
-  const loadCandidates = useCallback(async () => {
+  const loadCandidates = useCallback(async ({ silent = false } = {}) => {
     if (isGuest) return;
     try {
-      setCandidatesLoading(true);
+      if (!silent) setCandidatesLoading(true);
       const payload = await listMetadataCandidates();
       setCandidates(payload?.candidates || []);
     } finally {
-      setCandidatesLoading(false);
+      if (!silent) setCandidatesLoading(false);
     }
   }, [isGuest]);
 
@@ -381,6 +521,7 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
         ...current,
         job: payload.job,
         pendingCandidateCount: current?.pendingCandidateCount || 0,
+        pendingReviewGameCount: current?.pendingReviewGameCount || 0,
       }));
       toast.success("Metadata repair started.");
     } catch (error) {
@@ -400,10 +541,13 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
   };
 
   const reviewChanged = async () => {
-    await Promise.all([loadCandidates(), loadStatus()]);
+    await Promise.all([loadCandidates({ silent: true }), loadStatus()]);
   };
 
-  const pending = Number(status?.pendingCandidateCount || 0);
+  const pendingCandidates = Number(status?.pendingCandidateCount || 0);
+  const pendingGames = Number(
+    status?.pendingReviewGameCount ?? status?.pendingCandidateCount ?? 0,
+  );
   const job = status?.job;
   const incomplete = games.filter(
     (game) => !game.catalog_game_id || game.metadataQuality === "search_result",
@@ -423,8 +567,8 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
               are repaired automatically; title matches always wait for review.
             </p>
           </div>
-          <Badge variant={pending ? "warning" : incomplete ? "metadata" : "success"}>
-            {pending ? `${pending} to review` : `${incomplete} incomplete`}
+          <Badge variant={pendingGames ? "warning" : incomplete ? "metadata" : "success"}>
+            {pendingGames ? `${pendingGames} games to review` : `${incomplete} incomplete`}
           </Badge>
         </div>
 
@@ -467,6 +611,11 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
                   <span>{job.unmatchedCount} unmatched</span>
                   {job.failedCount ? <span>{job.failedCount} failed</span> : null}
                 </div>
+                {pendingGames ? (
+                  <div className="mt-3 text-xs text-content-muted">
+                    {pendingCandidates} suggestions across {pendingGames} backlog games await review.
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="rounded-xl border border-surface-border bg-surface-bg/35 p-4 text-sm leading-6 text-content-muted">
@@ -491,11 +640,11 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
               <Button
                 type="button"
                 variant="secondary"
-                disabled={!pending}
+                disabled={!pendingGames}
                 onClick={openReview}
               >
                 Review matches
-                {pending ? <Badge variant="warning">{pending}</Badge> : null}
+                {pendingGames ? <Badge variant="warning">{pendingGames}</Badge> : null}
               </Button>
             </div>
           </div>

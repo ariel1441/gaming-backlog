@@ -140,3 +140,95 @@ test("settings game metadata controls render responsively", async ({ page }) => 
     ),
   ).toBe(true);
 });
+
+test("settings game metadata batch review stays open and advances", async ({
+  page,
+}) => {
+  const accepted = [];
+  let candidates = [
+    {
+      id: 1,
+      gameId: 10,
+      gameName: "Hades",
+      candidateName: "Hades",
+      confidenceLevel: "high",
+      candidateRank: 1,
+    },
+    {
+      id: 2,
+      gameId: 10,
+      gameName: "Hades",
+      candidateName: "Hades II",
+      confidenceLevel: "medium",
+      candidateRank: 2,
+    },
+    {
+      id: 3,
+      gameId: 11,
+      gameName: "Celeste",
+      candidateName: "Celeste",
+      confidenceLevel: "high",
+      candidateRank: 1,
+    },
+  ];
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "smoke-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/metadata/repair-jobs/latest") {
+      const gameCount = new Set(candidates.map((candidate) => candidate.gameId)).size;
+      return route.fulfill({
+        json: {
+          job: {
+            id: 7,
+            status: "completed",
+            totalCount: 2,
+            processedCount: 2,
+            linkedCount: 0,
+            reviewCount: 2,
+            unmatchedCount: 0,
+            failedCount: 0,
+          },
+          pendingCandidateCount: candidates.length,
+          pendingReviewGameCount: gameCount,
+        },
+      });
+    }
+    if (url.pathname === "/api/metadata/candidates") {
+      return route.fulfill({ json: { candidates } });
+    }
+    if (
+      route.request().method() === "PATCH" &&
+      url.pathname.startsWith("/api/metadata/candidates/")
+    ) {
+      const id = Number(url.pathname.split("/").pop());
+      const selected = candidates.find((candidate) => candidate.id === id);
+      accepted.push(id);
+      candidates = candidates.filter(
+        (candidate) => candidate.gameId !== selected.gameId,
+      );
+      return route.fulfill({ json: { candidate: { ...selected, decision: "accepted" } } });
+    }
+    return fulfillSmokeApi(route);
+  });
+
+  await page.goto("/settings?section=metadata", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByText("2 games to review")).toBeVisible();
+  await expect(page.getByText("3 suggestions across 2 backlog games")).toBeVisible();
+
+  await page.getByRole("button", { name: /Review matches/ }).click();
+  await expect(page.getByText("2 backlog games", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Select first high matches" }).click();
+  await page.getByRole("button", { name: "Apply selected (2)" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Review metadata matches" }),
+  ).toBeVisible();
+  await expect(page.getByText("No matches need review.")).toBeVisible();
+  expect(accepted).toEqual([1, 3]);
+});
