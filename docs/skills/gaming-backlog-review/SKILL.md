@@ -47,3 +47,6 @@ Use:
 
 Do not edit files during review unless the user explicitly switches to
 implementation.
+
+Do not run application tests during a findings-only review unless the user asks
+for execution evidence. Recommend the narrowest missing verification instead.

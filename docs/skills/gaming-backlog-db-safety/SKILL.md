@@ -26,8 +26,10 @@ description: Use for migrations, schema changes, production-derived data, local 
 
 For schema changes:
 
-1. `npm run db:migrate:local`
-2. `npm run check` when practical
+1. Apply `npm run db:migrate:local` once at the end against localhost.
+2. Run one focused schema/service test when warranted.
+3. Rely on CI for the full suite unless the task explicitly requires a local
+   full gate.
 
 For production-derived data:
 

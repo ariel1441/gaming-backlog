@@ -41,5 +41,7 @@ Read:
 
 ## Verification
 
-Prefer focused Steam service/validator/frontend utility tests plus build/lint
-based on changed surface area.
+Follow the CI-first verification policy in `AGENTS.md`. For Steam bugs, cover
+the exact import/link/sync action that failed and run the narrowest relevant
+test once at the end. Do not automatically combine focused tests, lint, build,
+and the full suite.

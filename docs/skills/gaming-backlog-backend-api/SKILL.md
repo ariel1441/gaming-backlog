@@ -42,4 +42,7 @@ errors. Preserve `{ error: { code, message, requestId } }`.
 
 ## Verification
 
-Run focused backend tests or `npm run check` based on risk.
+Follow the CI-first verification policy in `AGENTS.md`. Finish the coherent API
+change before running at most one focused backend test command when warranted.
+Do not default to `npm run check`, and never rerun a passing suite without a
+relevant code change.

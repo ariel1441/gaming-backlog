@@ -53,6 +53,33 @@ scripts, and current git state over older notes in markdown files.
 - If the task starts broad or product direction is unsettled, ask for or provide
   options before coding.
 
+## Context And Phase Discipline
+
+- Keep one conversation focused on one primary phase: planning/diagnosis,
+  implementation, review, or release. When the phase changes, finish with a
+  concise handoff and recommend a fresh conversation instead of carrying a
+  large implementation or release history forward.
+- Do not turn a local implementation request into a commit, push, merge,
+  deployment, or production-verification task unless the user explicitly asks.
+- Read only the smallest relevant documentation set. Use `rg` and targeted file
+  ranges before reading large files. A named skill must still be read fully.
+- Keep command output compact. Filter or summarize successful logs; inspect full
+  logs only when diagnosing a failure.
+- For medium or larger work, make one short plan, implement the coherent change,
+  verify once at the end according to the policy below, and stop. Do not churn
+  the plan or report every minor edit.
+
+## Bug Reproduction
+
+- Reproduce the user's exact action sequence when practical before fixing a
+  reported bug. A nearby helper, shortcut, or happy path is not an adequate
+  substitute for the failing interaction.
+- If adding a regression test, cover the reported failure path, including the
+  relevant desktop/mobile or limit/error state. Do not add a proxy test merely
+  because it is easier to automate.
+- If the exact issue cannot be reproduced, say so and identify what evidence is
+  missing instead of claiming the bug is covered.
+
 ## Repo-Local Skill Drafts
 
 - Skill drafts under `docs/skills/*/SKILL.md` are not automatically installed as
@@ -157,27 +184,82 @@ scripts, and current git state over older notes in markdown files.
 - If documentation is updated, prefer clearly marking unverified or historical
   material instead of presenting it as current fact.
 
-## Before Finishing
+## Verification Policy
 
-- Choose verification based on the risk and scope of the change instead of
-  always running the full suite:
-  - Documentation-only changes: proofread changed markdown and run
-    `git diff --check` if useful.
-  - Small styling-only frontend changes: run `npm run lint` when practical.
-  - Shared frontend logic, hooks, services, forms, routing, backend routes,
-    validators, auth, permissions, database work, migrations, or shared
-    utilities: run `npm run check` when practical.
-  - Schema changes: also run `npm run db:migrate:local` against a localhost DB.
-  - Dependency changes: inspect package and lockfile changes, then run
-    `npm run check`.
+- CI is the primary full verification gate. Do not run lint, tests, builds, or
+  Playwright after each edit.
+- Documentation-only changes: proofread changed Markdown and run
+  `git diff --check`. Do not run application tests or builds.
+- Small changes: by default run no full local suite. At the end, run at most one
+  focused command only when the user requests it or it directly reproduces a
+  meaningful regression.
+- Medium changes: finish the coherent implementation first, then run at most one
+  focused test command when warranted. Do not run `npm run check`, a production
+  build, or the complete Playwright suite by default.
+- Large or high-risk changes such as auth, permissions, migrations, major shared
+  refactors, or a new major feature: run focused verification once at the end.
+  Run `npm run check` or `npm run check:full` once only when the task explicitly
+  requires it or the exact commit cannot receive equivalent CI coverage before
+  release.
+- Schema changes still require `npm run db:migrate:local` once at the end against
+  a localhost database. Add focused schema/service tests when the migration risk
+  warrants them; do not automatically add a separate full suite.
+- Dependency changes require lockfile inspection and one final build or focused
+  check when appropriate; rely on CI for the complete matrix.
+- Never rerun an unchanged passing command. Rerun a failed command only after a
+  relevant fix, and rerun the narrowest affected command before considering a
+  broader gate.
+- Before production promotion, prefer a pull request so the exact SHA receives
+  CI. This workflow runs CI for pull requests and pushes to `Dev`/`main`; a push
+  to an arbitrary feature branch alone does not trigger it.
+- If the exact candidate SHA already has green equivalent CI, do not duplicate
+  the same full suite locally. Promote that exact SHA and let the `main` workflow
+  perform its required production gate.
 - Mention which checks were actually run. If a relevant check was skipped,
   briefly say why.
 - Mention if tests are absent or only `--passWithNoTests` succeeded.
 - Summarize changed files and call out any pre-existing local modifications.
-- For release/deploy work, verify each system separately: GitHub/CI,
-  production migrations, Vercel frontend, Railway backend, and representative
-  production API routes. Do not assume a pushed commit means every deployment
-  target updated successfully.
+
+## Git, Publishing, And Release Terms
+
+- `commit` means create a local commit only.
+- `push` means publish the named branch and confirm its remote SHA; it does not
+  imply merging, promoting `main`, deploying, or production verification.
+- `promote to main` means update production branch `main` to the approved exact
+  SHA. Because this is a production trigger, monitor the required `main`
+  workflow unless the user explicitly limits the task.
+- `release and verify production` means promote and independently verify CI,
+  migrations when applicable, Railway, Vercel, and representative production
+  routes.
+- Git transport, GitHub CLI, and the connected GitHub app are separate auth
+  systems. A successful `git fetch origin` or `git ls-remote origin` establishes
+  Git transport access; `gh auth status` failing does not prove `git push` will
+  fail.
+- Require `gh` authentication only for an operation that specifically needs the
+  CLI and is not covered by the connected app or Git transport. Do not ask the
+  user to repeat `gh auth login` merely to perform a normal Git push.
+- If the user authorized a normal push and Git transport works, do not claim
+  that pushing to `main` is impossible unless branch protection or the push
+  itself proves it.
+
+## Release Monitoring
+
+- Record the exact promoted SHA and the GitHub run, Railway deployment, and
+  Vercel deployment identifiers as they become available. Poll those exact
+  records rather than repeatedly listing broad histories.
+- Poll unchanged external state no more often than every 30-60 seconds. Give a
+  user-facing update when state changes or after roughly two minutes, not after
+  every poll.
+- Use one primary monitoring path per system. Switch to a fallback only when the
+  primary path actually fails; do not cycle through CLI, connector, public API,
+  and HTML scraping for the same unchanged state.
+- Once a gate succeeds, do not recheck it unless a downstream action could have
+  invalidated it. Stop immediately when all requested gates are terminal.
+- Do not rerun local verification after pushing. Diagnose a failing CI job from
+  its failing step and safe logs, then rerun only after a relevant change.
+- For release/deploy work, verify each requested system separately. Do not assume
+  a pushed commit or one successful hosting deployment proves the entire release
+  succeeded.
 
 ## Review Mode
 

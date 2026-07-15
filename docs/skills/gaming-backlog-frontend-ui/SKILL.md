@@ -33,6 +33,10 @@ Read:
 
 ## Verification
 
-- Styling-only: run `npm run lint` when practical.
-- Shared UI/forms/routes/state: run `npm run check` when practical.
+- Follow the CI-first verification policy in `AGENTS.md`; do not run checks after
+  each UI edit.
+- For a reported UI bug, reproduce the user's exact click/scroll sequence and,
+  if warranted, run one focused desktop/mobile regression test at the end.
+- Use the full local suite only when the task explicitly requires it or the
+  exact candidate cannot receive equivalent CI coverage.
 - Mention any responsive or visual checks that were not performed.

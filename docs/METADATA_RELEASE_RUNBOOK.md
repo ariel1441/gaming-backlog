@@ -1,6 +1,6 @@
 # Durable Metadata Release Runbook
 
-Status: prepared locally; no production action performed
+Status: active production runbook
 
 This runbook releases the durable metadata architecture without treating a Git
 push as proof that the database, Railway backend, and frontend are synchronized.
@@ -13,8 +13,9 @@ Do not begin production writes until all are true:
 
 1. A recoverable production PostgreSQL backup is confirmed in the hosting
    provider, including its timestamp and restoration procedure.
-2. The feature branch has passed `npm run check` and `npm run check:full` where
-   Playwright/browser infrastructure is available.
+2. The exact candidate SHA has passed the GitHub `check` job, which includes
+   lint, unit/integration tests, build, and Playwright. Do not duplicate that
+   green gate with both `npm run check` and `npm run check:full` locally.
 3. Desktop and mobile smoke checks pass for **Settings → Game metadata**.
 4. The production metadata audit and migration status are reviewed.
 5. `METADATA_REFRESH_ENABLED` remains `false` for the initial release.
@@ -29,9 +30,13 @@ git status --short --branch
 npm run env:check
 npm run db:migrate:status
 npm run metadata:audit
-npm run check
-npm run check:full
 ```
+
+Use a pull request targeting `Dev` or `main` so the exact candidate receives
+CI; this workflow does not run for a push to an arbitrary feature branch by
+itself. Run `npm run check:full` locally only when explicitly requested or when
+the exact candidate cannot receive equivalent CI coverage. Run it at most once,
+because `check:full` already includes lint, tests, and build through `check`.
 
 `metadata:audit` uses `BEGIN READ ONLY` and reports aggregate schema,
 completeness, candidate, job, snapshot, and exact-repair counts. It does not
@@ -60,18 +65,20 @@ the schema differs from migrations `020` through `023`.
 
 ## Deployment order
 
-1. Push the feature branch and open a reviewed pull request against `Dev`.
-2. Record the backend/frontend rollback commit.
-3. Confirm the production backup again immediately before database writes.
-4. Apply tracked production migrations:
-
-   ```powershell
-   npm run db:migrate:prod
-   ```
-
-5. Deploy the backward-compatible backend and verify `/healthz` plus protected
-   route authentication behavior before deploying the frontend.
-6. Import the historical RAWG file only if the production audit shows the
+1. Push the feature branch and open a reviewed pull request against `Dev` (or
+   the intended protected target). Wait for the exact SHA's `check` job.
+2. Record the backend/frontend rollback commit and exact candidate SHA.
+3. Confirm the production backup again immediately before promoting `main`.
+4. Promote the exact green candidate SHA to `main` with a normal reviewed merge
+   or fast-forward. Never force-push.
+5. Monitor the `main` workflow. Its `check` job must pass before
+   `migrate-production` shows and applies pending production migrations. Do not
+   also run `npm run db:migrate:prod` manually while the workflow owns this
+   release.
+6. Verify the backward-compatible Railway backend via `/healthz` and protected
+   route authentication behavior, then verify the Vercel frontend at the exact
+   compatible commit.
+7. Import the historical RAWG file only if the production audit shows the
    snapshots are still needed. First validate locally without database access:
 
    ```powershell
@@ -81,15 +88,34 @@ the schema differs from migrations `020` through `023`.
    Production apply requires an ignored source file, a verified backup,
    `--production`, `--confirm-production`, and
    `CONFIRM_PROD_METADATA_IMPORT=true`.
-7. Re-run `npm run metadata:audit:prod` and review aggregate changes.
-8. Run exact-link repair only if the audit reports safe repairs and zero
+8. Re-run `npm run metadata:audit:prod` and review aggregate changes.
+9. Run exact-link repair only if the audit reports safe repairs and zero
    conflicts. Production apply additionally requires
    `CONFIRM_PROD_EXACT_LINK_REPAIR=true` and the script's production confirmation
    flags.
-9. Deploy the frontend and verify Settings repair, backlog, Lists, public
+10. Verify Settings repair, backlog, Lists, public
    profiles, Insights, Discover, demo, and Steam surfaces independently.
-10. Restart the Railway backend and prove metadata remains visible with no RAWG
+11. Restart the Railway backend and prove metadata remains visible with no RAWG
     JSON cache on the application filesystem.
+
+## Authentication And Monitoring
+
+- Git transport, GitHub CLI, and the connected GitHub app authenticate
+  separately. A successful `git fetch origin` establishes Git transport access;
+  a failed `gh auth status` does not prove a normal push will fail.
+- Require `gh auth login` only for a CLI-specific operation that cannot be
+  completed through Git transport or the connected app.
+- Immediately record the promoted SHA and exact GitHub run, Railway deployment,
+  and Vercel deployment identifiers.
+- Poll those identifiers every 30-60 seconds. Report only state changes or a
+  concise update after roughly two minutes.
+- Use one monitoring path per system and switch only when it fails. Do not
+  repeatedly alternate between CLI, connector, public API, and HTML parsing.
+- Do not rerun local tests after pushing or recheck a completed gate unless a
+  downstream action could invalidate it. Stop when all required gates are
+  terminal.
+- If a system remains unchanged for ten minutes, report its exact safe status
+  and blocker before expanding the diagnostic approach.
 
 ## Initial production behavior
 
