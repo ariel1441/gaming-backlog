@@ -102,3 +102,41 @@ for (const [route, expectedHeading] of routes) {
     ).toBeVisible({ timeout: 10_000 });
   });
 }
+
+test("settings game metadata controls render responsively", async ({ page }) => {
+  const runtimeErrors = [];
+  page.on("pageerror", (error) =>
+    runtimeErrors.push(error.stack || error.message),
+  );
+  page.on("console", (message) => {
+    if (message.type() === "error") runtimeErrors.push(message.text());
+  });
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "smoke-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route("**/api/**", fulfillSmokeApi);
+
+  await page.goto("/settings?section=metadata", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(
+    page.getByRole("heading", { name: "Game metadata", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("title matches always wait for review", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Repair missing metadata" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review matches" })).toBeVisible();
+
+  expect(runtimeErrors).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+    ),
+  ).toBe(true);
+});
