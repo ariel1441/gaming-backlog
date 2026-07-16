@@ -1,6 +1,6 @@
 # Completed Milestones
 
-Last updated: 2026-07-11
+Last updated: 2026-07-16
 
 This is a compact archive of completed product and engineering milestones. It
 exists so current planning files can contain only remaining work. For exact
@@ -62,6 +62,49 @@ and the code.
 - Local database safety guard, environment summary, development port handling,
   and documented local/production workflows.
 - Unit and mocked route/browser test baselines.
+
+## July 2026 Audit Remediation
+
+- Corrected authentication expiry ownership so permission `403` responses do
+  not erase valid sessions; authenticated `401` responses notify
+  `AuthContext` to clear memory and storage together.
+- Bound Steam OpenID linking to a one-use browser nonce and stopped ordinary
+  user match decisions from rewriting global Steam/catalog identities.
+- Removed the invalid Steam write to `games.updated_at` and moved large Steam
+  library syncs into durable, bounded jobs.
+- Added atomic game writes, duplicate/position protection, database constraints,
+  cross-owner relationship guards, and transactional Steam review/import paths.
+- Added provider deadlines and typed outage handling, concurrency-safe catalog
+  identity work, Insights cache/write protections, and stricter API validation.
+- Hardened CSV exports, environment diagnostics, request IDs, PostgreSQL TLS,
+  and password byte-length validation.
+- Fixed derived-view reorder behavior, demo persistence, Insights request races,
+  silent-refresh deletion reconciliation, private-profile states, modal focus,
+  keyboard controls, and unknown/read-only route fallbacks.
+- Added disposable real-Postgres schema, migration, ownership-constraint, and
+  1,000-app Steam sync contracts. Repaired the real Playwright suite and added
+  it to CI alongside route code splitting and a bundle budget.
+- Added a real-Express/real-Postgres, two-user authorization contract for core
+  game listing, update, deletion, reorder, and favorite ownership boundaries.
+- Added the equivalent two-user contract for private Lists, covering list CRUD,
+  manual membership, reorder, and cross-owner game/list boundaries.
+
+The source audit remains in `docs/reviews/` as a historical snapshot. Commit
+`34fb7c1` contains the broad remediation; later commits refined the affected
+flows.
+
+## Durable Metadata Repair And Rendering
+
+- Added migrations `020` through `023` to reconcile historical game schema and
+  establish durable metadata snapshots, repair jobs, and owner-scoped review
+  candidates.
+- Added canonical exact-RAWG ingestion, guarded historical cache import,
+  resumable repair/audit tooling, reviewed ambiguous-match decisions, batch
+  review, alternative search, and responsive Settings UX.
+- Made normal backlog, Lists, public-profile, and Insights metadata rendering
+  PostgreSQL-only and retired the process-local RAWG JSON runtime cache.
+- Added controlled catalog refresh scheduling, release/audit runbooks, schema
+  contracts, focused service coverage, and browser coverage for metadata review.
 
 ## Documentation And Workflow
 

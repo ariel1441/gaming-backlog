@@ -1,5 +1,12 @@
 # Comprehensive Project Audit
 
+> **Historical snapshot (2026-07-11).** This report describes the repository
+> before the broad remediation in commit `34fb7c1` on 2026-07-12. Most findings
+> below have been implemented and are summarized in
+> [`../DONE.md`](../DONE.md). Use [`../NEXT_TASKS.md`](../NEXT_TASKS.md) for the
+> current queue. Revalidate current code before reopening any finding; the
+> original evidence and recommendations are preserved here for traceability.
+
 ## 1. Executive summary
 
 The application has a solid baseline: authenticated game/list queries are generally scoped by `user_id`, public responses intentionally omit Steam joins, SQL values are parameterized, centralized API errors are widely used, descriptions are sanitized before HTML rendering, reorder and Steam import/merge operations use transactions in several of the highest-risk paths, and the declared lint/unit/build check passes. Those strengths are undermined by several concrete defects that the current mocked test strategy cannot detect.

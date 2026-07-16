@@ -1,84 +1,32 @@
 # Remaining Roadmap
 
-Last updated: 2026-07-13
+Last updated: 2026-07-16
 
 This file contains only work that is still open. Completed milestones belong in
 [`DONE.md`](DONE.md), while current architecture and product behavior belong in
 [`SYSTEM_CONTEXT.md`](SYSTEM_CONTEXT.md).
 
-Before choosing feature work, review the unresolved findings in
-[`reviews/comprehensive-project-audit.md`](reviews/comprehensive-project-audit.md).
-That audit currently takes priority over most product expansion.
+The comprehensive project audit is preserved as a historical pre-remediation
+snapshot. Its broad remediation is summarized in [`DONE.md`](DONE.md). Reopen a
+specific finding only when current code or a regression demonstrates that work
+remains.
 
-## Priority 0: Security, Integrity, And Runtime Correctness
+## Engineering Follow-Up
 
-Work in small remediation groups; do not attempt this entire section as one
-change.
-
-- Fix authentication state so unrelated `403` responses do not clear a valid
-  session.
-- Bind Steam OpenID linking to the browser/session that initiated it.
-- Prevent user Steam match decisions from changing global Steam/catalog
-  mappings.
-- Remove the Steam status-suggestion write to nonexistent `games.updated_at`.
-- Make duplicate detection and position allocation atomic.
-- Add database enforcement for title uniqueness, valid dates/date order,
-  numeric bounds, positions, and cross-owner relationships.
-- Preserve manual-list membership during duplicate merges.
-- Make related Steam review/import writes transactional.
-- Prevent Insights enrichment from overwriting concurrent manual edits.
-- Make catalog identity upserts concurrency-safe.
-- Neutralize spreadsheet formulas in CSV exports.
-- Fully redact environment diagnostics and sanitize request IDs before logging.
-- Verify hosted PostgreSQL certificates and define a password byte-length
-  policy.
-
-## Priority 1: API And Provider Reliability
-
-- Validate existing statuses and real calendar dates before SQL writes.
-- Allow users to clear estimated hours.
-- Invalidate Insights caches after hour-source preference changes.
-- Reject unknown or ignored API fields consistently.
-- Add deadlines to RAWG and Steam calls.
-- Distinguish provider failure from a legitimate empty RAWG result.
-- Fix catalog collection pagination gaps.
-- Bound public RAWG hydration and cache growth.
-- Bound or move large Steam sync work so large libraries do not cause long,
-  partially completed requests.
-
-## Priority 2: Frontend Correctness And Accessibility
-
-- Disable reorder in derived views or correctly translate filtered/sorted moves
-  into canonical list positions.
-- Stop deleting demos on refresh, unload, or temporary navigation.
-- Make Insights URL state and network results latest-request-wins.
-- Reconcile deleted games during silent refresh.
-- Render the intended signed-in private-profile state.
-- Complete modal focus trapping, focus return, and stacked-dialog behavior.
-- Make cards, custom selects, and listboxes keyboard-operable.
-- Add intentional read-only and unknown-route fallbacks.
-- Continue mobile layout and drag-and-drop polish.
-
-## Priority 3: Tests, Performance, And Operations
-
-- Add real-Postgres authorization, schema, transaction, and migration tests.
-- Repair the Playwright suite, stop mocking Playwright itself, and add the real
-  browser suite to the full CI gate when stable.
-- Make migration automation safe to bootstrap on existing databases.
-- Reconcile `backend/schema.sql`, tracked migrations, and the schema-only
-  migration policy.
-- Make setup and check commands reproducible.
-- Code-split the large frontend bundle.
+- Expand real-Postgres route-level authorization coverage later for demonstrated
+  Steam review/import or metadata-repair gaps. Core games and private Lists are
+  covered; existing Steam and metadata service contracts make this a follow-up,
+  not a blocker for UI work.
 - Cache Discover browse/search responses by user, query, filters, sort, and page
   so returning to `/discover` can show the last result immediately and
   revalidate quietly in the background. Use a short TTL, invalidate or update
   backlog-membership state after add-to-backlog mutations, and avoid keeping
   the entire hidden route component mounted as a pseudo-cache.
-- Add pagination or virtualization for large libraries.
-- Remove manual-list preview N+1 queries.
-- Centralize remaining status semantics and remove dead legacy UI/admin naming.
-- Add a migration-status workflow, staging migration checks, backup checkpoints,
-  failure notifications, rollback notes, and schema-parity CI checks.
+- Add pagination or virtualization where large backlog or library views still
+  render unbounded result sets.
+- Continue mobile layout and drag-and-drop polish.
+- Add backup checkpoints, migration failure notifications, and rollback notes
+  around the existing migration-status and schema-contract workflow.
 - Document production backup and restore.
 - Add safe operational views for cache, environment, demo-template, and database
   health.
@@ -196,7 +144,6 @@ These are candidates, not commitments. Choose and plan one before implementation
 
 ### Catalog And Metadata Follow-Up — medium/large
 
-- Let users repair/change an existing catalog match.
 - Add manual metadata overrides only for demonstrated user needs.
 - Refine hours-source labels, precedence, locking, and cache behavior.
 - Decide how editions, remasters, DLC, bundles, and platform variants behave.

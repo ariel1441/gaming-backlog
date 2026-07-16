@@ -1,6 +1,6 @@
 # UI/UX Consistency And Editing Plan
 
-Last updated: 2026-07-13
+Last updated: 2026-07-15
 
 This is the focused implementation plan for the UI/UX findings reviewed after
 the July 2026 frontend polish batch. It covers remaining work only. Use
@@ -8,9 +8,10 @@ the July 2026 frontend polish batch. It covers remaining work only. Use
 [`../NEXT_TASKS.md`](../NEXT_TASKS.md) for the active queue, and
 [`../ROADMAP.md`](../ROADMAP.md) for other product and engineering priorities.
 
-The current worktree contains an uncommitted mixed frontend batch. Before
-starting, inspect `git status`, the relevant diffs, and the current code. Do not
-repeat completed fixes or overwrite unrelated changes.
+The frontend batch described below is committed. Before starting a phase,
+inspect `git status`, the relevant current code, and recent history. Revalidate
+each listed item because later focused work may have completed part of it. Do
+not repeat completed fixes or overwrite unrelated changes.
 
 ## Recently Completed Context
 

@@ -1,6 +1,6 @@
 # System Context
 
-Last updated: 2026-07-04
+Last updated: 2026-07-15
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the

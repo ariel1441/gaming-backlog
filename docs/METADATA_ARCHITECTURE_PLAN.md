@@ -1,8 +1,12 @@
 # Durable Game Metadata Architecture Plan
 
-Status: architecture approved; Stages 0-12 implemented locally, production rollout pending
+Status: architecture approved; Stages 0-12 implemented in the repository
 
-Last reviewed: 2026-07-14
+Last reviewed: 2026-07-15
+
+Production rollout status is intentionally not inferred from Git state. Verify
+the exact production SHA, migrations, and smoke targets through the release
+workflow before treating deployment as complete.
 
 Primary systems: PostgreSQL, RAWG, Steam, Express API, React client, Railway
 
