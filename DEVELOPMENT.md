@@ -17,6 +17,13 @@ database. Production data should only be touched intentionally.
 Keep production platforms connected to `main` where possible, then merge `Dev`
 into `main` only after checks pass.
 
+## Runtime
+
+Use Node.js 20.20.2 with npm 10.x. The repository records the Node version in
+`.nvmrc` and `.node-version`; CI pins npm 10.9.4. Installs intentionally fail on
+other major versions so local development, CI, Vercel, and Railway do not
+silently diverge.
+
 ## Environments
 
 ### Local development
@@ -178,6 +185,8 @@ npm run check
 ## CI/CD
 
 This repo has GitHub Actions at `.github/workflows/ci.yml`.
+See [`docs/CI_CD.md`](docs/CI_CD.md) for the full cross-platform delivery
+sequence and required GitHub, Railway, and Vercel settings.
 
 The check job runs on pushes to `main` and `Dev`, and on pull requests:
 

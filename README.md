@@ -31,8 +31,8 @@ play next, and sharing a read-only public profile.
 
 Prerequisites:
 
-- Node.js 20.x
-- npm
+- Node.js 20.20.2
+- npm 10.x
 - PostgreSQL 14+
 
 Install dependencies:
@@ -132,6 +132,8 @@ Steam linking or achievement sync.
 Start with:
 
 - [DEVELOPMENT.md](DEVELOPMENT.md) for local workflow and deployment notes.
+- [docs/CI_CD.md](docs/CI_CD.md) for CI gates, hosting settings, migrations,
+  and release verification.
 - [AGENTS.md](AGENTS.md) for durable AI-agent rules.
 - [docs/README.md](docs/README.md) for the markdown/doc index.
 - [docs/AI_WORKFLOW.md](docs/AI_WORKFLOW.md) for human prompts and AI usage.

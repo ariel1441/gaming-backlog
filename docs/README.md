@@ -23,6 +23,8 @@ code when a note appears stale.
   milestones.
 - [`SYSTEM_CONTEXT.md`](SYSTEM_CONTEXT.md) - compact architecture and current
   status handoff for new sessions.
+- [`CI_CD.md`](CI_CD.md) - CI gates, hosting settings, migration ordering, and
+  production release verification.
 - [`../backend/migrations/README.md`](../backend/migrations/README.md) -
   database migration conventions.
 - [`testing/manual-smoke-checklist.md`](testing/manual-smoke-checklist.md) -

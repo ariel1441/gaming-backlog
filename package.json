@@ -2,8 +2,10 @@
   "name": "game-backlog-app",
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "npm@10.9.4",
   "engines": {
-    "node": ">=20 <21"
+    "node": "20.x",
+    "npm": "10.x"
   },
   "scripts": {
     "start": "node backend/index.js",

@@ -2,17 +2,24 @@ name: CI
 
 permissions:
   contents: read
+  statuses: write
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
       - main
       - Dev
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/Dev' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -32,17 +39,30 @@ jobs:
       JWT_SECRET: ci-test-secret
 
     steps:
+      - name: Report CI status to Vercel
+        if: github.event_name == 'push'
+        uses: vercel/repository-dispatch/actions/status@v1
+        with:
+          name: "Vercel - gaming-backlog: ci"
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
-      - name: Use stable npm
+      - name: Use pinned npm
         run: npm install --global npm@10.9.4 --no-audit --no-fund
+
+      - name: Show runtime versions
+        run: |
+          node --version
+          npm --version
 
       - name: Install
         run: npm ci --include=dev --no-audit --no-fund
@@ -62,10 +82,20 @@ jobs:
       - name: Browser tests
         run: npm run test:e2e
 
+      - name: Upload browser failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   migrate-production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: production
     concurrency:
       group: production-database-migrations
@@ -80,17 +110,29 @@ jobs:
       PGSSL_ALLOW_UNVERIFIED_PROD: "true"
 
     steps:
+      - name: Report production migration status to Vercel
+        uses: vercel/repository-dispatch/actions/status@v1
+        with:
+          name: "Vercel - gaming-backlog: production-migration"
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
-      - name: Install
-        run: npm ci
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.4 --no-audit --no-fund
+
+      - name: Install production migration dependencies
+        env:
+          NPM_CONFIG_INCLUDE: ""
+        run: npm ci --omit=dev --no-audit --no-fund
 
       - name: Require production migration target
         if: env.PROD_DATABASE_URL == ''

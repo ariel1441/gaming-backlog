@@ -599,6 +599,8 @@ test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   await page.getByLabel("My score").fill("9");
   await gameDialog.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Game updated.")).toBeVisible();
+  await gameDialog.getByRole("button", { name: "Close game details" }).click();
+  await expect(gameDialog).toBeHidden();
 
   await addedCard.getByLabel("Delete game").click();
   await expect(
@@ -701,7 +703,7 @@ test("updates favorite games from public profile settings", async ({
 
   await page.getByRole("button", { name: "Open account menu" }).click();
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Public profile" }).click();
+  await page.getByRole("tab", { name: "Public profile" }).click();
   await expect(
     page.getByRole("heading", { name: "Favorite games", level: 2 }),
   ).toBeVisible();
