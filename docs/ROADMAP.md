@@ -17,11 +17,6 @@ remains.
   Steam review/import or metadata-repair gaps. Core games and private Lists are
   covered; existing Steam and metadata service contracts make this a follow-up,
   not a blocker for UI work.
-- Cache Discover browse/search responses by user, query, filters, sort, and page
-  so returning to `/discover` can show the last result immediately and
-  revalidate quietly in the background. Use a short TTL, invalidate or update
-  backlog-membership state after add-to-backlog mutations, and avoid keeping
-  the entire hidden route component mounted as a pseudo-cache.
 - Add pagination or virtualization where large backlog or library views still
   render unbounded result sets.
 - Continue mobile layout and drag-and-drop polish.

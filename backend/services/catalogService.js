@@ -1,11 +1,10 @@
 import { pool } from "../db.js";
 import {
-  fetchGameDataByIdOrSlug,
   fetchRAWGGames,
   searchRAWGGames,
 } from "../utils/fetchRAWG.js";
-import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
 import { toHourInt } from "../utils/time.js";
+import { ingestRawgGameMetadata } from "./metadataIngestionService.js";
 
 export const SEARCH_CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 export const FAILED_RETRY_MS = 24 * 60 * 60 * 1000;
@@ -267,17 +266,6 @@ function normalizeRawgSearchResult(result) {
     tags: rawgTags(result),
     descriptionHtml: null,
     metadataQuality: "search_result",
-    metadataSource: PROVIDER,
-  };
-}
-
-function normalizeRawgDetail(rawg) {
-  return {
-    ...normalizeRawgSearchResult(rawg),
-    rawgId: rawg?.id ?? rawg?.rawg_id ?? null,
-    rawgSlug: rawg?.slug ?? rawg?.rawg_slug ?? null,
-    descriptionHtml: sanitizeGameHtml(rawg?.description),
-    metadataQuality: "full",
     metadataSource: PROVIDER,
   };
 }
@@ -593,31 +581,6 @@ async function upsertCatalogFromRawgData(data) {
   } finally {
     client.release();
   }
-}
-
-async function markCatalogFailure(catalogGameId, reason) {
-  if (!catalogGameId) return;
-  await pool.query(
-    `
-    UPDATE catalog_games
-       SET metadata_failed_at = NOW(),
-           metadata_failure_reason = $2,
-           updated_at = NOW()
-     WHERE id = $1
-    `,
-    [catalogGameId, reason],
-  );
-}
-
-async function fetchRawgDetailCoalesced(rawgIdOrSlug) {
-  const key = `detail:${rawgIdOrSlug}`;
-  if (!inflight.has(key)) {
-    inflight.set(
-      key,
-      fetchGameDataByIdOrSlug(rawgIdOrSlug).finally(() => inflight.delete(key)),
-    );
-  }
-  return inflight.get(key);
 }
 
 async function searchRawgCoalesced(query) {
@@ -1084,43 +1047,6 @@ export async function searchCatalog(query, user = {}) {
   }
 }
 
-export async function ensureCatalogGameFromRawg(
-  rawgId,
-  rawgSlug,
-  options = {},
-) {
-  const id = String(rawgId || "").trim();
-  if (!id) return null;
-
-  let row = await selectCatalogByExternal(PROVIDER, id);
-  if (
-    row &&
-    isFullMetadataFresh(row) &&
-    !options.force &&
-    !options.allowSearchResult
-  ) {
-    return row;
-  }
-
-  if (row && !canRetryFailure(row) && !options.force) return row;
-
-  try {
-    const rawg = await fetchRawgDetailCoalesced(rawgId || rawgSlug);
-    if (!rawg) {
-      if (row) await markCatalogFailure(row.id, "rawg_detail_unavailable");
-      return row;
-    }
-    row = await upsertCatalogFromRawgData(normalizeRawgDetail(rawg));
-    return row;
-  } catch (error) {
-    if (row) {
-      await markCatalogFailure(row.id, error?.message || "rawg_detail_failed");
-      return row;
-    }
-    throw error;
-  }
-}
-
 async function rawgExternalForCatalog(catalogGameId) {
   const { rows } = await pool.query(
     `
@@ -1149,10 +1075,16 @@ export async function getCatalogGame(catalogGameId, user = {}, options = {}) {
   if (shouldFetch) {
     const external = await rawgExternalForCatalog(row.id);
     if (external?.external_id) {
-      await ensureCatalogGameFromRawg(external.external_id, external.slug, {
-        force: options.force,
-        allowSearchResult: true,
-      });
+      const ingestMetadata =
+        options.ingestRawgGameMetadata || ingestRawgGameMetadata;
+      try {
+        await ingestMetadata(Number(external.external_id), {
+          force: options.force === true || row.metadata_quality === "full",
+        });
+      } catch {
+        // Metadata ingestion records a bounded provider failure. Keep serving
+        // the durable catalog projection as the stale fallback.
+      }
       row = await selectCatalogById(Number(catalogGameId), user.id);
     }
   }
@@ -1164,7 +1096,11 @@ export async function getCatalogGame(catalogGameId, user = {}, options = {}) {
   });
 }
 
-export async function refreshCatalogGame(catalogGameId, user = {}) {
+export async function refreshCatalogGame(
+  catalogGameId,
+  user = {},
+  options = {},
+) {
   const row = await selectCatalogById(Number(catalogGameId), user.id);
   if (!row) return null;
   if (user?.is_guest) {
@@ -1189,7 +1125,10 @@ export async function refreshCatalogGame(catalogGameId, user = {}) {
     });
   }
 
-  return getCatalogGame(catalogGameId, user, { force: true });
+  return getCatalogGame(catalogGameId, user, {
+    force: true,
+    ingestRawgGameMetadata: options.ingestRawgGameMetadata,
+  });
 }
 
 export async function seedCatalogCollection(collection, options = {}) {

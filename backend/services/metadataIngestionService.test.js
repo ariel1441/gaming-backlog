@@ -167,6 +167,10 @@ test("exact RAWG ingestion persists, reuses, refreshes safely, and records failu
     assert.equal(stored.rows[0].description_html, "<p>Full description</p>");
     assert.deepEqual(stored.rows[0].genres_json, ["Action"]);
     assert.equal(stored.rows[0].snapshot_count, 1);
+    assert.equal(
+      stored.rows[0].metadata_next_refresh_at.toISOString(),
+      "2026-11-11T12:00:00.000Z",
+    );
 
     const reused = await service.ingestRawgGame(42);
     assert.equal(reused.providerFetched, false);

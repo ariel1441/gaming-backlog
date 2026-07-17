@@ -278,6 +278,8 @@ Services:
 - `src/services/gameService.js` - game API wrapper.
 - `src/services/listService.js` - private list API wrapper.
 - `src/services/catalogService.js` - Discover/catalog API wrapper.
+- `src/services/discoverCache.js` - bounded per-user in-memory Discover response
+  cache with short TTL, quiet revalidation support, and mutation-aware updates.
 - `src/services/steamService.js` - Steam account, sync, candidate review, and
   import API wrapper.
 - `src/services/publicService.js` - public profile API wrapper.
@@ -343,6 +345,13 @@ Styling:
   protect API quota.
 - RAWG calls should happen only for meaningful search/detail/refresh/load-more
   or catalog seeding actions, never simply because the Discover page opened.
+- Discover full-detail hydration and manual refresh use the durable metadata
+  ingestion service, including provider snapshots, normalization versions,
+  pinned-cover protection, failure fallback, and next-refresh scheduling.
+- Discover browse/search responses use a bounded 90-second per-user in-memory
+  frontend cache. Cached results render immediately and revalidate through the
+  API; add-to-backlog, detail refresh, shelf load-more, and session changes
+  update or clear affected entries. PostgreSQL remains authoritative.
 - Global catalog detail refresh uses resumable `catalog_refresh` metadata jobs
   with provider budgets and freshness/backoff scheduling. Its scheduler is
   opt-in through `METADATA_REFRESH_ENABLED`; normal deployments and all page
@@ -468,9 +477,7 @@ Known rough edges from real-library testing:
 
 ## Known Current Risks
 
-- UI/UX consistency Phases 1A, 1B, 2, 3, 4, 6, 7, and 8 are complete in the
-  current working tree. Mobile navigation Phase 5 is the only remaining phase
-  and remains intentionally separate.
+- UI/UX consistency Phases 1A, 1B, 2, 3, 4, 5, 6, 7, and 8 are complete.
 - Phase 0 and Phase 1 are complete enough to move on from foundation/styling
   work. Keep updating this file when architecture changes.
 - API error responses now flow through the central shape

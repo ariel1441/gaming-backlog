@@ -12,6 +12,7 @@ import {
   setAuthToken,
 } from "../services/apiClient";
 import * as authService from "../services/authService";
+import { clearDiscoverResponseCache } from "../services/discoverCache";
 import { normalizeUserWithPreferences } from "../utils/userPreferences";
 import { normalizeUserWithProfile } from "../utils/userProfile";
 
@@ -34,6 +35,7 @@ export const AuthProvider = ({ children }) => {
   );
 
   const clearSession = useCallback(() => {
+    clearDiscoverResponseCache();
     setToken(null);
     setUser(null);
     setAuthToken(null);
@@ -47,6 +49,7 @@ export const AuthProvider = ({ children }) => {
   const applySession = useCallback((data, { demo = false } = {}) => {
     if (!data?.token) return false;
 
+    clearDiscoverResponseCache();
     setAuthToken(data.token);
     setToken(data.token);
     setUser(normalizeSessionUser(data.user) || null);

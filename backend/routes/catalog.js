@@ -162,7 +162,10 @@ router.post(
 
 router.get("/:id", verifyToken, catalogIdParam, async (req, res, next) => {
   try {
-    const game = await getCatalogGame(Number(req.params.id), req.user);
+    const game = await getCatalogGame(Number(req.params.id), req.user, {
+      ingestRawgGameMetadata:
+        req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata,
+    });
     if (!game) return next(notFound("Catalog game not found"));
     res.setHeader("Cache-Control", "no-store");
     res.json(game);
@@ -173,7 +176,10 @@ router.get("/:id", verifyToken, catalogIdParam, async (req, res, next) => {
 
 router.post("/:id/refresh", verifyToken, catalogIdParam, async (req, res, next) => {
   try {
-    const game = await refreshCatalogGame(Number(req.params.id), req.user);
+    const game = await refreshCatalogGame(Number(req.params.id), req.user, {
+      ingestRawgGameMetadata:
+        req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata,
+    });
     if (!game) return next(notFound("Catalog game not found"));
     res.setHeader("Cache-Control", "no-store");
     res.json(game);

@@ -3,6 +3,7 @@ import { pool } from "../db.js";
 import { fetchGameDataByIdOrSlug } from "../utils/fetchRAWG.js";
 import { sanitizeGameHtml } from "../utils/sanitizeHtml.js";
 import { toHourInt } from "../utils/time.js";
+import { nextCatalogRefreshAt } from "./metadataSchedule.js";
 
 export const RAWG_NORMALIZATION_VERSION = 1;
 const PROVIDER = "rawg";
@@ -245,6 +246,9 @@ async function persistNormalizedDetail(
   } = {},
 ) {
   const client = await dbPool.connect();
+  const nextRefreshAt = providerFetched
+    ? nextCatalogRefreshAt(detail, detail.fetchedAt)
+    : null;
   try {
     await client.query("BEGIN");
     await client.query(
@@ -316,6 +320,7 @@ async function persistNormalizedDetail(
                metadata_failed_at = NULL,
                metadata_failure_reason = NULL,
                metadata_normalization_version = $15,
+               metadata_next_refresh_at = COALESCE($16, metadata_next_refresh_at),
                metadata_retired_at = NULL,
                updated_at = NOW()
          WHERE id = $1
@@ -337,6 +342,7 @@ async function persistNormalizedDetail(
           JSON.stringify(detail.tags),
           detail.fetchedAt,
           detail.normalizationVersion,
+          nextRefreshAt,
         ],
       );
       catalogGame = rows[0];
@@ -356,12 +362,12 @@ async function persistNormalizedDetail(
           cover_external_id, released_at, description_html, rawg_rating,
           metacritic, rawg_playtime_hours, genres_json, stores_json, tags_json,
           metadata_quality, metadata_source, metadata_fetched_at,
-          metadata_normalization_version
+          metadata_normalization_version, metadata_next_refresh_at
         )
         VALUES (
           $1, $1, $2, $3, CASE WHEN $3::text IS NULL THEN NULL ELSE 'rawg' END,
           $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb,
-          'full', 'rawg', $13, $14
+          'full', 'rawg', $13, $14, $15
         )
         RETURNING *
         `,
@@ -380,6 +386,7 @@ async function persistNormalizedDetail(
           JSON.stringify(detail.tags),
           detail.fetchedAt,
           detail.normalizationVersion,
+          nextRefreshAt,
         ],
       );
       catalogGame = rows[0];

@@ -32,6 +32,11 @@ and the code.
 - Cached RAWG search/detail metadata and stale/failure fallback.
 - Discover V1 with curated cached shelves, search, detail, refresh, load more,
   and add-to-backlog.
+- Discover full-detail hydration and manual refresh consolidated through the
+  snapshot-aware metadata ingestion service, with scheduled freshness and
+  stored-data fallback.
+- Bounded per-user Discover response caching with immediate cached rendering,
+  quiet API revalidation, and mutation-aware backlog/detail/shelf updates.
 - Catalog metadata reuse across private, public, and Insights flows.
 - Manual catalog refresh cooldown and optional catalog shelf seeding.
 - Initial hours-source preference and lock behavior.
@@ -162,6 +167,15 @@ flows.
   achievement actions.
 - Added dirty-state feedback and Save/Discard/Keep editing protection when
   cancelling or closing with unsaved changes.
+
+## UI/UX Consistency Phase 5
+
+- Reduced mobile navigation to five primary destinations with a complete active
+  treatment.
+- Added an accessible More sheet containing every remaining destination and
+  account action available from the desktop navigation.
+- Added the signed-in profile avatar to the mobile header and completed
+  responsive safe-area and dense-control polish.
 
 ## UI/UX Consistency Phase 6
 

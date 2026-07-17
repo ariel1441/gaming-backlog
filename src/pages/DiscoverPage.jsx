@@ -27,6 +27,13 @@ import {
   searchCatalog,
 } from "../services/catalogService";
 import {
+  markDiscoverGameInBacklog,
+  readDiscoverResponse,
+  replaceDiscoverCachedShelf,
+  updateDiscoverCachedGame,
+  writeDiscoverResponse,
+} from "../services/discoverCache";
+import {
   AppPage,
   PageError,
   PageHeader,
@@ -84,7 +91,12 @@ const backlogOptions = [
 ];
 
 export default function DiscoverPage() {
-  const { isAuthenticated, loading: authLoading, getAuthHeaders } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    loading: authLoading,
+    getAuthHeaders,
+  } = useAuth();
   const { upsertGame } = useGames();
   const { statuses } = useStatuses();
   const toast = useToast();
@@ -116,6 +128,7 @@ export default function DiscoverPage() {
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState(emptyAddDraft);
   const catalogLoadSequence = useRef(0);
+  const discoverUserKey = String(user?.id ?? user?.username ?? "");
 
   const canSearch = isAuthenticated && debouncedQuery.trim().length >= 3;
   const isBrowseMode = isAuthenticated && debouncedQuery.trim().length < 3;
@@ -145,13 +158,33 @@ export default function DiscoverPage() {
     }
     setMessage("");
     if (isBrowseMode) {
-      setLoading(true);
+      const cacheParams = { ...filters, page, limit: 24, shelfLimit: 24 };
+      const cached = readDiscoverResponse({
+        userKey: discoverUserKey,
+        scope: "browse",
+        params: cacheParams,
+      });
+      if (cached) {
+        setResults(cached.results || []);
+        setShelves(cached.shelves || []);
+        setFacets(cached.facets || { genres: [] });
+        setTotal(cached.total || 0);
+        setTotalPages(cached.totalPages || 1);
+        setCacheStatus(cached.cacheStatus || "fresh");
+      }
+      setLoading(!cached);
       browseCatalog(
-        { ...filters, page, limit: 24, shelfLimit: 24 },
+        cacheParams,
         { auth: false, headers: getAuthHeaders() },
       )
         .then((payload) => {
           if (catalogLoadSequence.current !== sequence) return;
+          writeDiscoverResponse({
+            userKey: discoverUserKey,
+            scope: "browse",
+            params: cacheParams,
+            payload,
+          });
           setResults(payload?.results || []);
           setShelves(payload?.shelves || []);
           setFacets(payload?.facets || { genres: [] });
@@ -166,6 +199,10 @@ export default function DiscoverPage() {
         })
         .catch((error) => {
           if (catalogLoadSequence.current !== sequence) return;
+          if (cached) {
+            setCacheStatus("stale");
+            return;
+          }
           setResults([]);
           setShelves([]);
           setLoadError(error.message || "Could not load the catalog.");
@@ -177,7 +214,19 @@ export default function DiscoverPage() {
     }
 
     const ac = new AbortController();
-    setLoading(true);
+    const cacheParams = { query: debouncedQuery.trim().toLowerCase() };
+    const cached = readDiscoverResponse({
+      userKey: discoverUserKey,
+      scope: "search",
+      params: cacheParams,
+    });
+    if (cached) {
+      setResults(cached.results || []);
+      setTotal(cached.results?.length || 0);
+      setTotalPages(1);
+      setCacheStatus(cached.cacheStatus || "fresh");
+    }
+    setLoading(!cached);
     setShelves([]);
     searchCatalog(debouncedQuery, {
       signal: ac.signal,
@@ -186,6 +235,12 @@ export default function DiscoverPage() {
     })
       .then((payload) => {
         if (catalogLoadSequence.current !== sequence) return;
+        writeDiscoverResponse({
+          userKey: discoverUserKey,
+          scope: "search",
+          params: cacheParams,
+          payload,
+        });
         setResults(payload?.results || []);
         setTotal(payload?.results?.length || 0);
         setTotalPages(1);
@@ -201,6 +256,10 @@ export default function DiscoverPage() {
           error.name !== "AbortError" &&
           catalogLoadSequence.current === sequence
         ) {
+          if (cached) {
+            setCacheStatus("stale");
+            return;
+          }
           setResults([]);
           setLoadError(error.message || "Could not search the catalog.");
         }
@@ -213,6 +272,7 @@ export default function DiscoverPage() {
     authLoading,
     canSearch,
     debouncedQuery,
+    discoverUserKey,
     filters,
     getAuthHeaders,
     isAuthenticated,
@@ -262,7 +322,27 @@ export default function DiscoverPage() {
         headers: getAuthHeaders(),
       });
       setSelected(detail);
-      toast.success("Catalog metadata refreshed.");
+      updateDiscoverCachedGame(discoverUserKey, detail);
+      setResults((list) =>
+        list.map((game) =>
+          Number(game.id) === Number(detail.id) ? { ...game, ...detail } : game,
+        ),
+      );
+      setShelves((list) =>
+        list.map((shelf) => ({
+          ...shelf,
+          results: shelf.results.map((game) =>
+            Number(game.id) === Number(detail.id)
+              ? { ...game, ...detail }
+              : game,
+          ),
+        })),
+      );
+      if (detail.cacheStatus === "stale") {
+        toast.warning("Showing stored metadata because RAWG is unavailable.");
+      } else {
+        toast.success("Catalog metadata refreshed.");
+      }
     } catch (error) {
       toast.warning(error.message || "Could not refresh metadata right now.");
     } finally {
@@ -287,15 +367,25 @@ export default function DiscoverPage() {
         headers: getAuthHeaders(),
       });
       upsertGame(createdGame);
+      markDiscoverGameInBacklog(discoverUserKey, selected.id);
       toast.success("Game added to backlog.");
       setSelected((game) => ({ ...game, alreadyInBacklog: true }));
-      setResults((list) =>
-        list.map((game) =>
-          Number(game.id) === Number(selected.id)
-            ? { ...game, alreadyInBacklog: true }
-            : game,
-        ),
-      );
+      if (isBrowseMode && filters.backlog === "not_in") {
+        setResults((list) =>
+          list.filter((game) => Number(game.id) !== Number(selected.id)),
+        );
+        const nextTotal = Math.max(total - 1, 0);
+        setTotal(nextTotal);
+        setTotalPages(Math.max(Math.ceil(nextTotal / 24), 1));
+      } else {
+        setResults((list) =>
+          list.map((game) =>
+            Number(game.id) === Number(selected.id)
+              ? { ...game, alreadyInBacklog: true }
+              : game,
+          ),
+        );
+      }
       setShelves((list) =>
         list
           .map((shelf) => ({
@@ -321,6 +411,7 @@ export default function DiscoverPage() {
         headers: getAuthHeaders(),
       });
       if (payload?.shelf) {
+        replaceDiscoverCachedShelf(discoverUserKey, payload.shelf);
         setShelves((list) =>
           list.map((shelf) => (shelf.key === key ? payload.shelf : shelf)),
         );

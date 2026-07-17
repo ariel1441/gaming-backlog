@@ -142,3 +142,153 @@ test("POST /api/catalog/:id/add-to-backlog ingests exact metadata before linking
     },
   );
 });
+
+test("GET /api/catalog/:id hydrates partial metadata through the ingestion service", async () => {
+  const ingestionCalls = [];
+  let hydrated = false;
+
+  await withServer(
+    async (text) => {
+      const sql = String(text);
+      if (sql.includes("FROM catalog_games cg")) {
+        return {
+          rows: [
+            {
+              id: 501,
+              name: "Hades II",
+              metadata_quality: hydrated ? "full" : "search_result",
+              metadata_fetched_at: hydrated ? new Date() : null,
+              rawg_external_id: "501",
+              rawg_external_slug: "hades-ii",
+              already_in_backlog: false,
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT *") && sql.includes("FROM external_game_ids")) {
+        return { rows: [{ external_id: "501", slug: "hades-ii" }] };
+      }
+      return { rows: [] };
+    },
+    async () => {
+      throw new Error("Unexpected pool connection");
+    },
+    {
+      ingestRawgGameMetadata: async (rawgId, options) => {
+        ingestionCalls.push([rawgId, options]);
+        hydrated = true;
+        return { catalogGame: { id: 501 } };
+      },
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/catalog/501`, {
+        headers: { Authorization: `Bearer ${makeToken()}` },
+      });
+      const body = await response.json();
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(ingestionCalls, [[501, { force: false }]]);
+      assert.equal(body.metadataQuality, "full");
+      assert.equal(body.cacheStatus, "fresh");
+    },
+  );
+});
+
+test("POST /api/catalog/:id/refresh forces snapshot-aware ingestion", async () => {
+  const ingestionCalls = [];
+  let refreshed = false;
+
+  await withServer(
+    async (text) => {
+      const sql = String(text);
+      if (sql.includes("FROM catalog_games cg")) {
+        return {
+          rows: [
+            {
+              id: 501,
+              name: "Hades II",
+              metadata_quality: "full",
+              metadata_fetched_at: refreshed
+                ? new Date()
+                : new Date("2020-01-01T00:00:00Z"),
+              rawg_external_id: "501",
+              rawg_external_slug: "hades-ii",
+              already_in_backlog: false,
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT *") && sql.includes("FROM external_game_ids")) {
+        return { rows: [{ external_id: "501", slug: "hades-ii" }] };
+      }
+      return { rows: [] };
+    },
+    async () => {
+      throw new Error("Unexpected pool connection");
+    },
+    {
+      ingestRawgGameMetadata: async (rawgId, options) => {
+        ingestionCalls.push([rawgId, options]);
+        refreshed = true;
+        return { catalogGame: { id: 501 } };
+      },
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/catalog/501/refresh`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${makeToken()}` },
+      });
+      const body = await response.json();
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(ingestionCalls, [[501, { force: true }]]);
+      assert.equal(body.cacheStatus, "fresh");
+    },
+  );
+});
+
+test("GET /api/catalog/:id never hydrates live metadata for guests", async () => {
+  let ingestionCalls = 0;
+
+  await withServer(
+    async (text) => {
+      const sql = String(text);
+      if (sql.includes("FROM catalog_games cg")) {
+        return {
+          rows: [
+            {
+              id: 501,
+              name: "Hades II",
+              metadata_quality: "search_result",
+              metadata_fetched_at: null,
+              rawg_external_id: "501",
+              rawg_external_slug: "hades-ii",
+              already_in_backlog: false,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    async () => {
+      throw new Error("Unexpected pool connection");
+    },
+    {
+      ingestRawgGameMetadata: async () => {
+        ingestionCalls += 1;
+      },
+    },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/catalog/501`, {
+        headers: {
+          Authorization: `Bearer ${makeToken({ is_guest: true })}`,
+        },
+      });
+      const body = await response.json();
+
+      assert.equal(response.status, 200);
+      assert.equal(ingestionCalls, 0);
+      assert.equal(body.cacheStatus, "stale");
+    },
+  );
+});
