@@ -13,7 +13,12 @@ import { useAuth } from "../contexts/AuthContext";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { useGames } from "../hooks/useGames";
 import { apiErrorMessage, buildEditGamePayload } from "./Backlog/backlogForm";
-import { filterReviewGames, hasRealScore, hasReview } from "../utils/reviews";
+import {
+  filterReviewGames,
+  hasRealScore,
+  hasReview,
+  reviewText,
+} from "../utils/reviews";
 import {
   ReviewCard,
   ReviewsControls,

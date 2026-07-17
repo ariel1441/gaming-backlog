@@ -450,9 +450,9 @@ function ListCard({ list }) {
         className="transition-colors group-hover:border-primary/35"
       />
       <div className="mt-3 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-2">
           <h3
-            className="min-w-0 flex-1 truncate text-base font-semibold text-content-primary"
+            className="line-clamp-2 min-w-0 flex-1 break-words text-base font-semibold leading-5 text-content-primary"
             title={list.name}
           >
             {list.name}

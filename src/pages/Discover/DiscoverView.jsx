@@ -170,7 +170,7 @@ export function CatalogShelf({
           ) : null}
         </div>
       </div>
-      <div className="relative px-16">
+      <div className="relative px-0 md:px-16">
         <button
           type="button"
           aria-label={`Scroll ${title} left`}
@@ -181,7 +181,7 @@ export function CatalogShelf({
         </button>
         <div
           ref={rowRef}
-          className="grid auto-cols-[minmax(300px,1fr)] grid-flow-col gap-4 overflow-x-auto scroll-smooth pb-3 [scrollbar-width:thin] xl:auto-cols-[calc((100%_-_48px)/4)]"
+          className="grid auto-cols-[min(300px,calc(100vw-2rem))] grid-flow-col gap-4 overflow-x-auto scroll-smooth pb-3 [scrollbar-width:thin] md:auto-cols-[minmax(300px,1fr)] xl:auto-cols-[calc((100%_-_48px)/4)]"
         >
           {visibleGames.map((game) => (
             <div key={`${title}-${game.id}`} className="min-w-0">

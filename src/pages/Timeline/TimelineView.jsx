@@ -114,7 +114,7 @@ function PosterMedia({ game }) {
   const src = coverUrl(game);
 
   return (
-    <div className="relative h-48 w-full shrink-0 overflow-hidden rounded-2xl border border-surface-border bg-surface-elevated shadow-panel sm:h-64 sm:w-[22rem] lg:h-72 lg:w-[30rem]">
+    <div className="relative h-48 w-full shrink-0 overflow-hidden rounded-2xl border border-surface-border bg-surface-elevated shadow-panel sm:h-64 xl:h-72 xl:w-[30rem]">
       <GameCover
         src={src}
         name={game?.name}
@@ -161,16 +161,13 @@ function ViewModeToggle({ viewMode, setViewMode }) {
   );
 }
 
-export function TimelineHeader({ summary, viewMode, setViewMode }) {
+export function TimelineHeader({ summary }) {
   return (
     <div className="space-y-4">
       <PageHeader
         title="Timeline"
         description="Started and finished dates from your backlog, grouped over time."
         icon={Clock3}
-        actions={
-          <ViewModeToggle viewMode={viewMode} setViewMode={setViewMode} />
-        }
       />
       <div className="flex flex-wrap gap-3">
         <StatPill icon={Clock3} label="Events" value={summary.total} />
@@ -198,10 +195,12 @@ export function TimelineFilters({
   years,
   onClear,
   hasActiveFilters,
+  viewMode,
+  setViewMode,
 }) {
   return (
     <PageToolbar className="border-t-0">
-      <div className="grid gap-3 lg:grid-cols-[minmax(14rem,1fr)_auto] lg:items-center">
+      <div className="grid gap-3 xl:grid-cols-[minmax(14rem,1fr)_auto] xl:items-center">
         <label className="relative block min-w-0">
           <span className="sr-only">Search timeline by game title</span>
           <Search
@@ -243,23 +242,29 @@ export function TimelineFilters({
               ]}
             />
           ) : null}
-          <div className="flex flex-wrap gap-2">
-            {eventFilterOptions.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                size="sm"
-                variant={
-                  eventFilter === option.value
-                    ? "filterActive"
-                    : "secondary"
-                }
-                onClick={() => setEventFilter(option.value)}
-                aria-pressed={eventFilter === option.value}
-              >
-                {option.label}
-              </Button>
-            ))}
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto">
+            <div className="flex flex-wrap gap-2">
+              {eventFilterOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  size="sm"
+                  variant={
+                    eventFilter === option.value
+                      ? "filterActive"
+                      : "secondary"
+                  }
+                  onClick={() => setEventFilter(option.value)}
+                  aria-pressed={eventFilter === option.value}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+            <ViewModeToggle
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+            />
           </div>
           {hasActiveFilters ? (
             <Button
@@ -364,7 +369,7 @@ export function PosterEvent({ event, onOpen }) {
           "hover:border-primary/45 hover:bg-surface-card hover:shadow-glow-primary",
         ].join(" ")}
       >
-        <div className="flex flex-col gap-4 sm:gap-6 lg:flex-row">
+        <div className="flex flex-col gap-4 sm:gap-6 xl:flex-row">
           <PosterMedia game={event.game} />
           <div className="flex min-w-0 flex-1 flex-col justify-center py-1">
             <div
@@ -519,8 +524,8 @@ export function TimelineSkeleton({ viewMode = "backdrop" }) {
                 <Skeleton className="h-28 w-12 rounded-2xl sm:w-16" />
               </div>
               {viewMode === "poster" ? (
-                <div className="flex flex-col gap-4 rounded-2xl border border-surface-border bg-surface-card/60 p-3 sm:flex-row">
-                  <Skeleton className="h-48 w-full rounded-2xl sm:h-64 sm:w-[22rem]" />
+                <div className="flex flex-col gap-4 rounded-2xl border border-surface-border bg-surface-card/60 p-3 xl:flex-row">
+                  <Skeleton className="h-48 w-full rounded-2xl sm:h-64 xl:h-72 xl:w-[30rem]" />
                   <div className="flex-1 space-y-4 py-4">
                     <Skeleton className="h-5 w-36" />
                     <Skeleton className="h-9 w-3/4" />

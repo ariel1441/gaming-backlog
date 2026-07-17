@@ -179,11 +179,7 @@ export default function TimelinePage() {
   return (
     <AppPage width="wide">
       <div className="space-y-5">
-        <TimelineHeader
-          summary={filteredSummary}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-        />
+        <TimelineHeader summary={filteredSummary} />
 
         <TimelineFilters
           eventFilter={eventFilter}
@@ -197,6 +193,8 @@ export default function TimelinePage() {
           years={years}
           onClear={clearFilters}
           hasActiveFilters={hasActiveFilters}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
         />
 
         {groups.length ? (

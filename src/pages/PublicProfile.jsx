@@ -191,7 +191,7 @@ export default function PublicProfile() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-surface-bg p-6 text-content-primary">
+      <div className="min-h-screen bg-surface-bg px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-content-primary">
         <div className="mx-auto flex min-h-[70vh] max-w-5xl items-center justify-center">
           <div className="w-full max-w-xl rounded-2xl border border-surface-border bg-surface-card p-6 shadow-panel">
             <div className="flex items-center gap-4">
@@ -214,7 +214,7 @@ export default function PublicProfile() {
 
   if (isPrivate || (!error && profile && !profile.is_public)) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
+      <div className="flex min-h-screen items-center justify-center bg-surface-bg px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-content-primary">
         <EmptyState
           icon={LockKeyhole}
           title="This profile is private."
@@ -232,7 +232,7 @@ export default function PublicProfile() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
+      <div className="flex min-h-screen items-center justify-center bg-surface-bg px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-content-primary">
         <PageError
           title="Could not load this profile."
           description={error}
@@ -245,7 +245,10 @@ export default function PublicProfile() {
 
   return (
     <div className="min-h-screen bg-surface-bg text-content-primary">
-      <AppPage width="full" className="max-w-[100vw]">
+      <AppPage
+        width="full"
+        className="max-w-[100vw] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]"
+      >
         {isGamesView ? (
           <PublicGamesView
             profile={profile}

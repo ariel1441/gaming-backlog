@@ -71,7 +71,7 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="fixed right-4 top-4 z-tooltip flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-3"
+        className="fixed right-4 top-[calc(1rem+env(safe-area-inset-top))] z-tooltip flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-3"
         aria-live="polite"
         aria-atomic="true"
       >

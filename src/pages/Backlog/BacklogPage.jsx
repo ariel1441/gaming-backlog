@@ -219,7 +219,10 @@ export default function BacklogPage() {
       setVar(entry?.contentRect?.height || 0),
     );
     ro.observe(bannerRef.current);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      setVar(0);
+    };
   }, [isGuest]);
 
   // Clear state and remove query params so URL-driven filters do not re-apply.
@@ -318,7 +321,7 @@ export default function BacklogPage() {
       {/* Single wrapper that applies top padding equal to the banner height */}
       <div className={isGuest ? "pt-[var(--demo-banner-h,0px)]" : ""}>
         <main className={mainClass}>
-          <div className="sticky top-14 z-30 bg-surface-bg lg:top-0">
+          <div className="sticky top-[calc(var(--mobile-header-h,3.5rem)+var(--demo-banner-h,0px))] z-30 bg-surface-bg lg:top-0">
             <BacklogToolbar
               identity={{ title: backlogTitle }}
               search={{

@@ -2,12 +2,10 @@ import { useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Check,
-  CheckCircle2,
   Grid2X2,
   LayoutGrid,
   List,
   Search,
-  SlidersHorizontal,
   X,
 } from "lucide-react";
 import {
@@ -382,146 +380,6 @@ export function HoursDropdown({ hoursBounds, hoursRange, setHoursRange }) {
           >
             Reset hours
           </Button>
-        </PopoverPanel>
-      ) : null}
-    </div>
-  );
-}
-
-export function MoreFiltersDropdown({
-  dateFilter,
-  setDateFilter,
-  completedActive,
-  toggleCompleted,
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef(null);
-  const year = new Date().getFullYear();
-  const dateOptions = [
-    { label: `Started ${year}`, value: { type: "startedYear", year } },
-    { label: `Finished ${year}`, value: { type: "finishedYear", year } },
-    { label: "Active games", value: { type: "activeUnfinished" } },
-    {
-      label: "Active 6+ months",
-      value: { type: "activeOlderThanMonths", months: 6 },
-    },
-  ];
-  const activeCount =
-    Number(Boolean(dateFilter)) + Number(Boolean(completedActive));
-
-  useDismissibleLayer({
-    open,
-    layerRef: wrapperRef,
-    onDismiss: () => setOpen(false),
-  });
-
-  if (!setDateFilter && !toggleCompleted) return null;
-
-  return (
-    <div ref={wrapperRef} className="relative max-sm:static">
-      <Button
-        type="button"
-        variant={activeCount ? "filterActive" : "secondary"}
-        onClick={() => setOpen((value) => !value)}
-        className="h-10 shrink-0 whitespace-nowrap"
-        aria-expanded={open}
-      >
-        <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-        More filters
-        {activeCount ? (
-          <span className="rounded-full bg-primary/25 px-2 py-0.5 text-xs text-primary-light">
-            {activeCount}
-          </span>
-        ) : null}
-        <DropdownChevron open={open} />
-      </Button>
-
-      {open ? (
-        <PopoverPanel
-          padding="lg"
-          className="absolute left-2 right-2 top-[calc(100%+0.5rem)] z-50 sm:left-auto sm:right-0 sm:w-72"
-        >
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-content-primary">
-                More filters
-              </div>
-              <div className="mt-0.5 text-xs text-content-muted">
-                Dates and completion shortcuts
-              </div>
-            </div>
-            {activeCount ? (
-              <Button
-                type="button"
-                variant="dangerGhost"
-                size="sm"
-                onClick={() => {
-                  setDateFilter?.(null);
-                  if (completedActive) toggleCompleted?.();
-                }}
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-                Clear selection
-              </Button>
-            ) : null}
-          </div>
-
-          {setDateFilter ? (
-            <div className={toggleCompleted ? "mb-3" : ""}>
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-content-muted">
-                Date activity
-              </div>
-              <div className="space-y-1">
-                {dateOptions.map((option) => {
-                  const active = isSameDateFilter(option.value, dateFilter);
-                  return (
-                    <button
-                      type="button"
-                      key={option.label}
-                      onClick={() => {
-                        setDateFilter(active ? null : option.value);
-                        setOpen(false);
-                      }}
-                      aria-pressed={active}
-                      className={[
-                        "flex w-full items-center justify-between rounded-control border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60",
-                        active
-                          ? "border-primary/55 bg-surface-selected text-primary-light"
-                          : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
-                      ].join(" ")}
-                    >
-                      {option.label}
-                      {active ? (
-                        <Check className="h-4 w-4" aria-hidden="true" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {toggleCompleted ? (
-            <button
-              type="button"
-              onClick={toggleCompleted}
-              aria-pressed={completedActive}
-              className={[
-                "flex w-full items-center justify-between rounded-control border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60",
-                completedActive
-                  ? "border-primary/55 bg-surface-selected text-primary-light"
-                  : "border-surface-border/65 bg-surface-elevated/35 text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
-              ].join(" ")}
-            >
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                Completed games
-              </span>
-              {completedActive ? (
-                <Check className="h-4 w-4" aria-hidden="true" />
-              ) : null}
-            </button>
-          ) : null}
         </PopoverPanel>
       ) : null}
     </div>

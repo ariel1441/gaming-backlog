@@ -31,7 +31,6 @@ import {
   DateDropdown,
   FilterDropdown,
   HoursDropdown,
-  MoreFiltersDropdown,
   SearchBox,
   ViewModeSwitch,
 } from "./BacklogToolbarControls";
@@ -185,7 +184,7 @@ export default function BacklogToolbar({
             mobileControlsOpen ? "block" : "hidden",
           ].join(" ")}
         >
-          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center 2xl:flex-nowrap">
+          <div className="flex flex-col gap-3 2xl:flex-row 2xl:flex-nowrap 2xl:items-center">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 2xl:flex-nowrap">
               <FilterDropdown
                 label="Status"
@@ -204,6 +203,11 @@ export default function BacklogToolbar({
                 onToggle={filters.toggleMyGenre}
                 onClear={() => filters.setSelectedMyGenres([])}
                 searchable
+              />
+              <HoursDropdown
+                hoursBounds={filters.hoursBounds}
+                hoursRange={filters.hoursRange}
+                setHoursRange={filters.setHoursRange}
               />
               <FilterDropdown
                 label="RAWG genres"
@@ -233,19 +237,13 @@ export default function BacklogToolbar({
                 }
                 onClear={() => filters.setSourceFilter("all")}
               />
-              <HoursDropdown
-                hoursBounds={filters.hoursBounds}
-                hoursRange={filters.hoursRange}
-                setHoursRange={filters.setHoursRange}
-              />
-
-              <div className="hidden 2xl:block">
+              <div>
                 <DateDropdown
                   dateFilter={filters.dateFilter}
                   setDateFilter={filters.setDateFilter}
                 />
               </div>
-              <div className="hidden 2xl:block">
+              <div>
                 <Button
                   type="button"
                   variant={
@@ -262,14 +260,6 @@ export default function BacklogToolbar({
                   ) : null}
                 </Button>
               </div>
-              <div className="2xl:hidden">
-                <MoreFiltersDropdown
-                  dateFilter={filters.dateFilter}
-                  setDateFilter={filters.setDateFilter}
-                  completedActive={actions?.completedActive}
-                  toggleCompleted={actions?.toggleCompleted}
-                />
-              </div>
               {filters.count ? (
                 <Button
                   type="button"
@@ -284,7 +274,7 @@ export default function BacklogToolbar({
               ) : null}
             </div>
 
-            <div className="flex shrink-0 flex-wrap items-center gap-2 md:ml-auto 2xl:flex-nowrap">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 2xl:ml-auto 2xl:flex-nowrap">
               <ViewModeSwitch value={viewMode} onChange={setViewMode} />
               <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
                 <SelectMenu

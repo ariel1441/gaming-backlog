@@ -38,6 +38,31 @@ export const libraryNavigationItems = [
   },
 ];
 
+export const mobilePrimaryNavigationItems = primaryNavigationItems.filter(
+  (item) =>
+    ["/", "/discover", "/lists", "/timeline"].includes(item.to),
+);
+
+export const mobileMoreNavigationItems = primaryNavigationItems.filter(
+  (item) => ["/reviews", "/insights"].includes(item.to),
+);
+
+export function navigationItemMatchesPath(item, pathname) {
+  if (!item?.to || !pathname) return false;
+  if (item.end) return pathname === item.to;
+  return pathname === item.to || pathname.startsWith(`${item.to}/`);
+}
+
+export function isMobileMorePath(pathname) {
+  const moreItems = [
+    ...mobileMoreNavigationItems,
+    ...libraryNavigationItems,
+    { to: "/me" },
+    { to: "/settings" },
+  ];
+  return moreItems.some((item) => navigationItemMatchesPath(item, pathname));
+}
+
 export function visibleNavigationItems(
   items,
   { isAuthenticated = false, isGuest = false } = {},

@@ -414,11 +414,11 @@ export default function CustomListPage() {
           <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
             <CoverCollage
               games={displayGames}
-              className="max-h-52 rounded-lg lg:sticky lg:top-4"
+              className="w-full rounded-lg lg:sticky lg:top-4"
             />
             <div className="min-w-0">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1 sm:max-w-3xl">
                   <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-content-muted">
                     {isSmart ? (
                       <Wand2 className="h-4 w-4" aria-hidden="true" />
@@ -426,7 +426,7 @@ export default function CustomListPage() {
                     {isSmart ? "Private smart list" : "Private ranked list"}
                   </div>
                   <h1
-                    className="mt-1 truncate text-3xl font-semibold"
+                    className="mt-1 break-words text-3xl font-semibold leading-tight"
                     title={list?.name || "List"}
                   >
                     {list?.name || "List"}
@@ -444,28 +444,40 @@ export default function CustomListPage() {
                     className="mt-3"
                   />
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
                   {!isManagingManual ? (
                     <>
-                      {!isSmart ? (
+                      <div
+                        className={
+                          isSmart
+                            ? "contents"
+                            : "col-span-2 grid grid-cols-2 gap-2 sm:contents"
+                        }
+                      >
+                        {!isSmart ? (
+                          <Button
+                            type="button"
+                            variant="primary"
+                            onClick={openAdd}
+                            disabled={backlogLoading}
+                            className="w-full sm:w-auto"
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            {backlogLoading
+                              ? "Loading backlog..."
+                              : "Add games"}
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
-                          variant="primary"
-                          onClick={openAdd}
-                          disabled={backlogLoading}
+                          variant="secondary"
+                          onClick={openEdit}
+                          className="w-full sm:w-auto"
                         >
-                          <Plus className="h-4 w-4" aria-hidden="true" />
-                          {backlogLoading ? "Loading backlog..." : "Add games"}
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                          Edit details
                         </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={openEdit}
-                      >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                        Edit details
-                      </Button>
+                      </div>
                       {!isSmart ? (
                         <Button
                           type="button"
@@ -474,6 +486,7 @@ export default function CustomListPage() {
                             setManageSaveStatus("idle");
                             setIsManagingManual(true);
                           }}
+                          className="w-full sm:w-auto"
                         >
                           Manage games/order
                         </Button>
@@ -485,6 +498,7 @@ export default function CustomListPage() {
                       variant="primary"
                       onClick={() => setIsManagingManual(false)}
                       disabled={manageSaveStatus === "saving"}
+                      className="w-full sm:w-auto"
                     >
                       Done
                     </Button>

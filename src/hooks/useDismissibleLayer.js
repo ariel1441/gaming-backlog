@@ -63,6 +63,7 @@ export function useDismissibleLayer({
   trapFocus = false,
   lockScroll = false,
   restoreFocus = false,
+  initialFocusRef,
 } = {}) {
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
@@ -148,6 +149,7 @@ export function useDismissibleLayer({
         if (!isTopLayer()) return;
         const node = layerRef?.current;
         const initial =
+          initialFocusRef?.current ||
           node?.querySelector("[autofocus]") ||
           node?.querySelector(focusableSelector) ||
           node;
@@ -179,5 +181,6 @@ export function useDismissibleLayer({
     open,
     restoreFocus,
     trapFocus,
+    initialFocusRef,
   ]);
 }

@@ -111,7 +111,7 @@ function AccountMenu({ collapsed, user, onClose, onNavigate, onLogout }) {
           onClose();
           onNavigate("/me");
         }}
-        className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-content-secondary transition-colors hover:bg-surface-elevated hover:text-content-primary"
+        className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-content-secondary transition-colors hover:bg-surface-selected/60 hover:text-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70"
       >
         <User2 className="h-4 w-4" aria-hidden="true" />
         Profile
@@ -122,7 +122,7 @@ function AccountMenu({ collapsed, user, onClose, onNavigate, onLogout }) {
           onClose();
           onNavigate("/settings");
         }}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-content-secondary transition-colors hover:bg-surface-elevated hover:text-content-primary"
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-content-secondary transition-colors hover:bg-surface-selected/60 hover:text-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70"
       >
         <Settings className="h-4 w-4" aria-hidden="true" />
         Settings
@@ -292,7 +292,7 @@ export default function Sidebar() {
                 <button
                   type="button"
                   onClick={() => setAccountOpen((current) => !current)}
-                  className="flex h-12 w-[188px] items-center gap-2.5 rounded-xl border border-transparent px-1.5 text-left transition-colors hover:border-surface-border/70 hover:bg-surface-elevated/60"
+                  className="flex h-12 w-[188px] items-center gap-2.5 rounded-xl border border-transparent px-1.5 text-left transition-colors hover:border-surface-border/70 hover:bg-surface-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70"
                   aria-expanded={accountOpen}
                   aria-label="Open account menu"
                   title={collapsed ? primaryAccountLabel : undefined}

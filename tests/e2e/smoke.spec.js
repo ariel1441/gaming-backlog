@@ -178,6 +178,9 @@ async function mockApi(page) {
       json: {
         id: 99,
         username: "e2e_user",
+        display_name: "Mobile Player",
+        avatar_icon: "rocket",
+        avatar_color: "blue",
         is_guest: false,
         is_public: true,
         created_at: "2025-08-09T00:00:00.000Z",
@@ -540,6 +543,11 @@ test("opens the restored Reviews page from application navigation", async ({
   await expect(
     page.getByText("A wonderfully reactive role-playing adventure."),
   ).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit thoughts" }).click();
+  await expect(page.getByRole("textbox", { name: "Thoughts" })).toHaveValue(
+    "A wonderfully reactive role-playing adventure.",
+  );
 });
 
 test("reuses one games collection while navigating between private pages", async ({
@@ -755,4 +763,57 @@ test("discovers a catalog game and adds it to the backlog", async ({
   await page.getByRole("button", { name: "Close" }).click();
   await page.getByRole("link", { name: "Backlog", exact: true }).click();
   await expect(page.getByText("Hades II")).toBeVisible();
+});
+
+test("mobile navigation exposes More destinations and account controls", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "saved-account-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/reviews", { waitUntil: "domcontentloaded" });
+
+  const mobileNavigation = page.getByRole("navigation", {
+    name: "Mobile primary navigation",
+  });
+  await expect(mobileNavigation).toBeVisible();
+  await expect(mobileNavigation.getByRole("link")).toHaveCount(4);
+  await expect(
+    mobileNavigation.getByRole("button", { name: "More destinations" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page
+      .getByRole("button", { name: "Open account menu" })
+      .locator(".lucide-rocket"),
+  ).toBeVisible();
+
+  await mobileNavigation
+    .getByRole("button", { name: "More destinations" })
+    .click();
+  const moreSheet = page.getByRole("dialog", { name: "More" });
+  await expect(moreSheet).toBeVisible();
+  await expect(moreSheet.getByRole("link", { name: "Reviews" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(
+    moreSheet.getByRole("link", { name: "Steam Library" }),
+  ).toBeVisible();
+  await expect(
+    moreSheet.getByRole("link", { name: "Steam Review" }),
+  ).toBeVisible();
+  await expect(moreSheet.getByRole("link", { name: "Profile" })).toBeVisible();
+  await expect(moreSheet.getByRole("link", { name: "Settings" })).toBeVisible();
+  await expect(moreSheet.getByRole("button", { name: "Log out" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(moreSheet).toBeHidden();
+  await page.getByRole("button", { name: "Open account menu" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "More" }).getByRole("link", {
+      name: "Profile",
+    }),
+  ).toBeFocused();
 });

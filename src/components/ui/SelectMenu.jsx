@@ -83,7 +83,7 @@ export default function SelectMenu({
         }}
         className={[
           "flex min-h-10 w-full items-center justify-between gap-3 rounded-control border border-surface-border bg-surface-input/55 px-3 py-2 text-left text-sm text-content-primary shadow-control-inset transition-[background-color,border-color,box-shadow,transform]",
-          "hover:border-primary/40 hover:bg-surface-selected/55 focus-visible:border-focus-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/20 active:translate-y-px aria-expanded:border-primary/55 aria-expanded:bg-surface-selected/70",
+          "hover:border-primary/40 hover:bg-surface-selected/55 focus-visible:border-focus-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/40 active:translate-y-px aria-expanded:border-primary/55 aria-expanded:bg-surface-selected/70",
           disabled ? "cursor-not-allowed opacity-70" : "",
           buttonClassName,
         ].join(" ")}

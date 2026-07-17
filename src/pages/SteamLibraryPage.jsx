@@ -554,7 +554,7 @@ export default function SteamLibraryPage() {
                 onClick={() => navigate("/steam/import")}
               >
                 <LinkIcon className="h-4 w-4" aria-hidden="true" />
-                Go to Steam Import Review
+                Steam Import
               </Button>
               <Button
                 type="button"
@@ -584,7 +584,7 @@ export default function SteamLibraryPage() {
 
       <div className="space-y-7 pt-7">
         <PageSection title="Library overview">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-6">
             <Metric label="Synced apps" value={allSummary.total || 0} />
             <Metric
               label="In backlog"
@@ -972,7 +972,7 @@ function SteamLibrarySkeleton() {
           description="Browse synced Steam apps, find games that need attention, and keep playtime and achievements up to date."
           icon={Library}
         />
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-6">
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-20 rounded-xl" />
           ))}

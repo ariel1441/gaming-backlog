@@ -549,7 +549,7 @@ export default function GameModal({
 
   const dialog = (
     <div
-      className="fixed inset-0 z-modal overflow-y-auto bg-backdrop/78 p-2 backdrop-blur-md sm:p-5"
+      className="fixed inset-0 z-modal overflow-y-auto bg-backdrop/78 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-[calc(0.5rem+env(safe-area-inset-top))] backdrop-blur-md sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
@@ -558,7 +558,7 @@ export default function GameModal({
         <div
           ref={modalRef}
           tabIndex={-1}
-          className="relative flex max-h-[calc(100vh-1rem)] w-full flex-col overflow-hidden rounded-dialog border border-surface-border/80 bg-surface-bg shadow-dialog sm:max-h-[calc(100vh-2.5rem)]"
+          className="relative flex max-h-[calc(100dvh-1rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full flex-col overflow-hidden rounded-dialog border border-surface-border/80 bg-surface-bg shadow-dialog sm:max-h-[calc(100dvh-2.5rem)]"
         >
           <IconButton
             icon={X}

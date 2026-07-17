@@ -45,7 +45,7 @@ const Button = forwardRef(function Button(
       {...props}
       className={[
         "inline-flex items-center justify-center gap-2 rounded-control font-medium transition-[background-color,border-color,color,box-shadow,transform]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70",
         "active:translate-y-px disabled:cursor-not-allowed disabled:opacity-70 disabled:active:translate-y-0",
         "aria-busy:cursor-wait aria-busy:opacity-80",
         variants[variant] || variants.secondary,

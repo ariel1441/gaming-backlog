@@ -165,7 +165,7 @@ export function ReviewsControls({
 }) {
   return (
     <PageToolbar>
-      <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_auto] lg:items-center">
+      <div className="grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_auto] xl:items-center">
         <label className="relative block min-w-0">
           <span className="sr-only">Search reviews</span>
           <Search
@@ -185,7 +185,7 @@ export function ReviewsControls({
             />
           ) : null}
         </label>
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
           <div className="flex flex-wrap gap-2">
             {reviewFilterOptions.map((option) => (
               <Button

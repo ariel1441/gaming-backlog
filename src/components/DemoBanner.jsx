@@ -2,7 +2,7 @@ import React from "react";
 
 export default function DemoBanner({ onSave, onDiscard }) {
   return (
-    <div className="w-full bg-primary-light text-content-inverse ring-1 ring-surface-border/35 shadow-sm">
+    <div className="w-full bg-primary-light pt-[env(safe-area-inset-top)] text-content-inverse ring-1 ring-surface-border/35 shadow-sm">
       <div
         className="
           py-2.5 pr-4 sm:pr-6 md:pr-8
@@ -22,24 +22,26 @@ export default function DemoBanner({ onSave, onDiscard }) {
 
         <div className="flex items-center gap-2 shrink-0 pr-2 sm:pr-6">
           <button
+            type="button"
             onClick={onSave}
-            className="rounded-md px-3 py-1.5 text-sm
+            className="min-h-11 rounded-control px-3 py-2 text-sm
                        bg-surface-card text-content-primary
                        border border-surface-border
                        hover:bg-surface-elevated
-                       focus:outline-none focus:ring-2 focus:ring-primary/30
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70
                        transition-colors"
           >
             Keep changes
           </button>
 
           <button
+            type="button"
             onClick={onDiscard}
-            className="rounded-md px-3 py-1.5 text-sm
+            className="min-h-11 rounded-control px-3 py-2 text-sm
                        bg-surface-card text-content-primary
                        border border-surface-border
                        hover:bg-surface-elevated
-                       focus:outline-none focus:ring-2 focus:ring-primary/30
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70
                        transition-colors"
           >
             Discard demo

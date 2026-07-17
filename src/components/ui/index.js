@@ -16,6 +16,7 @@ export { default as SectionHeader } from "./SectionHeader";
 export { default as SearchClearButton } from "./SearchClearButton";
 export { default as SelectMenu } from "./SelectMenu";
 export { default as SegmentedControl } from "./SegmentedControl";
+export { default as Sheet } from "./Sheet";
 export { default as Skeleton } from "./Skeleton";
 export { default as StatusBadge } from "./StatusBadge";
 export { default as Switch } from "./Switch";

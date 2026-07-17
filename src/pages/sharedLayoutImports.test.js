@@ -30,7 +30,11 @@ const requiredSharedPages = new Map([
     "SteamLibraryPage.jsx",
     ["AppPage", "PageHeader", "PageToolbar", "PageSection"],
   ],
-  ["TimelinePage.jsx", ["AppPage", "PageHeader", "PageToolbar"]],
+  ["TimelinePage.jsx", ["AppPage", "PageHeader"]],
+  [
+    path.join("Timeline", "TimelineView.jsx"),
+    ["AppPage", "PageHeader", "PageToolbar"],
+  ],
   [path.join("Insights", "InsightsPage.jsx"), ["AppPage", "PageHeader"]],
   [
     path.join("Lists", "ListsPage.jsx"),
