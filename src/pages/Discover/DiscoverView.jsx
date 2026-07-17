@@ -13,6 +13,7 @@ import {
   Button,
   EmptyState,
   Field,
+  GameCover,
   Modal,
   SelectMenu,
   Textarea,
@@ -46,23 +47,19 @@ export function CatalogCard({ game, onOpen, showCacheMeta = false }) {
         className="flex w-full min-w-0 text-left"
       >
         <div className="h-full w-32 shrink-0 bg-surface-elevated">
-          {game.cover ? (
-            <img
-              src={game.cover}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-content-muted">
-              {String(game.name || "?").charAt(0)}
-            </div>
-          )}
+          <GameCover
+            src={game.cover}
+            name={game.name}
+            className="h-full w-full"
+          />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
           <div className="min-w-0">
             <div className="flex items-start justify-between gap-3">
-              <h3 className="line-clamp-2 text-base font-semibold text-content-primary">
+              <h3
+                className="line-clamp-2 text-base font-semibold text-content-primary"
+                title={game.name}
+              >
                 {game.name}
               </h3>
               {game.alreadyInBacklog ? (
@@ -233,17 +230,13 @@ export function DetailModal({
       <div className="grid lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="border-b border-surface-border bg-surface-bg/35 p-5 lg:border-b-0 lg:border-r">
           <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-elevated">
-            {game.cover ? (
-              <img
-                src={game.cover}
-                alt=""
-                className="h-96 w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-96 items-center justify-center text-4xl font-semibold text-content-muted">
-                {String(game.name || "?").charAt(0)}
-              </div>
-            )}
+            <GameCover
+              src={game.cover}
+              name={game.name}
+              alt={`${game.name || "Game"} cover`}
+              decorative={false}
+              className="h-96 w-full"
+            />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge variant={cacheVariant(game.cacheStatus)}>
@@ -357,7 +350,10 @@ export function DetailModal({
                       options={statusOptions}
                     />
                   </Field>
-                  <Field id="discover-add-my-genre" label="My Genre">
+                  <Field
+                    id="discover-add-my-genre"
+                    label="My genres"
+                  >
                     <TextInput
                       id="discover-add-my-genre"
                       value={addDraft.my_genre}

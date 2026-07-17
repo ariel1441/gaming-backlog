@@ -2177,12 +2177,18 @@ export async function listSteamImportCandidates(
     `,
     params
   );
-  const allRows = await summarizeAllCandidates(userId);
-  const stateRows = await summarizeCandidatesForState(userId, status);
+  const summaries = await summarizeAllCandidateStates(userId);
+  const stateRows =
+    status === "all"
+      ? summaries.all
+      : status === "active"
+        ? summaries.active
+        : await summarizeCandidatesForState(userId, status);
   return {
     candidates: rows.map(serializeCandidate),
     summary: {
-      ...allRows,
+      ...summaries.all,
+      active: summaries.active,
       state: stateRows,
     },
     page: {
@@ -2621,7 +2627,7 @@ export async function applySteamStatusSuggestion(
   };
 }
 
-async function summarizeAllCandidates(userId) {
+async function summarizeAllCandidateStates(userId) {
   const { rows } = await pool.query(
     `
     SELECT c.import_status, c.proposed_catalog_game_id, c.user_selected_catalog_game_id,
@@ -2646,7 +2652,15 @@ async function summarizeAllCandidates(userId) {
     `,
     [userId]
   );
-  return summarizeCandidates(rows);
+  return {
+    all: summarizeCandidates(rows),
+    active: summarizeCandidates(
+      rows.filter(
+        (row) =>
+          row.import_status === "pending" || row.import_status === "accepted",
+      ),
+    ),
+  };
 }
 
 async function summarizeCandidatesForState(userId, status) {

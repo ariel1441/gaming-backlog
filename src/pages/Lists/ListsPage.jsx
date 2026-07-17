@@ -324,7 +324,7 @@ export default function ListsPage() {
               <Field
                 id="list-description"
                 label="Description"
-                help="Optional. Private in V1."
+                help="Optional. Only you can see this list."
               >
                 <Textarea
                   id="list-description"
@@ -416,11 +416,12 @@ function ModeCard({ icon: Icon, title, description, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={[
-        "flex min-w-0 items-start gap-3 rounded-lg border p-4 text-left transition-colors",
+        "flex min-w-0 items-start gap-3 rounded-control border p-4 text-left transition-[background-color,border-color,color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg active:translate-y-px",
         active
-          ? "border-primary/60 bg-primary/10 text-content-primary"
-          : "border-surface-border bg-surface-bg/35 text-content-secondary hover:border-primary/35 hover:bg-surface-elevated/40",
+          ? "border-primary/55 bg-surface-selected text-primary-light shadow-sm shadow-primary/10 ring-1 ring-inset ring-primary/20"
+          : "border-surface-border bg-surface-bg/35 text-content-secondary hover:border-primary/35 hover:bg-surface-selected/55 hover:text-primary-light",
       ].join(" ")}
     >
       <Icon
@@ -450,7 +451,10 @@ function ListCard({ list }) {
       />
       <div className="mt-3 min-w-0">
         <div className="flex items-center gap-2">
-          <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-content-primary">
+          <h3
+            className="min-w-0 flex-1 truncate text-base font-semibold text-content-primary"
+            title={list.name}
+          >
             {list.name}
           </h3>
           <span className="shrink-0 rounded-full border border-surface-border bg-surface-bg/50 px-2 py-1 text-xs text-content-muted">

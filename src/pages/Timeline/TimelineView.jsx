@@ -11,13 +11,15 @@ import {
 import {
   AppPage,
   PageHeader,
-  PageLoading,
   PageToolbar,
 } from "../../components/layout";
 import {
   Button,
+  GameCover,
+  SearchClearButton,
   SegmentedControl,
   SelectMenu,
+  Skeleton,
   StatusBadge,
   TextInput,
 } from "../../components/ui";
@@ -113,26 +115,20 @@ function PosterMedia({ game }) {
 
   return (
     <div className="relative h-48 w-full shrink-0 overflow-hidden rounded-2xl border border-surface-border bg-surface-elevated shadow-panel sm:h-64 sm:w-[22rem] lg:h-72 lg:w-[30rem]">
-      {src ? (
-        <>
-          <img
-            src={src}
-            alt=""
-            className="absolute inset-0 h-full w-full scale-105 object-cover opacity-35 blur-md"
-            loading="lazy"
-          />
-          <img
-            src={src}
-            alt=""
-            className="relative h-full w-full object-contain object-center"
-            loading="lazy"
-          />
-        </>
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-surface-card text-5xl font-semibold text-content-muted/35">
-          {gameInitials(game?.name)}
-        </div>
-      )}
+      <GameCover
+        src={src}
+        name={game?.name}
+        className="absolute inset-0 h-full w-full"
+        imageClassName="scale-105 opacity-35 blur-md"
+        fallbackClassName="opacity-40"
+      />
+      <GameCover
+        src={src}
+        name={game?.name}
+        fit="contain"
+        className="relative h-full w-full bg-transparent"
+        imageClassName="object-center"
+      />
     </div>
   );
 }
@@ -160,8 +156,7 @@ function ViewModeToggle({ viewMode, setViewMode }) {
       onChange={setViewMode}
       options={viewOptions}
       ariaLabel="Timeline view"
-      activeClassName="bg-action-primary text-content-on-primary shadow-sm shadow-primary/15"
-      inactiveClassName="text-content-secondary hover:bg-surface-border hover:text-content-primary"
+      variant="view"
     />
   );
 }
@@ -217,17 +212,13 @@ export function TimelineFilters({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search games in timeline"
-            className="pl-9 pr-9"
+            className="pl-9 pr-11"
           />
           {search ? (
-            <button
-              type="button"
+            <SearchClearButton
               onClick={() => setSearch("")}
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-content-muted transition-colors hover:bg-surface-elevated hover:text-content-primary"
-              aria-label="Clear timeline search"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+              label="Clear timeline search"
+            />
           ) : null}
         </label>
 
@@ -258,8 +249,13 @@ export function TimelineFilters({
                 key={option.value}
                 type="button"
                 size="sm"
-                variant={eventFilter === option.value ? "primary" : "secondary"}
+                variant={
+                  eventFilter === option.value
+                    ? "filterActive"
+                    : "secondary"
+                }
                 onClick={() => setEventFilter(option.value)}
+                aria-pressed={eventFilter === option.value}
               >
                 {option.label}
               </Button>
@@ -383,7 +379,10 @@ export function PosterEvent({ event, onOpen }) {
               <Icon className="h-5 w-5" aria-hidden="true" />
               <span>{meta.label}</span>
             </div>
-            <h2 className="mt-3 line-clamp-2 text-2xl font-semibold leading-snug text-content-primary sm:text-3xl">
+            <h2
+              className="mt-3 line-clamp-2 text-2xl font-semibold leading-snug text-content-primary sm:text-3xl"
+              title={event.title}
+            >
               {event.title}
             </h2>
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -413,17 +412,17 @@ export function BackdropEvent({ event, onOpen }) {
       >
         {src ? (
           <>
-            <img
+            <GameCover
               src={src}
-              alt=""
-              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-45 blur-md transition duration-500 group-hover:scale-[1.13]"
-              loading="lazy"
+              name={event.title}
+              className="absolute inset-0 h-full w-full"
+              imageClassName="scale-110 opacity-45 blur-md transition duration-500 group-hover:scale-[1.13]"
             />
-            <img
+            <GameCover
               src={src}
-              alt=""
-              className="absolute inset-y-0 right-0 h-full w-full object-cover object-center opacity-45 transition duration-500 group-hover:scale-[1.02] sm:w-[64%] sm:object-contain sm:opacity-90"
-              loading="lazy"
+              name={event.title}
+              className="absolute inset-y-0 right-0 h-full w-full bg-transparent sm:w-[64%]"
+              imageClassName="object-center opacity-45 transition duration-500 group-hover:scale-[1.02] sm:object-contain sm:opacity-90"
             />
           </>
         ) : (
@@ -441,7 +440,10 @@ export function BackdropEvent({ event, onOpen }) {
           </div>
 
           <div className="max-w-3xl pb-2 sm:pb-4">
-            <h2 className="line-clamp-2 pb-2 text-2xl font-semibold leading-[1.18] text-media-text drop-shadow-lg sm:text-4xl lg:text-5xl">
+            <h2
+              className="line-clamp-2 pb-2 text-2xl font-semibold leading-[1.18] text-media-text drop-shadow-lg sm:text-4xl lg:text-5xl"
+              title={event.title}
+            >
               {event.title}
             </h2>
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -483,15 +485,55 @@ export function TimelineGroup({ group, viewMode, onOpen }) {
   );
 }
 
-export function TimelineSkeleton() {
+export function TimelineSkeleton({ viewMode = "backdrop" }) {
   return (
     <AppPage width="wide">
-      <PageHeader
-        title="Timeline"
-        description="Your gaming activity over time."
-        icon={Clock3}
-      />
-      <PageLoading rows={4} className="pt-6" />
+      <div
+        className="space-y-5"
+        role="status"
+        aria-label="Loading timeline"
+        aria-busy="true"
+      >
+        <PageHeader
+          title="Timeline"
+          description="Started and finished dates from your backlog, grouped over time."
+          icon={Clock3}
+        />
+        <div className="flex flex-wrap gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-11 w-36 rounded-2xl" />
+          ))}
+        </div>
+        <Skeleton className="h-24 w-full rounded-panel" />
+        <div className="space-y-5 pt-2">
+          <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-3">
+            <Skeleton className="mx-auto h-4 w-4 rounded-full" />
+            <Skeleton className="h-5 w-56" />
+          </div>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-2 sm:grid-cols-[5rem_minmax(0,1fr)] sm:gap-3"
+            >
+              <div className="flex justify-center">
+                <Skeleton className="h-28 w-12 rounded-2xl sm:w-16" />
+              </div>
+              {viewMode === "poster" ? (
+                <div className="flex flex-col gap-4 rounded-2xl border border-surface-border bg-surface-card/60 p-3 sm:flex-row">
+                  <Skeleton className="h-48 w-full rounded-2xl sm:h-64 sm:w-[22rem]" />
+                  <div className="flex-1 space-y-4 py-4">
+                    <Skeleton className="h-5 w-36" />
+                    <Skeleton className="h-9 w-3/4" />
+                    <Skeleton className="h-7 w-28 rounded-full" />
+                  </div>
+                </div>
+              ) : (
+                <Skeleton className="h-48 w-full rounded-2xl sm:h-60 lg:h-64" />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </AppPage>
   );
 }

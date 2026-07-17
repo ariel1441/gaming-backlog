@@ -1,6 +1,6 @@
 # Completed Milestones
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This is a compact archive of completed product and engineering milestones. It
 exists so current planning files can contain only remaining work. For exact
@@ -105,6 +105,100 @@ flows.
   PostgreSQL-only and retired the process-local RAWG JSON runtime cache.
 - Added controlled catalog refresh scheduling, release/audit runbooks, schema
   contracts, focused service coverage, and browser coverage for metadata review.
+
+## UI/UX Consistency Phase 1A
+
+- Separated personal genre, RAWG metadata genre, and Steam integration chip
+  semantics while preserving all theme tokens.
+- Unified selected personal genres in Add/Edit with cards, game details,
+  Reviews, and manual-list rows.
+- Reused canonical status badges in Add/Edit previews.
+- Standardized page-level filter clearing, dropdown selection clearing, and
+  neutral search-clear controls across the main repeated surfaces.
+- Standardized personal/RAWG genre labels, private-list copy, and Steam Import
+  Review terminology, including the Steam Library shown-count separator.
+- Clarified sort-direction accessibility labels in Backlog and Reviews.
+
+## UI/UX Consistency Phase 1B
+
+- Added shared resilient `GameCover` artwork with missing/broken URL handling,
+  lazy loading, asynchronous decoding, source-change recovery, and consistent
+  initials/icon fallbacks.
+- Adopted shared artwork across Backlog, Lists, Reviews, Timeline, profiles,
+  Add/Edit/details, Discover/search, Steam, and metadata review surfaces.
+- Added full-title recovery to affected truncated game/list labels.
+- Allowed manual ranked lists to render from their own response without
+  waiting for the full backlog; smart-list resolution and Add Games still wait
+  for the data they require.
+
+## UI/UX Consistency Phase 2
+
+- Added semantic view-switch and connected-range variants to the shared
+  segmented control and removed page-specific state styling.
+- Added a distinct active-filter treatment across Backlog, Reviews, Timeline,
+  and Steam selection controls.
+- Standardized semantic control radius plus hover, pressed, focus-visible,
+  open, disabled, and loading-capable states in shared buttons and selectors.
+- Aligned repeated Backlog dropdown choices, list-type choices, Steam review
+  categories, and Settings avatar selections with the shared interaction
+  language.
+
+## UI/UX Consistency Phase 3
+
+- Separated manual-list metadata editing from autosaving game membership and
+  ranking management.
+- Unified manual and smart list detail editing with dirty-state and
+  Save/Discard/Keep editing protection.
+- Added smart quick-filter autosave status and stale-response protection,
+  batched multi-add feedback, breadcrumbs, and Poster/Row detail skeletons.
+
+## UI/UX Consistency Phase 4
+
+- Unified owner game viewing and editing inside the existing detail modal,
+  replacing the separate edit modal with one stable visual shell.
+- Made title, status, hours, score, personal genres, notes, and activity dates
+  editable in their existing display locations.
+- Added a dedicated Metadata tab for RAWG matching plus Steam link and
+  achievement actions.
+- Added dirty-state feedback and Save/Discard/Keep editing protection when
+  cancelling or closing with unsaved changes.
+
+## UI/UX Consistency Phase 6
+
+- Standardized pending, failed, and successfully empty page states across the
+  priority catalog, activity, review, profile, settings, and Steam routes.
+- Added retryable page errors and shape-matching skeletons for Reviews,
+  Timeline, Discover, Steam Library, list details, and lazy route transitions.
+- Protected Discover and Steam Library loading states from stale overlapping
+  responses.
+
+## UI/UX Consistency Phase 7
+
+- Increased important shared button and icon-button targets, and added
+  hover/focus tooltips to important icon-only actions without relying on
+  browser title attributes.
+- Converted Settings navigation into URL-addressable tabs with selected and
+  panel relationships, roving focus, arrow/Home/End keyboard navigation, and a
+  clearer narrow-screen horizontal-scroll affordance.
+- Made Backlog and Reviews sort direction visible as text while retaining an
+  accessible description of the current state and next action.
+- Added consistent focus-visible treatment to remaining high-priority custom
+  controls, improved long Steam-name wrapping, and expanded Steam row actions.
+- Made shared modal footers stack into full-width actions on very narrow
+  screens without changing the mobile destination structure.
+
+## UI/UX Consistency Phase 8
+
+- Clarified Steam Library as the sync, browse, and inspection surface, with
+  Steam Import Review owning import, match, and duplicate-link decisions.
+- Kept Sync library as the Library primary action and added a recommended next
+  decision to Steam Import Review based on the current queue.
+- Moved batch achievement maintenance, whole-category actions, duplicate
+  cleanup, and per-app connection repair behind progressive disclosure.
+- Removed direct add/approve decisions from Steam Library details while keeping
+  match and link repair available as supporting tools.
+- Improved Steam category explanations, long-name wrapping, contextual row
+  actions, and narrow-screen access to the dense Library table.
 
 ## Documentation And Workflow
 

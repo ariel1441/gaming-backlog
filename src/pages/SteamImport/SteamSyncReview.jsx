@@ -1,4 +1,4 @@
-import { Badge, Button, Modal } from "../../components/ui";
+import { Badge, Button, GameCover, Modal } from "../../components/ui";
 import {
   formatSteamDate,
   formatSteamPlaytime,
@@ -153,21 +153,17 @@ function SyncReviewRow({
   return (
     <article className="grid gap-3 rounded-lg border border-surface-border bg-surface-bg/35 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="flex min-w-0 items-center gap-3">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt=""
-            className="h-14 w-24 rounded object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-14 w-24 items-center justify-center rounded bg-surface-elevated text-content-muted">
-            {String(title || "?").charAt(0)}
-          </div>
-        )}
+        <GameCover
+          src={imageUrl}
+          name={title}
+          className="h-14 w-24 shrink-0 rounded"
+        />
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-sm font-semibold text-content-primary">
+            <h4
+              className="truncate text-sm font-semibold text-content-primary"
+              title={title}
+            >
               {title}
             </h4>
             {item.currentStatus ? <Badge>{item.currentStatus}</Badge> : null}
@@ -217,7 +213,7 @@ function SyncReviewRow({
             size="sm"
             onClick={onReviewImport}
           >
-            Review import
+            Open Steam Import Review
           </Button>
         )}
         <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>

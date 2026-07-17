@@ -82,7 +82,7 @@ export function SteamAccountPanel({
             <>
               <Button
                 type="button"
-                variant="primary"
+                variant="secondary"
                 onClick={onSync}
                 disabled={syncing}
               >
@@ -164,94 +164,108 @@ export function DuplicateCleanupPanel({
   }
 
   return (
-    <section className="rounded-lg border border-surface-border bg-surface-card p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-content-primary">
-            Duplicate cleanup
-          </h2>
-          <p className="mt-1 text-sm text-content-muted">
-            Merge likely duplicate backlog rows while keeping the best row and
-            moving Steam links to it.
-          </p>
-        </div>
-        <Button type="button" variant="secondary" size="sm" onClick={onRefresh}>
-          {loading ? "Scanning..." : "Scan again"}
-        </Button>
-      </div>
+    <details className="mt-4 rounded-lg border border-surface-border bg-surface-bg/20">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70">
+        <span>Duplicate cleanup</span>
+        <Badge variant={groups.length ? "warning" : "default"}>
+          {loading
+            ? "Scanning"
+            : `${groups.length} group${groups.length === 1 ? "" : "s"}`}
+        </Badge>
+      </summary>
 
-      {loading ? (
-        <div className="mt-4 rounded-lg border border-surface-border bg-surface-bg/35 px-3 py-6 text-center text-sm text-content-muted">
-          Scanning duplicate backlog rows...
+      <div className="border-t border-surface-border p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p className="max-w-2xl text-sm text-content-muted">
+            Merge likely duplicate backlog rows while keeping the best row and
+            moving Steam links to it. Use this only when duplicate backlog rows
+            are visible.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onRefresh}
+          >
+            {loading ? "Scanning..." : "Scan again"}
+          </Button>
         </div>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {groups.map((groupData) => {
-            const keep = groupData.games.find(
-              (game) => game.id === groupData.suggestedKeepId,
-            );
-            return (
-              <div
-                key={groupData.key}
-                className="rounded-lg border border-surface-border bg-surface-bg/35 p-3"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-content-primary">
-                      {groupData.reason === "catalog"
-                        ? "Same catalog game"
-                        : "Same normalized title"}
+        {loading ? (
+          <div className="mt-4 rounded-lg border border-surface-border bg-surface-card/45 px-3 py-6 text-center text-sm text-content-muted">
+            Scanning duplicate backlog rows...
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {groups.map((groupData) => {
+              const keep = groupData.games.find(
+                (game) => game.id === groupData.suggestedKeepId,
+              );
+              return (
+                <div
+                  key={groupData.key}
+                  className="rounded-lg border border-surface-border bg-surface-bg/35 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-content-primary">
+                        {groupData.reason === "catalog"
+                          ? "Same catalog game"
+                          : "Same normalized title"}
+                      </div>
+                      <div className="mt-1 text-xs text-content-muted">
+                        Suggested keep: {keep?.name || "best row"} -{" "}
+                        {groupData.games.length} rows
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs text-content-muted">
-                      Suggested keep: {keep?.name || "best row"} -{" "}
-                      {groupData.games.length} rows
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    onClick={() => onMerge(groupData)}
-                    disabled={mergingKey === groupData.key}
-                  >
-                    {mergingKey === groupData.key
-                      ? "Merging..."
-                      : "Merge group"}
-                  </Button>
-                </div>
-                <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                  {groupData.games.map((game) => (
-                    <div
-                      key={game.id}
-                      className={`rounded-lg border px-3 py-2 text-sm ${
-                        game.id === groupData.suggestedKeepId
-                          ? "border-primary/40 bg-primary/10"
-                          : "border-surface-border bg-surface-card/45"
-                      }`}
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => onMerge(groupData)}
+                      disabled={mergingKey === groupData.key}
                     >
-                      <div className="truncate font-medium text-content-primary">
-                        {game.name}
+                      {mergingKey === groupData.key
+                        ? "Merging..."
+                        : "Merge group"}
+                    </Button>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {groupData.games.map((game) => (
+                      <div
+                        key={game.id}
+                        className={`rounded-lg border px-3 py-2 text-sm ${
+                          game.id === groupData.suggestedKeepId
+                            ? "border-primary/50 bg-surface-selected"
+                            : "border-surface-border bg-surface-card/45"
+                        }`}
+                      >
+                        <div
+                          className="break-words font-medium text-content-primary"
+                          title={game.name}
+                        >
+                          {game.name}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
+                          <span>#{game.id}</span>
+                          <span>{game.status}</span>
+                          {game.steamSourceCount ? (
+                            <span>
+                              {game.steamSourceCount} Steam link
+                              {game.steamSourceCount === 1 ? "" : "s"}
+                            </span>
+                          ) : null}
+                          {game.hasThoughts ? <span>notes</span> : null}
+                        </div>
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
-                        <span>#{game.id}</span>
-                        <span>{game.status}</span>
-                        {game.steamSourceCount ? (
-                          <span>
-                            {game.steamSourceCount} Steam link
-                            {game.steamSourceCount === 1 ? "" : "s"}
-                          </span>
-                        ) : null}
-                        {game.hasThoughts ? <span>notes</span> : null}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -270,31 +284,32 @@ export function ReviewCategoryNav({
             key={category.value}
             type="button"
             onClick={() => onChange(category.value)}
-            className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg ${
+            aria-pressed={active}
+            className={`flex min-w-0 items-center gap-3 rounded-control border px-3 py-3 text-left transition-[background-color,border-color,color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg active:translate-y-px ${
               active
-                ? "border-primary bg-primary/10 text-content-primary shadow-glow-primary"
-                : "border-surface-border bg-surface-bg/30 text-content-secondary hover:border-surface-border-strong hover:bg-surface-elevated/60 hover:text-content-primary"
+                ? "border-primary/55 bg-surface-selected text-content-primary shadow-sm shadow-primary/10 ring-1 ring-inset ring-primary/20"
+                : "border-surface-border bg-surface-bg/30 text-content-secondary hover:border-primary/35 hover:bg-surface-selected/55 hover:text-primary-light"
             }`}
           >
             {Icon ? (
               <span
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? "bg-primary/15 text-primary-light" : "bg-surface-elevated text-content-muted"}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? "bg-action-primary text-content-on-primary shadow-sm" : "bg-surface-elevated text-content-muted"}`}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </span>
             ) : null}
             <span className="min-w-0 flex-1">
               <span
-                className={`block truncate text-sm font-semibold ${active ? "text-primary-light" : ""}`}
+                className={`block whitespace-normal text-sm font-semibold ${active ? "text-primary-light" : ""}`}
               >
                 {category.label}
               </span>
-              <span className="mt-0.5 block truncate text-xs text-content-muted">
+              <span className="mt-0.5 block line-clamp-2 text-xs leading-4 text-content-muted">
                 {category.description}
               </span>
             </span>
             <span
-              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active ? "bg-primary/20 text-primary-light" : "bg-surface-elevated text-content-secondary"}`}
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active ? "bg-action-primary text-content-on-primary" : "bg-surface-elevated text-content-secondary"}`}
             >
               {category.count || 0}
             </span>
@@ -313,6 +328,7 @@ export function ReviewGroupFilters({
   readyGroups = [],
   onChange,
 }) {
+  const groupCounts = summary?.active?.groups || summary?.groups || {};
   const groups =
     activeCategory === "ready"
       ? readyGroups
@@ -337,7 +353,7 @@ export function ReviewGroupFilters({
         >
           {item.label}
           <span className="ml-1 text-xs opacity-75">
-            {summary?.groups?.[item.value] || 0}
+            {groupCounts[item.value] || 0}
           </span>
         </Button>
       ))}
@@ -378,7 +394,7 @@ export function SelectionActionBar({
             type="button"
             onClick={onToggleAllVisible}
             disabled={!visibleSelectableCount}
-            className="text-xs text-content-muted hover:text-content-primary disabled:opacity-50"
+            className="min-h-11 rounded-control px-2 text-xs text-content-muted hover:bg-surface-elevated hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 disabled:opacity-50"
           >
             {allVisibleSelected
               ? "Clear visible selection"

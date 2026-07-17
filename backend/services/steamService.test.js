@@ -564,6 +564,61 @@ test("listSteamImportCandidates group filters match exclusive summary piles", as
   );
 });
 
+test("Steam import summaries exclude ignored rows from active review groups", async () => {
+  await withMockPoolQuery(
+    async (text) => {
+      const sql = compact(text);
+      if (sql.startsWith("SELECT c.id, c.steam_name")) return { rows: [] };
+      if (sql.startsWith("SELECT COUNT(*)")) return { rows: [{ total: 0 }] };
+      if (sql.startsWith("SELECT c.*")) return { rows: [] };
+      if (sql.startsWith("SELECT c.import_status")) {
+        return {
+          rows: [
+            {
+              import_status: "pending",
+              proposed_catalog_game_id: null,
+              user_selected_catalog_game_id: null,
+              duplicate_game_id: null,
+              filtered_reason: null,
+              suggested_status: null,
+              selected_status: null,
+              steam_name: "Active Game",
+              playtime_minutes_forever: 0,
+              last_played_at: null,
+              first_play_observed_at: null,
+            },
+            {
+              import_status: "ignored",
+              proposed_catalog_game_id: null,
+              user_selected_catalog_game_id: null,
+              duplicate_game_id: null,
+              filtered_reason: null,
+              suggested_status: null,
+              selected_status: null,
+              steam_name: "Ignored Game",
+              playtime_minutes_forever: 0,
+              last_played_at: null,
+              first_play_observed_at: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    async () => {
+      const payload = await listSteamImportCandidates(7, {
+        status: "ignored",
+        group: "all",
+      });
+
+      assert.equal(payload.summary.groups.needs_match, 2);
+      assert.equal(payload.summary.active.groups.needs_match, 1);
+      assert.equal(payload.summary.ignored, 1);
+      assert.equal(payload.summary.active.ignored, 0);
+    },
+  );
+});
+
 test("applySteamStatusSuggestion updates only a Steam-linked game", async () => {
   await withMockPoolQuery(
     async (text, values) => {

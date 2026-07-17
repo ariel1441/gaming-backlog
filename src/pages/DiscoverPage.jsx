@@ -28,6 +28,7 @@ import {
 } from "../services/catalogService";
 import {
   AppPage,
+  PageError,
   PageHeader,
   PageSection,
   PageToolbar,
@@ -38,7 +39,9 @@ import {
   EmptyState,
   Field,
   Modal,
+  SearchClearButton,
   SelectMenu,
+  Skeleton,
   TextInput,
   Textarea,
   useToast,
@@ -105,11 +108,14 @@ export default function DiscoverPage() {
   const [cacheStatus, setCacheStatus] = useState("fresh");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState(emptyAddDraft);
+  const catalogLoadSequence = useRef(0);
 
   const canSearch = isAuthenticated && debouncedQuery.trim().length >= 3;
   const isBrowseMode = isAuthenticated && debouncedQuery.trim().length < 3;
@@ -127,12 +133,17 @@ export default function DiscoverPage() {
 
   useEffect(() => {
     if (authLoading || !isAuthenticated) return undefined;
+    const sequence = catalogLoadSequence.current + 1;
+    catalogLoadSequence.current = sequence;
+    setLoadError("");
     if (debouncedQuery.trim().length > 0 && debouncedQuery.trim().length < 3) {
+      setLoading(false);
       setResults([]);
       setShelves([]);
       setMessage("Type at least 3 characters to search the catalog.");
       return undefined;
     }
+    setMessage("");
     if (isBrowseMode) {
       setLoading(true);
       browseCatalog(
@@ -140,6 +151,7 @@ export default function DiscoverPage() {
         { auth: false, headers: getAuthHeaders() },
       )
         .then((payload) => {
+          if (catalogLoadSequence.current !== sequence) return;
           setResults(payload?.results || []);
           setShelves(payload?.shelves || []);
           setFacets(payload?.facets || { genres: [] });
@@ -152,18 +164,20 @@ export default function DiscoverPage() {
               : "The local catalog is still empty. Search for a few games to start growing it.",
           );
         })
-        .catch(() => {
+        .catch((error) => {
+          if (catalogLoadSequence.current !== sequence) return;
           setResults([]);
           setShelves([]);
-          setMessage("Catalog cache is empty. Search for a game to begin.");
+          setLoadError(error.message || "Could not load the catalog.");
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (catalogLoadSequence.current === sequence) setLoading(false);
+        });
       return undefined;
     }
 
     const ac = new AbortController();
     setLoading(true);
-    setMessage("");
     setShelves([]);
     searchCatalog(debouncedQuery, {
       signal: ac.signal,
@@ -171,6 +185,7 @@ export default function DiscoverPage() {
       headers: getAuthHeaders(),
     })
       .then((payload) => {
+        if (catalogLoadSequence.current !== sequence) return;
         setResults(payload?.results || []);
         setTotal(payload?.results?.length || 0);
         setTotalPages(1);
@@ -182,12 +197,17 @@ export default function DiscoverPage() {
         }
       })
       .catch((error) => {
-        if (error.name !== "AbortError") {
+        if (
+          error.name !== "AbortError" &&
+          catalogLoadSequence.current === sequence
+        ) {
           setResults([]);
-          setMessage(error.message || "Could not search the catalog.");
+          setLoadError(error.message || "Could not search the catalog.");
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (catalogLoadSequence.current === sequence) setLoading(false);
+      });
     return () => ac.abort();
   }, [
     authLoading,
@@ -198,6 +218,7 @@ export default function DiscoverPage() {
     isAuthenticated,
     isBrowseMode,
     page,
+    retryKey,
   ]);
 
   useEffect(() => {
@@ -312,7 +333,11 @@ export default function DiscoverPage() {
     }
   };
 
-  if (!authLoading && !isAuthenticated) {
+  if (authLoading) {
+    return <DiscoverSkeleton />;
+  }
+
+  if (!isAuthenticated) {
     return (
       <AppPage width="full">
         <PageHeader
@@ -355,8 +380,14 @@ export default function DiscoverPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search games..."
-            className="h-11 rounded-xl bg-surface-elevated/45 pl-10"
+            className="h-11 rounded-xl bg-surface-elevated/45 pl-10 pr-11"
           />
+          {query ? (
+            <SearchClearButton
+              onClick={() => setQuery("")}
+              label="Clear Discover search"
+            />
+          ) : null}
         </div>
       </PageToolbar>
 
@@ -443,12 +474,19 @@ export default function DiscoverPage() {
         {loading ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
-              <div
-                key={index}
-                className="h-44 animate-pulse rounded-xl border border-surface-border bg-surface-card"
-              />
+              <Skeleton key={index} className="h-44 rounded-xl" />
             ))}
           </div>
+        ) : loadError ? (
+          <PageError
+            title={
+              canSearch
+                ? "Could not search the catalog."
+                : "Could not load Discover."
+            }
+            description={loadError}
+            onRetry={() => setRetryKey((value) => value + 1)}
+          />
         ) : results.length || shelves.length ? (
           <div className="space-y-8">
             {isBrowseMode && !hasBrowseFilters && shelves.length ? (
@@ -546,6 +584,36 @@ export default function DiscoverPage() {
         onAdd={addSelected}
         onOpenBacklog={() => navigate("/")}
       />
+    </AppPage>
+  );
+}
+
+function DiscoverSkeleton() {
+  return (
+    <AppPage width="full">
+      <div
+        className="space-y-6"
+        role="status"
+        aria-label="Loading Discover"
+        aria-busy="true"
+      >
+        <PageHeader
+          title="Discover"
+          description="Browse curated catalog shelves or search for something specific."
+          icon={Compass}
+        />
+        <Skeleton className="h-20 w-full rounded-panel" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-20 rounded-control" />
+          ))}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-44 rounded-xl" />
+          ))}
+        </div>
+      </div>
     </AppPage>
   );
 }

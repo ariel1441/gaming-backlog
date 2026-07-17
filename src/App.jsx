@@ -3,7 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { StatusGroupsProvider } from "./contexts/StatusGroupsContext";
 import { ConfirmProvider, ToastProvider } from "./components/ui";
-import { AppPage, PageLoading } from "./components/layout";
+import { RouteLoading } from "./components/layout";
 import AppShell from "./components/AppShell";
 import { GamesProvider } from "./hooks/useGames";
 import { loadRoute } from "./config/routeLoaders";
@@ -21,14 +21,6 @@ const TimelinePage = lazy(() => loadRoute("/timeline"));
 const ListsPage = lazy(() => loadRoute("/lists"));
 const CustomListPage = lazy(() => loadRoute("/lists/:id"));
 const NotFoundPage = lazy(() => loadRoute("*"));
-
-function RouteLoading() {
-  return (
-    <AppPage width="wide">
-      <PageLoading rows={5} />
-    </AppPage>
-  );
-}
 
 const App = () => {
   return (

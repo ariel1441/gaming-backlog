@@ -13,7 +13,7 @@ import {
   Share2,
 } from "lucide-react";
 import ProfileAvatar from "./ProfileAvatar";
-import { Button, StatusBadge } from "./ui";
+import { Button, GameCover, StatusBadge } from "./ui";
 import { parseGameDate } from "../utils/gameDateInsights";
 import { profileDisplayName, profileHandle } from "../utils/userProfile";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
@@ -139,7 +139,10 @@ export default function ProfileSnapshot({
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-content-muted">
                   {title}
                 </div>
-                <h1 className="mt-1 truncate text-3xl font-semibold leading-tight text-content-primary">
+                <h1
+                  className="mt-1 truncate text-3xl font-semibold leading-tight text-content-primary"
+                  title={displayName}
+                >
                   {displayName}
                 </h1>
                 <div className="mt-1 truncate text-sm text-content-muted">
@@ -339,20 +342,17 @@ function FavoriteGame({ game, onClick }) {
         onClick ? "transition-colors hover:border-primary/50" : "",
       ].join(" ")}
     >
-      {game.cover ? (
-        <img
-          src={game.cover}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover opacity-85 transition-opacity group-hover:opacity-100"
-        />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-surface-bg text-3xl font-semibold text-content-muted">
-          {String(game.name || "?").charAt(0)}
-        </div>
-      )}
+      <GameCover
+        src={game.cover}
+        name={game.name}
+        className="absolute inset-0 h-full w-full"
+        imageClassName="opacity-85 transition-opacity group-hover:opacity-100"
+      />
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-media-overlay/90 to-transparent p-2">
-        <div className="line-clamp-2 text-xs font-semibold text-media-text">
+        <div
+          className="line-clamp-2 text-xs font-semibold text-media-text"
+          title={game.name}
+        >
           {game.name}
         </div>
       </div>
@@ -403,20 +403,16 @@ function ShowcaseGame({ game, onClick }) {
           : "",
       ].join(" ")}
     >
-      {game.cover ? (
-        <img
-          src={game.cover}
-          alt=""
-          loading="lazy"
-          className="h-14 w-10 shrink-0 rounded object-cover"
-        />
-      ) : (
-        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-surface-elevated text-xs font-semibold text-content-muted">
-          {String(game.name || "?").charAt(0)}
-        </div>
-      )}
+      <GameCover
+        src={game.cover}
+        name={game.name}
+        className="h-14 w-10 shrink-0 rounded"
+      />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-content-primary">
+        <div
+          className="truncate text-sm font-medium text-content-primary"
+          title={game.name}
+        >
           {game.name}
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-content-muted">

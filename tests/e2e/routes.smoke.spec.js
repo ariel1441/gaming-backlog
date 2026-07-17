@@ -8,7 +8,7 @@ const routes = [
   ["/reviews", "Reviews"],
   ["/insights", "Insights"],
   ["/steam/library", "Steam Library"],
-  ["/steam/import", "Steam Review"],
+  ["/steam/import", "Steam Import Review"],
   ["/me", "@smoke_user"],
   ["/settings", "Settings"],
 ];

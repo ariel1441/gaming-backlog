@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   Database,
@@ -33,29 +34,88 @@ function formatDate(value) {
 }
 
 export function SettingsNav({ activeSection, onSelect }) {
+  const tabRefs = useRef([]);
+
+  const moveToTab = (index) => {
+    const section = settingsSections[index];
+    if (!section) return;
+    onSelect(section.id);
+    requestAnimationFrame(() => {
+      const tab = tabRefs.current[index];
+      tab?.focus();
+      tab?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    });
+  };
+
+  const handleKeyDown = (event, index) => {
+    let nextIndex = index;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % settingsSections.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex =
+        (index - 1 + settingsSections.length) % settingsSections.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = settingsSections.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    moveToTab(nextIndex);
+  };
+
   return (
     <nav aria-label="Settings sections">
-      <div className="flex gap-2 overflow-x-auto border-b border-surface-border pb-3">
-        {settingsSections.map(({ id, label, icon: Icon }) => {
-          const active = id === activeSection;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onSelect(id)}
-              className={[
-                "flex min-w-max items-center gap-2 rounded-control px-3 py-2.5 text-left text-sm font-medium transition-colors",
-                active
-                  ? "bg-primary/15 text-primary-light"
-                  : "text-content-secondary hover:bg-surface-elevated hover:text-content-primary",
-              ].join(" ")}
-            >
-              <Icon className="h-4 w-4" aria-hidden="true" />
-              {label}
-            </button>
-          );
-        })}
+      <div className="relative">
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          aria-orientation="horizontal"
+          className="flex gap-2 overflow-x-auto border-b border-surface-border pb-3 pr-8 [scrollbar-width:thin] sm:pr-0"
+        >
+          {settingsSections.map(({ id, label, icon: Icon }, index) => {
+            const active = id === activeSection;
+            return (
+              <button
+                key={id}
+                ref={(node) => {
+                  tabRefs.current[index] = node;
+                }}
+                id={`settings-tab-${id}`}
+                type="button"
+                role="tab"
+                tabIndex={active ? 0 : -1}
+                aria-selected={active}
+                aria-controls={`settings-panel-${id}`}
+                onClick={() => moveToTab(index)}
+                onKeyDown={(event) => handleKeyDown(event, index)}
+                className={[
+                  "flex min-h-11 min-w-max items-center gap-2 rounded-control border px-3 py-2.5 text-left text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform]",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg active:translate-y-px",
+                  active
+                    ? "border-primary/55 bg-surface-selected text-primary-light shadow-sm shadow-primary/10 ring-1 ring-inset ring-primary/20"
+                    : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
+                ].join(" ")}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-surface-bg via-surface-bg/90 to-transparent sm:hidden"
+          aria-hidden="true"
+        />
       </div>
+      <p className="mt-2 text-xs text-content-muted sm:hidden">
+        Swipe or scroll to see every settings section.
+      </p>
     </nav>
   );
 }

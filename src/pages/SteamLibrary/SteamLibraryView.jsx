@@ -11,6 +11,7 @@ import {
   Button,
   EmptyState,
   Field,
+  GameCover,
   IconButton,
   Modal,
   SelectMenu,
@@ -148,23 +149,16 @@ export function SteamLibraryRow({
         : "";
 
   return (
-    <article className="grid grid-cols-[minmax(220px,2fr)_72px_106px_minmax(120px,0.9fr)_minmax(145px,1fr)_108px] items-center gap-2 px-3 py-2.5 transition-colors hover:bg-surface-elevated/35">
+    <article className="grid min-w-[900px] grid-cols-[minmax(220px,2fr)_72px_106px_minmax(120px,0.9fr)_minmax(145px,1fr)_150px] items-center gap-2 px-3 py-2.5 transition-colors hover:bg-surface-elevated/35">
       <div className="flex min-w-0 items-center gap-3">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt=""
-            className="h-11 w-[74px] shrink-0 rounded object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-11 w-[74px] shrink-0 items-center justify-center rounded bg-surface-elevated text-content-muted">
-            {String(app.steamName || "?").charAt(0)}
-          </div>
-        )}
+        <GameCover
+          src={imageUrl}
+          name={app.steamName}
+          className="h-11 w-[74px] shrink-0 rounded"
+        />
         <div className="min-w-0">
           <h2
-            className="truncate text-sm font-semibold text-content-primary"
+            className="line-clamp-2 text-sm font-semibold leading-4 text-content-primary"
             title={app.steamName || ""}
           >
             {app.steamName}
@@ -262,14 +256,14 @@ export function SteamLibraryRow({
           <Button
             type="button"
             size="sm"
-            variant="primary"
+            variant="secondary"
             onClick={() =>
               navigate(
                 `/steam/import?status=active&group=${app.firstPlayObservedAt ? "newly_played" : "all"}&q=${encodeURIComponent(app.steamName || "")}`,
               )
             }
           >
-            Review
+            Review import
           </Button>
         ) : null}
         <IconButton
@@ -297,7 +291,7 @@ function DetailItem({ label, value }) {
   return (
     <div className="rounded-lg border border-surface-border bg-surface-bg/35 px-3 py-2">
       <div className="text-xs text-content-muted">{label}</div>
-      <div className="mt-1 text-sm font-medium text-content-primary">
+      <div className="mt-1 break-words text-sm font-medium text-content-primary">
         {value || "None"}
       </div>
     </div>
@@ -311,8 +305,6 @@ export function SteamLibraryDrawer({
   syncingAchievementGameId,
   onHide,
   onRestore,
-  onAccept,
-  onImport,
   onChangeMatch,
   onLinkExisting,
   onReview,
@@ -333,7 +325,6 @@ export function SteamLibraryDrawer({
   const canSyncAchievements =
     !!linkedGameId &&
     (app.importStatus === "attached" || app.importStatus === "imported");
-  const canImport = !!app.proposedCatalogGameId || !!app.duplicateGameId;
   const storeUrl = `https://store.steampowered.com/app/${app.steamAppId}`;
   const isLinked =
     app.importStatus === "attached" || app.importStatus === "imported";
@@ -349,17 +340,12 @@ export function SteamLibraryDrawer({
     >
       <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
         <div className="space-y-3">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-auto w-full rounded-lg object-cover"
-            />
-          ) : (
-            <div className="flex aspect-[184/69] w-full items-center justify-center rounded-lg bg-surface-elevated text-content-muted">
-              {String(app.steamName || "?").charAt(0)}
-            </div>
-          )}
+          <GameCover
+            src={imageUrl}
+            name={app.steamName}
+            variant="steam"
+            className="w-full rounded-lg"
+          />
           <div className="flex flex-wrap gap-2">
             <Badge variant={state.variant}>{state.label}</Badge>
             {suggestion ? (
@@ -499,10 +485,14 @@ export function SteamLibraryDrawer({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-content-primary">
-                  Next actions
+                  Recommended next step
                 </h3>
                 <p className="mt-1 text-xs text-content-muted">
-                  Actions are scoped to this Steam app only.
+                  {isLinked
+                    ? "This Steam app is already connected to your backlog."
+                    : isHidden
+                      ? "Restore this app before it can return to Import Review."
+                      : "Continue in Steam Import Review to make the backlog decision."}
                 </p>
               </div>
               <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
@@ -517,62 +507,58 @@ export function SteamLibraryDrawer({
                     {syncingAchievements ? "Syncing..." : "Sync achievements"}
                   </Button>
                 ) : null}
-                <Button type="button" variant="secondary" onClick={onReview}>
-                  Open in import
-                </Button>
-                {!isLinked ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={onChangeMatch}
-                  >
-                    {app.proposedCatalogGameId
-                      ? "Change match"
-                      : "Choose match"}
-                  </Button>
-                ) : null}
-                {!isHidden && !isLinked ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={onLinkExisting}
-                  >
-                    Link existing
-                  </Button>
-                ) : null}
                 {isHidden ? (
                   <Button type="button" variant="primary" onClick={onRestore}>
                     Restore
-                  </Button>
-                ) : !isLinked ? (
-                  <Button type="button" variant="ghost" onClick={onHide}>
-                    Hide
-                  </Button>
-                ) : null}
-                {!app.duplicateGameId &&
-                app.proposedCatalogGameId &&
-                app.importStatus !== "accepted" &&
-                !isLinked ? (
-                  <Button type="button" variant="secondary" onClick={onAccept}>
-                    Approve match
                   </Button>
                 ) : null}
                 {canReview ? (
                   <Button
                     type="button"
                     variant="primary"
-                    onClick={canImport ? onImport : onReview}
+                    onClick={onReview}
                   >
-                    {canImport
-                      ? app.duplicateGameId
-                        ? "Link to backlog"
-                        : "Add to backlog"
-                      : "Review"}
+                    Continue in Import Review
                   </Button>
                 ) : null}
               </div>
             </div>
           </section>
+
+          {!isLinked ? (
+            <details className="rounded-lg border border-surface-border bg-surface-bg/20">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70">
+                <span>Connection repair</span>
+                <span className="text-xs font-normal text-content-muted">
+                  match, link, or hide
+                </span>
+              </summary>
+              <div className="flex flex-wrap gap-2 border-t border-surface-border p-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={onChangeMatch}
+                  disabled={isHidden}
+                >
+                  {app.proposedCatalogGameId ? "Change match" : "Choose match"}
+                </Button>
+                {!isHidden ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={onLinkExisting}
+                  >
+                    Link existing backlog game
+                  </Button>
+                ) : null}
+                {!isHidden ? (
+                  <Button type="button" variant="ghost" onClick={onHide}>
+                    Hide from review
+                  </Button>
+                ) : null}
+              </div>
+            </details>
+          ) : null}
         </div>
       </div>
     </Modal>

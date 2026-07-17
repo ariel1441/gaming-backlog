@@ -113,7 +113,7 @@ export default function Modal({
         </div>
 
         {footer ? (
-          <div className="flex shrink-0 justify-end gap-3 border-t border-surface-border/65 bg-surface-elevated/55 p-5">
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-surface-border/65 bg-surface-elevated/55 p-4 [&>*]:w-full min-[420px]:flex-row min-[420px]:justify-end min-[420px]:gap-3 min-[420px]:p-5 min-[420px]:[&>*]:w-auto">
             {footer}
           </div>
         ) : null}

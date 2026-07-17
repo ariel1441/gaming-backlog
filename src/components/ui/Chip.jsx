@@ -3,8 +3,12 @@ import React from "react";
 const variants = {
   metadata:
     "border-metadata-border/70 bg-metadata-surface/75 text-metadata-text",
+  metadataGenre:
+    "border-metadata-border/70 bg-metadata-surface/75 text-metadata-text hover:border-metadata-border hover:bg-metadata-surface",
+  personalGenre:
+    "border-primary/35 bg-primary/12 text-primary-light hover:border-primary/55 hover:bg-primary/16",
   genre:
-    "border-integration-border/70 bg-integration-surface/80 text-integration-steam hover:border-integration-steam/70 hover:bg-integration-surface",
+    "border-primary/35 bg-primary/12 text-primary-light hover:border-primary/55 hover:bg-primary/16",
   primary:
     "border-primary/35 bg-primary/12 text-primary-light hover:border-primary/55 hover:bg-primary/16",
   integration:

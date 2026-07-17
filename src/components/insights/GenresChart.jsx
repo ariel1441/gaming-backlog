@@ -46,7 +46,7 @@ export default function GenresChart({
     <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-semibold text-content-primary">
-          Genres ({genreType === "my" ? "My Genre" : "RAWG Genre"})
+          Genres ({genreType === "my" ? "My genres" : "RAWG genres"})
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
           <Segmented
@@ -81,7 +81,8 @@ export default function GenresChart({
       {!data?.length ? (
         <div className="text-sm text-content-muted">
           No data. Tag some games with{" "}
-          <span className="font-medium">My Genre</span> to populate this chart.
+          <span className="font-medium">My genres</span> to populate this
+          chart.
         </div>
       ) : (
         <div className="overflow-x-auto">

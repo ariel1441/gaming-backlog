@@ -124,13 +124,13 @@ export default function BacklogToolbar({
                   label="Pick a surprise game"
                   title="Surprise me"
                   variant="ghost"
-                  className="hidden h-10 w-10 rounded-xl sm:inline-flex xl:hidden"
+                  className="hidden h-10 w-10 rounded-control sm:inline-flex xl:hidden"
                 />
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={actions.surprise}
-                  className="hidden h-10 rounded-xl px-3.5 xl:inline-flex"
+                  className="hidden h-10 px-3.5 xl:inline-flex"
                   title="Pick a surprise game"
                 >
                   <Dice5 className="h-4 w-4" aria-hidden="true" />
@@ -143,7 +143,7 @@ export default function BacklogToolbar({
                 type="button"
                 variant="primary"
                 onClick={actions.add}
-                className="h-10 rounded-xl px-3.5 sm:px-4"
+                className="h-10 px-3.5 sm:px-4"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Add game</span>
@@ -157,15 +157,22 @@ export default function BacklogToolbar({
         <div className="mt-3 flex items-center gap-2 md:hidden">
           <Button
             type="button"
-            variant={mobileControlsOpen ? "primary" : "secondary"}
+            variant={mobileControlsOpen ? "filterActive" : "secondary"}
             onClick={() => setMobileControlsOpen((value) => !value)}
-            className="h-10 flex-1 rounded-xl"
+            className="h-10 flex-1"
             aria-expanded={mobileControlsOpen}
           >
             <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
             Filters and view
             {filters.count ? (
-              <span className="rounded-full border border-primary/25 bg-primary/12 px-2 py-0.5 text-xs text-content-primary">
+              <span
+                className={[
+                  "rounded-full border px-2 py-0.5 text-xs font-semibold",
+                  mobileControlsOpen
+                    ? "border-content-on-primary/20 bg-content-on-primary/18 text-content-on-primary"
+                    : "border-primary/35 bg-surface-selected text-primary-light",
+                ].join(" ")}
+              >
                 {filters.count}
               </span>
             ) : null}
@@ -188,7 +195,7 @@ export default function BacklogToolbar({
                 onClear={() => filters.setSelectedStatuses([])}
               />
               <FilterDropdown
-                label="My Genre"
+                label="My genres"
                 options={[
                   ...filters.allMyGenres,
                   { value: NO_PERSONAL_GENRE_FILTER, label: "No genre" },
@@ -199,7 +206,7 @@ export default function BacklogToolbar({
                 searchable
               />
               <FilterDropdown
-                label="RAWG Genre"
+                label="RAWG genres"
                 options={[
                   ...filters.allGenres,
                   { value: NO_RAWG_GENRE_FILTER, label: "No RAWG genre" },
@@ -241,18 +248,17 @@ export default function BacklogToolbar({
               <div className="hidden 2xl:block">
                 <Button
                   type="button"
-                  variant={actions?.completedActive ? "selected" : "secondary"}
+                  variant={
+                    actions?.completedActive ? "filterActive" : "secondary"
+                  }
                   onClick={actions?.toggleCompleted}
-                  className="h-10 shrink-0 whitespace-nowrap rounded-xl"
+                  className="h-10 shrink-0 whitespace-nowrap"
                   aria-pressed={actions?.completedActive}
                 >
                   <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                   Completed
                   {actions?.completedActive ? (
-                    <Check
-                      className="h-4 w-4 text-primary-light"
-                      aria-hidden="true"
-                    />
+                    <Check className="h-4 w-4" aria-hidden="true" />
                   ) : null}
                 </Button>
               </div>
@@ -270,10 +276,10 @@ export default function BacklogToolbar({
                   variant="dangerGhost"
                   size="sm"
                   onClick={filters.clear}
-                  className="h-10 rounded-xl"
+                  className="h-10"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
-                  Clear
+                  Clear filters
                 </Button>
               ) : null}
             </div>
@@ -286,21 +292,28 @@ export default function BacklogToolbar({
                   value={sort.key}
                   onChange={sort.setKey}
                   options={sortOptions}
-                  className="h-10 min-w-0 flex-1 rounded-xl sm:w-[190px] sm:flex-none"
+                  className="h-10 min-w-0 flex-1 sm:w-[190px] sm:flex-none"
                   placeholder="Default order"
                 />
-                <IconButton
-                  icon={sort.isReversed ? ArrowUpAZ : ArrowDownAZ}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => sort.setIsReversed(!sort.isReversed)}
-                  label={
-                    sort.isReversed ? "Ascending order" : "Descending order"
-                  }
-                  title={
-                    sort.isReversed ? "Ascending order" : "Descending order"
-                  }
-                  variant="ghost"
-                  className="h-10 w-10 rounded-xl"
-                />
+                  aria-label={`Sort direction: ${
+                    sort.isReversed ? "ascending" : "descending"
+                  }. Change to ${
+                    sort.isReversed ? "descending" : "ascending"
+                  }.`}
+                  className="h-10 shrink-0 whitespace-nowrap px-3"
+                >
+                  {sort.isReversed ? (
+                    <ArrowUpAZ className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <ArrowDownAZ className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  <span>{sort.isReversed ? "Ascending" : "Descending"}</span>
+                </Button>
               </div>
             </div>
           </div>

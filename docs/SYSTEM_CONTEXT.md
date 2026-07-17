@@ -1,6 +1,6 @@
 # System Context
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
@@ -314,8 +314,9 @@ Important components/pages:
 - `src/components/Sidebar.jsx` - main navigation/action rail.
 - `src/components/GameGrid.jsx` - sortable or read-only grid.
 - `src/components/GameCard.jsx` - game summary card.
-- `src/components/GameModal.jsx` - detailed game metadata and notes.
-- `src/components/AddGameForm.jsx` and `EditGameForm.jsx` - mutation forms.
+- `src/components/GameModal.jsx` - detailed game metadata and the unified
+  in-place owner editing experience, including the metadata tab.
+- `src/components/AddGameForm.jsx` - add-game mutation form.
 - `src/components/FilterPanel.jsx` - shared filter UI.
 - `src/pages/PublicProfile.jsx` - public read-only profile.
 - `src/pages/Insights/InsightsPage.jsx` - analytics dashboard.
@@ -467,6 +468,9 @@ Known rough edges from real-library testing:
 
 ## Known Current Risks
 
+- UI/UX consistency Phases 1A, 1B, 2, 3, 4, 6, 7, and 8 are complete in the
+  current working tree. Mobile navigation Phase 5 is the only remaining phase
+  and remains intentionally separate.
 - Phase 0 and Phase 1 are complete enough to move on from foundation/styling
   work. Keep updating this file when architecture changes.
 - API error responses now flow through the central shape

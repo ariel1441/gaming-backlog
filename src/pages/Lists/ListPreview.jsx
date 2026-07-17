@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Gamepad2 } from "lucide-react";
+import React from "react";
+import { GameCover } from "../../components/ui";
 
 function gameCover(game) {
   return game?.cover || game?.cover_url || game?.catalog_cover_url || game?.rawg_cover || "";
@@ -34,30 +34,15 @@ export function CoverCollage({ games = [], className = "" }) {
 function CoverSlot({ game }) {
   const cover = gameCover(game);
   const title = gameTitle(game);
-  const [failedCover, setFailedCover] = useState("");
 
   return (
     <div className="relative min-h-0 min-w-0 border-surface-border odd:border-r [&:nth-child(-n+2)]:border-b">
-      {cover && failedCover !== cover ? (
-        <img
-          src={cover}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailedCover(cover)}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-surface-bg text-content-muted">
-          {title ? (
-            <span className="text-lg font-semibold">
-              {String(title).charAt(0)}
-            </span>
-          ) : (
-            <Gamepad2 className="h-5 w-5" aria-hidden="true" />
-          )}
-        </div>
-      )}
+      <GameCover
+        src={cover}
+        name={title}
+        className="h-full w-full"
+        fallbackClassName="[&>div]:gap-0 [&_svg]:hidden"
+      />
     </div>
   );
 }

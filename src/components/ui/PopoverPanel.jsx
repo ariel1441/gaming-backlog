@@ -1,4 +1,4 @@
-import React from "react";
+import React, { forwardRef } from "react";
 
 const paddingClasses = {
   none: "",
@@ -18,17 +18,21 @@ const shadowClasses = {
   menu: "shadow-menu",
 };
 
-export default function PopoverPanel({
-  as: Component = "div",
-  children,
-  className = "",
-  padding = "md",
-  radius = "2xl",
-  shadow = "menu",
-  ...props
-}) {
+const PopoverPanel = forwardRef(function PopoverPanel(
+  {
+    as: Component = "div",
+    children,
+    className = "",
+    padding = "md",
+    radius = "2xl",
+    shadow = "menu",
+    ...props
+  },
+  ref,
+) {
   return (
     <Component
+      ref={ref}
       {...props}
       className={[
         "border border-surface-border bg-surface-card",
@@ -41,4 +45,6 @@ export default function PopoverPanel({
       {children}
     </Component>
   );
-}
+});
+
+export default PopoverPanel;

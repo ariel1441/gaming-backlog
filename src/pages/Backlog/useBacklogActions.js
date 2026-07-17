@@ -106,17 +106,17 @@ export default function useBacklogActions({
   const startEditing = (game) => {
     if (!isAuthenticated) {
       toast.warning("Sign in required to edit games.");
-      return;
+      return { ok: false };
     }
     setEditFormError(null);
     setEditingGame(game);
   };
 
   const handleEditGame = async (draft) => {
-    if (isEditing) return;
+    if (isEditing) return { ok: false };
     if (!isAuthenticated) {
       toast.warning("Sign in required to edit games.");
-      return;
+      return { ok: false };
     }
 
     const original = editingGame || {};
@@ -124,15 +124,16 @@ export default function useBacklogActions({
     if (!result.ok) {
       setEditFormError({ message: result.message, fields: result.fields || {} });
       toast.warning(result.message);
-      return;
+      return { ok: false };
     }
 
     try {
       setIsEditing(true);
       setEditFormError(null);
-      await editGame(draft.id ?? original.id, result.payload);
+      const updated = await editGame(draft.id ?? original.id, result.payload);
       setEditingGame(null);
       toast.success("Game updated.");
+      return { ok: true, game: updated || { ...original, ...draft } };
     } catch (err) {
       console.error("Error updating game:", err);
       const message = apiErrorMessage(
@@ -141,6 +142,7 @@ export default function useBacklogActions({
       );
       setEditFormError({ message, fields: {} });
       toast.error(message);
+      return { ok: false };
     } finally {
       setIsEditing(false);
     }

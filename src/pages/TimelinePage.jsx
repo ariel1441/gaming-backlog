@@ -12,9 +12,8 @@ import {
 import GameModal from "../components/GameModal";
 import {
   AppPage,
+  PageError,
   PageHeader,
-  PageLoading,
-  PageToolbar,
 } from "../components/layout";
 import {
   Button,
@@ -128,7 +127,7 @@ export default function TimelinePage() {
     [visibleEvents],
   );
 
-  if (authLoading || loading) return <TimelineSkeleton />;
+  if (authLoading || loading) return <TimelineSkeleton viewMode={viewMode} />;
 
   if (!isAuthenticated) {
     return (
@@ -167,15 +166,10 @@ export default function TimelinePage() {
           icon={Clock3}
         />
         <div className="pt-8">
-          <EmptyState
-            icon={Clock3}
+          <PageError
             title="Could not load your timeline."
             description={String(error?.message || error)}
-            action={
-              <Button type="button" variant="primary" onClick={() => refresh()}>
-                Try again
-              </Button>
-            }
+            onRetry={() => refresh()}
           />
         </div>
       </AppPage>

@@ -29,7 +29,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { Button, Chip, IconButton, SelectMenu } from "../../components/ui";
+import {
+  Button,
+  Chip,
+  GameCover,
+  IconButton,
+  SelectMenu,
+} from "../../components/ui";
 import {
   SMART_STATUS_OPTIONS,
   normalizeSmartQuery,
@@ -165,7 +171,7 @@ function LabeledQuickSelect({ label, value, options, onChange }) {
       onChange={onChange}
       options={labeledOptions}
       className="min-w-40"
-      buttonClassName="min-h-10 rounded-xl px-3 text-sm"
+      buttonClassName="min-h-10 px-3 text-sm"
     />
   );
 }
@@ -199,6 +205,7 @@ export function ManualRankedList({
   games,
   viewMode,
   editable,
+  disabled = false,
   onSelectGame,
   onRemoveGame,
   onReorder,
@@ -217,6 +224,7 @@ export function ManualRankedList({
   const handleDragEnd = (event) => {
     const { active, over } = event;
     setActiveId(null);
+    if (disabled) return;
     if (!over || active.id === over.id) return;
     const fromIndex = games.findIndex(
       (game) => String(game.id) === String(active.id),
@@ -263,6 +271,7 @@ export function ManualRankedList({
                 game={game}
                 index={index}
                 isDragging={activeId === String(game.id)}
+                disabled={disabled}
                 onSelect={() => onSelectGame(game)}
                 onRemove={() => onRemoveGame(game.id)}
               />
@@ -276,6 +285,7 @@ export function ManualRankedList({
                 game={game}
                 index={index}
                 isDragging={activeId === String(game.id)}
+                disabled={disabled}
                 onSelect={() => onSelectGame(game)}
                 onRemove={() => onRemoveGame(game.id)}
               />
@@ -317,9 +327,16 @@ export function StaticRankedList({ games, viewMode, onSelectGame }) {
   );
 }
 
-function SortablePosterCard({ game, index, isDragging, onSelect, onRemove }) {
+function SortablePosterCard({
+  game,
+  index,
+  isDragging,
+  disabled,
+  onSelect,
+  onRemove,
+}) {
   const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: String(game.id) });
+    useSortable({ id: String(game.id), disabled });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -330,9 +347,10 @@ function SortablePosterCard({ game, index, isDragging, onSelect, onRemove }) {
     <div ref={setNodeRef} style={style} className="group relative min-w-0">
       <button
         type="button"
-        className="absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-bg/85 text-content-muted shadow-panel hover:text-content-primary"
+        className="absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-bg/85 text-content-muted shadow-panel hover:text-content-primary disabled:cursor-wait disabled:opacity-55"
         title="Drag to reorder"
         aria-label="Drag to reorder"
+        disabled={disabled}
         {...attributes}
         {...listeners}
       >
@@ -342,9 +360,10 @@ function SortablePosterCard({ game, index, isDragging, onSelect, onRemove }) {
       <button
         type="button"
         onClick={onRemove}
-        className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-bg/85 text-content-muted opacity-100 shadow-panel hover:text-state-error sm:opacity-0 sm:group-hover:opacity-100"
+        className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-surface-bg/85 text-content-muted opacity-100 shadow-panel hover:text-state-error disabled:cursor-wait disabled:opacity-55 sm:opacity-0 sm:group-hover:opacity-100"
         title="Remove from list"
         aria-label={`Remove ${gameTitle(game)} from list`}
+        disabled={disabled}
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -361,33 +380,35 @@ function PosterCard({ game, index, onSelect }) {
       onClick={onSelect}
       className="block w-full min-w-0 text-left"
     >
-      <div className="aspect-[2/3] w-full overflow-hidden rounded-md bg-surface-card shadow-panel ring-1 ring-surface-border transition-colors hover:ring-primary/45">
-        {cover ? (
-          <img
-            src={cover}
-            alt=""
-            loading="lazy"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-surface-elevated/70 px-3 text-center text-3xl font-semibold text-content-muted">
-            {String(title || "?").charAt(0)}
-          </div>
-        )}
-      </div>
+      <GameCover
+        src={cover}
+        name={title}
+        variant="poster"
+        className="w-full rounded-md bg-surface-card shadow-panel ring-1 ring-surface-border transition-colors hover:ring-primary/45"
+      />
       <div className="mt-1.5 text-center text-sm font-semibold text-content-primary">
         {index + 1}
       </div>
-      <div className="mt-1 truncate text-center text-xs text-content-muted">
+      <div
+        className="mt-1 truncate text-center text-xs text-content-muted"
+        title={title}
+      >
         {title}
       </div>
     </button>
   );
 }
 
-function SortableRankedRow({ game, index, isDragging, onSelect, onRemove }) {
+function SortableRankedRow({
+  game,
+  index,
+  isDragging,
+  disabled,
+  onSelect,
+  onRemove,
+}) {
   const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: String(game.id) });
+    useSortable({ id: String(game.id), disabled });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -403,9 +424,10 @@ function SortableRankedRow({ game, index, isDragging, onSelect, onRemove }) {
         dragHandle={
           <button
             type="button"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-content-muted hover:bg-surface-elevated hover:text-content-primary"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-content-muted hover:bg-surface-elevated hover:text-content-primary disabled:cursor-wait disabled:opacity-55"
             title="Drag to reorder"
             aria-label="Drag to reorder"
+            disabled={disabled}
             {...attributes}
             {...listeners}
           >
@@ -419,6 +441,7 @@ function SortableRankedRow({ game, index, isDragging, onSelect, onRemove }) {
             title="Remove"
             variant="ghost"
             onClick={onRemove}
+            disabled={disabled}
           />
         }
       />
@@ -455,7 +478,16 @@ function hoursLabel(game) {
 }
 
 function rowGenres(game) {
-  return [...splitCsv(game?.my_genre), ...splitCsv(game?.genres)].slice(0, 3);
+  return [
+    ...splitCsv(game?.my_genre).map((label) => ({
+      label,
+      variant: "personalGenre",
+    })),
+    ...splitCsv(game?.genres).map((label) => ({
+      label,
+      variant: "metadataGenre",
+    })),
+  ].slice(0, 3);
 }
 
 function MetaPill({ icon: Icon, children }) {
@@ -489,14 +521,13 @@ function RankedRow({
 
   return (
     <div className="group relative flex min-w-0 items-stretch gap-3 overflow-hidden rounded-2xl border border-surface-border bg-surface-card">
-      {cover ? (
-        <img
-          src={cover}
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.08] blur-sm"
-        />
-      ) : null}
+      <GameCover
+        src={cover}
+        name={title}
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        imageClassName="opacity-[0.08] blur-sm"
+        fallbackClassName="opacity-[0.08]"
+      />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/75" />
       {dragHandle}
       <div className="relative z-10 flex w-12 shrink-0 items-center justify-center text-xl font-semibold text-content-primary sm:w-14">
@@ -507,23 +538,17 @@ function RankedRow({
         onClick={onSelect}
         className="relative z-10 flex min-w-0 flex-1 items-center gap-5 p-3 text-left transition-colors hover:bg-surface-elevated/25"
       >
-        {cover ? (
-          <img
-            src={cover}
-            alt=""
-            loading="lazy"
-            className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl object-cover ring-1 ring-surface-border`}
-          />
-        ) : (
-          <div
-            className={`flex ${GAME_ROW_COVER_SIZE} shrink-0 items-center justify-center rounded-xl bg-surface-elevated/70 text-xl font-semibold text-content-muted ring-1 ring-surface-border`}
-          >
-            {String(title || "?").charAt(0)}
-          </div>
-        )}
+        <GameCover
+          src={cover}
+          name={title}
+          className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl ring-1 ring-surface-border`}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-            <div className="min-w-0 max-w-full truncate text-lg font-semibold text-content-primary">
+            <div
+              className="min-w-0 max-w-full truncate text-lg font-semibold text-content-primary"
+              title={title}
+            >
               {title}
             </div>
             {releaseYear ? (
@@ -547,8 +572,13 @@ function RankedRow({
           {genres.length ? (
             <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
               {genres.map((genre) => (
-                <Chip key={genre} variant="genre" className="truncate px-2 py-0.5">
-                  {genre}
+                <Chip
+                  key={`${genre.variant}-${genre.label}`}
+                  variant={genre.variant}
+                  title={genre.label}
+                  className="truncate px-2 py-0.5"
+                >
+                  {genre.label}
                 </Chip>
               ))}
             </div>
@@ -567,20 +597,16 @@ export function CandidateRow({ game, adding, disabled, onAdd }) {
   const title = gameTitle(game);
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-lg border border-surface-border bg-surface-bg/35 p-2">
-      {cover ? (
-        <img
-          src={cover}
-          alt=""
-          loading="lazy"
-          className="h-14 w-10 shrink-0 rounded object-cover"
-        />
-      ) : (
-        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-surface-elevated text-xs font-semibold text-content-muted">
-          {String(title || "?").charAt(0)}
-        </div>
-      )}
+      <GameCover
+        src={cover}
+        name={title}
+        className="h-14 w-10 shrink-0 rounded"
+      />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-content-primary">
+        <div
+          className="truncate text-sm font-semibold text-content-primary"
+          title={title}
+        >
           {title}
         </div>
         <div className="mt-1 truncate text-xs text-content-muted">

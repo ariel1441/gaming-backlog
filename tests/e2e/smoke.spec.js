@@ -586,9 +586,10 @@ test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   await expect(addedCard).toBeVisible();
 
   await addedCard.getByLabel("Edit game").click();
-  await expect(page.getByRole("heading", { name: "Edit game" })).toBeVisible();
+  const gameDialog = page.getByRole("dialog");
+  await expect(gameDialog.getByLabel("Name")).toHaveValue("Hollow Knight");
   await page.getByLabel("My score").fill("9");
-  await page.getByRole("button", { name: "Save Changes" }).click();
+  await gameDialog.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Game updated.")).toBeVisible();
 
   await addedCard.getByLabel("Delete game").click();

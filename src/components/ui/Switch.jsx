@@ -11,7 +11,7 @@ export default function Switch({
   return (
     <label
       className={[
-        "flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-surface-border bg-surface-bg/35 p-3",
+        "flex cursor-pointer items-center justify-between gap-4 rounded-control border border-surface-border bg-surface-bg/35 p-3 transition-colors hover:border-primary/30 hover:bg-surface-elevated/35",
         disabled ? "cursor-not-allowed opacity-60" : "",
         className,
       ].join(" ")}

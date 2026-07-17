@@ -214,16 +214,24 @@ function AvatarIconPicker({ value, onChange, disabled }) {
                     type="button"
                     onClick={() => onChange(option.value)}
                     disabled={disabled}
-                    title={option.label}
+                    aria-describedby={`avatar-icon-${option.value}-tooltip`}
                     aria-label={`Choose ${option.label} avatar icon`}
+                    aria-pressed={active}
                     className={[
-                      "flex aspect-square items-center justify-center rounded-xl border transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                      "group relative flex min-h-11 aspect-square items-center justify-center rounded-control border transition-[background-color,border-color,color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 disabled:active:translate-y-0",
                       active
-                        ? "border-primary bg-primary/15 text-primary-light"
-                        : "border-surface-border bg-surface-bg/45 text-content-muted hover:border-primary/45 hover:text-content-primary",
+                        ? "border-primary/55 bg-surface-selected text-primary-light shadow-sm shadow-primary/10 ring-1 ring-inset ring-primary/20"
+                        : "border-surface-border bg-surface-bg/45 text-content-muted hover:border-primary/45 hover:bg-surface-selected/55 hover:text-primary-light",
                     ].join(" ")}
                   >
                     <Icon className="h-5 w-5" aria-hidden="true" />
+                    <span
+                      id={`avatar-icon-${option.value}-tooltip`}
+                      role="tooltip"
+                      className="pointer-events-none absolute bottom-full left-1/2 z-tooltip mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-surface-border bg-surface-elevated px-2.5 py-1.5 text-xs font-medium text-content-primary shadow-menu group-hover:block group-focus-visible:block"
+                    >
+                      {option.label}
+                    </span>
                   </button>
                 );
               })}
@@ -251,16 +259,26 @@ function AvatarColorPicker({ value, onChange, disabled }) {
               onClick={() => onChange(option.value)}
               disabled={disabled}
               aria-label={`Choose ${option.label} avatar color`}
-              title={option.label}
+              aria-describedby={`avatar-color-${option.value}-tooltip`}
+              aria-pressed={active}
               className={[
-                "flex h-11 w-11 items-center justify-center rounded-xl border shadow-sm transition-transform disabled:cursor-not-allowed disabled:opacity-60",
+                "group relative flex h-11 w-11 items-center justify-center rounded-control border shadow-sm transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg disabled:cursor-not-allowed disabled:opacity-60",
                 profileAvatarColorClass(option.value),
-                active ? "scale-105 ring-2 ring-primary/50" : "hover:scale-105",
+                active
+                  ? "scale-105 ring-2 ring-primary/80 ring-offset-2 ring-offset-surface-card"
+                  : "hover:scale-105 hover:ring-2 hover:ring-primary/35",
               ].join(" ")}
             >
               {active ? (
                 <span className="h-2.5 w-2.5 rounded-full bg-current" />
               ) : null}
+              <span
+                id={`avatar-color-${option.value}-tooltip`}
+                role="tooltip"
+                className="pointer-events-none absolute bottom-full left-1/2 z-tooltip mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-surface-border bg-surface-elevated px-2.5 py-1.5 text-xs font-medium text-content-primary shadow-menu group-hover:block group-focus-visible:block"
+              >
+                {option.label}
+              </span>
             </button>
           );
         })}

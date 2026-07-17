@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle,
   Copy,
   Gamepad2,
   LibraryBig,
@@ -11,7 +10,12 @@ import GameGrid from "../components/GameGrid";
 import GameModal from "../components/GameModal";
 import ProfileSnapshot from "../components/ProfileSnapshot";
 import BacklogToolbar from "./Backlog/BacklogToolbar";
-import { AppPage, PageHeader, PageSection } from "../components/layout";
+import {
+  AppPage,
+  PageError,
+  PageHeader,
+  PageSection,
+} from "../components/layout";
 import { Button, EmptyState, useToast } from "../components/ui";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useFilters } from "../hooks/useFilters";
@@ -28,6 +32,7 @@ export default function PublicProfile() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedGame, setSelectedGame] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
@@ -72,7 +77,7 @@ export default function PublicProfile() {
       }
     })();
     return () => ac.abort();
-  }, [username]);
+  }, [retryKey, username]);
 
   const { statuses: apiStatuses } = useStatuses();
   const derivedStatuses = useMemo(() => {
@@ -228,15 +233,10 @@ export default function PublicProfile() {
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
-        <EmptyState
-          icon={AlertTriangle}
+        <PageError
           title="Could not load this profile."
           description={error}
-          action={
-            <Button as={Link} to="/" variant="secondary">
-              Back to app
-            </Button>
-          }
+          onRetry={() => setRetryKey((value) => value + 1)}
           className="w-full max-w-lg"
         />
       </div>

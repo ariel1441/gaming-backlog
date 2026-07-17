@@ -7,11 +7,9 @@ export default function Segmented({ value, onChange, options }) {
       onChange={onChange}
       options={options}
       size="sm"
-      connected
+      variant="connected"
       ariaLabel="Chart range"
-      className="overflow-hidden bg-surface-card"
-      activeClassName="bg-action-primary text-content-on-primary"
-      inactiveClassName="text-content-secondary hover:bg-surface-elevated"
+      className="bg-surface-card"
     />
   );
 }

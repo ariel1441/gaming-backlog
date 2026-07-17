@@ -1,10 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   CalendarDays,
   Clock3,
   Flag,
   Gamepad2,
-  ImageOff,
   Pencil,
   Star,
   Trash2,
@@ -16,7 +15,7 @@ import { canDeleteGame, canEditGame } from "../utils/permissions";
 import { splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
-import { Chip, IconButton, StatusBadge, useToast } from "./ui";
+import { Chip, GameCover, IconButton, StatusBadge, useToast } from "./ui";
 import { GAME_ROW_COVER_SIZE } from "./gameRowCoverStyles";
 
 function fmtDate(value) {
@@ -132,70 +131,6 @@ function ReleaseBadge({ value }) {
       />
       <span className="truncate">Released {value}</span>
     </div>
-  );
-}
-
-function CoverFallback({ title, className = "", compact = false }) {
-  const initial =
-    String(title || "?")
-      .trim()
-      .charAt(0)
-      .toUpperCase() || "?";
-  return (
-    <div
-      className={[
-        "flex items-end overflow-hidden bg-gradient-to-br from-surface-elevated via-surface-card to-surface-bg",
-        className,
-      ].join(" ")}
-    >
-      <div className="flex w-full items-end justify-between gap-3 p-4">
-        <div className="min-w-0">
-          <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-surface-border bg-surface-bg/70 text-lg font-semibold text-content-secondary">
-            {initial}
-          </div>
-          {!compact ? (
-            <div className="line-clamp-2 max-w-[13rem] text-sm font-medium text-content-muted">
-              Cover unavailable
-            </div>
-          ) : null}
-        </div>
-        <ImageOff
-          className="h-5 w-5 shrink-0 text-content-muted/70"
-          aria-hidden="true"
-        />
-      </div>
-    </div>
-  );
-}
-
-function CoverImage({
-  src,
-  alt,
-  className,
-  fallbackClassName,
-  compact = false,
-}) {
-  const [failed, setFailed] = useState(false);
-
-  if (!src || failed) {
-    return (
-      <CoverFallback
-        title={alt}
-        className={fallbackClassName || className}
-        compact={compact}
-      />
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      className={className}
-      onError={() => setFailed(true)}
-    />
   );
 }
 
@@ -350,12 +285,12 @@ export default function GameCard({
         <div className="relative min-h-[172px] sm:min-h-[184px]">
           {game.cover ? (
             <>
-              <CoverImage
+              <GameCover
                 src={game.cover}
-                alt={game.name}
-                className="absolute inset-0 h-full w-full object-cover opacity-35"
-                fallbackClassName="absolute inset-0 h-full w-full"
-                compact
+                name={game.name}
+                className="absolute inset-0 h-full w-full"
+                imageClassName="opacity-35"
+                fallbackClassName="opacity-35"
               />
               <div className="absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/72" />
               <div className="absolute inset-0 bg-gradient-to-t from-surface-card/70 via-transparent to-transparent" />
@@ -363,17 +298,20 @@ export default function GameCard({
           ) : null}
 
           <div className="relative flex min-h-[172px] gap-4 p-4 pr-14 sm:min-h-[184px] sm:gap-5 sm:p-5 sm:pr-16">
-            <CoverImage
+            <GameCover
               src={game.cover}
-              alt={game.name}
-              className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 object-cover shadow-lg`}
-              fallbackClassName={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-surface-border`}
-              compact
+              name={game.name}
+              alt={`${game.name || "Game"} cover`}
+              decorative={false}
+              className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 shadow-lg`}
             />
 
             <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
               <div className="min-w-0">
-                <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-content-primary sm:text-xl">
+                <h3
+                  className="line-clamp-2 text-lg font-semibold leading-tight text-content-primary sm:text-xl"
+                  title={game.name}
+                >
                   {game.name}
                 </h3>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -422,7 +360,7 @@ export default function GameCard({
               {visibleMyGenres.length ? (
                 <div className="flex flex-wrap gap-2">
                   {visibleMyGenres.map((genre) => (
-                    <Chip key={genre} variant="genre" title={genre} className="truncate">
+                    <Chip key={genre} variant="personalGenre" title={genre} className="truncate">
                       {genre}
                     </Chip>
                   ))}
@@ -449,26 +387,21 @@ export default function GameCard({
       {actionButtons}
 
       <div className="relative overflow-hidden border-b border-surface-border/70 bg-surface-card">
-        {game.cover ? (
-          <>
-            <CoverImage
-              src={game.cover}
-              alt={game.name}
-              className={`${imageHeight} w-full object-cover`}
-              fallbackClassName={`flex ${imageHeight} w-full`}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/25 to-transparent" />
-          </>
-        ) : (
-          <CoverFallback
-            title={game.name}
-            className={`flex ${imageHeight} w-full`}
-          />
-        )}
+        <GameCover
+          src={game.cover}
+          name={game.name}
+          alt={`${game.name || "Game"} cover`}
+          decorative={false}
+          className={`${imageHeight} w-full`}
+          showFallbackLabel
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/25 to-transparent" />
 
         <div className="absolute inset-x-0 bottom-0 p-4">
           <div className="flex min-w-0 flex-col items-start gap-2">
-            <h3 className={titleClass}>{game.name}</h3>
+            <h3 className={titleClass} title={game.name}>
+              {game.name}
+            </h3>
             <div className="flex max-w-full flex-wrap items-center gap-2">
               {game.status ? <StatusBadge status={game.status} /> : null}
               {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
@@ -581,7 +514,7 @@ export default function GameCard({
             {visibleMyGenres.map((genre) => (
               <Chip
                 key={genre}
-                variant="genre"
+                variant="personalGenre"
                 title={genre}
                 className="shrink-0 truncate px-3"
               >

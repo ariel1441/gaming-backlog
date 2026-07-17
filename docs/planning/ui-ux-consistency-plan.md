@@ -1,6 +1,6 @@
 # UI/UX Consistency And Editing Plan
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 This is the focused implementation plan for the UI/UX findings reviewed after
 the July 2026 frontend polish batch. It covers remaining work only. Use
@@ -96,84 +96,93 @@ other explicit-save forms. Do not use browser `alert` or native `confirm`.
 
 ## Execution Plan
 
-### Phase 1: Small defects and shared media resilience
+### Phase 1A: Semantic consistency and obvious mismatches
 
-- Fix the corrupted separator in the Steam Library total/shown description.
-- Replace internal copy such as `Private in V1`, `owner-only`, and implementation
-  commentary with user-facing privacy and account language.
-- Standardize Clear, Reset, Restore defaults, Remove, and view-mode wording.
-- Standardize Steam terminology around `Steam Import Review`, `Review queue`,
-  and `Open review queue`.
-- Use `Posters` consistently where the UI names a poster collection view.
-- Add full-name recovery for truncated game and list titles.
-- Render manual list contents once their own request finishes; do not block the
-  initial manual-list view on the full backlog needed for Add Games.
-- Create a shared `GameCover` or `MediaImage` primitive with missing/broken URL
-  fallback, lazy loading, asynchronous decoding, consistent aspect ratios, and
-  initials/icon fallback.
-- Adopt the shared media primitive across Lists, Reviews, Timeline, profiles,
-  game modals/forms, Discover/search, and Steam surfaces.
+Completed in the focused Phase 1A implementation:
+
+- Personal genre chips use primary theme identity colors across cards, forms,
+  game details, Reviews, and manual-list rows.
+- RAWG genre chips use neutral metadata styling, while Steam keeps its
+  integration treatment.
+- Add/Edit status previews use the shared canonical `StatusBadge`.
+- Page-level filter resets use `Clear filters`, danger-ghost styling, and an X;
+  single dropdown resets use `Clear selection`.
+- Standard search fields use one neutral, accessible clear-button pattern.
+- Personal/RAWG genre labels, private-list language, and Steam Import Review
+  terminology are consistent across the touched surfaces.
+- The Steam Library shown-count separator and contained sort-direction labels
+  are corrected.
+
+### Phase 1B: Shared media and title resilience
+
+Completed in the focused Phase 1B implementation:
+
+- `Posters` remains the consistent name for poster collection views.
+- Truncated game and list titles expose their complete value on the affected
+  cards, rows, search results, and detail surfaces.
+- Manual ranked lists render when their own request completes; only smart-list
+  resolution and Add Games wait for the full backlog.
+- Shared `GameCover` handles missing and broken URLs, source changes, lazy
+  loading, asynchronous decoding, reserved dimensions, and initials/icon
+  fallbacks.
+- The shared artwork primitive is used across Backlog, Lists, Reviews,
+  Timeline, profiles, game modals/forms, Discover/search, Steam, and metadata
+  review surfaces.
 
 ### Phase 2: Shared interaction system
 
-- Move active/selected/hover/pressed/focus recipes into shared primitives.
-- Remove page-specific `SegmentedControl` active styling where it is not
-  semantically required.
-- Standardize filter buttons, tabs, select options, toggle cards, and navigation
-  items.
-- Use existing `rounded-control`, `rounded-card`, `rounded-panel`, and
-  `rounded-dialog` tokens instead of incidental radius differences.
-- Add shared form actions, search-field clearing, filter-button, tooltip, and
-  tab patterns only where current repetition demonstrates a need.
+Completed in the focused Phase 2 implementation:
+
+- Shared primitives own standard hover, pressed, focus-visible, open, disabled,
+  and loading-capable visual states.
+- `SegmentedControl` provides semantic `view` and `connected` recipes; Backlog,
+  Lists, Timeline, and Insights no longer redefine their active states.
+- Active filters use a distinct `filterActive` button treatment with consistent
+  full-control tinting and pressed semantics.
+- Shared buttons, selects, multi-selects, switches, and repeated raw selection
+  controls use the semantic `rounded-control` geometry.
+- Backlog dropdown selections, Steam Import Review categories, Lists type
+  choices, and Settings avatar choices use consistent selection and focus
+  behavior.
+- Active navigation remains separate from view selection and filter selection.
 
 ### Phase 3: Manual-list editing redesign
 
-Separate the current mixed editing model into clear workflows.
+Completed:
 
-Normal list view:
-
-- Add games.
-- Edit details.
-- Manage games/order.
-- More menu with Delete.
-
-Edit details:
-
-- Edit name and description.
-- Explicit Save changes and Cancel.
-- Dirty-state indication and unsaved-change protection.
-
-Manage games/order:
-
-- Add, remove, and drag-reorder games.
-- Persist those mutations immediately.
-- Explain `Changes save automatically`.
-- Use Done rather than a misleading Save/Cancel pair.
-
-Also:
-
-- Move the Lists parent link into a breadcrumb/navigation position.
-- Preserve the cover-collage hero while bringing its action layout in line with
-  shared page-header conventions.
-- Make manual and smart metadata editing feel like the same system.
-- Protect smart quick-filter autosaves from overlapping/stale responses and
-  show saving status.
-- Avoid a success toast for every item when adding several games.
-- Add Poster- and Row-shaped list-detail skeletons.
+- Separated normal manual-list actions into Add games, Edit details, Manage
+  games/order, and a More menu containing Delete.
+- Unified manual and smart metadata editing in one explicit Save changes /
+  Cancel modal with dirty-state feedback and Save/Discard/Keep editing
+  protection.
+- Added a distinct manual management mode where add, remove, and drag-reorder
+  mutations save immediately, expose Saving/Saved/error feedback, and finish
+  with Done.
+- Moved the Lists parent link into a breadcrumb while preserving the
+  cover-collage hero.
+- Added latest-response-wins protection and Saving/Saved feedback to smart-list
+  quick-filter autosaves.
+- Batched multi-add success feedback into one summary when the Add games modal
+  closes.
+- Added persisted Poster/Row selection and matching list-detail skeletons.
 
 ### Phase 4: Unified game view/edit modal
 
-- Use the polished game-view modal as the stable shell for both viewing and
-  editing.
-- Transition into edit mode in place instead of opening a visually unrelated
-  editor.
-- Preserve cover/hero, metadata, status, genres, Steam information, dates,
-  score, hours, and notes placement between modes.
-- Turn only appropriate display fields into inputs in edit mode.
-- Add Save changes, Cancel, validation, dirty indication, and unsaved-change
-  protection.
-- Keep Delete visually separated.
-- Verify missing covers, long names, Steam metadata, desktop, and mobile.
+Completed:
+
+- Reused the polished game-view modal as the stable shell for viewing and
+  owner editing, removing the separate edit modal.
+- Added an in-place transition that preserves the cover hero, title, status,
+  metrics, genres, dates, Steam information, achievements, and notes layout.
+- Converted visible owner fields into contextual controls while keeping
+  provider-owned description, RAWG score, and Metacritic read-only.
+- Added a dedicated Metadata tab for RAWG identity replacement and Steam
+  linking, unlinking, and achievement sync.
+- Added explicit Save changes and Cancel actions, field validation, dirty-state
+  feedback, and Save/Discard/Keep editing protection for close, Escape, outside
+  click, refresh, and tab close.
+- Kept one Edit game action in view mode and a stacked narrow-screen edit
+  footer.
 
 ### Phase 5: Mobile navigation
 
@@ -194,43 +203,54 @@ mobile header and give the active mobile destination a full selected treatment.
 
 ### Phase 6: Loading, error, and empty-state consistency
 
-- Use loading/skeleton only while waiting.
-- Use EmptyState only after a successful empty result.
-- Use PageError for failed page requests with Retry.
-- Use toast feedback for action-local failures when the current page remains
-  usable.
-- Replace Timeline's error-as-empty-state treatment.
-- Add shape-matching skeletons for list detail, Reviews, Timeline, Steam
-  Library, and important route-loading states.
-- Minimize layout shifts between loading and loaded content.
+Completed:
+
+- Reserved skeleton/loading states for pending authentication, account, route,
+  and data requests, preventing false empty states while requests are active.
+- Standardized retryable `PageError` treatment for Timeline, Discover, Steam
+  Library, owner/public profiles, Settings backlog data, Reviews, Lists,
+  Backlog, and Insights page failures.
+- Kept action-local and pagination failures as toast feedback when existing
+  page content remains usable.
+- Added shape-matching skeletons for list detail Poster/Row modes, Reviews
+  cards, Timeline Showcase/Poster modes, Steam Library metrics/table, Discover,
+  and lazy route transitions.
+- Added latest-request protection to Discover and Steam Library page loads so
+  stale responses cannot replace newer filters or end a newer loading state.
+- Preserved `EmptyState` for authenticated/sign-in gates, successful empty
+  results, and no-filter-match outcomes.
 
 ### Phase 7: Accessibility and responsive polish
 
-- Move important mobile touch targets toward 44px.
-- Do not rely on browser `title` for important icon-only actions; use visible
-  labels or an accessible tooltip pattern.
-- Give custom/raw buttons the same focus-visible treatment as shared controls.
-- Make Settings navigation an accessible tab system with tablist, tabs,
-  selected state, keyboard navigation, and associated tab panels.
-- Keep Settings sections URL-addressable and add a mobile horizontal-scroll
-  affordance.
-- Make sort direction expose both the current state and the action clicking will
-  perform.
-- Stack or expand modal footer actions on very narrow screens.
-- Verify dense filter toolbars, long names, genres, descriptions, and Steam app
-  names on mobile.
+Completed:
+
+- Increased important shared button/icon targets and replaced important
+  icon-only browser-title reliance with hover/focus tooltips or visible labels.
+- Added consistent focus-visible styling to the remaining priority custom
+  controls.
+- Converted Settings navigation into URL-addressable tabs with selected/panel
+  semantics, roving focus, arrow/Home/End navigation, and a narrow-screen
+  horizontal-scroll cue.
+- Made Backlog and Reviews sort direction display its current state while its
+  accessible label explains the next action.
+- Stacked shared modal footer actions at very narrow widths.
+- Improved dense Steam actions and long app-name behavior without changing the
+  mobile navigation destination structure.
 
 ### Phase 8: Steam workflow polish
 
-- Clarify that Steam Library is for browsing/syncing/inspection and Steam Import
-  Review is for making import/match decisions.
-- Give each screen one obvious primary action.
-- Use progressive disclosure for matching, duplicate cleanup, bulk operations,
-  and advanced tools.
-- Explain what needs attention and the recommended next action.
-- Use the same filter, category, selected, and action treatments as the rest of
-  the app.
-- Recheck dense Steam metrics, tables, filters, and action bars on mobile.
+Completed:
+
+- Clarified Steam Library as the sync, browse, and inspection screen, while
+  Steam Import Review owns import, match, and duplicate-link decisions.
+- Kept Library sync as the primary Library action and added a queue-aware
+  recommended next action to Import Review.
+- Moved batch achievement maintenance, whole-category actions, duplicate
+  cleanup, and per-app connection repair behind progressive disclosure.
+- Removed direct backlog-add decisions from Library details while preserving
+  supporting match/link repair paths.
+- Aligned categories, selected states, contextual row actions, long Steam
+  names, and narrow-screen table access with the shared interaction system.
 
 ## Verification And Test Coverage
 

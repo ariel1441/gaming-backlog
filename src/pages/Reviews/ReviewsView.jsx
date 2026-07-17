@@ -12,7 +12,6 @@ import {
 import {
   AppPage,
   PageHeader,
-  PageLoading,
   PageToolbar,
 } from "../../components/layout";
 import {
@@ -20,9 +19,12 @@ import {
   Button,
   Chip,
   Field,
+  GameCover,
   IconButton,
   Modal,
+  SearchClearButton,
   SelectMenu,
+  Skeleton,
   StatusBadge,
   Textarea,
   TextInput,
@@ -70,12 +72,49 @@ function StatPill({ icon: Icon, label, value }) {
 export function ReviewsSkeleton() {
   return (
     <AppPage width="wide">
-      <PageHeader
-        title="Reviews"
-        description="Games where you wrote thoughts, notes, or a personal review."
-        icon={MessageSquareText}
-      />
-      <PageLoading rows={4} className="pt-6" />
+      <div
+        className="space-y-5"
+        role="status"
+        aria-label="Loading reviews"
+        aria-busy="true"
+      >
+        <PageHeader
+          title="Reviews"
+          description="Games where you wrote thoughts, notes, or a personal review."
+          icon={MessageSquareText}
+        />
+        <div className="flex flex-wrap gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-11 w-40 rounded-2xl" />
+          ))}
+        </div>
+        <Skeleton className="h-24 w-full rounded-panel" />
+        <div className="grid gap-5 xl:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex min-h-72 flex-col gap-4 rounded-2xl border border-surface-border bg-surface-card/60 p-3 sm:flex-row sm:gap-5"
+            >
+              <Skeleton className="h-56 w-full shrink-0 rounded-2xl sm:h-auto sm:w-48 lg:w-52" />
+              <div className="flex-1 space-y-4 py-3">
+                <Skeleton className="h-7 w-3/4" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-7 w-24 rounded-full" />
+                  <Skeleton className="h-7 w-16 rounded-full" />
+                </div>
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-11/12" />
+                <Skeleton className="h-4 w-4/5" />
+                <div className="flex flex-wrap gap-2 pt-3">
+                  <Skeleton className="h-7 w-28 rounded-full" />
+                  <Skeleton className="h-7 w-20 rounded-full" />
+                  <Skeleton className="h-7 w-24 rounded-full" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </AppPage>
   );
 }
@@ -137,17 +176,13 @@ export function ReviewsControls({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search reviews"
-            className="pl-9 pr-9"
+            className="pl-9 pr-11"
           />
           {search ? (
-            <button
-              type="button"
+            <SearchClearButton
               onClick={() => setSearch("")}
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-content-muted transition-colors hover:bg-surface-elevated hover:text-content-primary"
-              aria-label="Clear review search"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+              label="Clear review search"
+            />
           ) : null}
         </label>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -158,9 +193,12 @@ export function ReviewsControls({
                 type="button"
                 size="sm"
                 variant={
-                  reviewFilter === option.value ? "primary" : "secondary"
+                  reviewFilter === option.value
+                    ? "filterActive"
+                    : "secondary"
                 }
                 onClick={() => setReviewFilter(option.value)}
+                aria-pressed={reviewFilter === option.value}
               >
                 {option.label}
               </Button>
@@ -172,13 +210,23 @@ export function ReviewsControls({
             options={reviewSortOptions}
             className="w-full min-w-44 sm:w-56"
           />
-          <IconButton
-            icon={isReversed ? ArrowUpAZ : ArrowDownAZ}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => setIsReversed(!isReversed)}
-            label={isReversed ? "Ascending order" : "Descending order"}
-            title={isReversed ? "Ascending order" : "Descending order"}
-            className="h-10 w-10"
-          />
+            aria-label={`Sort direction: ${
+              isReversed ? "ascending" : "descending"
+            }. Change to ${isReversed ? "descending" : "ascending"}.`}
+            className="shrink-0 whitespace-nowrap"
+          >
+            {isReversed ? (
+              <ArrowUpAZ className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <ArrowDownAZ className="h-4 w-4" aria-hidden="true" />
+            )}
+            {isReversed ? "Ascending" : "Descending"}
+          </Button>
           {hasActiveFilters ? (
             <Button
               type="button"
@@ -186,7 +234,7 @@ export function ReviewsControls({
               variant="dangerGhost"
               onClick={onClear}
             >
-              <X className="h-4 w-4" aria-hidden="true" /> Clear
+              <X className="h-4 w-4" aria-hidden="true" /> Clear filters
             </Button>
           ) : null}
         </div>
@@ -208,26 +256,12 @@ function ReviewMedia({ game }) {
     .toUpperCase();
   return (
     <div className="relative h-56 w-full shrink-0 overflow-hidden rounded-2xl border border-surface-border bg-surface-elevated shadow-panel sm:h-auto sm:min-h-72 sm:w-48 sm:self-stretch lg:w-52">
-      {src ? (
-        <>
-          <img
-            src={src}
-            alt=""
-            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-md"
-            loading="lazy"
-          />
-          <img
-            src={src}
-            alt=""
-            className="relative h-full w-full object-cover object-center transition duration-500 group-hover:scale-[1.03]"
-            loading="lazy"
-          />
-        </>
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-surface-card text-5xl font-semibold text-content-muted/35">
-          {initials}
-        </div>
-      )}
+      <GameCover
+        src={src}
+        name={game?.name || initials}
+        className="h-full w-full"
+        imageClassName="object-center transition duration-500 group-hover:scale-[1.03]"
+      />
     </div>
   );
 }
@@ -255,13 +289,16 @@ export function ReviewCard({ game, onOpen, onEdit }) {
       <button
         type="button"
         onClick={() => onOpen(game)}
-        className="block h-full w-full min-w-0 text-left"
+        className="block h-full w-full min-w-0 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg"
       >
         <div className="flex h-full flex-col gap-4 sm:flex-row sm:gap-5">
           <ReviewMedia game={game} />
           <div className="flex min-w-0 flex-1 flex-col py-1 pr-11 sm:min-h-72">
             <div className="min-w-0">
-              <h2 className="line-clamp-2 text-2xl font-semibold leading-snug text-content-primary">
+              <h2
+                className="line-clamp-2 text-2xl font-semibold leading-snug text-content-primary"
+                title={game.name}
+              >
                 {game.name}
               </h2>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -285,7 +322,7 @@ export function ReviewCard({ game, onOpen, onEdit }) {
                 </Badge>
               ) : null}
               {myGenres.map((genre) => (
-                <Chip key={`my-${genre}`} variant="genre">
+                <Chip key={`my-${genre}`} variant="personalGenre">
                   {genre}
                 </Chip>
               ))}

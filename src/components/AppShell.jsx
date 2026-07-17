@@ -8,7 +8,7 @@ import {
   visibleNavigationItems,
 } from "../config/navigation";
 import { preloadRoute } from "../config/routeLoaders";
-import { AppPage, PageLoading } from "./layout";
+import { RouteLoading } from "./layout";
 
 export default function AppShell() {
   const { isAuthenticated, isGuest } = useAuth();
@@ -52,11 +52,7 @@ export default function AppShell() {
         <div className="min-h-[calc(100vh-3.5rem)] min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:min-h-screen lg:pb-0">
           <Suspense
             key={location.pathname}
-            fallback={
-              <AppPage width="wide">
-                <PageLoading rows={5} />
-              </AppPage>
-            }
+            fallback={<RouteLoading />}
           >
             <Outlet />
           </Suspense>

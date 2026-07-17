@@ -1,6 +1,5 @@
 import React from "react";
 import AuthModal from "../../components/AuthModal";
-import EditGameForm from "../../components/EditGameForm";
 import GameModal from "../../components/GameModal";
 import KeepDemoModal from "../../components/KeepDemoModal";
 import OnboardingModal from "../../components/OnboardingModal";
@@ -8,6 +7,7 @@ import OnboardingModal from "../../components/OnboardingModal";
 export default function BacklogModals({
   selectedGame,
   onCloseSelectedGame,
+  onSelectedGameUpdated,
   onSteamLinked,
   onEditSelectedGame,
   surpriseGame,
@@ -29,14 +29,28 @@ export default function BacklogModals({
   showKeepDemo,
   onCloseKeepDemo,
 }) {
+  const modalGame = selectedGame || editingGame;
+
   return (
     <>
-      {selectedGame && (
+      {modalGame && (
         <GameModal
-          game={selectedGame}
-          onClose={onCloseSelectedGame}
+          game={modalGame}
+          onClose={() => {
+            onCloseSelectedGame();
+            onCancelEditGame();
+          }}
           onGameRefresh={onSteamLinked}
           onEdit={onEditSelectedGame}
+          onSubmitEdit={onSubmitEditGame}
+          onCancelEdit={onCancelEditGame}
+          onGameUpdated={onSelectedGameUpdated}
+          startInEditMode={!!editingGame}
+          onDraftChange={onEditDraftChange}
+          formError={editFormError}
+          isSubmitting={isEditing}
+          statuses={statuses}
+          allMyGenres={allMyGenres}
         />
       )}
 
@@ -46,20 +60,6 @@ export default function BacklogModals({
           onClose={onCloseSurpriseGame}
           onRefresh={onRefreshSurpriseGame}
           onGameRefresh={onSteamLinked}
-        />
-      )}
-
-      {editingGame && (
-        <EditGameForm
-          game={editingGame}
-          onSubmit={onSubmitEditGame}
-          onCancel={onCancelEditGame}
-          onDraftChange={onEditDraftChange}
-          formError={editFormError}
-          isSubmitting={isEditing}
-          statuses={statuses}
-          allMyGenres={allMyGenres}
-          onSteamLinked={onSteamLinked}
         />
       )}
 

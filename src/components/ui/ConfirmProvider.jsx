@@ -20,6 +20,9 @@ export function ConfirmProvider({ children }) {
         message: "",
         confirmLabel: "Confirm",
         cancelLabel: "Cancel",
+        confirmValue: true,
+        secondaryLabel: null,
+        secondaryValue: null,
         tone: "danger",
         ...options,
         resolve,
@@ -51,10 +54,19 @@ export function ConfirmProvider({ children }) {
             <Button type="button" onClick={() => close(false)}>
               {dialog?.cancelLabel || "Cancel"}
             </Button>
+            {dialog?.secondaryLabel ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => close(dialog.secondaryValue)}
+              >
+                {dialog.secondaryLabel}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant={dialog?.tone === "danger" ? "danger" : "primary"}
-              onClick={() => close(true)}
+              onClick={() => close(dialog?.confirmValue ?? true)}
             >
               {dialog?.confirmLabel || "Confirm"}
             </Button>

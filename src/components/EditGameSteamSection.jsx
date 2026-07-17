@@ -1,5 +1,5 @@
 import { ExternalLink, Gamepad2, Search, Trophy, Unlink } from "lucide-react";
-import { Button, TextInput } from "./ui";
+import { Button, GameCover, TextInput } from "./ui";
 import {
   formatSteamDate,
   formatSteamPlaytime,
@@ -208,20 +208,16 @@ export default function EditGameSteamSection({
                   key={candidate.id}
                   className="flex items-center gap-3 rounded-xl border border-surface-border bg-surface-elevated/40 p-2"
                 >
-                  {imageUrl ? (
-                    <img
-                      src={imageUrl}
-                      alt=""
-                      className="h-10 w-16 rounded object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-10 w-16 items-center justify-center rounded bg-surface-card text-content-muted">
-                      {String(candidate.steamName || "?").charAt(0)}
-                    </div>
-                  )}
+                  <GameCover
+                    src={imageUrl}
+                    name={candidate.steamName}
+                    className="h-10 w-16 shrink-0 rounded"
+                  />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-content-primary">
+                    <div
+                      className="truncate text-sm font-medium text-content-primary"
+                      title={candidate.steamName}
+                    >
                       {candidate.steamName}
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs text-content-muted">

@@ -13,8 +13,10 @@ import {
 import {
   Button,
   DropdownChevron,
+  GameCover,
   IconButton,
   PopoverPanel,
+  SearchClearButton,
   SegmentedControl,
   StatusBadge,
   TextInput,
@@ -101,20 +103,16 @@ export function SearchBox({
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        className="h-10 rounded-xl border-surface-border/75 bg-surface-card/55 pl-11 pr-11 text-sm shadow-control-inset placeholder:text-content-muted/75 focus:border-primary/55 focus:bg-surface-card"
+        className="h-10 border-surface-border/75 bg-surface-card/55 pl-11 pr-11 text-sm shadow-control-inset placeholder:text-content-muted/75 focus:border-primary/55 focus:bg-surface-card"
         role="combobox"
         aria-expanded={open && suggestions.length > 0}
         aria-controls="backlog-search-results"
         aria-autocomplete="list"
       />
       {query ? (
-        <IconButton
-          icon={X}
+        <SearchClearButton
           onClick={clear}
           label="Clear search"
-          title="Clear search"
-          variant="ghost"
-          className="absolute right-2 top-1/2 h-8 w-8 -translate-y-1/2 border-transparent"
         />
       ) : null}
 
@@ -140,22 +138,20 @@ export function SearchBox({
                 onClick={() => selectGame(game)}
                 className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
                   activeIndex === index
-                    ? "bg-surface-elevated text-content-primary"
-                    : "text-content-secondary hover:bg-surface-elevated/70"
+                    ? "bg-surface-selected text-primary-light"
+                    : "text-content-secondary hover:bg-surface-selected/55 hover:text-primary-light"
                 }`}
               >
-                {game.cover ? (
-                  <img
-                    src={game.cover}
-                    alt=""
-                    className="h-12 w-9 rounded object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="h-12 w-9 rounded bg-surface-elevated" />
-                )}
+                <GameCover
+                  src={game.cover}
+                  name={game.name}
+                  className="h-12 w-9 shrink-0 rounded"
+                />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-content-primary">
+                  <div
+                    className="truncate text-sm font-medium text-content-primary"
+                    title={game.name}
+                  >
                     {game.name}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-content-muted">
@@ -211,14 +207,14 @@ export function FilterDropdown({
     <div ref={wrapperRef} className="relative max-sm:static">
       <Button
         type="button"
-        variant={selected.length ? "selected" : "secondary"}
+        variant={selected.length ? "filterActive" : "secondary"}
         onClick={() => setOpen((value) => !value)}
-        className="h-10 shrink-0 whitespace-nowrap rounded-xl"
+        className="h-10 shrink-0 whitespace-nowrap"
         aria-expanded={open}
       >
         {label}
         {selected.length ? (
-          <span className="rounded-full bg-primary/22 px-2 py-0.5 text-xs font-semibold text-primary-light">
+          <span className="rounded-full bg-content-on-primary/18 px-2 py-0.5 text-xs font-semibold text-content-on-primary ring-1 ring-inset ring-content-on-primary/20">
             {selected.length}
           </span>
         ) : null}
@@ -249,7 +245,7 @@ export function FilterDropdown({
                 onClick={onClear}
               >
                 <X className="h-4 w-4" aria-hidden="true" />
-                Clear
+                Clear selection
               </Button>
             ) : null}
           </div>
@@ -272,10 +268,11 @@ export function FilterDropdown({
                   type="button"
                   key={option.value}
                   onClick={() => onToggle(option.value)}
-                  className={`flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-sm transition-colors ${
+                  aria-pressed={active}
+                  className={`flex min-w-0 items-center gap-2 rounded-control border px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60 ${
                     active
-                      ? "border-primary/40 bg-primary/10 text-content-primary"
-                      : "border-transparent text-content-secondary hover:border-surface-border hover:bg-surface-elevated/70 hover:text-content-primary"
+                      ? "border-primary/55 bg-surface-selected text-primary-light"
+                      : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light"
                   }`}
                 >
                   <span
@@ -335,9 +332,9 @@ export function HoursDropdown({ hoursBounds, hoursRange, setHoursRange }) {
     <div ref={wrapperRef} className="relative max-sm:static">
       <Button
         type="button"
-        variant={active ? "selected" : "secondary"}
+        variant={active ? "filterActive" : "secondary"}
         onClick={() => setOpen((value) => !value)}
-        className="h-10 shrink-0 whitespace-nowrap rounded-xl"
+        className="h-10 shrink-0 whitespace-nowrap"
         disabled={max <= min}
         aria-expanded={open}
       >
@@ -424,9 +421,9 @@ export function MoreFiltersDropdown({
     <div ref={wrapperRef} className="relative max-sm:static">
       <Button
         type="button"
-        variant={activeCount ? "selected" : "secondary"}
+        variant={activeCount ? "filterActive" : "secondary"}
         onClick={() => setOpen((value) => !value)}
-        className="h-10 shrink-0 whitespace-nowrap rounded-xl"
+        className="h-10 shrink-0 whitespace-nowrap"
         aria-expanded={open}
       >
         <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
@@ -464,7 +461,7 @@ export function MoreFiltersDropdown({
                 }}
               >
                 <X className="h-4 w-4" aria-hidden="true" />
-                Clear
+                Clear selection
               </Button>
             ) : null}
           </div>
@@ -485,11 +482,12 @@ export function MoreFiltersDropdown({
                         setDateFilter(active ? null : option.value);
                         setOpen(false);
                       }}
+                      aria-pressed={active}
                       className={[
-                        "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        "flex w-full items-center justify-between rounded-control border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60",
                         active
-                          ? "bg-primary/12 text-primary-light"
-                          : "text-content-secondary hover:bg-surface-elevated hover:text-content-primary",
+                          ? "border-primary/55 bg-surface-selected text-primary-light"
+                          : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
                       ].join(" ")}
                     >
                       {option.label}
@@ -507,11 +505,12 @@ export function MoreFiltersDropdown({
             <button
               type="button"
               onClick={toggleCompleted}
+              aria-pressed={completedActive}
               className={[
-                "flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-colors",
+                "flex w-full items-center justify-between rounded-control border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60",
                 completedActive
-                  ? "border-primary/40 bg-primary/12 text-content-primary"
-                  : "border-surface-border/65 bg-surface-elevated/35 text-content-secondary hover:bg-surface-elevated/70 hover:text-content-primary",
+                  ? "border-primary/55 bg-surface-selected text-primary-light"
+                  : "border-surface-border/65 bg-surface-elevated/35 text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
               ].join(" ")}
             >
               <span className="flex items-center gap-2">
@@ -519,7 +518,7 @@ export function MoreFiltersDropdown({
                 Completed games
               </span>
               {completedActive ? (
-                <Check className="h-4 w-4 text-primary-light" />
+                <Check className="h-4 w-4" aria-hidden="true" />
               ) : null}
             </button>
           ) : null}
@@ -570,9 +569,9 @@ export function DateDropdown({ dateFilter, setDateFilter }) {
     <div ref={wrapperRef} className="relative max-sm:static">
       <Button
         type="button"
-        variant={dateFilter ? "selected" : "secondary"}
+        variant={dateFilter ? "filterActive" : "secondary"}
         onClick={() => setOpen((value) => !value)}
-        className="h-10 shrink-0 whitespace-nowrap rounded-xl"
+        className="h-10 shrink-0 whitespace-nowrap"
         aria-expanded={open}
       >
         <CalendarDays className="h-4 w-4" aria-hidden="true" />
@@ -596,10 +595,11 @@ export function DateDropdown({ dateFilter, setDateFilter }) {
                   type="button"
                   key={option.label}
                   onClick={() => select(option.value)}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                  aria-pressed={active}
+                  className={`flex w-full items-center justify-between rounded-control border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60 ${
                     active
-                      ? "bg-primary/10 text-content-primary"
-                      : "text-content-secondary hover:bg-surface-elevated hover:text-content-primary"
+                      ? "border-primary/55 bg-surface-selected text-primary-light"
+                      : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light"
                   }`}
                 >
                   {option.label}
@@ -657,10 +657,9 @@ export function ViewModeSwitch({ value, onChange }) {
       onChange={onChange}
       options={options}
       ariaLabel="Backlog view"
+      variant="view"
       className="h-10 border-surface-border/75 bg-surface-card/45"
       itemClassName="h-8 px-2.5 text-xs sm:px-3"
-      activeClassName="bg-primary/18 text-primary-light shadow-sm shadow-primary/10"
-      inactiveClassName="text-content-muted hover:bg-surface-elevated/70 hover:text-content-primary"
     />
   );
 }

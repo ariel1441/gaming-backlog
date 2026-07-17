@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ExternalLink,
@@ -13,15 +13,14 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import {
   AppPage,
+  PageError,
   PageHeader,
-  PageLoading,
   PageSection,
   PageToolbar,
 } from "../components/layout";
 import {
   attachSteamCandidate,
   getSteamAccount,
-  importSteamCandidates,
   listSteamImportCandidates,
   syncSteamAchievements,
   syncSteamGameAchievements,
@@ -35,9 +34,12 @@ import {
   Button,
   EmptyState,
   Field,
+  GameCover,
   IconButton,
   Modal,
+  SearchClearButton,
   SelectMenu,
+  Skeleton,
   TextInput,
   useToast,
 } from "../components/ui";
@@ -69,7 +71,12 @@ const PAGE_LIMIT = 100;
 
 const viewOptions = [
   { value: "all", label: "All synced apps", status: "all", group: "all" },
-  { value: "open", label: "Open review", status: "active", group: "all" },
+  {
+    value: "open",
+    label: "Needs import decision",
+    status: "active",
+    group: "all",
+  },
   { value: "linked", label: "In backlog", status: "done", group: "all" },
   {
     value: "needs_match",
@@ -158,6 +165,7 @@ export default function SteamLibraryPage() {
   const { isAuthenticated, loading: authLoading, isGuest } = useAuth();
   const [account, setAccount] = useState(null);
   const [accountLoading, setAccountLoading] = useState(true);
+  const [accountError, setAccountError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncingAchievements, setSyncingAchievements] = useState(false);
   const [syncingAchievementGameId, setSyncingAchievementGameId] =
@@ -176,6 +184,7 @@ export default function SteamLibraryPage() {
   });
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [libraryError, setLibraryError] = useState("");
   const [selectedApp, setSelectedApp] = useState(null);
   const [matchApp, setMatchApp] = useState(null);
   const [matchQuery, setMatchQuery] = useState("");
@@ -188,16 +197,18 @@ export default function SteamLibraryPage() {
   const [lastSyncReview, setLastSyncReview] = useState(() =>
     loadLastSteamSyncReview(),
   );
+  const libraryLoadSequence = useRef(0);
 
   const selectedView = useMemo(() => currentView(view), [view]);
 
   const loadAccount = async () => {
     setAccountLoading(true);
+    setAccountError("");
     try {
       const payload = await getSteamAccount();
       setAccount(payload?.account || null);
     } catch (error) {
-      toast.error(error.message || "Could not load Steam account.");
+      setAccountError(error.message || "Could not load Steam account.");
     } finally {
       setAccountLoading(false);
     }
@@ -205,8 +216,15 @@ export default function SteamLibraryPage() {
 
   const loadApps = async ({ append = false, offset = 0 } = {}) => {
     if (!isAuthenticated || isGuest) return;
+    const sequence = append
+      ? libraryLoadSequence.current
+      : libraryLoadSequence.current + 1;
+    if (!append) libraryLoadSequence.current = sequence;
     if (append) setLoadingMore(true);
-    else setLoading(true);
+    else {
+      setLoading(true);
+      setLibraryError("");
+    }
     try {
       const payload = await listSteamImportCandidates({
         status: selectedView.status,
@@ -217,6 +235,7 @@ export default function SteamLibraryPage() {
         limit: PAGE_LIMIT,
         offset,
       });
+      if (libraryLoadSequence.current !== sequence) return;
       setApps((current) =>
         append
           ? [...current, ...(payload?.candidates || [])]
@@ -232,10 +251,15 @@ export default function SteamLibraryPage() {
         },
       );
     } catch (error) {
-      toast.error(error.message || "Could not load Steam library.");
+      if (libraryLoadSequence.current !== sequence) return;
+      if (append) {
+        toast.error(error.message || "Could not load more Steam apps.");
+      } else {
+        setLibraryError(error.message || "Could not load Steam library.");
+      }
     } finally {
       if (append) setLoadingMore(false);
-      else setLoading(false);
+      else if (libraryLoadSequence.current === sequence) setLoading(false);
     }
   };
 
@@ -340,27 +364,6 @@ export default function SteamLibraryPage() {
     }
   };
 
-  const importCandidate = async (app) => {
-    try {
-      const payload = await importSteamCandidates([app.id]);
-      const imported = payload?.imported?.length || 0;
-      const attached = payload?.attached?.length || 0;
-      if (imported || attached) {
-        toast.success(
-          imported
-            ? "Game added to backlog."
-            : "Steam linked to an existing backlog game.",
-        );
-      } else {
-        toast.warning("Choose a catalog match before adding this Steam app.");
-      }
-      await loadApps({ append: false, offset: 0 });
-      setSelectedApp(null);
-    } catch (error) {
-      toast.error(error.message || "Could not add or link this Steam app.");
-    }
-  };
-
   const openMatch = (app) => {
     setMatchApp(app);
     setMatchQuery(app?.steamName || "");
@@ -439,6 +442,15 @@ export default function SteamLibraryPage() {
     }
   };
 
+  if (
+    authLoading ||
+    (isAuthenticated &&
+      !isGuest &&
+      (accountLoading || (loading && summary == null)))
+  ) {
+    return <SteamLibrarySkeleton />;
+  }
+
   if (!authLoading && (!isAuthenticated || isGuest)) {
     return (
       <AppPage width="wide">
@@ -467,9 +479,28 @@ export default function SteamLibraryPage() {
     );
   }
 
+  if (accountError) {
+    return (
+      <AppPage width="wide">
+        <PageHeader
+          title="Steam Library"
+          description="Browse synced Steam apps, find games that need attention, and keep playtime and achievements up to date."
+          icon={Library}
+        />
+        <div className="pt-7">
+          <PageError
+            title="Could not load your Steam account."
+            description={accountError}
+            onRetry={loadAccount}
+          />
+        </div>
+      </AppPage>
+    );
+  }
+
   const total = page.total || 0;
   const allSummary = summary || {};
-  const groups = allSummary.groups || {};
+  const groups = allSummary.active?.groups || allSummary.groups || {};
   const hasActiveTools =
     query.trim() ||
     view !== "all" ||
@@ -502,7 +533,7 @@ export default function SteamLibraryPage() {
     <AppPage width="wide">
       <PageHeader
         title="Steam Library"
-        description="Browse synced Steam apps, find games that need attention, and keep playtime and achievements up to date."
+        description="Browse the complete synced collection and inspect playtime, achievements, and backlog connections. Import decisions happen in Steam Import Review."
         icon={Library}
         meta={
           accountLoading ? undefined : `${allSummary.total || 0} synced apps`
@@ -515,28 +546,39 @@ export default function SteamLibraryPage() {
           )
         }
         actions={
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => navigate("/steam/import")}
-            >
-              <LinkIcon className="h-4 w-4" aria-hidden="true" />
-              Review import
-            </Button>
+          account?.steamId ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => navigate("/steam/import")}
+              >
+                <LinkIcon className="h-4 w-4" aria-hidden="true" />
+                Go to Steam Import Review
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={sync}
+                disabled={syncing || accountLoading}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                  aria-hidden="true"
+                />
+                {syncing ? "Syncing..." : "Sync library"}
+              </Button>
+            </>
+          ) : (
             <Button
               type="button"
               variant="primary"
-              onClick={sync}
-              disabled={syncing || accountLoading}
+              onClick={() => navigate("/steam/import")}
             >
-              <RefreshCw
-                className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
-                aria-hidden="true"
-              />
-              {syncing ? "Syncing..." : "Sync library"}
+              <LinkIcon className="h-4 w-4" aria-hidden="true" />
+              Link Steam in Import Review
             </Button>
-          </>
+          )
         }
       />
 
@@ -549,7 +591,10 @@ export default function SteamLibraryPage() {
               value={(allSummary.imported || 0) + (allSummary.attached || 0)}
             />
             <Metric label="Newly played" value={groups.newly_played || 0} />
-            <Metric label="Needs match" value={groups.needs_match || 0} />
+            <Metric
+              label="Needs import match"
+              value={groups.needs_match || 0}
+            />
             <Metric label="Likely non-games" value={groups.filtered || 0} />
             <Metric label="Hidden" value={allSummary.ignored || 0} />
           </div>
@@ -569,8 +614,14 @@ export default function SteamLibraryPage() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Find a Steam app..."
-                  className="pl-9"
+                  className="pl-9 pr-11"
                 />
+                {query ? (
+                  <SearchClearButton
+                    onClick={() => setQuery("")}
+                    label="Clear Steam Library search"
+                  />
+                ) : null}
               </div>
             </Field>
             <Field id="steam-library-view" label="View" className="min-w-0">
@@ -607,23 +658,24 @@ export default function SteamLibraryPage() {
             {hasActiveTools ? (
               <Button
                 type="button"
-                variant="ghost"
+                variant="dangerGhost"
                 size="sm"
                 onClick={resetTools}
                 className="justify-self-start xl:justify-self-end"
               >
-                Reset filters
+                <X className="h-4 w-4" aria-hidden="true" />
+                Clear filters
               </Button>
             ) : null}
           </div>
         </PageToolbar>
 
         <PageSection
-          title="All synced apps"
+          title="Synced collection"
           description={
             loading
               ? "Loading your Steam library..."
-              : `${total} synced app${total === 1 ? "" : "s"} ֲ· ${apps.length} shown`
+              : `${total} synced app${total === 1 ? "" : "s"} · ${apps.length} shown`
           }
           action={
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -640,6 +692,23 @@ export default function SteamLibraryPage() {
                   </span>
                 </Button>
               ) : null}
+            </div>
+          }
+        >
+          {account?.lastLibrarySyncAt && !loading ? (
+            <div className="-mt-2 mb-3 text-xs text-content-muted">
+              Last synced {formatAchievementSyncDate(account.lastLibrarySyncAt)}
+            </div>
+          ) : null}
+
+          <details className="mb-4 rounded-lg border border-surface-border bg-surface-bg/20">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70">
+              <span>Library tools</span>
+              <span className="text-xs font-normal text-content-muted">
+                achievements and maintenance
+              </span>
+            </summary>
+            <div className="flex flex-wrap items-center gap-3 border-t border-surface-border p-3">
               <Button
                 type="button"
                 variant="secondary"
@@ -655,23 +724,30 @@ export default function SteamLibraryPage() {
                 <Trophy className="h-4 w-4" aria-hidden="true" />
                 {syncingAchievements
                   ? "Syncing achievements..."
-                  : "Sync achievements"}
+                  : "Sync all achievements"}
               </Button>
+              <span className="text-xs leading-5 text-content-muted">
+                Achievement refresh is optional and only applies to linked
+                backlog games.
+              </span>
             </div>
-          }
-        >
-          {account?.lastLibrarySyncAt && !loading ? (
-            <div className="-mt-2 mb-3 text-xs text-content-muted">
-              Last synced {formatAchievementSyncDate(account.lastLibrarySyncAt)}
-            </div>
-          ) : null}
+          </details>
 
           {loading ? (
-            <PageLoading rows={6} />
+            <SteamLibraryTableSkeleton />
+          ) : libraryError ? (
+            <PageError
+              title="Could not load your Steam library."
+              description={libraryError}
+              onRetry={() => loadApps({ append: false, offset: 0 })}
+            />
           ) : apps.length ? (
             <div className="space-y-4">
-              <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-card">
-                <div className="grid grid-cols-[minmax(220px,2fr)_72px_106px_minmax(120px,0.9fr)_minmax(145px,1fr)_108px] items-center gap-2 border-b border-surface-border bg-surface-bg/25 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-content-muted">
+              <p className="text-xs text-content-muted sm:hidden">
+                Swipe the table horizontally to inspect every column.
+              </p>
+              <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface-card">
+                <div className="grid min-w-[900px] grid-cols-[minmax(220px,2fr)_72px_106px_minmax(120px,0.9fr)_minmax(145px,1fr)_150px] items-center gap-2 border-b border-surface-border bg-surface-bg/25 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-content-muted">
                   <span>Game</span>
                   <span>Playtime</span>
                   <span>Last played</span>
@@ -732,7 +808,7 @@ export default function SteamLibraryPage() {
                     variant="primary"
                     onClick={() => navigate("/steam/import")}
                   >
-                    Review import
+                    Open Steam Import Review
                   </Button>
                 )
               }
@@ -748,13 +824,11 @@ export default function SteamLibraryPage() {
           syncingAchievementGameId={syncingAchievementGameId}
           onHide={() => updateCandidate(selectedApp, "ignore")}
           onRestore={() => updateCandidate(selectedApp, "restore")}
-          onAccept={() => updateCandidate(selectedApp, "accept")}
-          onImport={() => importCandidate(selectedApp)}
           onChangeMatch={() => openMatch(selectedApp)}
           onLinkExisting={() => openLinkExisting(selectedApp)}
           onReview={() =>
             navigate(
-              `/steam/import?status=all&group=all&q=${encodeURIComponent(selectedApp.steamName || "")}`,
+              `/steam/import?status=active&group=all&q=${encodeURIComponent(selectedApp.steamName || "")}`,
             )
           }
         />
@@ -797,19 +871,16 @@ export default function SteamLibraryPage() {
                   onClick={() => chooseMatch(game)}
                   className="flex w-full items-center gap-3 rounded-lg border border-surface-border bg-surface-bg/35 p-2 text-left transition hover:border-primary/35 hover:bg-surface-elevated/60"
                 >
-                  {game.cover ? (
-                    <img
-                      src={game.cover}
-                      alt=""
-                      className="h-16 w-12 rounded object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-16 w-12 items-center justify-center rounded bg-surface-elevated text-content-muted">
-                      {String(game.name || "?").charAt(0)}
-                    </div>
-                  )}
+                  <GameCover
+                    src={game.cover}
+                    name={game.name}
+                    className="h-16 w-12 shrink-0 rounded"
+                  />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-content-primary">
+                    <div
+                      className="truncate text-sm font-semibold text-content-primary"
+                      title={game.name}
+                    >
                       {game.name}
                     </div>
                     <div className="mt-1 text-xs text-content-muted">
@@ -860,19 +931,16 @@ export default function SteamLibraryPage() {
                   onClick={() => chooseBacklogGame(game)}
                   className="flex w-full items-center gap-3 rounded-lg border border-surface-border bg-surface-bg/35 p-2 text-left transition hover:border-primary/35 hover:bg-surface-elevated/60"
                 >
-                  {game.cover ? (
-                    <img
-                      src={game.cover}
-                      alt=""
-                      className="h-16 w-12 rounded object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-16 w-12 items-center justify-center rounded bg-surface-elevated text-content-muted">
-                      {String(game.name || "?").charAt(0)}
-                    </div>
-                  )}
+                  <GameCover
+                    src={game.cover}
+                    name={game.name}
+                    className="h-16 w-12 shrink-0 rounded"
+                  />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-content-primary">
+                    <div
+                      className="truncate text-sm font-semibold text-content-primary"
+                      title={game.name}
+                    >
                       {game.name}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
@@ -887,5 +955,65 @@ export default function SteamLibraryPage() {
         </Modal>
       ) : null}
     </AppPage>
+  );
+}
+
+function SteamLibrarySkeleton() {
+  return (
+    <AppPage width="wide">
+      <div
+        className="space-y-7"
+        role="status"
+        aria-label="Loading Steam library"
+        aria-busy="true"
+      >
+        <PageHeader
+          title="Steam Library"
+          description="Browse synced Steam apps, find games that need attention, and keep playtime and achievements up to date."
+          icon={Library}
+        />
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-20 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-32 w-full rounded-panel" />
+        <SteamLibraryTableSkeleton />
+      </div>
+    </AppPage>
+  );
+}
+
+function SteamLibraryTableSkeleton() {
+  return (
+    <div
+      className="overflow-hidden rounded-xl border border-surface-border bg-surface-card"
+      role="status"
+      aria-label="Loading Steam apps"
+      aria-busy="true"
+    >
+      <div className="hidden h-10 border-b border-surface-border bg-surface-bg/25 lg:block" />
+      <div className="divide-y divide-surface-border">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <div
+            key={index}
+            className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(220px,2fr)_72px_106px_minmax(120px,0.9fr)_minmax(145px,1fr)_108px] lg:items-center"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <Skeleton className="h-11 w-[74px] shrink-0 rounded" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+            <Skeleton className="h-4 w-12" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-7 w-24 rounded-full" />
+            <Skeleton className="h-7 w-28 rounded-full" />
+            <Skeleton className="h-9 w-24 rounded-control" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

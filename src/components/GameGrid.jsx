@@ -136,7 +136,11 @@ const GameGrid = ({
     const only = filteredGames[0];
     return (
       <div className="w-full px-2 sm:px-0 flex justify-center">
-        <div className="w-full max-w-[420px]">
+        <div
+          className={
+            viewMode === "list" ? "w-full" : "w-full max-w-[420px]"
+          }
+        >
           <GameCard
             key={only.id}
             game={only}

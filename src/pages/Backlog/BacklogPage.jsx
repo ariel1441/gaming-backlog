@@ -396,7 +396,10 @@ export default function BacklogPage() {
               <GameGrid
                 games={displayGames}
                 onSelectGame={setSelectedGame}
-                onEditGame={startEditing}
+                onEditGame={(game) => {
+                  setSelectedGame(game);
+                  startEditing(game);
+                }}
                 onDeleteGame={handleDeleteGame}
                 onReorder={reorderEnabled ? handleReorderGames : null}
                 canManage={canReorder}
@@ -454,9 +457,9 @@ export default function BacklogPage() {
           <BacklogModals
             selectedGame={selectedGame}
             onCloseSelectedGame={() => setSelectedGame(null)}
+            onSelectedGameUpdated={setSelectedGame}
             onSteamLinked={() => refresh({ silent: true })}
             onEditSelectedGame={(game) => {
-              setSelectedGame(null);
               startEditing(game);
             }}
             surpriseGame={surpriseGame}

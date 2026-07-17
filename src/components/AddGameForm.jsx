@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Badge,
   Button,
   Field,
+  GameCover,
   Modal,
   MultiSelectMenu,
   SelectMenu,
+  StatusBadge,
   Textarea,
   TextInput,
 } from "./ui";
@@ -124,27 +125,26 @@ const AddGameForm = ({
             <div className="flex h-full flex-col justify-between gap-6">
               <div>
                 <div className="mb-5 rounded-2xl border border-surface-border bg-surface-bg/35 p-4">
-                  {newGame.rawg_cover ? (
-                    <img
-                      src={newGame.rawg_cover}
-                      alt=""
-                      className="h-40 w-full rounded-xl border border-surface-border object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-surface-border/70 bg-surface-elevated/35 text-sm text-content-muted">
-                      Type a title to search RAWG
-                    </div>
-                  )}
+                  <GameCover
+                    src={newGame.rawg_cover}
+                    name={newGame.name}
+                    className="h-40 w-full rounded-xl border border-surface-border"
+                    showFallbackLabel
+                    fallbackLabel="Type a title to search RAWG"
+                  />
                 </div>
 
-                <h3 className="break-words text-2xl font-semibold leading-tight text-content-primary">
+                <h3
+                  className="break-words text-2xl font-semibold leading-tight text-content-primary"
+                  title={newGame.name?.trim() || "New game"}
+                >
                   {newGame.name?.trim() || "New game"}
                 </h3>
                 <div className="mt-3">
-                  <Badge variant={newGame.status ? "primary" : "default"}>
-                    {newGame.status || "No status selected"}
-                  </Badge>
+                  <StatusBadge
+                    status={newGame.status}
+                    placeholder="No status selected"
+                  />
                 </div>
                 {hasSelectedRawg ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-content-muted">
@@ -387,7 +387,7 @@ const AddGameForm = ({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[0.85fr_1.15fr]">
                 <Field
                   id="add-my-genre"
-                  label="My genre"
+                  label="My genres"
                   help="Choose existing tags or add your own."
                 >
                   <MultiSelectMenu

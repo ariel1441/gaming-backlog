@@ -1,6 +1,6 @@
 import React from "react";
 import { ArrowDown, ArrowUp, Check, Heart, Search, X } from "lucide-react";
-import { Button, StatusBadge, TextInput } from "./ui";
+import { Button, GameCover, IconButton, StatusBadge, TextInput } from "./ui";
 
 const MAX_FAVORITES = 5;
 
@@ -147,7 +147,10 @@ function FavoriteSlot({
       </span>
       <GameThumb game={game} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-content-primary">
+        <div
+          className="truncate text-sm font-medium text-content-primary"
+          title={game.name}
+        >
           {game.name}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-content-muted">
@@ -155,38 +158,29 @@ function FavoriteSlot({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <Button
-          type="button"
+        <IconButton
+          icon={ArrowUp}
           variant="ghost"
           size="sm"
           onClick={onMoveUp}
           disabled={!canMoveUp}
-          aria-label={`Move ${game.name} up`}
-          title={`Move ${game.name} up`}
-        >
-          <ArrowUp className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
+          label={`Move ${game.name} up`}
+        />
+        <IconButton
+          icon={ArrowDown}
           variant="ghost"
           size="sm"
           onClick={onMoveDown}
           disabled={!canMoveDown}
-          aria-label={`Move ${game.name} down`}
-          title={`Move ${game.name} down`}
-        >
-          <ArrowDown className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
+          label={`Move ${game.name} down`}
+        />
+        <IconButton
+          icon={X}
           variant="ghost"
           size="sm"
           onClick={onRemove}
-          aria-label={`Remove ${game.name} from favorites`}
-          title={`Remove ${game.name} from favorites`}
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </Button>
+          label={`Remove ${game.name} from favorites`}
+        />
       </div>
     </div>
   );
@@ -198,11 +192,14 @@ function FavoriteCandidate({ game, selected, full, onAdd }) {
       type="button"
       onClick={onAdd}
       disabled={selected || full}
-      className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-surface-border bg-surface-bg/35 p-2 text-left transition-colors hover:bg-surface-elevated/60 disabled:cursor-not-allowed disabled:opacity-70"
+      className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl border border-surface-border bg-surface-bg/35 p-2 text-left transition-colors hover:bg-surface-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg disabled:cursor-not-allowed disabled:opacity-70"
     >
       <GameThumb game={game} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-content-primary">
+        <div
+          className="truncate text-sm font-medium text-content-primary"
+          title={game.name}
+        >
           {game.name}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-content-muted">
@@ -221,16 +218,11 @@ function FavoriteCandidate({ game, selected, full, onAdd }) {
 }
 
 function GameThumb({ game }) {
-  return game.cover ? (
-    <img
+  return (
+    <GameCover
       src={game.cover}
-      alt=""
-      loading="lazy"
-      className="h-14 w-10 shrink-0 rounded object-cover"
+      name={game.name}
+      className="h-14 w-10 shrink-0 rounded"
     />
-  ) : (
-    <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-surface-elevated text-xs font-semibold text-content-muted">
-      {String(game.name || "?").charAt(0)}
-    </div>
   );
 }

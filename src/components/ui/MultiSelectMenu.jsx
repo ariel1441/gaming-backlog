@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, Plus, X } from "lucide-react";
 import Button from "./Button";
+import Chip from "./Chip";
 import { TextInput } from "./inputs";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import PopoverPanel from "./PopoverPanel";
@@ -19,6 +20,7 @@ export default function MultiSelectMenu({
   disabled = false,
   allowCustom = false,
   customPlaceholder = "Add custom value...",
+  selectedChipVariant = "personalGenre",
   ...props
 }) {
   const [open, setOpen] = useState(false);
@@ -157,8 +159,8 @@ export default function MultiSelectMenu({
           }
         }}
         className={[
-          "flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-surface-border bg-surface-input/55 px-3 py-2 text-left text-sm text-content-primary shadow-control-inset transition-colors",
-          "hover:border-primary/35 hover:bg-surface-elevated focus:border-focus-border/70 focus:outline-none focus:ring-2 focus:ring-focus/20",
+          "flex min-h-10 w-full items-center justify-between gap-3 rounded-control border border-surface-border bg-surface-input/55 px-3 py-2 text-left text-sm text-content-primary shadow-control-inset transition-[background-color,border-color,box-shadow,transform]",
+          "hover:border-primary/40 hover:bg-surface-selected/55 focus-visible:border-focus-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/20 active:translate-y-px aria-expanded:border-primary/55 aria-expanded:bg-surface-selected/70",
           disabled ? "cursor-not-allowed opacity-70" : "",
         ].join(" ")}
         aria-haspopup="listbox"
@@ -178,23 +180,29 @@ export default function MultiSelectMenu({
       {selected.length ? (
         <div className="mt-2 flex flex-wrap gap-2">
           {selected.map((value) => (
-            <button
+            <Chip
+              as="button"
               type="button"
               key={value}
+              variant={selectedChipVariant}
               disabled={disabled}
               onClick={() => toggle(value)}
               aria-label={`Remove ${value}`}
-              className="inline-flex max-w-full items-center gap-1 rounded-full border border-secondary/35 bg-secondary/12 px-2.5 py-1 text-xs font-medium text-secondary-light hover:border-secondary/55 hover:bg-secondary/16"
+              className="gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg disabled:cursor-not-allowed disabled:opacity-70"
             >
-              <span className="truncate">{value}</span>
+              <span className="min-w-0 break-words text-left">{value}</span>
               <X className="h-3 w-3 shrink-0" aria-hidden="true" />
-            </button>
+            </Chip>
           ))}
         </div>
       ) : null}
 
       {open ? (
-        <PopoverPanel className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-tooltip">
+        <PopoverPanel
+          padding="sm"
+          radius="lg"
+          className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-tooltip"
+        >
           <TextInput
             type="search"
             value={query}
@@ -230,10 +238,10 @@ export default function MultiSelectMenu({
                   aria-selected={active}
                   onClick={() => toggle(option)}
                   className={[
-                    "flex w-full min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-sm transition-colors",
+                    "flex w-full min-w-0 items-center gap-2 rounded-control border px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60",
                     active
-                      ? "border-primary/40 bg-primary/10 text-content-primary"
-                      : "border-transparent text-content-secondary hover:border-surface-border hover:bg-surface-elevated/70 hover:text-content-primary",
+                      ? "border-primary/55 bg-surface-selected text-primary-light"
+                      : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
                   ].join(" ")}
                 >
                   <span

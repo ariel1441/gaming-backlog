@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle,
   Copy,
   Database,
   Download,
@@ -12,7 +11,6 @@ import {
   Link as LinkIcon,
   LockKeyhole,
   Palette,
-  RefreshCw,
   SlidersHorizontal,
   User2,
 } from "lucide-react";
@@ -20,7 +18,7 @@ import ProfileFavoritesEditor, {
   getFavoriteIds,
 } from "../components/ProfileFavoritesEditor";
 import ProfileSnapshot from "../components/ProfileSnapshot";
-import { AppPage, PageHeader } from "../components/layout";
+import { AppPage, PageError, PageHeader } from "../components/layout";
 import PublicToggleCard from "../components/PublicToggleCard";
 import {
   Badge,
@@ -176,18 +174,13 @@ export default function SettingsPage() {
         />
 
         {gamesError ? (
-          <EmptyState
-            icon={AlertTriangle}
+          <PageError
             title="Could not load your backlog data."
             description={
               gamesError?.message || "Try again before changing settings."
             }
-            action={
-              <Button type="button" variant="primary" onClick={() => refresh()}>
-                <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                Retry
-              </Button>
-            }
+            onRetry={() => refresh()}
+            retryLabel="Retry"
           />
         ) : (
           <div className="space-y-5">
@@ -195,7 +188,13 @@ export default function SettingsPage() {
               activeSection={activeSection}
               onSelect={setActiveSection}
             />
-            <div className="min-w-0 space-y-5">
+            <div
+              id={`settings-panel-${activeSection}`}
+              role="tabpanel"
+              tabIndex={0}
+              aria-labelledby={`settings-tab-${activeSection}`}
+              className="min-w-0 space-y-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-4 focus-visible:ring-offset-surface-bg"
+            >
               {activeSection === "account" ? (
                 <AccountSection user={user} isGuest={isGuest} games={games} />
               ) : null}

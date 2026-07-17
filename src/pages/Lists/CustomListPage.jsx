@@ -1,10 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft,
-  CalendarDays,
-  Clock3,
-  GripVertical,
+  ChevronRight,
   Grid2X2,
   LibraryBig,
   List,
@@ -12,40 +9,19 @@ import {
   Pencil,
   Plus,
   Search,
-  Star,
-  Tag,
   Trash2,
   Wand2,
-  X,
 } from "lucide-react";
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import GameModal from "../../components/GameModal";
-import { AppPage, PageError, PageLoading } from "../../components/layout";
+import { AppPage, PageError } from "../../components/layout";
 import {
+  ActionMenu,
   Button,
   EmptyState,
   Field,
-  IconButton,
   Modal,
-  SelectMenu,
   SegmentedControl,
+  Skeleton,
   Textarea,
   TextInput,
   useConfirm,
@@ -63,18 +39,12 @@ import {
   updateUserList,
 } from "../../services/listService";
 import {
-  SMART_STATUS_OPTIONS,
   describeSmartQuery,
   normalizeSmartQuery,
   normalizeSmartSortKey,
   resolveSmartList,
-  smartListExposedControls,
-  smartListGenres,
-  smartListYears,
 } from "../../utils/automaticLists";
-import { hoursValueForList } from "../../utils/hours";
-import { splitCsv } from "../../utils/gameList";
-import { CoverCollage, formatUpdatedDate } from "./ListPreview";
+import { CoverCollage } from "./ListPreview";
 import SmartListRuleFields from "./SmartListRuleFields";
 import {
   CandidateRow,
@@ -88,6 +58,27 @@ const viewOptions = [
   { value: "posters", label: "Posters", icon: Grid2X2 },
   { value: "rows", label: "Rows", icon: List },
 ];
+const listViewStorageKey = "gaming-backlog:list-detail-view";
+
+function draftFromList(list) {
+  return {
+    name: list?.name || "",
+    description: list?.description || "",
+    query: normalizeSmartQuery(list?.query || {}),
+    sortKey: normalizeSmartSortKey(list?.sortKey || "score"),
+  };
+}
+
+function draftKey(draft, isSmart) {
+  return JSON.stringify({
+    name: draft?.name || "",
+    description: draft?.description || "",
+    query: isSmart ? normalizeSmartQuery(draft?.query || {}) : null,
+    sortKey: isSmart
+      ? normalizeSmartSortKey(draft?.sortKey || "score")
+      : null,
+  });
+}
 
 export default function CustomListPage() {
   const { id } = useParams();
@@ -100,7 +91,7 @@ export default function CustomListPage() {
   const [error, setError] = useState("");
   const [selectedGame, setSelectedGame] = useState(null);
   const [showEdit, setShowEdit] = useState(false);
-  const [isEditingManual, setIsEditingManual] = useState(false);
+  const [isManagingManual, setIsManagingManual] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [draft, setDraft] = useState({
     name: "",
@@ -111,7 +102,16 @@ export default function CustomListPage() {
   const [saving, setSaving] = useState(false);
   const [addSearch, setAddSearch] = useState("");
   const [addingId, setAddingId] = useState(null);
-  const [viewMode, setViewMode] = useState("posters");
+  const [addedCount, setAddedCount] = useState(0);
+  const [manageSaveStatus, setManageSaveStatus] = useState("idle");
+  const [smartSaveStatus, setSmartSaveStatus] = useState("idle");
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window === "undefined") return "posters";
+    return window.localStorage.getItem(listViewStorageKey) === "rows"
+      ? "rows"
+      : "posters";
+  });
+  const smartSaveSequence = useRef(0);
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -126,6 +126,9 @@ export default function CustomListPage() {
     [backlogGames, isSmart, list, statusGroupOf],
   );
   const displayGames = isSmart ? resolvedSmart?.games || [] : manualGames;
+  const metadataDirty =
+    showEdit &&
+    draftKey(draft, isSmart) !== draftKey(draftFromList(list), isSmart);
 
   const loadList = React.useCallback(async () => {
     if (!isAuthenticated || !Number.isFinite(listId)) return;
@@ -148,14 +151,23 @@ export default function CustomListPage() {
 
   useEffect(() => {
     if (list) {
-      setDraft({
-        name: list.name || "",
-        description: list.description || "",
-        query: normalizeSmartQuery(list.query || {}),
-        sortKey: normalizeSmartSortKey(list.sortKey || "score"),
-      });
+      setDraft(draftFromList(list));
     }
   }, [list]);
+
+  useEffect(() => {
+    if (!metadataDirty) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [metadataDirty]);
+
+  useEffect(() => {
+    window.localStorage.setItem(listViewStorageKey, viewMode);
+  }, [viewMode]);
 
   const listGameIds = useMemo(
     () => new Set(manualGames.map((game) => Number(game.id))),
@@ -176,7 +188,7 @@ export default function CustomListPage() {
 
   const saveMetadata = async (event) => {
     event?.preventDefault?.();
-    if (!draft.name.trim()) return;
+    if (!draft.name.trim()) return false;
     try {
       setSaving(true);
       const query = isSmart ? normalizeSmartQuery(draft.query) : null;
@@ -189,12 +201,38 @@ export default function CustomListPage() {
       });
       setList(payload?.list || list);
       setShowEdit(false);
-      setIsEditingManual(false);
       toast.success("List saved.");
+      return true;
     } catch (err) {
       toast.error(err?.message || "Could not save list.");
+      return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const requestCloseEdit = async () => {
+    if (saving) return;
+    if (!metadataDirty) {
+      setShowEdit(false);
+      setDraft(draftFromList(list));
+      return;
+    }
+    const choice = await confirm({
+      title: "Unsaved list changes",
+      message: "Save your list details before closing?",
+      confirmLabel: "Save changes",
+      confirmValue: "save",
+      secondaryLabel: "Discard changes",
+      secondaryValue: "discard",
+      cancelLabel: "Keep editing",
+      tone: "primary",
+    });
+    if (choice === "save") {
+      await saveMetadata();
+    } else if (choice === "discard") {
+      setDraft(draftFromList(list));
+      setShowEdit(false);
     }
   };
 
@@ -217,10 +255,13 @@ export default function CustomListPage() {
   const addGame = async (gameId) => {
     try {
       setAddingId(gameId);
+      setManageSaveStatus("saving");
       const payload = await addGameToList(listId, gameId);
       setManualGames(Array.isArray(payload?.games) ? payload.games : []);
-      toast.success("Game added.");
+      setAddedCount((count) => count + 1);
+      setManageSaveStatus("saved");
     } catch (err) {
+      setManageSaveStatus("error");
       toast.error(err?.message || "Could not add game.");
     } finally {
       setAddingId(null);
@@ -229,10 +270,12 @@ export default function CustomListPage() {
 
   const removeGame = async (gameId) => {
     try {
+      setManageSaveStatus("saving");
       const payload = await removeGameFromList(listId, gameId);
       setManualGames(Array.isArray(payload?.games) ? payload.games : []);
-      toast.success("Game removed.");
+      setManageSaveStatus("saved");
     } catch (err) {
+      setManageSaveStatus("error");
       toast.error(err?.message || "Could not remove game.");
     }
   };
@@ -240,6 +283,7 @@ export default function CustomListPage() {
   const reorder = async (orderedGames) => {
     const previous = manualGames;
     setManualGames(orderedGames);
+    setManageSaveStatus("saving");
     try {
       const payload = await reorderListGames(listId, {
         gameIds: orderedGames.map((game) => Number(game.id)),
@@ -247,8 +291,10 @@ export default function CustomListPage() {
       setManualGames(
         Array.isArray(payload?.games) ? payload.games : orderedGames,
       );
+      setManageSaveStatus("saved");
     } catch (err) {
       setManualGames(previous);
+      setManageSaveStatus("error");
       toast.error(err?.message || "Could not reorder list.");
     }
   };
@@ -259,7 +305,10 @@ export default function CustomListPage() {
     const sortKey = normalizeSmartSortKey(list.sortKey || "score");
     const previous = list;
     const nextList = { ...list, query, sortKey };
+    const sequence = smartSaveSequence.current + 1;
+    smartSaveSequence.current = sequence;
     setList(nextList);
+    setSmartSaveStatus("saving");
     try {
       const payload = await updateUserList(listId, {
         name: list.name,
@@ -267,35 +316,47 @@ export default function CustomListPage() {
         query,
         sortKey,
       });
+      if (smartSaveSequence.current !== sequence) return;
       setList(payload?.list || nextList);
+      setSmartSaveStatus("saved");
     } catch (err) {
+      if (smartSaveSequence.current !== sequence) return;
       setList(previous);
+      setSmartSaveStatus("error");
       toast.error(err?.message || "Could not update smart list.");
     }
   };
 
-  const startEdit = () => {
-    if (isSmart) {
-      setShowEdit(true);
-      return;
+  const openEdit = () => {
+    setDraft(draftFromList(list));
+    setShowEdit(true);
+  };
+
+  const openAdd = () => {
+    setAddedCount(0);
+    setShowAdd(true);
+  };
+
+  const closeAdd = () => {
+    setShowAdd(false);
+    setAddSearch("");
+    if (addedCount > 0) {
+      toast.success(
+        addedCount === 1
+          ? "1 game added to the list."
+          : `${addedCount} games added to the list.`,
+      );
     }
-    setIsEditingManual(true);
+    setAddedCount(0);
   };
 
-  const cancelManualEdit = () => {
-    setDraft({
-      name: list?.name || "",
-      description: list?.description || "",
-      query: normalizeSmartQuery(list?.query || {}),
-      sortKey: normalizeSmartSortKey(list?.sortKey || "score"),
-    });
-    setIsEditingManual(false);
-  };
-
-  if (authLoading || (isAuthenticated && (loading || backlogLoading))) {
+  if (
+    authLoading ||
+    (isAuthenticated && (loading || (isSmart && backlogLoading)))
+  ) {
     return (
       <AppPage width="full">
-        <PageLoading rows={5} />
+        <CustomListPageSkeleton viewMode={viewMode} />
       </AppPage>
     );
   }
@@ -306,7 +367,7 @@ export default function CustomListPage() {
         <EmptyState
           icon={LibraryBig}
           title="Sign in to view this list."
-          description="Lists are private owner-only collections."
+          description="Lists are private to your account."
           action={
             <Button as={Link} to="/" variant="primary">
               Back to backlog
@@ -333,6 +394,22 @@ export default function CustomListPage() {
   return (
     <AppPage width="full">
       <div className="space-y-5">
+        <nav
+          className="flex min-w-0 items-center gap-2 text-sm text-content-muted"
+          aria-label="Breadcrumb"
+        >
+          <Link
+            to="/lists"
+            className="rounded-control px-1 py-0.5 transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+          >
+            Lists
+          </Link>
+          <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="truncate text-content-secondary">
+            {list?.name || "List"}
+          </span>
+        </nav>
+
         <header className="rounded-2xl border border-surface-border bg-surface-card p-4 shadow-panel sm:p-5">
           <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
             <CoverCollage
@@ -348,131 +425,130 @@ export default function CustomListPage() {
                     ) : null}
                     {isSmart ? "Private smart list" : "Private ranked list"}
                   </div>
-                  {isEditingManual ? (
-                    <div className="mt-2 max-w-3xl space-y-2">
-                      <TextInput
-                        value={draft.name}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                        maxLength={120}
-                        className="text-xl font-semibold sm:text-2xl"
-                        aria-label="List name"
-                      />
-                      <TextInput
-                        value={draft.description}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            description: event.target.value,
-                          }))
-                        }
-                        maxLength={1000}
-                        placeholder="Description"
-                        aria-label="List description"
-                      />
-                      <ListMeta
-                        count={displayGames.length}
-                        updatedAt={list?.updated_at}
-                        isSmart={isSmart}
-                        ruleLabel={resolvedSmart?.ruleLabel}
-                      />
-                    </div>
-                  ) : (
-                    <h1 className="mt-1 truncate text-3xl font-semibold">
-                      {list?.name || "List"}
-                    </h1>
-                  )}
-                  {!isEditingManual && list?.description ? (
+                  <h1
+                    className="mt-1 truncate text-3xl font-semibold"
+                    title={list?.name || "List"}
+                  >
+                    {list?.name || "List"}
+                  </h1>
+                  {list?.description ? (
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-content-secondary">
                       {list.description}
                     </p>
                   ) : null}
-                  {!isEditingManual ? (
-                    <ListMeta
-                      count={displayGames.length}
-                      updatedAt={list?.updated_at}
-                      isSmart={isSmart}
-                      ruleLabel={resolvedSmart?.ruleLabel}
-                      className="mt-3"
-                    />
-                  ) : null}
+                  <ListMeta
+                    count={displayGames.length}
+                    updatedAt={list?.updated_at}
+                    isSmart={isSmart}
+                    ruleLabel={resolvedSmart?.ruleLabel}
+                    className="mt-3"
+                  />
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button as={Link} to="/lists" variant="secondary">
-                    <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                    Lists
-                  </Button>
-                  {isEditingManual ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {!isManagingManual ? (
                     <>
+                      {!isSmart ? (
+                        <Button
+                          type="button"
+                          variant="primary"
+                          onClick={openAdd}
+                          disabled={backlogLoading}
+                        >
+                          <Plus className="h-4 w-4" aria-hidden="true" />
+                          {backlogLoading ? "Loading backlog..." : "Add games"}
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="secondary"
-                        onClick={cancelManualEdit}
-                        disabled={saving}
+                        onClick={openEdit}
                       >
-                        Cancel
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                        Edit details
                       </Button>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        onClick={saveMetadata}
-                        disabled={saving || !draft.name.trim()}
-                      >
-                        {saving ? "Saving..." : "Save"}
-                      </Button>
+                      {!isSmart ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            setManageSaveStatus("idle");
+                            setIsManagingManual(true);
+                          }}
+                        >
+                          Manage games/order
+                        </Button>
+                      ) : null}
                     </>
                   ) : (
                     <Button
                       type="button"
-                      variant="secondary"
-                      onClick={startEdit}
+                      variant="primary"
+                      onClick={() => setIsManagingManual(false)}
+                      disabled={manageSaveStatus === "saving"}
                     >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      Edit
+                      Done
                     </Button>
                   )}
-                  {!isSmart && isEditingManual ? (
-                    <Button
-                      type="button"
-                      variant="primary"
-                      onClick={() => setShowAdd(true)}
-                    >
-                      <Plus className="h-4 w-4" aria-hidden="true" />
-                      Add games
-                    </Button>
-                  ) : null}
-                  <IconButton
-                    icon={Trash2}
-                    label="Delete list"
-                    title="Delete list"
-                    variant="danger"
-                    onClick={deleteList}
-                  />
+                  <ActionMenu
+                    label="More"
+                    ariaLabel="More list actions"
+                    className="[&>span]:hidden sm:[&>span]:inline"
+                  >
+                    {({ close }) => (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          close();
+                          deleteList();
+                        }}
+                        disabled={manageSaveStatus === "saving" || saving}
+                        className="flex w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-state-error transition-colors hover:bg-state-error/10 disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        Delete list
+                      </button>
+                    )}
+                  </ActionMenu>
                 </div>
               </div>
             </div>
           </div>
         </header>
 
+        {isManagingManual ? (
+          <section className="flex flex-col gap-3 rounded-panel border border-primary/25 bg-primary/8 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-content-primary">
+                Manage games and ranking
+              </div>
+              <div className="mt-1 text-xs leading-5 text-content-muted">
+                Add, remove, or drag games. Changes save automatically.
+                <SaveStatus status={manageSaveStatus} />
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={openAdd}
+              disabled={backlogLoading || manageSaveStatus === "saving"}
+              className="w-full sm:w-auto"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {backlogLoading ? "Loading backlog..." : "Add games"}
+            </Button>
+          </section>
+        ) : null}
+
         <section className="flex flex-wrap items-center justify-between gap-3">
-          {isSmart || isEditingManual ? (
+          {isSmart ? (
             <div className="flex min-w-0 flex-wrap items-center gap-3">
-              {!isSmart ? (
-                <div className="text-sm text-content-muted">
-                  Drag items to change the ranking.
-                </div>
-              ) : null}
-              {isSmart ? (
-                <SmartQuickControls
-                  games={backlogGames}
-                  query={list?.query || {}}
-                  onChange={updateSmartQuery}
-                />
-              ) : null}
+              <SmartQuickControls
+                games={backlogGames}
+                query={list?.query || {}}
+                onChange={updateSmartQuery}
+              />
+              <SaveStatus status={smartSaveStatus} />
             </div>
           ) : (
             <div />
@@ -482,9 +558,9 @@ export default function CustomListPage() {
             onChange={setViewMode}
             options={viewOptions}
             ariaLabel="List view"
+            variant="view"
             className="h-10 border-surface-border/75 bg-surface-card/45"
             itemClassName="h-8 px-3 text-xs"
-            activeClassName="bg-primary/18 text-primary-light shadow-sm shadow-primary/10"
           />
         </section>
 
@@ -499,7 +575,8 @@ export default function CustomListPage() {
             <ManualRankedList
               games={manualGames}
               viewMode={viewMode}
-              editable={isEditingManual}
+              editable={isManagingManual}
+              disabled={manageSaveStatus === "saving"}
               onSelectGame={setSelectedGame}
               onRemoveGame={removeGame}
               onReorder={reorder}
@@ -519,19 +596,20 @@ export default function CustomListPage() {
                 <Button
                   type="button"
                   variant="primary"
-                  onClick={() => setShowAdd(true)}
+                  onClick={openAdd}
+                  disabled={backlogLoading}
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
-                  Add games
+                  {backlogLoading ? "Loading backlog..." : "Add games"}
                 </Button>
               ) : (
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => setShowEdit(true)}
+                  onClick={openEdit}
                 >
                   <Pencil className="h-4 w-4" aria-hidden="true" />
-                  Edit rules
+                  Edit details
                 </Button>
               )
             }
@@ -541,8 +619,14 @@ export default function CustomListPage() {
 
       {showEdit ? (
         <Modal
-          title={isSmart ? "Edit smart list" : "Edit ranked list"}
-          onClose={() => setShowEdit(false)}
+          title="Edit list details"
+          description={
+            isSmart
+              ? "Update the list identity and the rules that build it."
+              : "Update the list name and description. Game membership and ranking are managed separately."
+          }
+          onClose={() => void requestCloseEdit()}
+          closeDisabled={saving}
           size={isSmart ? "xl" : "md"}
         >
           <form onSubmit={saveMetadata} className="space-y-4">
@@ -564,7 +648,7 @@ export default function CustomListPage() {
             <Field
               id="custom-list-description"
               label="Description"
-              help="Optional. Private in V1."
+              help="Optional. Only you can see this list."
             >
               <Textarea
                 id="custom-list-description"
@@ -598,28 +682,40 @@ export default function CustomListPage() {
                 </p>
               </>
             ) : null}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setShowEdit(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={saving || !draft.name.trim()}
-              >
-                {saving ? "Saving..." : "Save list"}
-              </Button>
+            <div className="flex flex-col gap-3 border-t border-surface-border/65 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-content-muted">
+                {metadataDirty ? "Unsaved changes" : "No changes yet"}
+              </span>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void requestCloseEdit()}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={saving || !metadataDirty || !draft.name.trim()}
+                >
+                  {saving ? "Saving..." : "Save changes"}
+                </Button>
+              </div>
             </div>
           </form>
         </Modal>
       ) : null}
 
       {showAdd && !isSmart ? (
-        <Modal title="Add games" onClose={() => setShowAdd(false)} size="lg">
+        <Modal
+          title="Add games"
+          description="Games are added immediately. You can keep choosing more before closing."
+          onClose={closeAdd}
+          closeDisabled={addingId != null}
+          size="lg"
+        >
           <div className="space-y-4">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
@@ -650,6 +746,16 @@ export default function CustomListPage() {
                 </div>
               )}
             </div>
+            <div className="flex items-center justify-between gap-3 border-t border-surface-border/65 pt-4">
+              <span className="text-xs text-content-muted">
+                {addedCount
+                  ? `${addedCount} ${addedCount === 1 ? "game" : "games"} added`
+                  : "Changes save automatically"}
+              </span>
+              <Button type="button" variant="secondary" onClick={closeAdd}>
+                Done
+              </Button>
+            </div>
           </div>
         </Modal>
       ) : null}
@@ -658,5 +764,73 @@ export default function CustomListPage() {
         <GameModal game={selectedGame} onClose={() => setSelectedGame(null)} />
       ) : null}
     </AppPage>
+  );
+}
+
+function SaveStatus({ status }) {
+  if (!status || status === "idle") return null;
+  const labels = {
+    saving: "Saving...",
+    saved: "Saved",
+    error: "Save failed",
+  };
+  return (
+    <span
+      className={[
+        "ml-2 inline-flex font-semibold",
+        status === "error" ? "text-state-error" : "text-content-secondary",
+      ].join(" ")}
+      role={status === "error" ? "alert" : "status"}
+      aria-live="polite"
+    >
+      {labels[status]}
+    </span>
+  );
+}
+
+function CustomListPageSkeleton({ viewMode }) {
+  return (
+    <div
+      className="space-y-5"
+      role="status"
+      aria-label="Loading list"
+      aria-busy="true"
+    >
+      <Skeleton className="h-5 w-44" />
+      <div className="grid gap-5 rounded-2xl border border-surface-border bg-surface-card p-4 sm:p-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <Skeleton className="aspect-[4/3] w-full rounded-lg" />
+        <div className="space-y-4 py-2">
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-9 w-2/3" />
+          <Skeleton className="h-4 w-full max-w-xl" />
+          <Skeleton className="h-4 w-72" />
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Skeleton className="h-10 w-28 rounded-control" />
+            <Skeleton className="h-10 w-32 rounded-control" />
+            <Skeleton className="h-10 w-40 rounded-control" />
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-44 rounded-control" />
+      </div>
+      {viewMode === "rows" ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-28 w-full rounded-2xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="space-y-2">
+              <Skeleton className="aspect-[2/3] w-full rounded-md" />
+              <Skeleton className="mx-auto h-4 w-8" />
+              <Skeleton className="mx-auto h-3 w-3/4" />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

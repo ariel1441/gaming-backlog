@@ -225,7 +225,7 @@ export function IntegrationsSection({ isGuest }) {
         </Button>
         <Button as={Link} to="/steam/import" variant="secondary">
           <Download className="h-4 w-4" aria-hidden="true" />
-          Steam Review
+          Steam Import Review
         </Button>
       </div>
     </section>

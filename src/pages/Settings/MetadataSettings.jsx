@@ -12,6 +12,7 @@ import {
   Button,
   Checkbox,
   EmptyState,
+  GameCover,
   Modal,
   Skeleton,
   TextInput,
@@ -33,36 +34,21 @@ import {
 } from "../../utils/metadataRepair";
 
 function CandidateArtwork({ candidate }) {
-  const [failed, setFailed] = useState(false);
-  if (!candidate.cover || failed) {
-    return (
-      <div className="flex h-24 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-surface-border bg-surface-elevated text-content-muted">
-        <DatabaseZap className="h-5 w-5" aria-hidden="true" />
-      </div>
-    );
-  }
   return (
-    <img
+    <GameCover
       src={candidate.cover}
-      alt=""
-      className="h-24 w-20 shrink-0 rounded-lg border border-surface-border object-cover"
-      loading="lazy"
-      onError={() => setFailed(true)}
+      name={candidate.candidateName}
+      className="h-24 w-20 shrink-0 rounded-lg border border-surface-border"
     />
   );
 }
 
 function SearchArtwork({ result }) {
-  const [failed, setFailed] = useState(false);
-  if (!result.cover || failed) {
-    return <div className="h-14 w-11 shrink-0 rounded bg-surface-elevated" />;
-  }
   return (
-    <img
+    <GameCover
       src={result.cover}
-      alt=""
-      className="h-14 w-11 shrink-0 rounded object-cover"
-      onError={() => setFailed(true)}
+      name={result.name}
+      className="h-14 w-11 shrink-0 rounded"
     />
   );
 }
@@ -194,7 +180,7 @@ function AlternativeSearch({ group, busy, onSelect }) {
               type="button"
               disabled={busy}
               onClick={() => onSelect(group, result)}
-              className="flex min-w-0 items-center gap-3 rounded-lg border border-surface-border bg-surface-card p-2 text-left transition-colors hover:border-primary/50 hover:bg-surface-elevated disabled:opacity-60"
+              className="flex min-w-0 items-center gap-3 rounded-lg border border-surface-border bg-surface-card p-2 text-left transition-colors hover:border-primary/50 hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-bg disabled:opacity-60"
             >
               <SearchArtwork result={result} />
               <span className="min-w-0">

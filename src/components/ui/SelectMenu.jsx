@@ -82,8 +82,8 @@ export default function SelectMenu({
           }
         }}
         className={[
-          "flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-surface-border bg-surface-input/55 px-3 py-2 text-left text-sm text-content-primary shadow-control-inset transition-colors",
-          "hover:border-primary/35 hover:bg-surface-elevated focus:border-focus-border/70 focus:outline-none focus:ring-2 focus:ring-focus/20",
+          "flex min-h-10 w-full items-center justify-between gap-3 rounded-control border border-surface-border bg-surface-input/55 px-3 py-2 text-left text-sm text-content-primary shadow-control-inset transition-[background-color,border-color,box-shadow,transform]",
+          "hover:border-primary/40 hover:bg-surface-selected/55 focus-visible:border-focus-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/20 active:translate-y-px aria-expanded:border-primary/55 aria-expanded:bg-surface-selected/70",
           disabled ? "cursor-not-allowed opacity-70" : "",
           buttonClassName,
         ].join(" ")}
@@ -100,6 +100,7 @@ export default function SelectMenu({
       {open ? (
         <PopoverPanel
           padding="sm"
+          radius="lg"
           className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-tooltip max-h-72 overflow-y-auto"
         >
           <div
@@ -119,15 +120,16 @@ export default function SelectMenu({
                   type="button"
                   role="option"
                   aria-selected={active}
+                  disabled={option.disabled}
                   onClick={() => {
                     onChange?.(option.value);
                     setOpen(false);
                   }}
                   className={[
-                    "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
+                    "flex w-full items-center justify-between gap-3 rounded-control border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-55",
                     active
-                      ? "bg-primary/15 text-primary-light ring-1 ring-inset ring-primary/25"
-                      : "text-content-secondary hover:bg-surface-elevated/80 hover:text-content-primary",
+                      ? "border-primary/55 bg-surface-selected text-primary-light"
+                      : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
                   ].join(" ")}
                 >
                   <span className="min-w-0 whitespace-normal break-words">

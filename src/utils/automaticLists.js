@@ -303,7 +303,7 @@ function smartListEmptyState(query = {}) {
   if (query.genre) {
     return {
       emptyTitle: `No games match ${query.genre}.`,
-      emptyDescription: "Choose another genre, or update your personal genres in the backlog.",
+      emptyDescription: "Choose another genre, or update My genres in the backlog.",
     };
   }
   if (query.maxHours != null) {

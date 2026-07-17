@@ -51,26 +51,19 @@ function NavigationItem({ item, collapsed }) {
         [
           "group relative flex min-h-11 w-[180px] items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors",
           isActive
-            ? "bg-primary/14 text-content-primary"
-            : "text-content-muted hover:bg-surface-elevated/65 hover:text-content-primary",
+            ? "bg-surface-selected text-content-primary shadow-sm ring-1 ring-inset ring-primary/45"
+            : "text-content-muted hover:bg-surface-selected/60 hover:text-primary-light",
         ].join(" ")
       }
     >
       {({ isActive }) => (
         <>
-          <span
-            className={[
-              "absolute inset-y-2 -left-2 w-1 rounded-r-full transition-opacity",
-              isActive ? "bg-primary opacity-100" : "opacity-0",
-            ].join(" ")}
-            aria-hidden="true"
-          />
           <Icon
             className={[
               "h-[18px] w-[18px] shrink-0 transition-colors",
               isActive
                 ? "text-primary-light"
-                : "text-content-muted group-hover:text-content-primary",
+                : "text-content-muted group-hover:text-primary-light",
             ].join(" ")}
             aria-hidden="true"
           />

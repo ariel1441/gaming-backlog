@@ -46,7 +46,9 @@ import {
   Checkbox,
   EmptyState,
   Field,
+  GameCover,
   Modal,
+  SearchClearButton,
   SelectMenu,
   TextInput,
   useConfirm,
@@ -289,17 +291,88 @@ export default function SteamImportPage() {
   const canHidePile = canUseWholePile && filter !== "ignored";
   const hiddenCount = summary.ignored || 0;
   const activeReviewCategory = reviewCategoryFor(filter, group);
+  const activeSummary = summary.active || summary;
+  const activeGroups = activeSummary.groups || {};
   const readyCount = readySuggestionGroups.reduce(
-    (total, item) => total + (summary.groups?.[item.value] || 0),
+    (total, item) => total + (activeGroups[item.value] || 0),
     0,
   );
+  const attentionCount =
+    (activeGroups.needs_match || 0) + (activeGroups.filtered || 0);
+  const backlogLinkCount = activeGroups.duplicates || 0;
+  const recommendedReview = attentionCount
+    ? {
+        category: "attention",
+        label: `Review needs attention (${attentionCount})`,
+        title: "Fix uncertain matches first",
+        description:
+          "These Steam apps need a catalog match or a decision about whether they belong in your backlog.",
+      }
+    : backlogLinkCount
+      ? {
+          category: "backlog",
+          label: `Link existing games (${backlogLinkCount})`,
+          title: "Connect games already in your backlog",
+          description:
+            "Link Steam ownership to the existing backlog rows instead of creating duplicates.",
+        }
+      : readyCount
+        ? {
+            category: "ready",
+            label: `Review ready games (${readyCount})`,
+            title: "Review matched games before adding them",
+            description:
+              "These games have a proposed match and status. Confirm the rows you want to add.",
+          }
+        : {
+            category: null,
+            label: "Open Steam Library",
+            title: "Your import review is clear",
+            description:
+              "Browse the synced collection or run the next library sync from Steam Library.",
+          };
+  const emptyReviewCopy = steamSearch
+    ? {
+        title: "No Steam games match this search",
+        description:
+          "Clear the search or try a different phrase without changing the selected review category.",
+      }
+    : activeReviewCategory === "attention"
+      ? {
+          title: "Nothing needs attention",
+          description:
+            "Ignored and resolved apps are excluded. Newly synced games that need a match will appear here.",
+        }
+      : activeReviewCategory === "ready"
+        ? {
+            title: "No matched games are ready to add",
+            description:
+              "Games appear here after they have a usable catalog match and suggested backlog status.",
+          }
+        : activeReviewCategory === "backlog"
+          ? {
+              title: "No existing backlog links need review",
+              description:
+                "Steam apps that can be attached to an existing backlog game will appear here.",
+            }
+          : activeReviewCategory === "ignored"
+            ? {
+                title: "No ignored Steam apps",
+                description:
+                  "Apps you hide from active review remain available here until restored.",
+              }
+            : {
+                title: "No resolved Steam games yet",
+                description:
+                  "Games you add or link through Steam Import Review will appear here.",
+              };
   const reviewCategories = [
     {
       value: "attention",
       label: "Needs attention",
       description: "Missing or uncertain matches",
       count:
-        (summary.groups?.needs_match || 0) + (summary.groups?.filtered || 0),
+        (activeGroups.needs_match || 0) + (activeGroups.filtered || 0),
       icon: AlertTriangle,
     },
     {
@@ -313,7 +386,7 @@ export default function SteamImportPage() {
       value: "backlog",
       label: "Already in backlog",
       description: "Link Steam to an existing game",
-      count: summary.groups?.duplicates || 0,
+      count: activeGroups.duplicates || 0,
       icon: Library,
     },
     {
@@ -763,7 +836,7 @@ export default function SteamImportPage() {
     return (
       <AppPage width="full">
         <PageHeader
-          title="Steam Review"
+          title="Steam Import Review"
           description="Review Steam games before they change your backlog."
           icon={Gamepad2}
         />
@@ -790,8 +863,8 @@ export default function SteamImportPage() {
   return (
     <AppPage width="full">
       <PageHeader
-        title="Steam Review"
-        description="Review Steam games before they change your backlog."
+        title="Steam Import Review"
+        description="Make import, match, and duplicate-link decisions before Steam games change your backlog."
         icon={Gamepad2}
         actions={
           <Button
@@ -821,14 +894,6 @@ export default function SteamImportPage() {
           onOpenLastSyncReview={openLastSyncReview}
         />
 
-        <DuplicateCleanupPanel
-          groups={duplicateGroups}
-          loading={duplicateLoading}
-          mergingKey={mergingGroupKey}
-          onRefresh={loadDuplicateGroups}
-          onMerge={mergeDuplicateGroup}
-        />
-
         <section className="rounded-card border border-surface-border bg-surface-card p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -848,16 +913,45 @@ export default function SteamImportPage() {
             </div>
             <Button
               type="button"
-              variant={allVisibleSelected ? "primary" : "secondary"}
+              variant={allVisibleSelected ? "filterActive" : "secondary"}
               size="sm"
               onClick={toggleAllVisible}
               disabled={!visibleSelectableIds.length}
+              aria-pressed={allVisibleSelected}
             >
               {allVisibleSelected
                 ? "Clear visible selection"
                 : "Select visible"}
             </Button>
           </div>
+
+          {account ? (
+            <div className="mt-5 flex flex-col gap-4 rounded-xl border border-primary/35 bg-primary/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-light">
+                  Recommended next step
+                </div>
+                <h3 className="mt-1 text-base font-semibold text-content-primary">
+                  {recommendedReview.title}
+                </h3>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-content-secondary">
+                  {recommendedReview.description}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="primary"
+                className="shrink-0"
+                onClick={() =>
+                  recommendedReview.category
+                    ? changeReviewCategory(recommendedReview.category)
+                    : navigate("/steam/library")
+                }
+              >
+                {recommendedReview.label}
+              </Button>
+            </div>
+          ) : null}
 
           <div className="mt-5">
             <ReviewCategoryNav
@@ -879,7 +973,10 @@ export default function SteamImportPage() {
           />
 
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(280px,1fr)_minmax(180px,230px)] lg:items-end">
-            <Field id="steam-import-search" label="Search this review">
+            <Field
+              id="steam-import-search"
+              label="Search Steam Import Review"
+            >
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
                 <TextInput
@@ -887,17 +984,13 @@ export default function SteamImportPage() {
                   value={steamSearch}
                   onChange={(event) => setSteamSearch(event.target.value)}
                   placeholder="Find a Steam game..."
-                  className="pl-9 pr-9"
+                  className="pl-9 pr-11"
                 />
                 {steamSearch ? (
-                  <button
-                    type="button"
+                  <SearchClearButton
                     onClick={() => setSteamSearch("")}
-                    aria-label="Clear Steam review search"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-content-muted hover:bg-surface-elevated hover:text-content-primary"
-                  >
-                    Clear
-                  </button>
+                    label="Clear Steam Import Review search"
+                  />
                 ) : null}
               </div>
             </Field>
@@ -972,6 +1065,14 @@ export default function SteamImportPage() {
             duplicateLoading={duplicateLoading}
           />
 
+          <DuplicateCleanupPanel
+            groups={duplicateGroups}
+            loading={duplicateLoading}
+            mergingKey={mergingGroupKey}
+            onRefresh={loadDuplicateGroups}
+            onMerge={mergeDuplicateGroup}
+          />
+
           <div className="mt-4 space-y-3">
             {candidateLoading ? (
               <div className="rounded-lg border border-surface-border bg-surface-bg/35 px-3 py-10 text-center text-sm text-content-muted">
@@ -998,19 +1099,26 @@ export default function SteamImportPage() {
             ) : (
               <EmptyState
                 icon={CheckCircle2}
-                title={
-                  steamSearch
-                    ? "No matching Steam games"
-                    : "This review is clear"
-                }
-                description={
-                  steamSearch
-                    ? "Try a different search or review category."
-                    : activeReviewCategory === "ignored"
-                      ? "You have not ignored any Steam apps."
-                      : activeReviewCategory === "resolved"
-                        ? "No Steam games have been resolved in this view yet."
-                        : "Nothing currently needs a decision in this category."
+                title={emptyReviewCopy.title}
+                description={emptyReviewCopy.description}
+                action={
+                  steamSearch ? (
+                    <Button
+                      type="button"
+                      variant="dangerGhost"
+                      onClick={() => setSteamSearch("")}
+                    >
+                      Clear search
+                    </Button>
+                  ) : activeReviewCategory !== "ignored" && hiddenCount ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => changeReviewCategory("ignored")}
+                    >
+                      View ignored ({hiddenCount})
+                    </Button>
+                  ) : null
                 }
               />
             )}
@@ -1068,19 +1176,16 @@ export default function SteamImportPage() {
                   onClick={() => chooseMatch(game)}
                   className="flex w-full items-center gap-3 rounded-lg border border-surface-border bg-surface-bg/35 p-2 text-left transition hover:border-primary/35 hover:bg-surface-elevated/60"
                 >
-                  {game.cover ? (
-                    <img
-                      src={game.cover}
-                      alt=""
-                      className="h-16 w-12 rounded object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-16 w-12 items-center justify-center rounded bg-surface-elevated text-content-muted">
-                      {String(game.name || "?").charAt(0)}
-                    </div>
-                  )}
+                  <GameCover
+                    src={game.cover}
+                    name={game.name}
+                    className="h-16 w-12 shrink-0 rounded"
+                  />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-content-primary">
+                    <div
+                      className="truncate text-sm font-semibold text-content-primary"
+                      title={game.name}
+                    >
                       {game.name}
                     </div>
                     <div className="mt-1 text-xs text-content-muted">

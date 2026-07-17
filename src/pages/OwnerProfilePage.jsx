@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  AlertTriangle,
   BarChart3,
   CalendarDays,
   CheckCircle2,
@@ -14,17 +13,17 @@ import {
   List,
   LockKeyhole,
   PlayCircle,
-  RefreshCw,
   Sparkles,
   User2,
 } from "lucide-react";
-import { AppPage, PageHeader } from "../components/layout";
+import { AppPage, PageError, PageHeader } from "../components/layout";
 import GameModal from "../components/GameModal";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {
   Button,
   DropdownChevron,
   EmptyState,
+  GameCover,
   StatusBadge,
 } from "../components/ui";
 import { useAuth } from "../contexts/AuthContext";
@@ -119,20 +118,20 @@ export default function OwnerProfilePage() {
 
   if (gamesError) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-surface-bg p-6 text-content-primary">
-        <EmptyState
-          icon={AlertTriangle}
+      <AppPage width="standard">
+        <PageHeader
+          title="My profile"
+          description="Your private progress, favorites, and backlog snapshot."
+          icon={User2}
+        />
+        <div className="pt-6">
+          <PageError
           title="Could not load your profile."
           description={gamesError?.message || "Your games could not be loaded."}
-          action={
-            <Button type="button" variant="primary" onClick={() => refresh()}>
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Try again
-            </Button>
-          }
-          className="w-full max-w-lg"
-        />
-      </main>
+            onRetry={() => refresh()}
+          />
+        </div>
+      </AppPage>
     );
   }
 
@@ -255,7 +254,10 @@ function ProfileHeader({
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-content-muted">
                 Owner profile
               </div>
-              <h1 className="mt-1 truncate text-3xl font-semibold leading-tight text-content-primary">
+              <h1
+                className="mt-1 truncate text-3xl font-semibold leading-tight text-content-primary"
+                title={displayName}
+              >
                 {displayName}
               </h1>
               <div className="mt-1 truncate text-sm text-content-muted">
@@ -398,20 +400,17 @@ function PosterButton({ game, onClick }) {
       onClick={onClick}
       className="group relative aspect-[2/3] min-w-0 overflow-hidden rounded-xl border border-surface-border bg-surface-elevated text-left transition-colors hover:border-primary/50"
     >
-      {game.cover ? (
-        <img
-          src={game.cover}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover opacity-85 transition-opacity group-hover:opacity-100"
-        />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-surface-bg text-3xl font-semibold text-content-muted">
-          {String(game.name || "?").charAt(0)}
-        </div>
-      )}
+      <GameCover
+        src={game.cover}
+        name={game.name}
+        className="absolute inset-0 h-full w-full"
+        imageClassName="opacity-85 transition-opacity group-hover:opacity-100"
+      />
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-media-overlay/90 to-transparent p-2">
-        <div className="line-clamp-2 text-xs font-semibold text-media-text">
+        <div
+          className="line-clamp-2 text-xs font-semibold text-media-text"
+          title={game.name}
+        >
           {game.name}
         </div>
       </div>
@@ -466,20 +465,16 @@ function CompactGameRow({ game, hoursMode, onClick }) {
       onClick={onClick}
       className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-transparent p-2.5 text-left transition-colors hover:border-surface-border hover:bg-surface-elevated/70"
     >
-      {game.cover ? (
-        <img
-          src={game.cover}
-          alt=""
-          loading="lazy"
-          className="h-20 w-14 shrink-0 rounded-lg object-cover"
-        />
-      ) : (
-        <div className="flex h-20 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-elevated text-xs font-semibold text-content-muted">
-          {String(game.name || "?").charAt(0)}
-        </div>
-      )}
+      <GameCover
+        src={game.cover}
+        name={game.name}
+        className="h-20 w-14 shrink-0 rounded-lg"
+      />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-content-primary">
+        <div
+          className="truncate text-sm font-medium text-content-primary"
+          title={game.name}
+        >
           {game.name}
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-content-muted">
@@ -511,7 +506,11 @@ function QuickLinks({ isGuest }) {
       ? []
       : [
           { label: "Steam Library", to: "/steam/library", icon: Gamepad2 },
-          { label: "Steam Review", to: "/steam/import", icon: Sparkles },
+          {
+            label: "Steam Review",
+            to: "/steam/import",
+            icon: Sparkles,
+          },
         ]),
   ];
 

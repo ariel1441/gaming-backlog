@@ -1,9 +1,9 @@
-import { MoreHorizontal } from "lucide-react";
 import {
+  ActionMenu,
   Badge,
   Button,
   Checkbox,
-  PopoverPanel,
+  GameCover,
   SelectMenu,
 } from "../../components/ui";
 import { filteredReasonLabel } from "../../utils/steamImport";
@@ -127,22 +127,17 @@ export function CandidateRow({
         />
 
         <div className="flex min-w-0 items-center gap-3">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-20 w-32 shrink-0 rounded-lg border border-surface-border object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-lg border border-surface-border bg-surface-elevated text-content-muted">
-              {String(candidate.steamName || "?").charAt(0)}
-            </div>
-          )}
+          <GameCover
+            src={imageUrl}
+            name={candidate.steamName}
+            className="h-20 w-32 shrink-0 rounded-lg border border-surface-border"
+          />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="min-w-0 truncate text-base font-semibold text-content-primary">
+              <h3
+                className="min-w-0 break-words text-base font-semibold text-content-primary xl:line-clamp-2"
+                title={candidate.steamName}
+              >
                 {candidate.steamName}
               </h3>
               <Badge variant={statusVariant(candidate.importStatus)}>
@@ -176,7 +171,7 @@ export function CandidateRow({
             {outcome.eyebrow}
           </div>
           <div
-            className="mt-1 line-clamp-1 text-sm font-semibold text-content-primary"
+            className="mt-1 line-clamp-2 text-sm font-semibold text-content-primary"
             title={outcome.title}
           >
             {outcome.title}
@@ -186,7 +181,7 @@ export function CandidateRow({
           </div>
           {matchHint ? (
             <div
-              className="mt-1 line-clamp-1 text-xs text-content-muted"
+              className="mt-1 line-clamp-2 text-xs text-content-muted"
               title={matchHint}
             >
               {matchHint}
@@ -227,34 +222,34 @@ export function CandidateRow({
           >
             {primaryAction.label}
           </Button>
-          <details className="relative">
-            <summary
-              className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-button border border-surface-border bg-surface-elevated text-content-muted transition hover:border-surface-border-strong hover:text-content-primary"
-              aria-label={`More actions for ${candidate.steamName}`}
-              title="More actions"
-            >
-              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-            </summary>
-            <PopoverPanel
-              padding="sm"
-              radius="lg"
-              shadow="elevated"
-              className="absolute right-0 z-20 mt-2 min-w-40"
-            >
+          <ActionMenu
+            label="More"
+            ariaLabel={`More actions for ${candidate.steamName}`}
+          >
+            {({ close }) => (
+              <>
               <button
                 type="button"
-                onClick={onChangeMatch}
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  onChangeMatch();
+                }}
                 disabled={isIgnored}
-                className="w-full rounded-md px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated hover:text-content-primary disabled:opacity-45"
+                className="min-h-11 w-full rounded-md px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70 disabled:opacity-45"
               >
                 Change match
               </button>
               {!candidate.duplicateGameId && !isIgnored ? (
                 <button
                   type="button"
-                  onClick={onAccept}
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    onAccept();
+                  }}
                   disabled={!candidate.proposedCatalogGameId}
-                  className="w-full rounded-md px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated hover:text-content-primary disabled:opacity-45"
+                  className="min-h-11 w-full rounded-md px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70 disabled:opacity-45"
                 >
                   Approve match
                 </button>
@@ -262,14 +257,19 @@ export function CandidateRow({
               {!isIgnored ? (
                 <button
                   type="button"
-                  onClick={onIgnore}
-                  className="w-full rounded-md px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated hover:text-content-primary"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    onIgnore();
+                  }}
+                  className="min-h-11 w-full rounded-md px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70"
                 >
                   Ignore app
                 </button>
               ) : null}
-            </PopoverPanel>
-          </details>
+              </>
+            )}
+          </ActionMenu>
         </div>
       </div>
     </article>

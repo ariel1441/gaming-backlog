@@ -1,6 +1,6 @@
 # Next Tasks
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This is the short active queue. It intentionally contains no completed work.
 See [`ROADMAP.md`](ROADMAP.md) for remaining candidates and
@@ -10,26 +10,21 @@ must not be treated as the current backlog without revalidation.
 
 ## Selected Next Task
 
-Complete Phase 1 of the focused UI/UX consistency plan as one bounded change:
-small copy/terminology defects, title recovery, manual-list loading independence,
-and shared resilient game artwork.
+Complete mobile Phase 5 of the focused UI/UX consistency plan as one separate,
+bounded change. This remains intentionally last in the UI/UX track.
 
 Acceptance criteria:
 
-- Replace internal implementation wording with clear user-facing language and
-  standardize the affected list/Steam/view terminology.
-- Make truncated game/list names recoverable and let a manual list render when
-  its own request completes instead of waiting for the full backlog.
-- Add one shared game-artwork primitive with missing/broken URL fallback, lazy
-  loading, asynchronous decoding, and consistent aspect ratios.
-- Adopt it across the surfaces named in the focused plan without redesigning
-  those screens or changing data behavior.
-- Preserve all four themes plus owner, demo, and public read-only behavior, and
-  check representative desktop and mobile states.
+- Reduce the fixed mobile bottom bar to approximately five primary
+  destinations.
+- Add an accessible More sheet/drawer that keeps every desktop destination and
+  account action discoverable.
+- Use the real profile avatar in the mobile header.
+- Give the active mobile destination a complete selected treatment.
 
 ## Active Order
 
-1. Complete the selected UI/UX Phase 1 above.
+1. Complete the selected mobile UI/UX Phase 5 above.
 2. Add short-lived Discover result caching keyed by user, query, filters, sort,
    and page, with quiet revalidation and mutation-aware backlog membership.
 3. Finish the remaining operational work: backup/restore documentation,
@@ -42,8 +37,9 @@ Acceptance criteria:
 The remaining UI/UX, editing, navigation, media fallback, loading-state, and
 accessibility work is consolidated in
 [`planning/ui-ux-consistency-plan.md`](planning/ui-ux-consistency-plan.md).
-Implement one bounded phase at a time. Phase 1 remains the recommended entry
-point; do not combine the entire track into one change.
+Implement one bounded phase at a time. Phases 1A, 1B, 2, 3, 4, 6, 7, and 8
+are complete. Mobile Phase 5 is the only remaining phase and still requires
+separate approval before implementation.
 
 ## Workflow Improvements
 
