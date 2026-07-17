@@ -64,6 +64,9 @@ and the code.
 - Catalog and Steam service layers.
 - PostgreSQL migration runner with transactions, migration records, advisory
   locking, and a production GitHub Actions job.
+- Hardened CI/CD gates with pinned Node/npm behavior, pull-request checks,
+  fail-closed production migration requirements, deploy ordering, and
+  documented exact-SHA production verification.
 - Local database safety guard, environment summary, development port handling,
   and documented local/production workflows.
 - Unit and mocked route/browser test baselines.

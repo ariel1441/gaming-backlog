@@ -10,22 +10,36 @@ must not be treated as the current backlog without revalidation.
 
 ## Selected Next Task
 
-Finish the remaining operational safety work as one bounded reliability track.
+Plan Play Next & Resume V1 as the next bounded product track.
 
 Acceptance criteria:
 
-- Document production backup and restore.
-- Document migration failure, recovery, and rollback guidance.
-- Add safe health and diagnostic views for database, cache, environment, and
-  demo-template state without exposing secrets.
+- Choose one explicit queue model and owner. Queue ordering must remain separate
+  from backlog positions, manual-list positions, and smart-list ranking.
+- Define the smallest useful `/next-up` page or Backlog tab, including
+  add/remove/reorder actions and short-game/high-priority views.
+- Decide whether queue-aware Surprise Me belongs in V1.
+- Define a lightweight private resume note and "what to do next" field for
+  active games, without committing to the larger activity/playthrough model.
+- Define a deliberate Start Playing action and its status/date/queue behavior.
+- Preserve owner, guest/demo, and public read-only boundaries.
+- Record schema, migration, mobile, empty-state, and regression-test risks
+  before implementation.
 
 ## Active Order
 
-1. Finish the selected operational safety work above.
-2. Choose one product candidate. Next Up / Priority Queue remains the strongest
-   bounded product option; Insights V2 and public-profile privacy are larger.
-3. Add pagination or virtualization where real large-library use demonstrates
+1. Plan Play Next & Resume V1 and agree on its acceptance boundary.
+2. Implement the independent queue foundation as a separate phase.
+3. Add the focused Completion Flow after the queue is stable.
+4. Choose between Library Control Center work (tags, saved views, data health)
+   and the larger activity/events foundation.
+5. Add pagination or virtualization where real large-library use demonstrates
    an unbounded rendering problem.
+
+Operational safety is no longer the selected product task. Remaining
+database-aware readiness, diagnostic, and production backup/restore work stays
+in the Engineering Follow-Up section of [`ROADMAP.md`](ROADMAP.md) until the
+repository contains and verifies the complete behavior.
 
 ## Selected UI/UX Consolidation Track
 

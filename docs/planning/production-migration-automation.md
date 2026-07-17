@@ -1,6 +1,6 @@
 # Production Migration: Remaining Improvements
 
-Last updated: 2026-07-11
+Last updated: 2026-07-17
 
 The baseline automated production migration workflow is complete and summarized
 in [`../DONE.md`](../DONE.md). Current migration behavior is documented in
@@ -20,15 +20,16 @@ contains only remaining safety work.
 
 - Add a manual migration-status workflow that reports pending files without
   deploying code.
-- Add a documented backup/Railway checkpoint before production migrations.
+- Add a complete production backup/restore runbook. Current CI/CD guidance
+  requires a restorable Railway backup or recovery window but does not document
+  an end-to-end restore exercise.
 - Add a staging database and run production-like migrations there first.
-- Enforce expand/deploy/backfill/cleanup sequencing for large refactors.
+- Add enforceable checkpoints for expand/deploy/backfill/cleanup sequencing
+  when a large refactor needs them.
 - Add migration-failure alerts.
-- Add rollback notes for risky migrations.
-- Add a preflight/CI check that detects schema-changing migrations without the
-  equivalent `backend/schema.sql` update.
-- Make migration bootstrapping fail safely for existing databases.
-- Reconcile migration history, schema parity, and the schema-only policy.
+- Add migration-specific recovery notes when a risky migration is proposed;
+  the general application-versus-database rollback policy already lives in
+  [`../CI_CD.md`](../CI_CD.md).
 
 ## Safety Rule
 

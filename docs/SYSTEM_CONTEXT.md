@@ -102,6 +102,9 @@ Entry point:
 
 - `backend/index.js` registers middleware, initializes RAWG/HLTB caches, mounts
   routes, registers error handling, starts Express, and runs guest cleanup.
+- `/healthz` is process liveness only. Database-aware readiness and safe
+  cache/environment/migration/demo-template diagnostics remain engineering
+  follow-up.
 
 Routes:
 

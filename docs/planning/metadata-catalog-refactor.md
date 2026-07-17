@@ -5,17 +5,23 @@ Last updated: 2026-07-11
 Catalog/Discover V1 and the Steam-compatible catalog foundation are complete.
 Their completed scope is summarized in [`../DONE.md`](../DONE.md); current
 architecture lives in [`../SYSTEM_CONTEXT.md`](../SYSTEM_CONTEXT.md). This file
-contains only unresolved catalog and metadata work.
+records the completed reliability baseline only to prevent old audit items from
+being reopened, followed by unresolved catalog and metadata work.
 
-## Reliability First
+## Completed Reliability Baseline
 
-- Add deadlines to RAWG and Steam provider calls.
-- Distinguish provider outage from a legitimate empty search result.
-- Do not cache failed provider responses as successful empty results.
-- Fix catalog collection pagination gaps.
-- Bound public metadata hydration and cache growth.
-- Make catalog identity upserts concurrency-safe.
-- Recheck cache invalidation for metadata and hour-source changes.
+The audit-era provider deadlines, typed outage behavior, failed-response
+handling, collection pagination, bounded hydration/cache behavior, and
+concurrency-safe catalog identity work are complete. See [`../DONE.md`](../DONE.md).
+
+Remaining reliability work should be evidence-driven:
+
+- Recheck cache invalidation only for a demonstrated metadata or hour-source
+  correctness gap.
+- Add database-aware readiness and safe catalog/job diagnostics through the
+  operational follow-up in [`../ROADMAP.md`](../ROADMAP.md).
+- Keep real-library and provider-outage regression coverage focused on newly
+  changed behavior.
 
 ## Catalog Identity And Matching
 
@@ -53,8 +59,8 @@ contains only unresolved catalog and metadata work.
 
 ## Implementation Order
 
-1. Fix audit reliability and concurrency findings.
-2. Add focused real-database and provider-failure tests.
-3. Implement catalog-match repair.
-4. Choose the wishlist/ownership relationship model before a Unified Library.
-5. Expand sources or automation only when the preceding contracts are stable.
+1. Choose the wishlist/ownership relationship model before a Unified Library.
+2. Define edition, remaster, DLC, bundle, and platform-variant identity.
+3. Add user metadata overrides only for demonstrated needs.
+4. Expand providers or automation only when the selected product feature
+   requires them and existing reliability contracts remain intact.

@@ -79,9 +79,10 @@
     --radius-dialog: 1rem;
     --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.1);
     --shadow-control: 0 1px 2px rgb(var(--color-overlay) / 0.15);
-    --shadow-menu: 0 24px 70px rgb(var(--color-overlay) / 0.45);
-    --shadow-panel: 0 18px 55px rgb(var(--color-overlay) / 0.28);
-    --shadow-dialog: 0 30px 100px rgb(var(--color-overlay) / 0.65);
+    /* Keep structural surfaces flat; borders and backdrops provide separation. */
+    --shadow-menu: none;
+    --shadow-panel: none;
+    --shadow-dialog: none;
     --shadow-primary-glow: 0 18px 45px rgb(var(--color-primary) / 0.18);
     --shadow-secondary-glow: 0 18px 45px rgb(var(--color-secondary) / 0.16);
     --shadow-error-glow: 0 0 20px rgb(var(--color-state-error) / 0.4);
@@ -196,9 +197,9 @@
     --radius-dialog: 1rem;
     --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.16);
     --shadow-control: 0 1px 2px rgb(var(--color-overlay) / 0.24);
-    --shadow-menu: 0 24px 70px rgb(var(--color-overlay) / 0.62);
-    --shadow-panel: 0 18px 55px rgb(var(--color-overlay) / 0.42);
-    --shadow-dialog: 0 30px 100px rgb(var(--color-overlay) / 0.78);
+    --shadow-menu: none;
+    --shadow-panel: none;
+    --shadow-dialog: none;
     --shadow-primary-glow: 0 18px 48px rgb(var(--color-primary) / 0.23);
     --shadow-secondary-glow: 0 18px 45px rgb(var(--color-secondary) / 0.14);
     --shadow-error-glow: 0 0 20px rgb(var(--color-state-error) / 0.35);
@@ -312,9 +313,9 @@
     --radius-dialog: 1rem;
     --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.07);
     --shadow-control: 0 1px 3px rgb(var(--color-overlay) / 0.1);
-    --shadow-menu: 0 20px 55px rgb(var(--color-overlay) / 0.17);
-    --shadow-panel: 0 14px 38px rgb(var(--color-overlay) / 0.11);
-    --shadow-dialog: 0 28px 80px rgb(var(--color-overlay) / 0.23);
+    --shadow-menu: none;
+    --shadow-panel: none;
+    --shadow-dialog: none;
     --shadow-primary-glow: 0 16px 38px rgb(var(--color-primary) / 0.14);
     --shadow-secondary-glow: 0 16px 38px rgb(var(--color-secondary) / 0.13);
     --shadow-error-glow: 0 0 18px rgb(var(--color-state-error) / 0.18);
@@ -427,9 +428,9 @@
     --radius-dialog: 1rem;
     --shadow-control-inset: inset 0 1px 2px rgb(var(--color-overlay) / 0.16);
     --shadow-control: 0 1px 2px rgb(var(--color-overlay) / 0.24);
-    --shadow-menu: 0 24px 70px rgb(var(--color-overlay) / 0.58);
-    --shadow-panel: 0 18px 55px rgb(var(--color-overlay) / 0.38);
-    --shadow-dialog: 0 30px 100px rgb(var(--color-overlay) / 0.74);
+    --shadow-menu: none;
+    --shadow-panel: none;
+    --shadow-dialog: none;
     --shadow-primary-glow: 0 18px 45px rgb(var(--color-primary) / 0.18);
     --shadow-secondary-glow: 0 18px 45px rgb(var(--color-secondary) / 0.15);
     --shadow-error-glow: 0 0 20px rgb(var(--color-state-error) / 0.32);

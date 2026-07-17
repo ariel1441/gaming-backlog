@@ -1,6 +1,6 @@
 # Remaining Roadmap
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This file contains only work that is still open. Completed milestones belong in
 [`DONE.md`](DONE.md), while current architecture and product behavior belong in
@@ -20,11 +20,14 @@ remains.
 - Add pagination or virtualization where large backlog or library views still
   render unbounded result sets.
 - Continue mobile layout and drag-and-drop polish.
-- Add backup checkpoints, migration failure notifications, and rollback notes
-  around the existing migration-status and schema-contract workflow.
-- Document production backup and restore.
-- Add safe operational views for cache, environment, demo-template, and database
-  health.
+- Add migration-failure notification around the existing fail-closed
+  migration-status and schema-contract workflow.
+- Document a complete production backup and restore procedure. Existing release
+  guidance requires a restorable backup but is not a standalone restore
+  runbook.
+- Add database-aware readiness plus safe diagnostic views for cache,
+  environment, migration, and demo-template health. `/healthz` is currently
+  process liveness only.
 
 ## Shared UI System And Visual Test Foundation — medium/large
 
@@ -77,13 +80,19 @@ Constraints and verification:
 
 These are candidates, not commitments. Choose and plan one before implementation.
 
-### Next Up / Priority Queue — medium
+### Play Next & Resume — medium
 
-- Add a priority/pinned model or a separate ranked queue.
+- Add one explicitly owned priority/pinned model or separate ranked queue.
 - Provide a `/next-up` page or Backlog tab.
 - Support short-game and high-priority views.
-- Optionally make Surprise Me queue-aware.
+- Add clear queue actions to backlog cards and game details.
+- Add a lightweight private resume note and "what to do next" for active games.
+- Define a deliberate Start Playing action that coordinates status, start date,
+  queue membership, and resume context without silently overwriting user data.
+- Optionally make Surprise Me queue-aware and remember temporary rejections.
 - Keep queue ordering independent from status and manual-list ordering.
+- Treat richer mood/time/context recommendations as a later layer after
+  personal tags and ownership/platform data exist.
 
 ### Insights V2 — medium/large
 
@@ -105,11 +114,12 @@ These are candidates, not commitments. Choose and plan one before implementation
   better profile empty states.
 - Consider accent/banner/layout customization only after privacy controls.
 
-### Completion Reviews — medium
+### Completion Flow And Reviews — medium
 
 - Prompt for score, thoughts, and finish date when marking a game finished.
 - Add a focused My Review presentation.
 - Separate public review copy from private notes.
+- Optionally choose the next game after recording completion.
 - Later add spoiler and visibility controls.
 
 ### Timeline V2 / Journal — medium to large
@@ -118,13 +128,22 @@ These are candidates, not commitments. Choose and plan one before implementation
 - Design a durable `activity_events` or `game_events` model for status, score,
   favorite, review, import, sync-review, and journal changes.
 - Add optional play sessions with date, duration, progress, and notes.
+- Add multiple playthroughs only after game-level events and completion
+  semantics are stable.
 - Keep activity private until visibility rules are designed.
 
-### Personal Organization — medium/large
+### Library Control Center — medium/large
 
 - Normalize personal genre values consistently.
 - Add first-class personal tags such as mood, difficulty, co-op, short, comfort,
   replayable, and focus-required.
+- Add saved views for reusable filter, sort, grouping, density, and visible-field
+  configurations; decide explicitly how they differ from smart Lists.
+- Add a Needs Attention view for stale Playing games, missing dates/hours,
+  duplicate candidates, unmatched metadata, provider failures, and
+  unclassified imports.
+- Add global private search across games, Lists, reviews/notes, and personal
+  tags as those data types become durable.
 - Add platform and ownership-source fields when non-Steam tracking is chosen.
 - Add archive/hide, bulk edit, and group-by controls.
 - Add user-managed genre/tag presets.
@@ -134,6 +153,10 @@ These are candidates, not commitments. Choose and plan one before implementation
 - Add safe JSON export.
 - Add previewed CSV/JSON import with validation, conflict, duplicate, and
   rollback behavior.
+- Add provider-neutral import-run summaries, history, and undo before expanding
+  automatic integrations.
+- Consider a Playnite JSON/CSV bridge after the ownership/source model is
+  provider-neutral.
 - Improve safeguards around production-derived local data.
 - Consider console/manual library imports later.
 
@@ -170,9 +193,15 @@ These require separate product planning before implementation.
   deletion, and full data portability.
 - Goals, challenges, progress recaps, and badges.
 - Local catalog game pages.
+- Series/franchise tracking with release order, play order, ownership, and
+  completion progress.
+- Personal release calendar, optional price/availability watch, and digest
+  notifications after wishlist/ownership relationships exist.
 - Friends/following, library comparison, social activity, and moderation.
 - Recommendation engine using backlog data, time, mood, and eventually social
   signals.
+- Collaborative Lists and a share-link Game Night Room after collaboration
+  roles, privacy, abuse, and moderation boundaries are designed.
 - Non-Steam provider and console/physical collection support.
 - TypeScript migration; treat as a dedicated repository-wide refactor, not
   incidental cleanup.
@@ -186,6 +215,8 @@ These require separate product planning before implementation.
 - Add arbitrary date ranges and finished-this-month filtering if demanded.
 - Add recently added/updated sorting after timestamps support it.
 - Add a true dense/virtualized table for large libraries.
+- Add a private command palette only when common actions have stable,
+  keyboard-accessible commands.
 - Add a mojibake/replacement-character check and a test watch command.
 - Reduce noisy production logs.
 - Add shared table/tabs/toolbar primitives only when an active feature needs

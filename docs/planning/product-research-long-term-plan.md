@@ -1,6 +1,6 @@
 # Long-Term Product Feature Briefs
 
-Last updated: 2026-07-11
+Last updated: 2026-07-17
 
 This document contains only product work that remains open. Use
 [`../ROADMAP.md`](../ROADMAP.md) for prioritization, [`../DONE.md`](../DONE.md)
@@ -20,9 +20,10 @@ The product can grow along four connected tracks:
 
 Privacy controls and durable data models must precede public/social expansion.
 
-## Next Up / Priority
+## Play Next And Resume
 
-Goal: answer “what should I play next?” without fighting status ordering.
+Goal: answer "what should I play next?" and make returning to an active game
+easy without fighting status ordering.
 
 Suggested V1:
 
@@ -30,9 +31,21 @@ Suggested V1:
 - A focused page/tab with short-game and high-priority filters.
 - Queue-aware Surprise Me.
 - Clear add/remove/reorder actions from backlog cards and game details.
+- A lightweight private resume note and "what to do next" for active games.
+- A deliberate Start Playing action with explicit status, date, queue, and
+  resume behavior.
+
+Later:
+
+- Time, mood, energy, solo/co-op, input, installed, and platform context.
+- Return a few explained choices instead of another large result list.
+- Remember "not today" and "never suggest this" decisions.
+- Add chapter/location, progress, difficulty, pause reason, and suggested
+  next-session length only when users demonstrate a need for them.
 
 Risks: three ordering systems already exist—backlog positions, manual-list
-positions, and smart-list ranking. Next Up must have one explicit owner.
+positions, and smart-list ranking. Next Up must have one explicit owner. Resume
+data should not force the larger event/playthrough schema into V1.
 
 ## Insights V2
 
@@ -69,6 +82,8 @@ Goal: preserve history rather than only current state.
 - Record events prospectively; do not invent historical transitions.
 - Add optional journal or play-session entries with date, duration, progress,
   and note.
+- Add multiple playthroughs later for replays, difficulty/build, route or
+  ending, completion type, separate hours, and abandoned/resumed state.
 - Reuse the same private event data for Timeline and Insights.
 - Decide event visibility before using it on public profiles or social feeds.
 
@@ -107,6 +122,36 @@ Goal: let users control what their profile communicates.
 - Treat custom per-user statuses as a large project because Insights, Steam,
   reorder, and smart lists need stable semantic groups.
 
+## Saved Views
+
+Goal: let users return to useful library perspectives without adding a permanent
+page for every combination.
+
+Suggested V1:
+
+- Save filters, search, sorting, and grouping.
+- Optionally preserve density and visible fields when those controls exist.
+- Provide quick access to views such as stale active games, unscored finished
+  games, short unplayed games, or unmatched Steam ownership.
+- Decide whether a saved view is a smart List mode or a separate navigation
+  concept before adding another overlapping abstraction.
+
+## Data Health Center
+
+Goal: provide one understandable Needs Attention surface instead of scattering
+repair work across unrelated screens.
+
+Suggested V1:
+
+- Stale Playing games, missing finish dates/hours/covers, duplicate candidates,
+  unmatched catalog records, provider failures, and unclassified imports.
+- Explain every issue and offer direct fix, dismiss, and safe bulk-fix actions.
+- Reuse existing metadata repair, missing-hours, and Steam review capabilities.
+- Never silently replace user-authored fields.
+
+Later: conflicting ownership, broken list relationships, and other checks only
+when current data contracts can detect them reliably.
+
 ## Unified Library
 
 Goal: represent every relationship between a user and a catalog game: backlog,
@@ -134,6 +179,21 @@ Backlog, Discover, and Steam Library.
 - Keep production-derived files ignored, minimally identifying, and handled by
   explicit safe workflows.
 
+## Import History And Provider Bridges
+
+Goal: make integrations observable, reversible, and provider-neutral.
+
+- Record each import/sync summary: scanned, added, changed, conflicted, ignored,
+  failed, and finished.
+- Add an undo boundary only after every affected write can be identified and
+  reversed safely.
+- Generalize the existing Steam review mental model before adding more
+  storefront-specific branches.
+- Consider Playnite JSON/CSV first as a bridge to Steam, Epic, GOG, emulators,
+  installed state, and custom metadata.
+- Keep provider source records separate from catalog identity and user-authored
+  game fields.
+
 ## Catalog Game Pages And Discovery
 
 - Add stable local game pages only when cached catalog identity is reliable.
@@ -141,6 +201,19 @@ Backlog, Discover, and Steam Library.
   passive page loads.
 - Consider release calendar, platform/store browsing, and richer collections.
 - Add community reviews/lists to game pages only after public content exists.
+
+## Series, Calendar, And Passive Value
+
+- Add franchise/series views with release order, recommended play order,
+  ownership, completed/missing entries, remasters, editions, and DLC.
+- Build a personal release calendar from wishlist, followed series, developers,
+  and owned-game DLC only after those relationships are modeled.
+- Add optional price or availability watches without confusing "want to play"
+  with "waiting to buy."
+- Add optional weekly/monthly digests and annual recaps from trustworthy event,
+  ownership, and session data.
+- Generate private and shareable recap variants with an explicit visibility
+  preview.
 
 ## Social, Friends, And Recommendations
 
@@ -156,13 +229,28 @@ Possible later scope:
   signals.
 - Optional AI explanations only after privacy, cost, and reliability boundaries
   are explicit.
+- Collaborative Lists with owner, editor, voter, and viewer roles.
+- A share-link Game Night Room that compares platform, player count, session
+  length, mood, installed state, and shared ownership.
+
+## Power-User Navigation
+
+- Add global private search across games, Lists, reviews, notes, tags, and later
+  franchises.
+- Add a command palette for stable actions such as search, add, start, finish,
+  log, open queue, create List, and synchronize.
+- Add previewed bulk actions for status, tags, Lists, archive, metadata repair,
+  export, and deletion.
+- Keep every command and bulk flow keyboard-accessible and reversible where
+  risk warrants it.
 
 ## Selection Guide
 
 - Smallest direct product value: favorite/review polish or genre normalization.
-- Strongest medium feature: Next Up.
+- Strongest medium feature: Play Next & Resume.
 - Strongest analytics feature: Insights V2.
 - Strongest privacy prerequisite: public-profile visibility controls.
 - Strongest foundational project: durable activity/events.
+- Strongest large-library package: saved views plus Data Health Center.
 - Largest product refactor: Unified Library or custom statuses.
 - Longest-horizon work: social/community and recommendation systems.

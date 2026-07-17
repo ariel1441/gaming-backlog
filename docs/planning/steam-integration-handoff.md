@@ -7,17 +7,16 @@ Steam V1/V1.2 is complete enough to pause. Completed capabilities are listed in
 [`../SYSTEM_CONTEXT.md`](../SYSTEM_CONTEXT.md). Do not expand Steam unless the
 next chosen task is explicitly Steam-related.
 
-## Required Hardening
+## Completed Hardening Baseline
 
-- Bind Steam OpenID linking to the initiating browser/session.
-- Prevent per-user matching decisions from rewriting global Steam/catalog
-  mappings.
-- Remove the status-suggestion write to nonexistent `games.updated_at`.
-- Preserve manual-list membership during duplicate merges.
-- Make related import/review/source writes transactional.
-- Add Steam request deadlines and explicit failure states.
-- Bound large-library sync work to avoid timeout and partial-completion risks.
-- Cover ownership, transactions, and schema behavior with real-Postgres tests.
+The audit-era hardening is complete: one-use browser linking, per-user match
+boundaries, valid status-suggestion writes, duplicate-merge membership
+preservation, transactional review/import work, provider deadlines, bounded
+large-library jobs, and focused real-Postgres contracts. See
+[`../DONE.md`](../DONE.md).
+
+Treat Steam V1/V1.2 as a stopping point. Reopen hardening only for a reproduced
+regression or when a selected follow-up changes the affected contract.
 
 ## Focused Follow-Up Candidates
 
