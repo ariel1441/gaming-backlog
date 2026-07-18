@@ -593,7 +593,8 @@ test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   });
   await expect(addedCard).toBeVisible();
 
-  await addedCard.getByLabel("Edit game").click();
+  await addedCard.getByLabel("Actions for Hollow Knight").click();
+  await page.getByRole("menuitem", { name: "Edit game" }).click();
   const gameDialog = page.getByRole("dialog");
   await expect(gameDialog.getByLabel("Name")).toHaveValue("Hollow Knight");
   await page.getByLabel("My score").fill("9");
@@ -602,7 +603,8 @@ test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   await gameDialog.getByRole("button", { name: "Close game details" }).click();
   await expect(gameDialog).toBeHidden();
 
-  await addedCard.getByLabel("Delete game").click();
+  await addedCard.getByLabel("Actions for Hollow Knight").click();
+  await page.getByRole("menuitem", { name: "Delete game" }).click();
   await expect(
     page.getByRole("heading", { name: "Delete game?" }),
   ).toBeVisible();
@@ -689,7 +691,10 @@ test("derived backlog views cannot mutate canonical manual order", async ({
     page.getByText(/Manual reordering is available after clearing search/i),
   ).toBeVisible();
   expect(page.apiState.reorderPayloads).toEqual([]);
-  await expect(page.getByLabel("Edit game").first()).toBeVisible();
+  await page.getByLabel("Actions for Baldur's Gate 3").click();
+  await expect(
+    page.getByRole("menuitem", { name: "Edit game" }),
+  ).toBeVisible();
 });
 
 test("updates favorite games from public profile settings", async ({
