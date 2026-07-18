@@ -1,10 +1,14 @@
 export const FALLBACK_STATUS_GROUPS = Object.freeze({
   groups: Object.freeze({
     planned: ["plan to play soon", "plan to play", "play when in the mood", "maybe in the future"],
-    playing: ["playing", "played and should come back"],
+    playing: ["playing"],
+    returning: ["played and should come back"],
     done: ["finished", "played alot but didnt finish", "played a lot but didn't finish"],
   }),
-  buckets: Object.freeze({ backlog: ["planned", "playing"], done: ["done"] }),
+  buckets: Object.freeze({
+    backlog: ["planned", "playing", "returning"],
+    done: ["done"],
+  }),
 });
 
 export const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
@@ -27,6 +31,7 @@ export function createStatusSemantics(defs = FALLBACK_STATUS_GROUPS.groups) {
     statusGroupOf,
     isDone: (status) => statusGroupOf(status) === "done",
     isPlaying: (status) => statusGroupOf(status) === "playing",
+    isReturning: (status) => statusGroupOf(status) === "returning",
     rawStatusesForGroup: (group) => defs?.[group] || [],
   };
 }

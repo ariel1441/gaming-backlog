@@ -39,6 +39,7 @@ const ALLOWED_BACKLOG_SORT_KEYS = new Set([
 ]);
 const ALLOWED_LANDING_PATHS = new Set([
   "/",
+  "/next-up",
   "/me",
   "/timeline",
   "/discover",

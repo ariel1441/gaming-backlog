@@ -1,6 +1,6 @@
 # Next Tasks
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This is the short active queue. It intentionally contains no completed work.
 See [`ROADMAP.md`](ROADMAP.md) for remaining candidates and
@@ -10,30 +10,32 @@ must not be treated as the current backlog without revalidation.
 
 ## Selected Next Task
 
-Plan Play Next & Resume V1 as the next bounded product track.
+Review and approve the focused
+[`Play Next & Resume V1`](planning/play-next-resume-v1.md) brief, then implement
+its queue and private-note foundation as a separate phase.
 
 Acceptance criteria:
 
-- Choose one explicit queue model and owner. Queue ordering must remain separate
-  from backlog positions, manual-list positions, and smart-list ranking.
-- Define the smallest useful `/next-up` page or Backlog tab, including
-  add/remove/reorder actions and short-game/high-priority views.
-- Decide whether queue-aware Surprise Me belongs in V1.
-- Define a lightweight private resume note and "what to do next" field for
-  active games, without committing to the larger activity/playthrough model.
-- Define a deliberate Start Playing action and its status/date/queue behavior.
-- Preserve owner, guest/demo, and public read-only boundaries.
-- Record schema, migration, mobile, empty-state, and regression-test risks
-  before implementation.
+- Confirm the seven recommended defaults in the focused brief, especially
+  automatic queue removal on Start playing.
+- Keep Next Up as an independent ordered relationship and `resume_note` as one
+  private field, with database-enforced owner integrity.
+- Implement the queue, note, and atomic Start playing foundation before the
+  explained recommendation layer.
+- Preserve owner, guest/demo, signed-out, and public read-only boundaries.
+- Treat `/next-up` as a focused decision page, not another full-library grid.
+- Keep mood/energy, AI, events, persistent dismissal, goals, and public sharing
+  outside V1.
 
 ## Active Order
 
-1. Plan Play Next & Resume V1 and agree on its acceptance boundary.
-2. Implement the independent queue foundation as a separate phase.
-3. Add the focused Completion Flow after the queue is stable.
-4. Choose between Library Control Center work (tags, saved views, data health)
+1. Review the Play Next & Resume V1 product decisions.
+2. Implement queue/private-note data and API foundations.
+3. Implement the focused `/next-up` page and explained decision layer.
+4. Add the focused Completion Flow after Play Next is stable.
+5. Choose between Library Control Center work (tags, saved views, data health)
    and the larger activity/events foundation.
-5. Add pagination or virtualization where real large-library use demonstrates
+6. Add pagination or virtualization where real large-library use demonstrates
    an unbounded rendering problem.
 
 Operational safety is no longer the selected product task. Remaining

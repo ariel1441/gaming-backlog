@@ -24,6 +24,7 @@ test("public game serialization is database-only even with a warm RAWG cache", a
       catalog_released_at: "2024-01-02",
       catalog_genres_json: ["RPG"],
       catalog_metadata_quality: "full",
+      resume_note: "Private boss strategy",
     },
     {
       id: 2,
@@ -40,6 +41,7 @@ test("public game serialization is database-only even with a warm RAWG cache", a
     assert.equal(hydrated[0].cover, "https://img.example/catalog.jpg");
     assert.equal(hydrated[0].genres, "RPG");
     assert.equal(hydrated[0].metadataQuality, "full");
+    assert.equal("resume_note" in hydrated[0], false);
     assert.equal(hydrated[1].cover, "https://img.example/persisted.jpg");
     assert.equal(hydrated[1].releaseDate, null);
     assert.equal(Object.keys(app.locals.rawgCache).length, 2);

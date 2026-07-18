@@ -4,6 +4,7 @@ import {
   Clock3,
   Flag,
   Gamepad2,
+  ListPlus,
   Pencil,
   Star,
   Trash2,
@@ -15,7 +16,13 @@ import { canDeleteGame, canEditGame } from "../utils/permissions";
 import { splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
-import { Chip, GameCover, IconButton, StatusBadge, useToast } from "./ui";
+import {
+  ActionMenu,
+  Chip,
+  GameCover,
+  StatusBadge,
+  useToast,
+} from "./ui";
 import { GAME_ROW_COVER_SIZE } from "./gameRowCoverStyles";
 
 function fmtDate(value) {
@@ -139,6 +146,7 @@ export default function GameCard({
   onClick,
   onEdit,
   onDelete,
+  onAddToNextUp,
   readOnly = false,
   variant = "grid",
 }) {
@@ -169,6 +177,14 @@ export default function GameCard({
       return;
     }
     onDelete?.();
+  };
+
+  const handleAddToNextUp = () => {
+    if (!canEdit) {
+      toast.warning("Sign in to manage Play Next.");
+      return;
+    }
+    onAddToNextUp?.();
   };
 
   const releaseDate = fmtDate(game.releaseDate);
@@ -233,7 +249,7 @@ export default function GameCard({
   const isCompact = variant === "compact";
   const isList = variant === "list";
   const genreLimit = isCompact ? 2 : 3;
-  const visibleMyGenres = myGenres.slice(0, genreLimit);
+  const visibleMyGenres = isList ? myGenres : myGenres.slice(0, genreLimit);
   const hiddenMyGenres = Math.max(0, myGenres.length - visibleMyGenres.length);
   const imageHeight = isCompact ? "h-44" : "h-64";
   const titleClass = isCompact
@@ -242,26 +258,61 @@ export default function GameCard({
 
   const actionButtons =
     canEdit || canDelete ? (
-      <div className="absolute right-3 top-3 z-20 flex gap-2 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
-        {canEdit && (
-          <IconButton
-            icon={Pencil}
-            onClick={handleEdit}
-            className="action-button h-9 w-9 shadow-md hover:border-secondary hover:bg-secondary hover:text-media-text"
-            label="Edit game"
-            title="Edit game"
-          />
-        )}
-        {canDelete && (
-          <IconButton
-            icon={Trash2}
-            onClick={handleDelete}
-            variant="danger"
-            className="action-button h-9 w-9 shadow-md"
-            label="Delete game"
-            title="Delete game"
-          />
-        )}
+      <div className="absolute right-3 top-3 z-20 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
+        <ActionMenu
+          label="More"
+          ariaLabel={`Actions for ${game.name}`}
+          className="h-10 bg-surface-bg/85 px-3 shadow-md [&>span]:hidden"
+        >
+          {({ close }) => (
+            <div className="space-y-1">
+              {canEdit &&
+              onAddToNextUp &&
+              !["playing", "done"].includes(statusGroupOf(game.status)) ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    handleAddToNextUp();
+                  }}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated"
+                >
+                  <ListPlus className="h-4 w-4" aria-hidden="true" />
+                  Add to Next Up
+                </button>
+              ) : null}
+              {canEdit ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    close();
+                    handleEdit(event);
+                  }}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated"
+                >
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                  Edit game
+                </button>
+              ) : null}
+              {canDelete ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    close();
+                    handleDelete(event);
+                  }}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-state-error hover:bg-state-error/10"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  Delete game
+                </button>
+              ) : null}
+            </div>
+          )}
+        </ActionMenu>
       </div>
     ) : null;
   const openDetailsButton = onClick ? (

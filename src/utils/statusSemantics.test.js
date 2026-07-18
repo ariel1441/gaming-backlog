@@ -13,6 +13,18 @@ test("canonical and tolerated done spellings share one semantic group", () => {
   }
 });
 
+test("only Playing is active while should-come-back is returning", () => {
+  assert.equal(defaultStatusSemantics.statusGroupOf("playing"), "playing");
+  assert.equal(
+    defaultStatusSemantics.statusGroupOf("played and should come back"),
+    "returning",
+  );
+  assert.equal(
+    defaultStatusSemantics.isReturning("played and should come back"),
+    true,
+  );
+});
+
 test("smart lists honor status metadata instead of hardcoded labels", () => {
   const semantics = createStatusSemantics({
     planned: ["queued"],
@@ -29,4 +41,20 @@ test("smart lists honor status metadata instead of hardcoded labels", () => {
     { statusGroupOf: semantics.statusGroupOf },
   );
   assert.deepEqual(finished.games.map((game) => game.id), [1]);
+});
+
+test("Playing smart lists do not infer activity from an old start date", () => {
+  const games = [
+    {
+      id: 1,
+      status: "played and should come back",
+      started_at: "2024-01-01",
+    },
+    { id: 2, status: "playing", started_at: "2026-01-01" },
+  ];
+  const playing = resolveSmartList(
+    { query: { status: "playing" } },
+    games,
+  );
+  assert.deepEqual(playing.games.map((game) => game.id), [2]);
 });

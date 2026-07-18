@@ -2596,23 +2596,32 @@ export async function applySteamStatusSuggestion(
 
   const { rows } = await pool.query(
     `
-    UPDATE games g
-       SET status = $3,
-           started_at = CASE
-             WHEN $4::boolean AND g.started_at IS NULL THEN COALESCE($5::date, CURRENT_DATE)
-             ELSE g.started_at
-           END
-     WHERE g.id = $1
-       AND g.user_id = $2
-       AND EXISTS (
-         SELECT 1
-         FROM user_game_sources ugs
-         WHERE ugs.user_id = g.user_id
-           AND ugs.game_id = g.id
-           AND ugs.provider = 'steam'
-           AND ugs.source_status = 'owned'
-       )
-     RETURNING id, name, status, started_at
+    WITH updated AS (
+      UPDATE games g
+         SET status = $3,
+             started_at = CASE
+               WHEN $4::boolean AND g.started_at IS NULL THEN COALESCE($5::date, CURRENT_DATE)
+               ELSE g.started_at
+             END
+       WHERE g.id = $1
+         AND g.user_id = $2
+         AND EXISTS (
+           SELECT 1
+           FROM user_game_sources ugs
+           WHERE ugs.user_id = g.user_id
+             AND ugs.game_id = g.id
+             AND ugs.provider = 'steam'
+             AND ugs.source_status = 'owned'
+         )
+       RETURNING id, name, status, started_at
+    ),
+    removed AS (
+      DELETE FROM user_next_up_games
+       WHERE user_id = $2
+         AND game_id IN (SELECT id FROM updated)
+       RETURNING game_id
+    )
+    SELECT * FROM updated
     `,
     [gameId, userId, statusNorm, !!setStartedAt, dateValue]
   );

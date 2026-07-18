@@ -36,10 +36,10 @@ export default function useBacklogActions({
   };
 
   const handleDeleteGame = async (gameId) => {
-    if (deletingIds.has(gameId)) return;
+    if (deletingIds.has(gameId)) return false;
     if (!isAuthenticated) {
       toast.warning("Sign in required to delete games.");
-      return;
+      return false;
     }
     const ok = await confirm({
       title: "Delete game?",
@@ -47,15 +47,17 @@ export default function useBacklogActions({
       confirmLabel: "Delete",
       tone: "danger",
     });
-    if (!ok) return;
+    if (!ok) return false;
 
     try {
       setDeletingIds((prev) => new Set(prev).add(gameId));
       await removeGame(gameId);
       toast.success("Game deleted.");
+      return true;
     } catch (err) {
       console.error("Error deleting game:", err);
       toast.error("Failed to delete game. Please try again.");
+      return false;
     } finally {
       setDeletingIds((prev) => {
         const next = new Set(prev);

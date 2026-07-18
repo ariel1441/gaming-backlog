@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS user_game_sources;
 DROP TABLE IF EXISTS steam_sync_jobs;
 DROP TABLE IF EXISTS user_external_accounts;
 DROP TABLE IF EXISTS steam_link_transactions;
+DROP TABLE IF EXISTS user_next_up_games;
 DROP TABLE IF EXISTS user_list_games;
 DROP TABLE IF EXISTS user_lists;
 DROP TABLE IF EXISTS games;
@@ -98,6 +99,7 @@ CREATE TABLE user_preferences (
     CHECK (
       default_landing_path IN (
         '/',
+        '/next-up',
         '/me',
         '/timeline',
         '/discover',
@@ -319,6 +321,9 @@ CREATE TABLE games (
   hours_locked BOOLEAN NOT NULL DEFAULT FALSE,
   my_score NUMERIC(3,1) CHECK (my_score IS NULL OR my_score BETWEEN 0 AND 10),
   thoughts TEXT,
+  resume_note TEXT
+    CONSTRAINT games_resume_note_length
+    CHECK (resume_note IS NULL OR char_length(resume_note) <= 1000),
   cover TEXT,
   rawg_id INTEGER,
   rawg_slug TEXT,
@@ -416,6 +421,20 @@ CREATE INDEX idx_user_list_games_list_position
 
 CREATE INDEX idx_user_list_games_game_id
   ON user_list_games (game_id);
+
+CREATE TABLE user_next_up_games (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, game_id)
+);
+
+CREATE INDEX idx_user_next_up_games_user_position
+  ON user_next_up_games (user_id, position, game_id);
+
+CREATE INDEX idx_user_next_up_games_game_id
+  ON user_next_up_games (game_id);
 
 CREATE TABLE user_external_accounts (
   id SERIAL PRIMARY KEY,
@@ -628,6 +647,10 @@ CREATE TRIGGER game_metadata_candidates_owner_guard
   BEFORE INSERT OR UPDATE OF user_id, game_id ON game_metadata_candidates
   FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
 
+CREATE TRIGGER user_next_up_games_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, game_id ON user_next_up_games
+  FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
+
 CREATE OR REPLACE FUNCTION prevent_game_owner_change_with_relationships()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -635,7 +658,8 @@ BEGIN
   IF EXISTS (SELECT 1 FROM user_list_games WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM user_game_sources WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM steam_import_candidates WHERE duplicate_game_id = OLD.id)
-     OR EXISTS (SELECT 1 FROM game_metadata_candidates WHERE game_id = OLD.id) THEN
+     OR EXISTS (SELECT 1 FROM game_metadata_candidates WHERE game_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM user_next_up_games WHERE game_id = OLD.id) THEN
     RAISE EXCEPTION 'cannot change game owner while owned relationships exist'
       USING ERRCODE = '23514';
   END IF;

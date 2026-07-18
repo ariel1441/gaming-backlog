@@ -39,6 +39,11 @@ import {
 const router = express.Router();
 
 const DEFAULT_POSITION_SPACING = 1000;
+const normalizeResumeNote = (value) => {
+  if (value == null) return null;
+  const note = String(value).trim();
+  return note || null;
+};
 
 // Use DB local day (Israel) to avoid UTC "yesterday" issues.
 const TODAY_SQL = "(now() AT TIME ZONE 'Asia/Jerusalem')::date";
@@ -88,7 +93,7 @@ async function lockUserRank(db, userId, status) {
  *   DB how_long_to_beat  OR  RAWG hours  OR  null
  * We also include displayHLTB and displayName for future UI uses.
  */
-const decorateGameForClient = (game) => {
+export const decorateGameForClient = (game) => {
   const steamPlaytimeMinutes = Number.isFinite(
     Number(game.steam_playtime_minutes),
   )
@@ -530,6 +535,7 @@ router.put(
         rawg_id,
         rawg_slug,
         rawg_selection_confirmed = false,
+        resume_note,
       } = req.body || {};
 
       const statusNorm = normStatus(status);
@@ -574,6 +580,10 @@ router.put(
       const hoursProvided = Object.prototype.hasOwnProperty.call(
         req.body,
         "how_long_to_beat",
+      );
+      const resumeNoteProvided = Object.prototype.hasOwnProperty.call(
+        req.body,
+        "resume_note",
       );
       const nameChanged = userTitle !== row.name;
 
@@ -655,6 +665,7 @@ router.put(
       }
 
       const updateSql = `
+  WITH updated AS (
   UPDATE games g
      SET name = $1,
          status = $2,
@@ -668,6 +679,7 @@ router.put(
          rawg_id = $15,
          rawg_slug = $16,
          catalog_game_id = $17,
+         resume_note = $22,
 
          started_at = CASE
            WHEN $11 THEN $18
@@ -682,7 +694,16 @@ router.put(
          END
 
    WHERE g.id = $10 AND g.user_id = $14
-   RETURNING *;
+   RETURNING *
+  ),
+  removed AS (
+    DELETE FROM user_next_up_games
+     WHERE user_id = $14
+       AND game_id = $10
+       AND $23
+     RETURNING game_id
+  )
+  SELECT * FROM updated;
 `;
 
       const params = [
@@ -707,6 +728,10 @@ router.put(
         finishedBody, // $19
         statusGroupOf(statusNorm) === "playing", // $20
         statusGroupOf(statusNorm) === "done", // $21
+        resumeNoteProvided
+          ? normalizeResumeNote(resume_note)
+          : row.resume_note ?? null, // $22
+        ["playing", "done"].includes(statusGroupOf(statusNorm)), // $23
       ];
 
       const { rows } = await pool.query(updateSql, params);
@@ -850,6 +875,7 @@ router.patch(
           gameId,
           userId,
           targetStatus,
+          ["playing", "done"].includes(statusGroupOf(targetStatus)),
         );
         await client.query(statusQuery.text, statusQuery.values);
       }

@@ -94,3 +94,19 @@ test("favorites body accepts up to five unique game ids", () => {
     /duplicate/
   );
 });
+
+test("resume notes allow blank clearing and reject values over 1000 characters", () => {
+  const blank = gameSchemas.upsertBody.validate({
+    ...base,
+    resume_note: "   ",
+  });
+  assert.equal(blank.error, undefined);
+  assert.equal(blank.value.resume_note, "");
+  assert.match(
+    gameSchemas.upsertBody.validate({
+      ...base,
+      resume_note: "x".repeat(1001),
+    }).error.message,
+    /resume_note must be <= 1000 chars/,
+  );
+});

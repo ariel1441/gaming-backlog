@@ -179,12 +179,7 @@ function isDone(game, statusGroupOf) {
 }
 
 function isPlaying(game, statusGroupOf) {
-  return (
-    statusGroupOf(game?.status) === "playing" ||
-    (!!parseGameDate(game?.started_at) &&
-      !parseGameDate(game?.finished_at) &&
-      !isDone(game, statusGroupOf))
-  );
+  return statusGroupOf(game?.status) === "playing";
 }
 
 function scoreValue(game) {

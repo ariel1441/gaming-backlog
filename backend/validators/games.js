@@ -102,6 +102,13 @@ export const gameSchemas = {
     thoughts: Joi.string().trim().max(2000).empty("").allow(null).messages({
       "string.max": "thoughts must be <= 2000 chars",
     }),
+    resume_note: Joi.string()
+      .trim()
+      .max(1000)
+      .allow("", null)
+      .messages({
+        "string.max": "resume_note must be <= 1000 chars",
+      }),
     my_score: Joi.number()
       .min(0)
       .max(10)

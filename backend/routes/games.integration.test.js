@@ -434,6 +434,80 @@ test("PUT /api/games/:id rejects duplicate title excluding current row", async (
   );
 });
 
+test("PUT /api/games/:id normalizes blank resume notes and removes stale eligible-state membership atomically", async () => {
+  let updateSql = "";
+  let updateParams;
+  await withServer(
+    async (text, values) => {
+      const sql = String(text);
+      if (sql.includes("SELECT 1 FROM statuses")) return { rows: [{}] };
+      if (sql.includes("SELECT * FROM games")) {
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "plan to play",
+              position: 1000,
+              resume_note: "Old note",
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT id, name FROM games")) {
+        return { rows: [{ id: 12, name: "Hades" }] };
+      }
+      if (sql.includes("WITH updated AS")) {
+        updateSql = sql;
+        updateParams = values;
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "playing",
+              position: 1000,
+              resume_note: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes("LEFT JOIN catalog_games")) {
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "playing",
+              resume_note: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/12", {
+        method: "PUT",
+        body: {
+          name: "Hades",
+          status: "playing",
+          resume_note: "   ",
+        },
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.resume_note, null);
+      assert.equal(updateParams[21], null);
+      assert.equal(updateParams[22], true);
+      assert.match(updateSql, /DELETE FROM user_next_up_games/);
+      assert.match(updateSql, /SELECT \* FROM updated/);
+    },
+  );
+});
+
 test("DELETE /api/games/:id scopes deletion by authenticated user", async () => {
   let seenQuery;
   await withServer(

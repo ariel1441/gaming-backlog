@@ -63,7 +63,8 @@ test("owned delete requires id and user_id", () => {
 });
 
 test("owned status update requires id and user_id", () => {
-  const query = updateOwnedGameStatusQuery(12, 7, "finished");
+  const query = updateOwnedGameStatusQuery(12, 7, "finished", true);
   assert.match(compact(query.text), /WHERE id = \$1 AND user_id = \$2/);
-  assert.deepEqual(query.values, [12, 7, "finished"]);
+  assert.match(compact(query.text), /DELETE FROM user_next_up_games/);
+  assert.deepEqual(query.values, [12, 7, "finished", true]);
 });

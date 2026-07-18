@@ -7,10 +7,12 @@ import {
   LibraryBig,
   List,
   MessageSquareText,
+  PlaySquare,
 } from "lucide-react";
 
 export const primaryNavigationItems = [
   { to: "/", label: "Backlog", icon: LibraryBig, end: true },
+  { to: "/next-up", label: "Play Next", icon: PlaySquare },
   { to: "/discover", label: "Discover", icon: Compass },
   { to: "/lists", label: "Lists", icon: List },
   { to: "/timeline", label: "Timeline", icon: Clock3, authOnly: true },
@@ -44,7 +46,7 @@ export const mobilePrimaryNavigationItems = primaryNavigationItems.filter(
 );
 
 export const mobileMoreNavigationItems = primaryNavigationItems.filter(
-  (item) => ["/reviews", "/insights"].includes(item.to),
+  (item) => ["/next-up", "/reviews", "/insights"].includes(item.to),
 );
 
 export function navigationItemMatchesPath(item, pathname) {

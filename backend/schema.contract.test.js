@@ -91,6 +91,24 @@ test("fresh schema enforces game identity, dates, metrics, and relationship owne
       ),
       (error) => error.code === "23514",
     );
+    await assert.rejects(
+      client.query(
+        "INSERT INTO user_next_up_games (user_id, game_id, position) VALUES ($1, $2, 0)",
+        [userA, gameB.rows[0].id],
+      ),
+      (error) => error.code === "23514",
+    );
+    await assert.rejects(
+      client.query(
+        "UPDATE games SET resume_note = $1 WHERE id = $2",
+        ["x".repeat(1001), gameA.rows[0].id],
+      ),
+      (error) => error.code === "23514",
+    );
+    await client.query(
+      "INSERT INTO user_next_up_games (user_id, game_id, position) VALUES ($1, $2, 0)",
+      [userA, gameA.rows[0].id],
+    );
     await client.query(
       "INSERT INTO user_list_games (list_id, game_id) VALUES ($1, $2)",
       [listA.rows[0].id, gameA.rows[0].id],
@@ -212,12 +230,19 @@ test("ordered migrations bootstrap an empty database and status stays read-only"
         "catalog_provider_snapshots",
         "metadata_jobs",
         "game_metadata_candidates",
+        "user_next_up_games",
       ]) {
         assert.equal(
           (await client.query("SELECT to_regclass($1) AS name", [table])).rows[0].name,
           table,
         );
       }
+      const resumeNoteColumn = await client.query(`
+        SELECT is_nullable
+          FROM information_schema.columns
+         WHERE table_name = 'games' AND column_name = 'resume_note'
+      `);
+      assert.equal(resumeNoteColumn.rows[0]?.is_nullable, "YES");
     } finally {
       await client.end();
     }

@@ -18,7 +18,7 @@ Tech stack:
 - Frontend: React 18, Vite, React Router, Tailwind CSS, Recharts, dnd-kit.
 - Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
 - Deployment model: Vercel frontend, Railway backend/Postgres.
-- Main app routes: `/`, `/me`, `/settings`, `/lists`, `/discover`,
+- Main app routes: `/`, `/next-up`, `/me`, `/settings`, `/lists`, `/discover`,
   `/timeline`, `/insights`, `/u/:username`.
 
 ## Commands
@@ -63,6 +63,8 @@ deliberately set.
 - Store private per-user game collections.
 - Track game status, manual order, personal genre, score, thoughts, start date,
   finish date, and estimated hours.
+- Keep a private ordered Next Up queue, start queued games atomically, and save
+  one private "Next time" resume note per game.
 - Add games with optional started and finished dates, or let the backend
   continue auto-setting dates for eligible statuses when date fields are omitted.
 - Search RAWG from the add/edit game forms and save or replace a selected RAWG
@@ -114,6 +116,8 @@ Routes:
 - `backend/routes/games.js` - authenticated game CRUD, enrichment, reorder.
 - `backend/routes/lists.js` - authenticated private list CRUD, smart-list
   metadata, manual membership add/remove, and list-specific reorder.
+- `backend/routes/nextUp.js` - authenticated private Next Up membership,
+  canonical reorder, removal, and atomic Start playing.
 - `backend/routes/catalog.js` - authenticated catalog browse/search/detail,
   manual metadata refresh, collection load-more, and add-to-backlog.
 - `backend/routes/steam.js` - authenticated Steam OpenID link, account state,
@@ -180,7 +184,9 @@ Database:
   genres.
 - `games`: user-owned game rows with status, position, custom fields, HLTB
   hours, score, notes, cover, RAWG identity fields, optional `catalog_game_id`,
-  started date, and finished date.
+  started date, finished date, and private `resume_note`.
+- `user_next_up_games`: private owner-scoped Next Up membership with an
+  independent ordered position and database-enforced game ownership.
 - `user_lists`: private owner-scoped list metadata, including `manual` versus
   `smart` list type and saved smart-list query/ranking metadata.
 - `user_list_games`: private manual-list membership and manual list positions.
@@ -228,6 +234,8 @@ Entry points:
 Routes:
 
 - `/` - private backlog app.
+- `/next-up` - private Play Next decision page with explained picks, Continue
+  Playing, Next time notes, and an independently ordered queue.
 - `/me` - signed-in owner profile dashboard.
 - `/settings` - signed-in settings for profile basics, account context,
   preferences, public profile, data export, and integrations.

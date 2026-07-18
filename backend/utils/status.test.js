@@ -9,7 +9,8 @@ test("normStatus trims and lowercases status values", () => {
 
 test("statusGroupOf maps canonical statuses to semantic groups", () => {
   assert.equal(statusGroupOf("plan to play"), "planned");
-  assert.equal(statusGroupOf("played and should come back"), "playing");
+  assert.equal(statusGroupOf("playing"), "playing");
+  assert.equal(statusGroupOf("played and should come back"), "returning");
   assert.equal(statusGroupOf("finished"), "done");
 });
 
@@ -19,6 +20,9 @@ test("statusGroupOf tolerates supported done spelling variant", () => {
 
 test("rawStatusesForGroup returns configured raw labels", () => {
   assert.ok(rawStatusesForGroup("planned").includes("plan to play"));
+  assert.deepEqual(rawStatusesForGroup("returning"), [
+    "played and should come back",
+  ]);
   assert.deepEqual(rawStatusesForGroup("missing"), []);
 });
 

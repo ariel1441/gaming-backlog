@@ -5,11 +5,13 @@ import {
   Clock3,
   Gamepad2,
   Layers3,
+  ListPlus,
   Pencil,
   RefreshCw,
   Sparkles,
   Star,
   Tag,
+  Trash2,
   Trophy,
   X,
 } from "lucide-react";
@@ -45,6 +47,7 @@ import { splitCsv } from "../utils/gameList";
 import { searchGames } from "../services/gameService";
 import GameSearchResult from "./GameSearchResult";
 import EditGameSteamSection from "./EditGameSteamSection";
+import { useStatusGroups } from "../contexts/StatusGroupsContext";
 
 const hourSourceOptions = [
   { value: "auto", label: "Auto" },
@@ -73,6 +76,7 @@ function draftFromGame(game) {
     hours_locked: !!source.hours_locked,
     my_genre: source.my_genre || "",
     thoughts: source.thoughts || "",
+    resume_note: source.resume_note || "",
     my_score: source.my_score ?? "",
     started_at: toDateStr(source.started_at),
     finished_at: toDateStr(source.finished_at),
@@ -212,6 +216,8 @@ export default function GameModal({
   statuses = [],
   allMyGenres = [],
   readOnly = false,
+  onAddToNextUp,
+  onDelete,
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [isEditMode, setIsEditMode] = useState(startInEditMode);
@@ -237,8 +243,14 @@ export default function GameModal({
   const titleId = `${useId()}-title`;
   const toast = useToast();
   const confirm = useConfirm();
+  const { statusGroupOf } = useStatusGroups();
   const dirty = draftKey(draft) !== draftKey(savedDraft);
   const canEdit = !readOnly && !!onSubmitEdit;
+  const normalizedStatus = String(game?.status || "").trim().toLowerCase();
+  const canAddToNextUp =
+    !!onAddToNextUp &&
+    normalizedStatus !== "playing" &&
+    statusGroupOf(game?.status) !== "done";
   const tabs = isEditMode
     ? [...viewTabs, { value: "metadata", label: "Metadata", icon: Tag }]
     : viewTabs;
@@ -398,6 +410,7 @@ export default function GameModal({
       ? `${displayGame.my_score}/10`
       : "—";
   const thoughts = displayGame.thoughts?.trim() || null;
+  const resumeNote = displayGame.resume_note?.trim() || null;
   const description = game.description || null;
   const achievementSyncedAt = formatAchievementSyncDate(
     (localAchievements || game.steamAchievements)?.lastSyncedAt,
@@ -903,33 +916,87 @@ export default function GameModal({
             ) : null}
 
             {activeTab === "notes" ? (
-              <section className="max-w-3xl">
-                <h3 className="text-sm font-semibold text-content-primary">
-                  Your thoughts
-                </h3>
-                {isEditMode ? (
-                  <Textarea
-                    id="edit-thoughts"
-                    aria-label="Thoughts"
-                    value={draft.thoughts}
-                    onChange={(event) =>
-                      updateDraft({ thoughts: event.target.value })
-                    }
-                    rows={12}
-                    disabled={isSubmitting}
-                    className="mt-3 min-h-64 text-base leading-7"
-                    placeholder="Add your thoughts, review, or notes..."
-                  />
-                ) : thoughts ? (
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-content-secondary">
-                    {thoughts}
-                  </p>
-                ) : (
-                  <p className="mt-3 text-sm text-content-muted">
-                    You have not added personal notes for this game.
-                  </p>
-                )}
-              </section>
+              <div className="max-w-3xl space-y-7">
+                <section className="rounded-panel border border-primary/25 bg-primary/8 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-content-primary">
+                        Next time
+                      </h3>
+                      <p className="mt-1 text-xs leading-5 text-content-muted">
+                        Where were you, and what do you want to do next? Private,
+                        optional, and limited to 1,000 characters.
+                      </p>
+                    </div>
+                    {isEditMode && draft.resume_note ? (
+                      <Button
+                        type="button"
+                        variant="dangerGhost"
+                        size="sm"
+                        onClick={() => updateDraft({ resume_note: "" })}
+                        disabled={isSubmitting}
+                      >
+                        Clear note
+                      </Button>
+                    ) : null}
+                  </div>
+                  {isEditMode ? (
+                    <>
+                      <Textarea
+                        id="edit-resume-note"
+                        aria-label="Next time"
+                        value={draft.resume_note}
+                        onChange={(event) =>
+                          updateDraft({ resume_note: event.target.value })
+                        }
+                        maxLength={1000}
+                        rows={6}
+                        disabled={isSubmitting}
+                        className="mt-3 min-h-36 whitespace-pre-wrap"
+                        placeholder="Add the smallest useful reminder for your next session..."
+                      />
+                      <div className="mt-2 text-right text-xs text-content-muted">
+                        {draft.resume_note.length}/1000
+                      </div>
+                    </>
+                  ) : resumeNote ? (
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-content-secondary">
+                      {resumeNote}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-sm text-content-muted">
+                      No Next time note yet.
+                    </p>
+                  )}
+                </section>
+                <section>
+                  <h3 className="text-sm font-semibold text-content-primary">
+                    Your thoughts
+                  </h3>
+                  {isEditMode ? (
+                    <Textarea
+                      id="edit-thoughts"
+                      aria-label="Thoughts"
+                      value={draft.thoughts}
+                      onChange={(event) =>
+                        updateDraft({ thoughts: event.target.value })
+                      }
+                      rows={12}
+                      disabled={isSubmitting}
+                      className="mt-3 min-h-64 text-base leading-7"
+                      placeholder="Add your thoughts, review, or notes..."
+                    />
+                  ) : thoughts ? (
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-content-secondary">
+                      {thoughts}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-sm text-content-muted">
+                      You have not added personal notes for this game.
+                    </p>
+                  )}
+                </section>
+              </div>
             ) : null}
 
             {activeTab === "activity" ? (
@@ -1127,7 +1194,7 @@ export default function GameModal({
               </div>
             </div>
           ) : onEdit || onRefresh || canEdit ? (
-            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:px-7">
+            <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:flex-row sm:items-center sm:px-7">
               <div>
                 {onRefresh ? (
                   <Button type="button" variant="ghost" onClick={onRefresh}>
@@ -1137,20 +1204,51 @@ export default function GameModal({
                 ) : null}
               </div>
               {canEdit ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setDraft(draftFromGame(game));
-                    setSavedDraft(draftFromGame(game));
-                    setIsEditMode(true);
-                    setActiveTab("overview");
-                    onEdit?.(game);
-                  }}
-                >
-                  <Pencil className="h-4 w-4" aria-hidden="true" />
-                  Edit game
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setDraft(draftFromGame(game));
+                      setSavedDraft(draftFromGame(game));
+                      setIsEditMode(true);
+                      setActiveTab("overview");
+                      onEdit?.(game);
+                    }}
+                    className="w-full sm:w-auto"
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                    Edit game
+                  </Button>
+                  {onAddToNextUp ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => onAddToNextUp(game)}
+                      disabled={!canAddToNextUp}
+                      title={
+                        canAddToNextUp
+                          ? "Add this game to Next Up"
+                          : "Playing and done games cannot be added to Next Up"
+                      }
+                      className="w-full sm:w-auto"
+                    >
+                      <ListPlus className="h-4 w-4" aria-hidden="true" />
+                      Add to Next Up
+                    </Button>
+                  ) : null}
+                  {onDelete ? (
+                    <Button
+                      type="button"
+                      variant="dangerGhost"
+                      onClick={() => onDelete(game)}
+                      className="w-full sm:w-auto"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      Delete game
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}

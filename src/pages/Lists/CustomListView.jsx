@@ -478,16 +478,10 @@ function hoursLabel(game) {
 }
 
 function rowGenres(game) {
-  return [
-    ...splitCsv(game?.my_genre).map((label) => ({
-      label,
-      variant: "personalGenre",
-    })),
-    ...splitCsv(game?.genres).map((label) => ({
-      label,
-      variant: "metadataGenre",
-    })),
-  ].slice(0, 3);
+  return splitCsv(game?.my_genre).map((label) => ({
+    label,
+    variant: "personalGenre",
+  }));
 }
 
 function MetaPill({ icon: Icon, children }) {

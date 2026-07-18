@@ -23,6 +23,9 @@ code when a note appears stale.
   milestones.
 - [`SYSTEM_CONTEXT.md`](SYSTEM_CONTEXT.md) - compact architecture and current
   status handoff for new sessions.
+- [`reviews/gaming-backlog-competitive-landscape-2026.md`](reviews/gaming-backlog-competitive-landscape-2026.md) -
+  broad current-market review and product lessons from gaming backlog,
+  collection, recommendation, and resume tools.
 - [`CI_CD.md`](CI_CD.md) - CI gates, hosting settings, migration ordering, and
   production release verification.
 - [`../backend/migrations/README.md`](../backend/migrations/README.md) -
@@ -77,6 +80,9 @@ environment.
 - [`planning/product-research-long-term-plan.md`](planning/product-research-long-term-plan.md) -
   remaining feature briefs for Next Up, Insights V2, reviews, activity, privacy,
   organization, library, social, and discovery work.
+- [`planning/play-next-resume-v1.md`](planning/play-next-resume-v1.md) -
+  selected Play Next product, data, API, UI, responsive, privacy, and
+  implementation boundary.
 - [`planning/steam-integration-handoff.md`](planning/steam-integration-handoff.md) -
   unresolved Steam hardening, QA, privacy, and future expansion work.
 - [`planning/production-migration-automation.md`](planning/production-migration-automation.md) -

@@ -1,6 +1,6 @@
 # Remaining Roadmap
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This file contains only work that is still open. Completed milestones belong in
 [`DONE.md`](DONE.md), while current architecture and product behavior belong in
@@ -82,17 +82,20 @@ These are candidates, not commitments. Choose and plan one before implementation
 
 ### Play Next & Resume — medium
 
-- Add one explicitly owned priority/pinned model or separate ranked queue.
-- Provide a `/next-up` page or Backlog tab.
-- Support short-game and high-priority views.
-- Add clear queue actions to backlog cards and game details.
-- Add a lightweight private resume note and "what to do next" for active games.
-- Define a deliberate Start Playing action that coordinates status, start date,
-  queue membership, and resume context without silently overwriting user data.
-- Optionally make Surprise Me queue-aware and remember temporary rejections.
-- Keep queue ordering independent from status and manual-list ordering.
-- Treat richer mood/time/context recommendations as a later layer after
-  personal tags and ownership/platform data exist.
+The selected direction and implementation boundary are maintained in
+[`planning/play-next-resume-v1.md`](planning/play-next-resume-v1.md), informed
+by the
+[`2026 competitive landscape`](reviews/gaming-backlog-competitive-landscape-2026.md).
+
+- Add a dedicated private `/next-up` page.
+- Store a separate ordered Next Up relationship; do not overload priority,
+  status, favorites, backlog position, or Lists.
+- Derive Continue Playing from active games and add one private `resume_note`.
+- Add atomic Start playing behavior that preserves existing dates and removes
+  queue membership.
+- Add three deterministic explained choices plus explicit Surprise Me pools.
+- Keep richer context, AI, persistent dismissals, events, and public sharing
+  outside V1.
 
 ### Insights V2 — medium/large
 

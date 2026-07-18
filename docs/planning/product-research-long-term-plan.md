@@ -1,6 +1,6 @@
 # Long-Term Product Feature Briefs
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This document contains only product work that remains open. Use
 [`../ROADMAP.md`](../ROADMAP.md) for prioritization, [`../DONE.md`](../DONE.md)
@@ -19,27 +19,32 @@ The product can grow along four connected tracks:
 4. Discovery/community: catalog pages, recommendations, friends, and activity.
 
 Privacy controls and durable data models must precede public/social expansion.
+The broad
+[`2026 competitive landscape`](../reviews/gaming-backlog-competitive-landscape-2026.md)
+supports a more specific differentiator: connect trustworthy imports and
+library repair to a low-friction choose, start, resume, and remember loop.
 
 ## Play Next And Resume
 
 Goal: answer "what should I play next?" and make returning to an active game
 easy without fighting status ordering.
 
-Suggested V1:
+The recommended V1 is now specified in
+[`play-next-resume-v1.md`](play-next-resume-v1.md):
 
-- A separate ordered queue or deliberately modeled priority/pin fields.
-- A focused page/tab with short-game and high-priority filters.
-- Queue-aware Surprise Me.
-- Clear add/remove/reorder actions from backlog cards and game details.
-- A lightweight private resume note and "what to do next" for active games.
-- A deliberate Start Playing action with explicit status, date, queue, and
-  resume behavior.
+- A separate ordered queue, not priority/pin fields or an existing order.
+- A dedicated private `/next-up` page.
+- Continue Playing derived from current active-game semantics.
+- Queue-aware and backlog-aware Surprise Me with an explicit pool.
+- Add/remove/reorder actions from the focused page and game action menus.
+- One private `resume_note`, presented as "Next time."
+- Atomic Start playing behavior that preserves existing dates.
+- Three deterministic, explained choices using trustworthy existing data.
 
 Later:
 
 - Time, mood, energy, solo/co-op, input, installed, and platform context.
-- Return a few explained choices instead of another large result list.
-- Remember "not today" and "never suggest this" decisions.
+- Persist "not today" expiry and "never suggest this" decisions.
 - Add chapter/location, progress, difficulty, pause reason, and suggested
   next-session length only when users demonstrate a need for them.
 

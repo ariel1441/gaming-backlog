@@ -5,7 +5,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import GameGrid from "../../components/GameGrid";
 import DemoBanner from "../../components/DemoBanner";
-import { Button, EmptyState } from "../../components/ui";
+import { Button, EmptyState, useToast } from "../../components/ui";
 import { AppPage, PageError, PageLoading } from "../../components/layout";
 import { buildDisplayGames } from "../../utils/gameList";
 import { canReorderGames } from "../../utils/permissions";
@@ -19,6 +19,7 @@ import BacklogModals from "./BacklogModals";
 import BacklogPanels from "./BacklogPanels";
 import BacklogToolbar from "./BacklogToolbar";
 import useBacklogActions from "./useBacklogActions";
+import { addToNextUp } from "../../services/nextUpService";
 
 function possessiveName(value) {
   const name = String(value || "").trim();
@@ -36,6 +37,7 @@ export default function BacklogPage() {
   } = useAuth();
 
   const nav = useNavigate();
+  const toast = useToast();
   const loc = useLocation();
   const { rawStatusesForGroup } = useStatusGroups();
 
@@ -231,6 +233,17 @@ export default function BacklogPage() {
     nav(loc.pathname, { replace: true });
   };
 
+  const handleAddToNextUp = async (game) => {
+    try {
+      const payload = await addToNextUp(game.id);
+      toast.success(
+        `${game.displayName || game.name} added at position ${payload.position + 1}.`,
+      );
+    } catch (error) {
+      toast.error(error.message || "Could not add this game to Next Up.");
+    }
+  };
+
   const clearSearch = () => setSearchQuery("");
   const clearSort = () => {
     setSortKey("");
@@ -404,6 +417,7 @@ export default function BacklogPage() {
                   startEditing(game);
                 }}
                 onDeleteGame={handleDeleteGame}
+                onAddToNextUp={handleAddToNextUp}
                 onReorder={reorderEnabled ? handleReorderGames : null}
                 canManage={canReorder}
                 viewMode={viewMode}
@@ -476,6 +490,8 @@ export default function BacklogPage() {
             isEditing={isEditing}
             statuses={allStatuses}
             allMyGenres={allMyGenres}
+            onAddToNextUp={handleAddToNextUp}
+            onDeleteGame={handleDeleteGame}
             showAuth={showAuth}
             onCloseAuth={() => setShowAuth(false)}
             showOnboarding={showOnboarding}

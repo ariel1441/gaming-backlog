@@ -17,7 +17,8 @@ export const GROUP_DEFS = Object.freeze({
     "play when in the mood",
     "maybe in the future",
   ],
-  playing: ["playing", "played and should come back"],
+  playing: ["playing"],
+  returning: ["played and should come back"],
   done: [
     "finished",
     "played alot but didnt finish", // canonical spelling you used
@@ -31,7 +32,7 @@ export const GROUP_DEFS = Object.freeze({
  * - done: groups that are complete (exclude from ETA)
  */
 export const BUCKETS = Object.freeze({
-  backlog: ["planned", "playing"],
+  backlog: ["planned", "playing", "returning"],
   done: ["done"],
 });
 

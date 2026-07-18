@@ -24,12 +24,7 @@ export function isCompletedGame(game, statusGroupOf = defaultStatusSemantics.sta
 }
 
 export function isPlayingGame(game, statusGroupOf = defaultStatusSemantics.statusGroupOf) {
-  return (
-    statusGroupOf(game?.status) === "playing" ||
-    (parseGameDate(game?.started_at) &&
-      !parseGameDate(game?.finished_at) &&
-      !isCompletedGame(game, statusGroupOf))
-  );
+  return statusGroupOf(game?.status) === "playing";
 }
 
 export function isPlannedGame(game, statusGroupOf = defaultStatusSemantics.statusGroupOf) {

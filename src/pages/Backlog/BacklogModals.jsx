@@ -21,6 +21,8 @@ export default function BacklogModals({
   isEditing,
   statuses,
   allMyGenres,
+  onAddToNextUp,
+  onDeleteGame,
   showAuth,
   onCloseAuth,
   showOnboarding,
@@ -51,6 +53,11 @@ export default function BacklogModals({
           isSubmitting={isEditing}
           statuses={statuses}
           allMyGenres={allMyGenres}
+          onAddToNextUp={onAddToNextUp}
+          onDelete={async (game) => {
+            const deleted = await onDeleteGame?.(game.id);
+            if (deleted) onCloseSelectedGame();
+          }}
         />
       )}
 

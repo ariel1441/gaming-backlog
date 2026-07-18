@@ -623,9 +623,10 @@ test("applySteamStatusSuggestion updates only a Steam-linked game", async () => 
   await withMockPoolQuery(
     async (text, values) => {
       const sql = compact(text);
-      if (sql.startsWith("UPDATE games g SET status = $3")) {
+      if (sql.startsWith("WITH updated AS ( UPDATE games g SET status = $3")) {
         assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03"]);
         assert.match(sql, /EXISTS \( SELECT 1 FROM user_game_sources ugs/);
+        assert.match(sql, /DELETE FROM user_next_up_games/);
         assert.doesNotMatch(sql, /updated_at/);
         return {
           rows: [

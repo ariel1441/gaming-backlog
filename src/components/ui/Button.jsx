@@ -13,7 +13,7 @@ const variants = {
   danger:
     "border border-action-danger/80 bg-action-danger text-content-on-danger shadow-sm shadow-state-error/10 hover:bg-action-danger-hover disabled:bg-action-danger/60",
   dangerGhost:
-    "border border-transparent bg-transparent text-state-error hover:border-state-error/30 hover:bg-state-error/10 hover:text-state-error",
+    "border border-state-error/25 bg-transparent text-state-error hover:border-state-error/55 hover:bg-state-error/10 hover:text-state-error hover:ring-1 hover:ring-inset hover:ring-state-error/25 active:border-state-error/70 active:ring-2 active:ring-inset active:ring-state-error/25",
   ghost:
     "border border-transparent bg-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
 };

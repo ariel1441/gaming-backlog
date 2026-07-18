@@ -1,5 +1,6 @@
 const routeLoaders = {
   "/": () => import("../pages/Backlog/BacklogPage"),
+  "/next-up": () => import("../pages/PlayNextPage"),
   "/discover": () => import("../pages/DiscoverPage"),
   "/insights": () => import("../pages/Insights/InsightsPage"),
   "/me": () => import("../pages/OwnerProfilePage"),

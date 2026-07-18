@@ -25,6 +25,7 @@ export const backlogSortOptions = [
 
 export const landingPathOptions = [
   { value: "/", label: "Backlog" },
+  { value: "/next-up", label: "Play Next" },
   { value: "/me", label: "My profile" },
   { value: "/timeline", label: "Timeline" },
   { value: "/discover", label: "Discover" },

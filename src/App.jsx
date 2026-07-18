@@ -9,6 +9,7 @@ import { GamesProvider } from "./hooks/useGames";
 import { loadRoute } from "./config/routeLoaders";
 
 const BacklogPage = lazy(() => loadRoute("/"));
+const PlayNextPage = lazy(() => loadRoute("/next-up"));
 const DiscoverPage = lazy(() => loadRoute("/discover"));
 const InsightsPage = lazy(() => loadRoute("/insights"));
 const OwnerProfilePage = lazy(() => loadRoute("/me"));
@@ -38,6 +39,7 @@ const App = () => {
                   }
                 >
                   <Route path="/" element={<BacklogPage />} />
+                  <Route path="/next-up" element={<PlayNextPage />} />
                   <Route path="/me" element={<OwnerProfilePage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/lists" element={<ListsPage />} />

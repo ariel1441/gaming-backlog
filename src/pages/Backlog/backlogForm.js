@@ -8,6 +8,7 @@ export const emptyGameForm = {
   hours_locked: false,
   my_genre: "",
   thoughts: "",
+  resume_note: "",
   my_score: "",
   started_at: "",
   finished_at: "",
@@ -121,6 +122,8 @@ export function buildEditGamePayload(draft, original = {}) {
     status: pick("status", "status") || original.status || "",
     my_genre: pick("my_genre", "myGenre") ?? original.my_genre ?? "",
     thoughts: pick("thoughts", "thoughts") ?? original.thoughts ?? "",
+    resume_note:
+      pick("resume_note", "resumeNote") ?? original.resume_note ?? null,
     how_long_to_beat: toIntOrNull(
       pick("how_long_to_beat", "howLongToBeat") ?? original.how_long_to_beat
     ),

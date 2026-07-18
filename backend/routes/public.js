@@ -9,12 +9,14 @@ const router = express.Router();
 // Public profile rendering is strictly PostgreSQL-backed and never hydrates RAWG.
 export function serializePublicGames(games) {
   return games.map((game) => {
-    const catalog = decorateGameWithCatalog(game);
+    const publicGame = { ...game };
+    delete publicGame.resume_note;
+    const catalog = decorateGameWithCatalog(publicGame);
     return {
-      ...game,
+      ...publicGame,
       ...(catalog || {}),
-      displayName: catalog?.displayName || game.name,
-      cover: catalog?.cover || game.cover || null,
+      displayName: catalog?.displayName || publicGame.name,
+      cover: catalog?.cover || publicGame.cover || null,
       releaseDate: catalog?.releaseDate || null,
       description: catalog?.description || "",
       rating: catalog?.rating ?? null,
@@ -100,7 +102,9 @@ router.get("/:username/games", usernameParam, async (req, res, next) => {
     const hydrated = serializePublicGames(gamesRes.rows);
 
     // 4) For public response you may omit sensitive columns
-    const scrubbed = hydrated.map(({ user_id: _user_id, ...rest }) => rest);
+    const scrubbed = hydrated.map(
+      ({ user_id: _user_id, resume_note: _resume_note, ...rest }) => rest,
+    );
     res.json(scrubbed);
   } catch (err) {
     next(err);

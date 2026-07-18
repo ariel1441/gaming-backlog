@@ -133,9 +133,27 @@ export function deleteOwnedGameQuery(gameId, userId) {
   };
 }
 
-export function updateOwnedGameStatusQuery(gameId, userId, status) {
+export function updateOwnedGameStatusQuery(
+  gameId,
+  userId,
+  status,
+  removeNextUp = false,
+) {
   return {
-    text: `UPDATE games SET status = $3 WHERE id = $1 AND user_id = $2`,
-    values: [gameId, userId, status],
+    text: `
+      WITH updated AS (
+        UPDATE games
+           SET status = $3
+         WHERE id = $1 AND user_id = $2
+         RETURNING *
+      ),
+      removed AS (
+        DELETE FROM user_next_up_games
+         WHERE user_id = $2 AND game_id = $1 AND $4
+         RETURNING game_id
+      )
+      SELECT * FROM updated
+    `,
+    values: [gameId, userId, status, removeNextUp],
   };
 }
