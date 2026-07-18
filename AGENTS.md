@@ -61,8 +61,12 @@ scripts, and current git state over older notes in markdown files.
   large implementation or release history forward.
 - Do not turn a local implementation request into a commit, push, merge,
   deployment, or production-verification task unless the user explicitly asks.
-- Read only the smallest relevant documentation set. Use `rg` and targeted file
-  ranges before reading large files. A named skill must still be read fully.
+- Use a current user-provided handoff to choose the initial inspection scope;
+  verify decision-relevant claims without rediscovering settled behavior.
+- Read only the smallest relevant documentation set. Use targeted `rg` searches
+  and file ranges before reading large files. Exclude `node_modules/`, `dist/`,
+  generated files, caches, dumps, and `backend/data/` from broad searches unless
+  the task specifically concerns them. A named skill must still be read fully.
 - Keep command output compact. Filter or summarize successful logs; inspect full
   logs only when diagnosing a failure.
 - For medium or larger work, make one short plan, implement the coherent change,

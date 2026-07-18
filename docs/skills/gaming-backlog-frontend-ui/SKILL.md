@@ -29,7 +29,12 @@ Read:
   `confirm()`.
 - Check long game titles, missing cover art, empty states, auth errors, mobile,
   and desktop.
-- Use browser/screenshots early when doing visual polish.
+- Use browser verification when the user requests it, when supplied screenshots
+  and source are insufficient to determine the behavior confidently, or when
+  responsive/interacting behavior remains materially uncertain. Small explicit
+  UI patches with sufficient examples do not require a browser attempt.
+- If no in-app browser is connected, report that only when browser verification
+  was materially needed.
 
 ## Verification
 
