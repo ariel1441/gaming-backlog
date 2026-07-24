@@ -686,10 +686,13 @@ test("derived backlog views cannot mutate canonical manual order", async ({
     window.localStorage.setItem("seen_onboarding_v1", "1");
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByPlaceholder(/search/i).fill("Baldur");
+  await page.getByPlaceholder(/search/i).fill("r");
   await expect(
-    page.getByText(/Manual reordering is available after clearing search/i),
+    page.getByText(
+      /Manual reordering is unavailable because this view hides other games/i,
+    ),
   ).toBeVisible();
+  await page.getByPlaceholder(/search/i).press("Escape");
   expect(page.apiState.reorderPayloads).toEqual([]);
   await page.getByLabel("Actions for Baldur's Gate 3").click();
   await expect(
