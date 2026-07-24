@@ -1,6 +1,7 @@
 import React from "react";
 import {
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Flag,
   Gamepad2,
@@ -146,6 +147,7 @@ export default function GameCard({
   onClick,
   onEdit,
   onDelete,
+  onFinish,
   onAddToNextUp,
   readOnly = false,
   variant = "grid",
@@ -185,6 +187,14 @@ export default function GameCard({
       return;
     }
     onAddToNextUp?.();
+  };
+
+  const handleFinish = () => {
+    if (!canEdit) {
+      toast.warning("Sign in to finish games in your backlog.");
+      return;
+    }
+    onFinish?.();
   };
 
   const releaseDate = fmtDate(game.releaseDate);
@@ -266,6 +276,22 @@ export default function GameCard({
         >
           {({ close }) => (
             <div className="space-y-1">
+              {canEdit &&
+              onFinish &&
+              String(game.status || "").trim().toLowerCase() !== "finished" ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    handleFinish();
+                  }}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-state-success hover:bg-state-success/10"
+                >
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  Finish game
+                </button>
+              ) : null}
               {canEdit &&
               onAddToNextUp &&
               !["playing", "done"].includes(statusGroupOf(game.status)) ? (

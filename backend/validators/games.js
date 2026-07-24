@@ -89,6 +89,34 @@ export const gameSchemas = {
         "number.positive": "favoriteIds must contain positive game ids",
       }),
   }),
+  finishBody: Joi.object({
+    finished_at: calendarDateSchema.invalid(null).required().messages({
+      "any.required": "finished_at is required",
+      "any.invalid": "finished_at is required",
+    }),
+    my_score: Joi.number()
+      .min(0)
+      .max(10)
+      .precision(1)
+      .allow(null)
+      .required()
+      .messages({
+        "any.required": "my_score is required",
+        "number.base": "my_score must be a number",
+        "number.min": "my_score must be between 0 and 10",
+        "number.max": "my_score must be between 0 and 10",
+      }),
+    thoughts: Joi.string()
+      .trim()
+      .max(2000)
+      .empty("")
+      .allow(null)
+      .required()
+      .messages({
+        "any.required": "thoughts is required",
+        "string.max": "thoughts must be <= 2000 chars",
+      }),
+  }),
   upsertBody: Joi.object({
     name: Joi.string().trim().min(1).max(200).required().messages({
       "any.required": "name is required",
@@ -171,6 +199,14 @@ export const reorderGame = celebrate(
 export const favoriteGames = celebrate(
   {
     [Segments.BODY]: gameSchemas.favoritesBody,
+  },
+  opts
+);
+
+export const finishGame = celebrate(
+  {
+    ...idParamSchema,
+    [Segments.BODY]: gameSchemas.finishBody,
   },
   opts
 );

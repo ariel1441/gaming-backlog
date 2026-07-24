@@ -718,3 +718,88 @@ test("PATCH /api/games/:id/position returns enriched Steam metadata", async () =
     async () => client,
   );
 });
+
+test("POST /api/games/:id/finish updates completion fields and removes Next Up atomically", async () => {
+  const calls = [];
+  const client = {
+    query: async (text, values) => {
+      const sql = String(text);
+      calls.push({ text: sql, values });
+      if (sql.includes("SELECT * FROM games") && sql.includes("FOR UPDATE")) {
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "playing",
+              started_at: "2026-07-01",
+              position: 1000,
+              thoughts: "Old note",
+              my_score: 7,
+            },
+          ],
+        };
+      }
+      if (sql.includes("UPDATE games") && sql.includes("status = 'finished'")) {
+        return { rows: [{ id: 12, user_id: 7, status: "finished" }] };
+      }
+      if (sql.includes("LEFT JOIN LATERAL")) {
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "finished",
+              started_at: "2026-07-01",
+              finished_at: "2026-07-18",
+              my_score: 9,
+              thoughts: "Great ending.",
+              position: 1000,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+
+  await withServer(
+    async () => ({ rows: [] }),
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/12/finish", {
+        method: "POST",
+        body: {
+          finished_at: "2026-07-18",
+          my_score: 9,
+          thoughts: "Great ending.",
+        },
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.outcome, "finished");
+      assert.equal(res.body.game.status, "finished");
+      assert.equal(res.body.game.finished_at, "2026-07-18");
+      const update = calls.find((call) =>
+        call.text.includes("status = 'finished'"),
+      );
+      assert.deepEqual(update.values, [
+        12,
+        7,
+        "2026-07-18",
+        9,
+        "Great ending.",
+      ]);
+      assert.equal(
+        calls.some((call) =>
+          call.text.includes("DELETE FROM user_next_up_games"),
+        ),
+        true,
+      );
+      assert.match(calls.at(-1).text, /COMMIT/);
+    },
+    async () => client,
+  );
+});

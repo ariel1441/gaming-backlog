@@ -308,6 +308,7 @@ export default function PublicProfile() {
             game={selectedGame}
             onClose={() => setSelectedGame(null)}
             readOnly
+            hidePrivateFields
           />
         )}
       </AppPage>

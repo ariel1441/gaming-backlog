@@ -80,22 +80,24 @@ Constraints and verification:
 
 These are candidates, not commitments. Choose and plan one before implementation.
 
-### Play Next & Resume — medium
+### Play Next V2: Mood And Session Matching — medium
 
-The selected direction and implementation boundary are maintained in
-[`planning/play-next-resume-v1.md`](planning/play-next-resume-v1.md), informed
-by the
-[`2026 competitive landscape`](reviews/gaming-backlog-competitive-landscape-2026.md).
+V1 is implemented. Its historical boundary is preserved in
+[`planning/play-next-resume-v1.md`](planning/play-next-resume-v1.md). The
+recommended V2 controls, genre mapping, trait model, deterministic scoring,
+privacy rules, and implementation sequence are maintained in
+[`planning/play-next-session-matching-v2.md`](planning/play-next-session-matching-v2.md).
 
-- Add a dedicated private `/next-up` page.
-- Store a separate ordered Next Up relationship; do not overload priority,
-  status, favorites, backlog position, or Lists.
-- Derive Continue Playing from active games and add one private `resume_note`.
-- Add atomic Start playing behavior that preserves existing dates and removes
-  queue membership.
-- Add three deterministic explained choices plus explicit Surprise Me pools.
-- Keep richer context, AI, persistent dismissals, events, and public sharing
-  outside V1.
+- Add compact Time, Experience, and My Genre controls.
+- Derive conservative defaults only from personal genres; never silently use
+  RAWG genres.
+- Add optional private per-game `session_traits` overrides without requiring
+  existing games to be configured.
+- Rank using explicit, reliable, weak, and unknown evidence distinctly.
+- Keep every reason factual, deterministic, and based only on private library
+  data.
+- Keep Finish Game, AI, provider calls, event history, and public sharing out of
+  this track.
 
 ### Insights V2 — medium/large
 

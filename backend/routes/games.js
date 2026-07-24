@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 import {
   favoriteGames,
+  finishGame,
   gameIdParam,
   upsertGame,
   reorderGame,
@@ -473,7 +474,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       rawg_id || null, // $16
       (catalogRow?.slug || rawg_slug || "").trim() || null, // $17
       statusGroupOf(statusNorm) === "playing", // $18
-      statusGroupOf(statusNorm) === "done", // $19
+      statusNorm === "finished", // $19
       null, // $20: new linked games render the canonical catalog cover
     ];
 
@@ -511,6 +512,89 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     client?.release();
   }
 });
+
+// POST atomically finish a game without rewriting unrelated edit fields.
+router.post(
+  "/:id/finish",
+  verifyToken,
+  finishGame,
+  async (req, res, next) => {
+    let client;
+    try {
+      const userId = req.user.id;
+      const gameId = Number(req.params.id);
+      const finishedAt = req.body.finished_at;
+      const score = normalizeScore(req.body.my_score);
+      const thoughts = req.body.thoughts?.trim() || null;
+
+      client = await pool.connect();
+      await client.query("BEGIN");
+
+      const existingQuery = selectOwnedGameQuery(gameId, userId);
+      const existing = await client.query(
+        `${existingQuery.text} FOR UPDATE`,
+        existingQuery.values,
+      );
+      const row = existing.rows[0];
+      if (!row) throw notFound("Not found");
+
+      let outcome = "finished";
+      if (normStatus(row.status) !== "finished") {
+        const startedAt = toDateOrNull(row.started_at);
+        if (startedAt && finishedAt < startedAt) {
+          throw httpError(
+            422,
+            "finished_at cannot be before started_at",
+            "validation_error",
+          );
+        }
+
+        const updated = await client.query(
+          `
+          UPDATE games
+             SET status = 'finished',
+                 finished_at = $3,
+                 my_score = $4,
+                 thoughts = $5
+           WHERE id = $1 AND user_id = $2
+           RETURNING *
+          `,
+          [gameId, userId, finishedAt, score, thoughts],
+        );
+        if (!updated.rows[0]) throw notFound("Not found");
+      } else {
+        outcome = "already_finished";
+      }
+
+      await client.query(
+        "DELETE FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
+        [userId, gameId],
+      );
+
+      const detailsQuery = selectOwnedGameDetailsQuery(gameId, userId);
+      const detailsRes = await client.query(
+        detailsQuery.text,
+        detailsQuery.values,
+      );
+      const responseRow = detailsRes.rows[0];
+      if (!responseRow) throw notFound("Not found");
+
+      await client.query("COMMIT");
+      cacheClear(userId);
+      res.json({
+        outcome,
+        game: decorateGameForClient(responseRow),
+      });
+    } catch (err) {
+      try {
+        await client?.query("ROLLBACK");
+      } catch {}
+      next(err);
+    } finally {
+      client?.release();
+    }
+  },
+);
 
 // PUT update a game; position is preserved and never recalculated on edit.
 router.put(
@@ -727,7 +811,7 @@ router.put(
         startedBody, // $18
         finishedBody, // $19
         statusGroupOf(statusNorm) === "playing", // $20
-        statusGroupOf(statusNorm) === "done", // $21
+        statusNorm === "finished", // $21
         resumeNoteProvided
           ? normalizeResumeNote(resume_note)
           : row.resume_note ?? null, // $22

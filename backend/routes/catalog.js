@@ -386,7 +386,7 @@ router.post(
           rawg.rawg_id || null,
           rawg.rawg_slug || null,
           statusGroupOf(statusNorm) === "playing",
-          statusGroupOf(statusNorm) === "done",
+          statusNorm === "finished",
         ]
       );
 

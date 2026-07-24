@@ -1,6 +1,6 @@
 # Completed Milestones
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This is a compact archive of completed product and engineering milestones. It
 exists so current planning files can contain only remaining work. For exact
@@ -24,6 +24,9 @@ and the code.
 - Timeline V1 generated from start and finish dates.
 - Insights V1 for hours, ETA, statuses, genres, date summaries, and missing-hour
   data.
+- Play Next & Resume V1 with a private ordered Next Up queue, deterministic
+  explained picks, personal-genre mood filtering, active/returning separation,
+  atomic Start playing, and private Next time notes.
 
 ## Catalog And Metadata
 

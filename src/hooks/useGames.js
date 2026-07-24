@@ -13,6 +13,7 @@ import {
   listGames as listGamesApi,
   createGame as createGameApi,
   updateGame as updateGameApi,
+  finishGame as finishGameApi,
   updateFavoriteGames as updateFavoriteGamesApi,
   deleteGame as deleteGameApi,
   reorderGames as reorderGamesApi, // PATCH /api/games/:id/position
@@ -355,6 +356,18 @@ function useGamesState() {
     [getAuthHeaders, refresh],
   );
 
+  const completeGame = useCallback(
+    async (id, payload) => {
+      const response = await finishGameApi(id, payload, {
+        auth: false,
+        headers: getAuthHeaders(),
+      });
+      if (response?.game) upsertGame(response.game);
+      return response;
+    },
+    [getAuthHeaders, upsertGame],
+  );
+
   const removeGame = useCallback(
     async (id) => {
       await deleteGameApi(id, { auth: false, headers: getAuthHeaders() });
@@ -403,6 +416,7 @@ function useGamesState() {
     upsertGame,
     addGame,
     editGame,
+    completeGame,
     removeGame,
     updateFavorites,
     reorderGame,

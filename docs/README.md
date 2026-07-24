@@ -81,8 +81,11 @@ environment.
   remaining feature briefs for Next Up, Insights V2, reviews, activity, privacy,
   organization, library, social, and discovery work.
 - [`planning/play-next-resume-v1.md`](planning/play-next-resume-v1.md) -
-  selected Play Next product, data, API, UI, responsive, privacy, and
+  historical Play Next V1 product, data, API, UI, responsive, privacy, and
   implementation boundary.
+- [`planning/play-next-session-matching-v2.md`](planning/play-next-session-matching-v2.md) -
+  planned deterministic mood/session controls, personal-genre trait mapping,
+  private overrides, scoring, reasons, and implementation sequence.
 - [`planning/steam-integration-handoff.md`](planning/steam-integration-handoff.md) -
   unresolved Steam hardening, QA, privacy, and future expansion work.
 - [`planning/production-migration-automation.md`](planning/production-migration-automation.md) -

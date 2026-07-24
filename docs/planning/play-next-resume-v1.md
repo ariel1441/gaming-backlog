@@ -2,13 +2,15 @@
 
 Last updated: 2026-07-18
 
-Status: proposed product and implementation brief. Review the explicit product
-decisions near the end before implementation.
+Status: implemented on `Dev` in July 2026. This is the historical V1 product
+and implementation brief; current code and `SYSTEM_CONTEXT.md` are authoritative.
+Future mood and session matching is planned separately in
+[`play-next-session-matching-v2.md`](play-next-session-matching-v2.md).
 
 This plan turns the findings in
 [`../reviews/gaming-backlog-competitive-landscape-2026.md`](../reviews/gaming-backlog-competitive-landscape-2026.md)
-into one bounded product track. It describes intended behavior, not current
-application behavior.
+into one bounded product track. Some final UI details differ from the original
+brief where later review approved focused polish.
 
 ## Product Goal
 

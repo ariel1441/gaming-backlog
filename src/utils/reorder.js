@@ -5,6 +5,36 @@ function moveItem(array, fromIndex, toIndex) {
   return next;
 }
 
+function rankKey(game) {
+  const rank = game?.status_rank;
+  return rank === null || rank === undefined || rank === ""
+    ? null
+    : String(rank);
+}
+
+export function canReorderVisibleGames(allGames, visibleGames) {
+  const fullList = Array.isArray(allGames) ? allGames : [];
+  const visibleList = Array.isArray(visibleGames) ? visibleGames : [];
+  if (visibleList.length < 2) return false;
+
+  const visibleIds = new Set();
+  const visibleRanks = new Set();
+
+  for (const game of visibleList) {
+    const rank = rankKey(game);
+    if (rank === null || game?.id === null || game?.id === undefined) {
+      return false;
+    }
+    visibleRanks.add(rank);
+    visibleIds.add(String(game.id));
+  }
+
+  return fullList.every((game) => {
+    const rank = rankKey(game);
+    return !visibleRanks.has(rank) || visibleIds.has(String(game.id));
+  });
+}
+
 export function buildRankReorderRequest(games, activeId, overId) {
   const current = Array.isArray(games) ? games : [];
   const activeKey = String(activeId);

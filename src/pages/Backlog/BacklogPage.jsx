@@ -9,6 +9,7 @@ import { Button, EmptyState, useToast } from "../../components/ui";
 import { AppPage, PageError, PageLoading } from "../../components/layout";
 import { buildDisplayGames } from "../../utils/gameList";
 import { canReorderGames } from "../../utils/permissions";
+import { canReorderVisibleGames } from "../../utils/reorder";
 import { normalizeUserPreferences } from "../../utils/userPreferences";
 import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
@@ -47,6 +48,7 @@ export default function BacklogPage() {
     error: gamesError,
     addGame,
     editGame,
+    completeGame,
     removeGame,
     refresh,
     reorderGame,
@@ -169,11 +171,15 @@ export default function BacklogPage() {
     setSurpriseGame,
     editingGame,
     setEditingGame,
+    finishingGame,
+    setFinishingGame,
     handleDeleteGame,
     handleSurpriseMe,
     handleAddGame,
     startEditing,
     handleEditGame,
+    startFinishing,
+    handleFinishGame,
     handleReorderGames,
     isAdding,
     isEditing,
@@ -186,6 +192,7 @@ export default function BacklogPage() {
     isGuest,
     addGame,
     editGame,
+    completeGame,
     removeGame,
     refresh,
     reorderGame,
@@ -312,8 +319,13 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       hasHoursFilter,
   );
+  const hasCompleteVisibleRanks = canReorderVisibleGames(games, displayGames);
   const reorderEnabled =
-    canReorder && !hasActiveFilters && !sortKey && !isReversed;
+    canReorder && hasCompleteVisibleRanks && !sortKey && !isReversed;
+  const reorderUnavailableMessage =
+    sortKey || isReversed
+      ? "Manual reordering uses Default order with descending turned off."
+      : "Manual reordering is unavailable because this view hides other games in the same status group.";
 
   // removed guest-only extra top padding; wrapper handles it now
   const mainClass =
@@ -417,6 +429,7 @@ export default function BacklogPage() {
                   startEditing(game);
                 }}
                 onDeleteGame={handleDeleteGame}
+                onFinishGame={startFinishing}
                 onAddToNextUp={handleAddToNextUp}
                 onReorder={reorderEnabled ? handleReorderGames : null}
                 canManage={canReorder}
@@ -465,8 +478,7 @@ export default function BacklogPage() {
             )}
             {canReorder && !reorderEnabled && displayGames.length > 1 ? (
               <p className="mx-auto mt-3 max-w-[1760px] px-2 text-xs text-content-muted sm:px-0">
-                Manual reordering is available after clearing search, filters,
-                alternate sorting, and reverse order.
+                {reorderUnavailableMessage}
               </p>
             ) : null}
           </div>
@@ -484,6 +496,10 @@ export default function BacklogPage() {
             onRefreshSurpriseGame={handleSurpriseMe}
             editingGame={editingGame}
             onSubmitEditGame={handleEditGame}
+            finishingGame={finishingGame}
+            onCloseFinishGame={() => setFinishingGame(null)}
+            onSubmitFinishGame={handleFinishGame}
+            onFinishSelectedGame={startFinishing}
             onCancelEditGame={() => setEditingGame(null)}
             onEditDraftChange={clearEditFormError}
             editFormError={editFormError}

@@ -3,6 +3,7 @@ import AuthModal from "../../components/AuthModal";
 import GameModal from "../../components/GameModal";
 import KeepDemoModal from "../../components/KeepDemoModal";
 import OnboardingModal from "../../components/OnboardingModal";
+import FinishGameFlow from "./FinishGameFlow";
 
 export default function BacklogModals({
   selectedGame,
@@ -15,6 +16,10 @@ export default function BacklogModals({
   onRefreshSurpriseGame,
   editingGame,
   onSubmitEditGame,
+  finishingGame,
+  onCloseFinishGame,
+  onSubmitFinishGame,
+  onFinishSelectedGame,
   onCancelEditGame,
   onEditDraftChange,
   editFormError,
@@ -54,12 +59,24 @@ export default function BacklogModals({
           statuses={statuses}
           allMyGenres={allMyGenres}
           onAddToNextUp={onAddToNextUp}
+          onFinish={onFinishSelectedGame}
           onDelete={async (game) => {
             const deleted = await onDeleteGame?.(game.id);
             if (deleted) onCloseSelectedGame();
           }}
         />
       )}
+
+      {finishingGame ? (
+        <FinishGameFlow
+          game={finishingGame}
+          onClose={onCloseFinishGame}
+          onSubmit={onSubmitFinishGame}
+          onFinished={(game) => {
+            if (modalGame?.id === game.id) onSelectedGameUpdated(game);
+          }}
+        />
+      ) : null}
 
       {surpriseGame && (
         <GameModal

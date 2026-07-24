@@ -22,6 +22,10 @@ export function updateGame(id, put, opts = {}) {
   return api.put(`/api/games/${id}`, put, opts);
 }
 
+export function finishGame(id, payload, opts = {}) {
+  return api.post(`/api/games/${id}/finish`, payload, opts);
+}
+
 export function updateFavoriteGames(favoriteIds, opts = {}) {
   return api.put("/api/games/favorites", { favoriteIds }, opts);
 }

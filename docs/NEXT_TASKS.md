@@ -10,33 +10,24 @@ must not be treated as the current backlog without revalidation.
 
 ## Selected Next Task
 
-Review and approve the focused
-[`Play Next & Resume V1`](planning/play-next-resume-v1.md) brief, then implement
-its queue and private-note foundation as a separate phase.
+No product implementation task is currently selected. Play Next & Resume V1 is
+implemented on `Dev`; choose the next bounded candidate before starting another
+implementation phase.
 
-Acceptance criteria:
-
-- Confirm the seven recommended defaults in the focused brief, especially
-  automatic queue removal on Start playing.
-- Keep Next Up as an independent ordered relationship and `resume_note` as one
-  private field, with database-enforced owner integrity.
-- Implement the queue, note, and atomic Start playing foundation before the
-  explained recommendation layer.
-- Preserve owner, guest/demo, signed-out, and public read-only boundaries.
-- Treat `/next-up` as a focused decision page, not another full-library grid.
-- Keep mood/energy, AI, events, persistent dismissal, goals, and public sharing
-  outside V1.
+The planned
+[`Play Next V2 mood and session matching`](planning/play-next-session-matching-v2.md)
+work is documented for later alongside Insights V2, Timeline V2, Completion
+Flow, and the other candidates in [`ROADMAP.md`](ROADMAP.md). It is not the
+default next task.
 
 ## Active Order
 
-1. Review the Play Next & Resume V1 product decisions.
-2. Implement queue/private-note data and API foundations.
-3. Implement the focused `/next-up` page and explained decision layer.
-4. Add the focused Completion Flow after Play Next is stable.
-5. Choose between Library Control Center work (tags, saved views, data health)
-   and the larger activity/events foundation.
-6. Add pagination or virtualization where real large-library use demonstrates
-   an unbounded rendering problem.
+1. Promote the green Play Next V1 candidate from `Dev` only when a production
+   release is explicitly selected.
+2. Choose one bounded product candidate from `ROADMAP.md`.
+3. Review its focused brief and current-code assumptions before implementation.
+4. Keep planning, implementation, review, and release as separate phases for
+   medium or larger work.
 
 Operational safety is no longer the selected product task. Remaining
 database-aware readiness, diagnostic, and production backup/restore work stays

@@ -13,6 +13,7 @@ export default function useBacklogActions({
   isGuest,
   addGame,
   editGame,
+  completeGame,
   removeGame,
   refresh,
   reorderGame,
@@ -24,6 +25,7 @@ export default function useBacklogActions({
   const [newGame, setNewGame] = useState(emptyGameForm);
   const [surpriseGame, setSurpriseGame] = useState(null);
   const [editingGame, setEditingGame] = useState(null);
+  const [finishingGame, setFinishingGame] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [addFormError, setAddFormError] = useState(null);
@@ -150,6 +152,19 @@ export default function useBacklogActions({
     }
   };
 
+  const startFinishing = (game) => {
+    if (!isAuthenticated) {
+      toast.warning("Sign in required to finish games.");
+      return;
+    }
+    setFinishingGame(game);
+  };
+
+  const handleFinishGame = (payload) => {
+    if (!finishingGame) throw new Error("No game selected.");
+    return completeGame(finishingGame.id, payload);
+  };
+
   const handleReorderGames = (gameId, targetIndex, status) =>
     reorderGame(gameId, targetIndex, status).catch(async (err) => {
       console.error("Failed to reorder game:", err);
@@ -164,11 +179,15 @@ export default function useBacklogActions({
     setSurpriseGame,
     editingGame,
     setEditingGame,
+    finishingGame,
+    setFinishingGame,
     handleDeleteGame,
     handleSurpriseMe,
     handleAddGame,
     startEditing,
     handleEditGame,
+    startFinishing,
+    handleFinishGame,
     handleReorderGames,
     isAdding,
     isEditing,

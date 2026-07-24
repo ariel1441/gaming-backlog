@@ -11,6 +11,7 @@ export default function Sheet({
   children,
   footer,
   closeLabel = "Close",
+  closeDisabled = false,
   panelRef,
   initialFocusRef,
   className = "",
@@ -25,6 +26,8 @@ export default function Sheet({
     open,
     layerRef: localRef,
     onDismiss: onClose,
+    dismissOnEscape: !closeDisabled,
+    dismissOnPointerOutside: !closeDisabled,
     trapFocus: true,
     lockScroll: true,
     restoreFocus: true,
@@ -79,6 +82,7 @@ export default function Sheet({
             title={closeLabel}
             variant="ghost"
             onClick={onClose}
+            disabled={closeDisabled}
             className="border border-surface-border/65 bg-surface-elevated/35"
           />
         </div>

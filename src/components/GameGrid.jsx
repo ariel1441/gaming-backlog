@@ -26,6 +26,7 @@ const SortableGameCard = ({
   onClick,
   onEdit,
   onDelete,
+  onFinish,
   onAddToNextUp,
   isDragging,
   viewMode,
@@ -53,6 +54,7 @@ const SortableGameCard = ({
         onClick={onClick}
         onEdit={onEdit}
         onDelete={onDelete}
+        onFinish={onFinish}
         onAddToNextUp={onAddToNextUp}
         variant={viewMode}
       />
@@ -72,6 +74,7 @@ const GameGrid = ({
   onSelectGame,
   onEditGame,
   onDeleteGame,
+  onFinishGame,
   onAddToNextUp,
   onReorder,
   canManage = false,
@@ -151,6 +154,7 @@ const GameGrid = ({
             readOnly={!canManage}
             onEdit={canManage ? () => onEditGame?.(only) : undefined}
             onDelete={canManage ? () => onDeleteGame?.(only.id) : undefined}
+            onFinish={canManage ? () => onFinishGame?.(only) : undefined}
             onAddToNextUp={
               canManage ? () => onAddToNextUp?.(only) : undefined
             }
@@ -175,6 +179,7 @@ const GameGrid = ({
               readOnly={!canManage}
               onEdit={canManage ? () => onEditGame?.(game) : undefined}
               onDelete={canManage ? () => onDeleteGame?.(game.id) : undefined}
+              onFinish={canManage ? () => onFinishGame?.(game) : undefined}
               onAddToNextUp={
                 canManage ? () => onAddToNextUp?.(game) : undefined
               }
@@ -209,6 +214,7 @@ const GameGrid = ({
               onClick={() => onSelectGame?.(game)}
               onEdit={() => onEditGame?.(game)}
               onDelete={() => onDeleteGame?.(game.id)}
+              onFinish={() => onFinishGame?.(game)}
               onAddToNextUp={() => onAddToNextUp?.(game)}
               isDragging={activeId === String(game.id)}
               viewMode={viewMode}

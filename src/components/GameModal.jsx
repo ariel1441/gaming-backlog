@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Gamepad2,
   Layers3,
@@ -216,7 +217,9 @@ export default function GameModal({
   statuses = [],
   allMyGenres = [],
   readOnly = false,
+  hidePrivateFields = false,
   onAddToNextUp,
+  onFinish,
   onDelete,
 }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -249,8 +252,9 @@ export default function GameModal({
   const normalizedStatus = String(game?.status || "").trim().toLowerCase();
   const canAddToNextUp =
     !!onAddToNextUp &&
-    normalizedStatus !== "playing" &&
-    statusGroupOf(game?.status) !== "done";
+    !["playing", "done"].includes(statusGroupOf(game?.status));
+  const canFinish =
+    !!onFinish && normalizedStatus !== "finished";
   const tabs = isEditMode
     ? [...viewTabs, { value: "metadata", label: "Metadata", icon: Tag }]
     : viewTabs;
@@ -405,10 +409,12 @@ export default function GameModal({
   const rating = Number(game.rating) > 0 ? `${game.rating}/5` : "—";
   const metacritic =
     Number(game.metacritic) > 0 ? String(game.metacritic) : "—";
-  const myScore =
-    Number(displayGame.my_score) > 0
-      ? `${displayGame.my_score}/10`
-      : "—";
+  const hasMyScore =
+    displayGame.my_score !== null &&
+    displayGame.my_score !== undefined &&
+    String(displayGame.my_score).trim() !== "" &&
+    Number.isFinite(Number(displayGame.my_score));
+  const myScore = hasMyScore ? `${displayGame.my_score}/10` : "—";
   const thoughts = displayGame.thoughts?.trim() || null;
   const resumeNote = displayGame.resume_note?.trim() || null;
   const description = game.description || null;
@@ -707,31 +713,38 @@ export default function GameModal({
               tone={rating !== "—" ? "warning" : "default"}
             />
             <Metric icon={Trophy} label="Metacritic" value={metacritic} />
-            {isEditMode ? (
-              <EditMetric label="My score" error={formError?.fields?.my_score}>
-                <TextInput
-                  id="edit-my-score"
-                  aria-label="My score"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="any"
-                  value={draft.my_score}
-                  onChange={(event) =>
-                    updateDraft({ my_score: event.target.value })
-                  }
-                  disabled={isSubmitting}
-                  className="min-h-8 py-1"
-                />
-              </EditMetric>
-            ) : (
-              <Metric
-                icon={Sparkles}
-                label="My score"
-                value={myScore}
-                tone={myScore !== "—" ? "primary" : "default"}
-              />
-            )}
+            {!hidePrivateFields
+              ? isEditMode
+                ? (
+                    <EditMetric
+                      label="My score"
+                      error={formError?.fields?.my_score}
+                    >
+                      <TextInput
+                        id="edit-my-score"
+                        aria-label="My score"
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="any"
+                        value={draft.my_score}
+                        onChange={(event) =>
+                          updateDraft({ my_score: event.target.value })
+                        }
+                        disabled={isSubmitting}
+                        className="min-h-8 py-1"
+                      />
+                    </EditMetric>
+                  )
+                : (
+                    <Metric
+                      icon={Sparkles}
+                      label="My score"
+                      value={myScore}
+                      tone={myScore !== "—" ? "primary" : "default"}
+                    />
+                  )
+              : null}
           </div>
 
           <div className="shrink-0 overflow-x-auto border-b border-surface-border/65 bg-surface-card/22 px-4 sm:px-7">
@@ -807,7 +820,7 @@ export default function GameModal({
                   ) : null}
                 </section>
 
-                <aside className="divide-y divide-surface-border/55 rounded-xl border border-surface-border/65 bg-surface-card/35 px-4">
+                <aside className="divide-y divide-surface-border/55 rounded-xl border border-surface-border/65 bg-surface-card/35 px-4 lg:sticky lg:top-0 lg:self-start">
                   {isEditMode ? (
                     <div className="py-3">
                       <Field id="edit-my-genre" label="My genres">
@@ -969,7 +982,7 @@ export default function GameModal({
                     </p>
                   )}
                 </section>
-                <section>
+                {!hidePrivateFields ? <section>
                   <h3 className="text-sm font-semibold text-content-primary">
                     Your thoughts
                   </h3>
@@ -995,7 +1008,7 @@ export default function GameModal({
                       You have not added personal notes for this game.
                     </p>
                   )}
-                </section>
+                </section> : null}
               </div>
             ) : null}
 
@@ -1220,33 +1233,43 @@ export default function GameModal({
                     <Pencil className="h-4 w-4" aria-hidden="true" />
                     Edit game
                   </Button>
-                  {onAddToNextUp ? (
+                  {canAddToNextUp ? (
                     <Button
                       type="button"
                       variant="secondary"
                       onClick={() => onAddToNextUp(game)}
-                      disabled={!canAddToNextUp}
-                      title={
-                        canAddToNextUp
-                          ? "Add this game to Next Up"
-                          : "Playing and done games cannot be added to Next Up"
-                      }
+                      title="Add this game to Next Up"
                       className="w-full sm:w-auto"
                     >
                       <ListPlus className="h-4 w-4" aria-hidden="true" />
                       Add to Next Up
                     </Button>
                   ) : null}
-                  {onDelete ? (
-                    <Button
-                      type="button"
-                      variant="dangerGhost"
-                      onClick={() => onDelete(game)}
-                      className="w-full sm:w-auto"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      Delete game
-                    </Button>
+                  {canFinish || onDelete ? (
+                    <div className="flex flex-col gap-2 sm:ml-1 sm:flex-row">
+                      {canFinish ? (
+                        <Button
+                          type="button"
+                          variant="successSoft"
+                          onClick={() => onFinish(game)}
+                          className="w-full sm:w-auto"
+                        >
+                          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                          Finish game
+                        </Button>
+                      ) : null}
+                      {onDelete ? (
+                        <Button
+                          type="button"
+                          variant="dangerSoft"
+                          onClick={() => onDelete(game)}
+                          className="w-full sm:w-auto"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          Delete game
+                        </Button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               ) : null}

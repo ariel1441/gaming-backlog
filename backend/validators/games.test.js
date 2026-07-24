@@ -95,6 +95,30 @@ test("favorites body accepts up to five unique game ids", () => {
   );
 });
 
+test("finish body requires a date and accepts optional values as null", () => {
+  const valid = gameSchemas.finishBody.validate({
+    finished_at: "2026-07-18",
+    my_score: null,
+    thoughts: null,
+  });
+  assert.equal(valid.error, undefined);
+  assert.ok(
+    gameSchemas.finishBody.validate({
+      finished_at: null,
+      my_score: 8,
+      thoughts: "Great ending.",
+    }).error,
+  );
+  assert.match(
+    gameSchemas.finishBody.validate({
+      finished_at: "2026-07-18",
+      my_score: 11,
+      thoughts: null,
+    }).error.message,
+    /between 0 and 10/,
+  );
+});
+
 test("resume notes allow blank clearing and reject values over 1000 characters", () => {
   const blank = gameSchemas.upsertBody.validate({
     ...base,

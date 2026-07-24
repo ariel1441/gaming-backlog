@@ -11,6 +11,8 @@ export function serializePublicGames(games) {
   return games.map((game) => {
     const publicGame = { ...game };
     delete publicGame.resume_note;
+    delete publicGame.thoughts;
+    delete publicGame.my_score;
     const catalog = decorateGameWithCatalog(publicGame);
     return {
       ...publicGame,

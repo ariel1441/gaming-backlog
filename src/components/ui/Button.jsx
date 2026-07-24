@@ -10,8 +10,14 @@ const variants = {
     "border border-primary/55 bg-surface-selected text-content-primary shadow-sm shadow-primary/10 ring-1 ring-inset ring-primary/20 hover:border-primary/70 hover:text-primary-light",
   filterActive:
     "border border-primary bg-action-primary text-content-on-primary shadow-sm shadow-primary/20 hover:border-primary-light hover:bg-action-primary-hover",
+  success:
+    "border border-state-success/80 bg-state-success text-white shadow-sm shadow-state-success/15 hover:border-state-success hover:bg-state-success/90 disabled:bg-surface-disabled disabled:text-content-disabled",
+  successSoft:
+    "border border-state-success/45 bg-surface-elevated/35 text-state-success hover:border-state-success/75 hover:bg-state-success/12 hover:text-state-success hover:ring-1 hover:ring-inset hover:ring-state-success/20 active:border-state-success/85 active:ring-2 active:ring-inset active:ring-state-success/25",
   danger:
     "border border-action-danger/80 bg-action-danger text-content-on-danger shadow-sm shadow-state-error/10 hover:bg-action-danger-hover disabled:bg-action-danger/60",
+  dangerSoft:
+    "border border-state-error/35 bg-surface-elevated/35 text-state-error hover:border-state-error/65 hover:bg-state-error/10 hover:text-state-error hover:ring-1 hover:ring-inset hover:ring-state-error/20 active:border-state-error/75 active:ring-2 active:ring-inset active:ring-state-error/25",
   dangerGhost:
     "border border-state-error/25 bg-transparent text-state-error hover:border-state-error/55 hover:bg-state-error/10 hover:text-state-error hover:ring-1 hover:ring-inset hover:ring-state-error/25 active:border-state-error/70 active:ring-2 active:ring-inset active:ring-state-error/25",
   ghost:
