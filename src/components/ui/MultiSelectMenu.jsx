@@ -20,6 +20,8 @@ export default function MultiSelectMenu({
   disabled = false,
   allowCustom = false,
   customPlaceholder = "Add custom value...",
+  customMaxLength,
+  maxSelections,
   selectedChipVariant = "personalGenre",
   ...props
 }) {
@@ -121,6 +123,10 @@ export default function MultiSelectMenu({
       emit(selected.filter((item) => item.toLowerCase() !== key));
       setAnnouncement(`${value} removed`);
     } else {
+      if (Number.isFinite(maxSelections) && selected.length >= maxSelections) {
+        setAnnouncement(`You can select at most ${maxSelections} values`);
+        return;
+      }
       emit([...selected, value]);
       setAnnouncement(`${value} selected`);
     }
@@ -129,6 +135,10 @@ export default function MultiSelectMenu({
   const addCustom = () => {
     const value = normalizeOption(query);
     if (!value) return;
+    if (Number.isFinite(maxSelections) && selected.length >= maxSelections) {
+      setAnnouncement(`You can select at most ${maxSelections} values`);
+      return;
+    }
     emit([...selected, value]);
     setAnnouncement(`${value} added`);
     setQuery("");
@@ -208,6 +218,7 @@ export default function MultiSelectMenu({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={customPlaceholder}
+            maxLength={customMaxLength}
             className="mb-3 h-9"
             onKeyDown={(event) => {
               if (event.key === "Enter" && canAddCustom) {

@@ -1,9 +1,10 @@
 # Play Next & Resume V1
 
-Last updated: 2026-07-18
+Last updated: 2026-07-25
 
-Status: implemented on `Dev` in July 2026. This is the historical V1 product
-and implementation brief; current code and `SYSTEM_CONTEXT.md` are authoritative.
+Status: implemented and promoted to `main` in July 2026. This is the historical
+V1 product and implementation brief; current code and `SYSTEM_CONTEXT.md` are
+authoritative.
 Future mood and session matching is planned separately in
 [`play-next-session-matching-v2.md`](play-next-session-matching-v2.md).
 

@@ -1,6 +1,6 @@
 # System Context
 
-Last updated: 2026-07-17
+Last updated: 2026-07-25
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
@@ -65,6 +65,9 @@ deliberately set.
   finish date, and estimated hours.
 - Keep a private ordered Next Up queue, start queued games atomically, and save
   one private "Next time" resume note per game.
+- Finish a game through a focused flow that atomically saves its finish date,
+  optional score and private thoughts, removes it from Next Up, and offers a
+  direct path to choose what to play next.
 - Add games with optional started and finished dates, or let the backend
   continue auto-setting dates for eligible statuses when date fields are omitted.
 - Search RAWG from the add/edit game forms and save or replace a selected RAWG
@@ -113,7 +116,8 @@ Routes:
 - `backend/routes/auth.js` - register, login, `/me`, public-profile toggle,
   account preference updates, and profile basics updates.
 - `backend/routes/demo.js` - guest session start, keep, discard, heartbeat.
-- `backend/routes/games.js` - authenticated game CRUD, enrichment, reorder.
+- `backend/routes/games.js` - authenticated game CRUD, focused finish action,
+  enrichment, and reorder.
 - `backend/routes/lists.js` - authenticated private list CRUD, smart-list
   metadata, manual membership add/remove, and list-specific reorder.
 - `backend/routes/nextUp.js` - authenticated private Next Up membership,
@@ -319,6 +323,9 @@ Important components/pages:
 - `src/pages/Backlog/BacklogModals.jsx` - private backlog modal rendering.
 - `src/pages/Backlog/useBacklogActions.js` - private backlog mutation/action
   coordinator using the game service hook plus shared toast/confirm UI.
+- `src/pages/Backlog/FinishGameFlow.jsx` - responsive private Finish Game flow
+  for finish date, optional score and thoughts, completion feedback, and the
+  Play Next handoff.
 - `src/components/ui/` - shared UI primitives. Current exports include
   `Button`, `IconButton`, `Modal`, `Field`, `TextInput`, `Textarea`, `Select`,
   `Badge`, `EmptyState`, `Skeleton`, `ToastProvider` / `useToast`, and
@@ -381,6 +388,9 @@ Styling:
 - Manual list ordering is separate from backlog ordering. `/api/lists/:id/games/reorder`
   updates only `user_list_games.position` and never changes `games.position` or
   status. Smart lists do not support manual membership or manual ordering.
+- The focused finish endpoint updates only finish-specific fields, removes the
+  game from the owner's Next Up queue in the same transaction, and does not
+  invent a missing start date.
 - Status grouping should come from `backend/utils/status.js` and
   `/api/meta/status-groups`, not hardcoded in random UI code.
 - Insights can write missing HLTB hour values back to the DB when it resolves

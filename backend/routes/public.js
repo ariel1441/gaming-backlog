@@ -9,16 +9,24 @@ const router = express.Router();
 // Public profile rendering is strictly PostgreSQL-backed and never hydrates RAWG.
 export function serializePublicGames(games) {
   return games.map((game) => {
-    const publicGame = { ...game };
-    delete publicGame.resume_note;
-    delete publicGame.thoughts;
-    delete publicGame.my_score;
-    const catalog = decorateGameWithCatalog(publicGame);
+    const personalGenres = Array.isArray(game.personal_genres)
+      ? game.personal_genres.map((genre) => ({ name: genre.name }))
+      : [];
+    const catalog = decorateGameWithCatalog(game);
     return {
-      ...publicGame,
-      ...(catalog || {}),
-      displayName: catalog?.displayName || publicGame.name,
-      cover: catalog?.cover || publicGame.cover || null,
+      id: game.id,
+      name: game.name,
+      status: game.status,
+      status_rank: game.status_rank,
+      position: game.position,
+      my_genre: personalGenres.map((genre) => genre.name).join(", ") || null,
+      personal_genres: personalGenres,
+      how_long_to_beat: game.how_long_to_beat,
+      favorite_rank: game.favorite_rank,
+      started_at: game.started_at,
+      finished_at: game.finished_at,
+      displayName: catalog?.displayName || game.name,
+      cover: catalog?.cover || game.cover || null,
       releaseDate: catalog?.releaseDate || null,
       description: catalog?.description || "",
       rating: catalog?.rating ?? null,
@@ -27,6 +35,7 @@ export function serializePublicGames(games) {
       metacritic: catalog?.metacritic ?? null,
       stores: catalog?.stores || null,
       features: catalog?.features || null,
+      metadataQuality: catalog?.metadataQuality || "legacy",
     };
   });
 }

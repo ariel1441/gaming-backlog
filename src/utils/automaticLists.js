@@ -1,6 +1,6 @@
 import { parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
-import { sortByDefaultOrder, splitCsv } from "./gameList.js";
+import { personalGenreNames, sortByDefaultOrder, splitCsv } from "./gameList.js";
 import { defaultStatusSemantics } from "./statusSemantics.js";
 
 const titleCollator = new Intl.Collator(undefined, {
@@ -203,7 +203,7 @@ function hoursValue(game) {
 function genreMatches(game, genre) {
   const target = normalize(genre);
   if (!target) return true;
-  const values = [...splitCsv(game?.my_genre), ...splitCsv(game?.genres)];
+  const values = [...personalGenreNames(game), ...splitCsv(game?.genres)];
   return values.some((item) => normalize(item) === target);
 }
 
@@ -246,7 +246,7 @@ export function smartListYears(games = [], field = "finished") {
 export function smartListGenres(games = []) {
   const counts = new Map();
   for (const game of Array.isArray(games) ? games : []) {
-    for (const genre of [...splitCsv(game?.my_genre), ...splitCsv(game?.genres)]) {
+    for (const genre of [...personalGenreNames(game), ...splitCsv(game?.genres)]) {
       const key = normalize(genre);
       if (!key) continue;
       const current = counts.get(key) || { value: genre, count: 0 };

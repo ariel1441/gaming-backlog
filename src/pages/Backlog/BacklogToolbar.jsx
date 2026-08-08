@@ -22,6 +22,7 @@ import {
   TextInput,
 } from "../../components/ui";
 import { resolveGameHours } from "../../utils/hours";
+import { statusOption } from "../../utils/statusDisplay";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import {
   NO_PERSONAL_GENRE_FILTER,
@@ -188,7 +189,7 @@ export default function BacklogToolbar({
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 2xl:flex-nowrap">
               <FilterDropdown
                 label="Status"
-                options={filters.allStatuses}
+                options={filters.allStatuses.map(statusOption)}
                 selected={filters.selectedStatuses}
                 onToggle={filters.toggleStatus}
                 onClear={() => filters.setSelectedStatuses([])}

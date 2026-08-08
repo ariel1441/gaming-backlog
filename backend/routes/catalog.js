@@ -24,6 +24,12 @@ import { toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { cacheClear } from "../utils/microCache.js";
 import { ingestRawgGameMetadata } from "../services/metadataIngestionService.js";
+import {
+  assertGenreFieldsMatch,
+  genreEntriesFromGameBody,
+  parseLegacyPersonalGenres,
+  replaceGamePersonalGenres,
+} from "../services/personalGenreService.js";
 
 const router = express.Router();
 const DEFAULT_POSITION_SPACING = 1000;
@@ -73,7 +79,8 @@ async function selectGameWithCatalog(gameId, userId) {
            ugs.last_synced_at AS steam_last_synced_at,
            (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned,
            e.external_id::int AS catalog_rawg_id,
-           e.slug AS catalog_rawg_slug
+           e.slug AS catalog_rawg_slug,
+           personal.personal_genres
     FROM games g
     LEFT JOIN statuses s ON g.status = s.status
     LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
@@ -92,6 +99,18 @@ async function selectGameWithCatalog(gameId, userId) {
         source.id DESC
       LIMIT 1
     ) ugs ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(
+        json_agg(json_build_object('id', genre.id, 'name', genre.name)
+          ORDER BY membership.position),
+        '[]'::json
+      ) AS personal_genres
+      FROM game_personal_genres membership
+      JOIN user_personal_genres genre
+        ON genre.id = membership.personal_genre_id
+       AND genre.user_id = membership.user_id
+      WHERE membership.game_id = g.id AND membership.user_id = g.user_id
+    ) personal ON TRUE
     WHERE g.id = $1 AND g.user_id = $2
     `,
     [gameId, userId]
@@ -101,8 +120,13 @@ async function selectGameWithCatalog(gameId, userId) {
 
 function serializeGame(game) {
   const catalog = decorateGameWithCatalog(game);
+  const personalGenres = Array.isArray(game.personal_genres)
+    ? game.personal_genres
+    : parseLegacyPersonalGenres(game.my_genre).map((name) => ({ name }));
   return {
     ...game,
+    personal_genres: personalGenres,
+    my_genre: personalGenres.map((genre) => genre.name).join(", ") || null,
     rawg_id: game.rawg_id ?? game.catalog_rawg_id ?? null,
     rawg_slug: game.rawg_slug ?? game.catalog_rawg_slug ?? null,
     ...(catalog || {}),
@@ -229,6 +253,7 @@ router.post(
         how_long_to_beat,
         hltb_pref,
       } = req.body || {};
+      const genreEntries = genreEntriesFromGameBody(req.body);
       const statusNorm = normStatus(status);
       if (!statusNorm) return next(badRequest("status is required"));
 
@@ -389,6 +414,14 @@ router.post(
           statusNorm === "finished",
         ]
       );
+
+      const personalGenres = await replaceGamePersonalGenres(
+        client,
+        userId,
+        rows[0].id,
+        genreEntries,
+      );
+      assertGenreFieldsMatch(req.body, personalGenres);
 
       await client.query("COMMIT");
 

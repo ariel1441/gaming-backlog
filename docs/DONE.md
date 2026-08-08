@@ -1,6 +1,6 @@
 # Completed Milestones
 
-Last updated: 2026-07-18
+Last updated: 2026-07-25
 
 This is a compact archive of completed product and engineering milestones. It
 exists so current planning files can contain only remaining work. For exact
@@ -27,6 +27,11 @@ and the code.
 - Play Next & Resume V1 with a private ordered Next Up queue, deterministic
   explained picks, personal-genre mood filtering, active/returning separation,
   atomic Start playing, and private Next time notes.
+- Finish Game V1 with an atomic owner-scoped finish action, finish date,
+  optional score and private thoughts, automatic Next Up removal, a completion
+  success state, and a direct path back to Play Next.
+- A focused private Reviews page with review search, completion filters,
+  sorting, summary statistics, review cards, and in-place thought editing.
 
 ## Catalog And Metadata
 

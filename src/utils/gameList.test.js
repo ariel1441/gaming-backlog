@@ -8,9 +8,26 @@ import {
   matchesDateFilter,
   matchesSourceFilter,
   normalizeGameTitle,
+  personalGenreNames,
   sortGames,
   splitCsv,
 } from "./gameList.js";
+
+test("structured personal genres are authoritative over the legacy mirror", () => {
+  const game = {
+    personal_genres: [{ id: 1, name: "Cozy" }, { id: 2, name: "Strategy" }],
+    my_genre: "Legacy",
+  };
+  assert.deepEqual(personalGenreNames(game), ["Cozy", "Strategy"]);
+  assert.equal(
+    applyGameFilters([game], { selectedMyGenres: ["Legacy"] }).length,
+    0,
+  );
+  assert.equal(
+    applyGameFilters([game], { selectedMyGenres: ["Cozy"] }).length,
+    1,
+  );
+});
 import {
   NO_PERSONAL_GENRE_FILTER,
   NO_RAWG_GENRE_FILTER,

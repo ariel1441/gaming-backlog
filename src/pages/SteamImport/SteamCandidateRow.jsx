@@ -7,6 +7,7 @@ import {
   SelectMenu,
 } from "../../components/ui";
 import { filteredReasonLabel } from "../../utils/steamImport";
+import { statusOption } from "../../utils/statusDisplay";
 import {
   formatSteamDate,
   formatSteamPlaytime,
@@ -99,10 +100,7 @@ export function CandidateRow({
   const outcome = detectedAction(candidate);
   const statusValue =
     candidate.selectedStatus || candidate.suggestedStatus || "";
-  const statusOptions = (statuses || []).map((status) => ({
-    value: status,
-    label: status,
-  }));
+  const statusOptions = (statuses || []).map(statusOption);
   const runPrimaryAction = () => {
     if (primaryAction.kind === "restore") onRestore();
     else if (primaryAction.kind === "match") onChangeMatch();

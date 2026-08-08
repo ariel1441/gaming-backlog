@@ -15,6 +15,7 @@ import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
 import { useStatuses } from "../../hooks/useStatuses";
 import { useFilters } from "../../hooks/useFilters";
+import { usePersonalGenres } from "../../hooks/usePersonalGenres";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import BacklogModals from "./BacklogModals";
 import BacklogPanels from "./BacklogPanels";
@@ -70,6 +71,7 @@ export default function BacklogPage() {
     error: statusesError,
     refresh: refreshStatuses,
   } = useStatuses();
+  const { genres: reusablePersonalGenres } = usePersonalGenres(isAuthenticated);
 
   const {
     searchQuery,
@@ -93,7 +95,7 @@ export default function BacklogPage() {
     toggleMyGenre,
     clearFilters,
     allGenres,
-    allMyGenres,
+    allMyGenres: usedMyGenres,
     hoursBounds,
     hoursRange,
     setHoursRange,
@@ -101,6 +103,13 @@ export default function BacklogPage() {
     initialSortKey: userPreferences.default_backlog_sort_key,
     initialReverse: userPreferences.default_backlog_sort_reversed,
   });
+  const allMyGenres = React.useMemo(
+    () => Array.from(new Set([
+      ...reusablePersonalGenres.map((genre) => genre.name),
+      ...usedMyGenres,
+    ])).sort((a, b) => a.localeCompare(b)),
+    [reusablePersonalGenres, usedMyGenres],
+  );
 
   const completedStatuses = React.useMemo(
     () => rawStatusesForGroup("done"),

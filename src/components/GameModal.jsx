@@ -45,6 +45,7 @@ import {
 import { formatAchievementGameSyncMessage } from "../utils/steamSync";
 import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
 import { splitCsv } from "../utils/gameList";
+import { statusOption } from "../utils/statusDisplay";
 import { searchGames } from "../services/gameService";
 import GameSearchResult from "./GameSearchResult";
 import EditGameSteamSection from "./EditGameSteamSection";
@@ -76,6 +77,9 @@ function draftFromGame(game) {
     hours_preferred_source: source.hours_preferred_source || "auto",
     hours_locked: !!source.hours_locked,
     my_genre: source.my_genre || "",
+    personal_genres: Array.isArray(source.personal_genres)
+      ? source.personal_genres
+      : splitCsv(source.my_genre).map((name) => ({ name })),
     thoughts: source.thoughts || "",
     resume_note: source.resume_note || "",
     my_score: source.my_score ?? "",
@@ -421,11 +425,12 @@ export default function GameModal({
   const achievementSyncedAt = formatAchievementSyncDate(
     (localAchievements || game.steamAchievements)?.lastSyncedAt,
   );
-  const statusOptions = statuses.map((status) => ({
-    value: status,
-    label: status,
-  }));
-  const selectedMyGenres = splitCsv(draft.my_genre);
+  const statusOptions = statuses.map(statusOption);
+  const selectedMyGenres = Array.isArray(draft.personal_genres)
+    ? draft.personal_genres.map((genre) =>
+        typeof genre === "string" ? genre : genre?.name,
+      ).filter(Boolean)
+    : splitCsv(draft.my_genre);
   const currentSteam = linkedSteam
     ? {
         steamAppId: linkedSteam.steamAppId,
@@ -831,9 +836,14 @@ export default function GameModal({
                           placeholder="Choose genres"
                           customPlaceholder="Find or add a genre..."
                           allowCustom
+                          customMaxLength={50}
+                          maxSelections={10}
                           disabled={isSubmitting}
                           onChange={(genres) =>
-                            updateDraft({ my_genre: genres.join(", ") })
+                            updateDraft({
+                              my_genre: genres.join(", "),
+                              personal_genres: genres.map((name) => ({ name })),
+                            })
                           }
                         />
                       </Field>

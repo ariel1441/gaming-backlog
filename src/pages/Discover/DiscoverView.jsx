@@ -15,10 +15,12 @@ import {
   Field,
   GameCover,
   Modal,
+  MultiSelectMenu,
   SelectMenu,
   Textarea,
   TextInput,
 } from "../../components/ui";
+import { statusOption } from "../../utils/statusDisplay";
 function cacheLabel(status) {
   if (status === "live") return "Live";
   if (status === "stale") return "Cached";
@@ -207,6 +209,7 @@ export function DetailModal({
   statuses,
   addDraft,
   setAddDraft,
+  personalGenreOptions = [],
   adding,
   refreshing,
   onClose,
@@ -215,10 +218,7 @@ export function DetailModal({
   onOpenBacklog,
 }) {
   if (!game) return null;
-  const statusOptions = statuses.map((status) => ({
-    value: status,
-    label: status,
-  }));
+  const statusOptions = statuses.map(statusOption);
   return (
     <Modal
       title={game.name}
@@ -354,16 +354,24 @@ export function DetailModal({
                     id="discover-add-my-genre"
                     label="My genres"
                   >
-                    <TextInput
+                    <MultiSelectMenu
                       id="discover-add-my-genre"
-                      value={addDraft.my_genre}
-                      onChange={(event) =>
+                      values={(addDraft.personal_genres || []).map((genre) =>
+                        typeof genre === "string" ? genre : genre?.name,
+                      ).filter(Boolean)}
+                      options={personalGenreOptions}
+                      placeholder="Choose genres"
+                      customPlaceholder="Find or add a genre..."
+                      allowCustom
+                      customMaxLength={50}
+                      maxSelections={10}
+                      onChange={(genres) =>
                         setAddDraft((draft) => ({
                           ...draft,
-                          my_genre: event.target.value,
+                          my_genre: genres.join(", "),
+                          personal_genres: genres.map((name) => ({ name })),
                         }))
                       }
-                      placeholder="RPG, Action..."
                     />
                   </Field>
                   <Field id="discover-add-hours" label="Hours">

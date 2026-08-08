@@ -237,7 +237,13 @@ function useGamesState() {
         status,
         status_rank: inferStatusRank(status, prev),
         position: nextPositionForStatus(status, prev),
-        my_genre: payload?.my_genre ?? null,
+        my_genre:
+          payload?.my_genre ??
+          ((payload?.personal_genres || [])
+            .map((genre) => (typeof genre === "string" ? genre : genre?.name))
+            .filter(Boolean)
+            .join(", ") || null),
+        personal_genres: payload?.personal_genres ?? [],
         my_score: payload?.my_score ?? null,
         how_long_to_beat: payload?.how_long_to_beat ?? null,
         thoughts: payload?.thoughts ?? null,

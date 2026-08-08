@@ -11,6 +11,7 @@ import {
   TextInput,
 } from "./ui";
 import { splitCsv } from "../utils/gameList";
+import { statusOption } from "../utils/statusDisplay";
 import { searchGames } from "../services/gameService";
 import GameSearchResult from "./GameSearchResult";
 
@@ -33,11 +34,12 @@ const AddGameForm = ({
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const modalRef = useRef(null);
-  const statusOptions = allStatuses.map((status) => ({
-    value: status,
-    label: status,
-  }));
-  const selectedMyGenres = splitCsv(newGame.my_genre);
+  const statusOptions = allStatuses.map(statusOption);
+  const selectedMyGenres = Array.isArray(newGame.personal_genres)
+    ? newGame.personal_genres.map((genre) =>
+        typeof genre === "string" ? genre : genre?.name,
+      ).filter(Boolean)
+    : splitCsv(newGame.my_genre);
   const selectedRawgId = newGame.rawg_id;
   const hasSelectedRawg = Boolean(selectedRawgId);
 
@@ -397,11 +399,14 @@ const AddGameForm = ({
                     placeholder="Choose genres"
                     customPlaceholder="Find or add a genre..."
                     allowCustom
+                    customMaxLength={50}
+                    maxSelections={10}
                     disabled={isSubmitting}
                     onChange={(genres) =>
                       setNewGame((game) => ({
                         ...game,
                         my_genre: genres.join(", "),
+                        personal_genres: genres.map((name) => ({ name })),
                       }))
                     }
                   />

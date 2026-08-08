@@ -7,6 +7,7 @@ export const emptyGameForm = {
   hours_preferred_source: "auto",
   hours_locked: false,
   my_genre: "",
+  personal_genres: [],
   thoughts: "",
   resume_note: "",
   my_score: "",
@@ -105,6 +106,10 @@ export function buildAddGamePayload(draft, games = []) {
   const startedAt = canonDate(draft?.started_at);
   const finishedAt = canonDate(draft?.finished_at);
   const payload = { ...draft, name, status };
+  if (Array.isArray(draft?.personal_genres)) {
+    payload.personal_genres = draft.personal_genres;
+    delete payload.my_genre;
+  }
   if (startedAt) payload.started_at = startedAt;
   else delete payload.started_at;
   if (finishedAt) payload.finished_at = finishedAt;
@@ -136,6 +141,15 @@ export function buildEditGamePayload(draft, original = {}) {
     ),
     my_score: toNumOrNull(pick("my_score", "myScore") ?? original.my_score),
   };
+  const structuredGenres = Array.isArray(draft?.personal_genres)
+    ? draft.personal_genres
+    : Array.isArray(original.personal_genres)
+      ? original.personal_genres
+      : null;
+  if (structuredGenres) {
+    payload.personal_genres = structuredGenres;
+    delete payload.my_genre;
+  }
   const rawgId = pick("rawg_id", "rawgId");
   const rawgSlug = pick("rawg_slug", "rawgSlug");
   const rawgSelectionConfirmed = pick(

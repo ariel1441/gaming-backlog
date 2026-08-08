@@ -28,7 +28,8 @@ export function listOwnedGamesQuery(userId) {
              ugs.achievements_last_synced_at AS steam_achievements_last_synced_at,
              ugs.achievements_last_error_code AS steam_achievements_last_error_code,
              ugs.achievements_last_error_message AS steam_achievements_last_error_message,
-             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned
+             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned,
+             personal.personal_genres
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
       LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
@@ -48,6 +49,18 @@ export function listOwnedGamesQuery(userId) {
       LEFT JOIN steam_import_candidates sic
         ON sic.user_id = g.user_id
        AND sic.steam_app_id = ugs.provider_app_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(
+          json_agg(json_build_object('id', genre.id, 'name', genre.name)
+            ORDER BY membership.position),
+          '[]'::json
+        ) AS personal_genres
+        FROM game_personal_genres membership
+        JOIN user_personal_genres genre
+          ON genre.id = membership.personal_genre_id
+         AND genre.user_id = membership.user_id
+        WHERE membership.game_id = g.id AND membership.user_id = g.user_id
+      ) personal ON TRUE
       WHERE g.user_id = $1
       ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
       `,
@@ -85,7 +98,8 @@ export function selectOwnedGameDetailsQuery(gameId, userId) {
              ugs.achievements_last_synced_at AS steam_achievements_last_synced_at,
              ugs.achievements_last_error_code AS steam_achievements_last_error_code,
              ugs.achievements_last_error_message AS steam_achievements_last_error_message,
-             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned
+             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned,
+             personal.personal_genres
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
       LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
@@ -105,6 +119,18 @@ export function selectOwnedGameDetailsQuery(gameId, userId) {
       LEFT JOIN steam_import_candidates sic
         ON sic.user_id = g.user_id
        AND sic.steam_app_id = ugs.provider_app_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(
+          json_agg(json_build_object('id', genre.id, 'name', genre.name)
+            ORDER BY membership.position),
+          '[]'::json
+        ) AS personal_genres
+        FROM game_personal_genres membership
+        JOIN user_personal_genres genre
+          ON genre.id = membership.personal_genre_id
+         AND genre.user_id = membership.user_id
+        WHERE membership.game_id = g.id AND membership.user_id = g.user_id
+      ) personal ON TRUE
       WHERE g.id = $1 AND g.user_id = $2
       LIMIT 1
       `,

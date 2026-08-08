@@ -44,7 +44,8 @@ import {
   smartListYears,
 } from "../../utils/automaticLists";
 import { hoursValueForList } from "../../utils/hours";
-import { splitCsv } from "../../utils/gameList";
+import { personalGenreNames } from "../../utils/gameList";
+import { statusDisplayLabel } from "../../utils/statusDisplay";
 import { formatUpdatedDate } from "./ListPreview";
 import { GAME_ROW_COVER_SIZE } from "../../components/gameRowCoverStyles";
 function moveItem(array, fromIndex, toIndex) {
@@ -478,7 +479,7 @@ function hoursLabel(game) {
 }
 
 function rowGenres(game) {
-  return splitCsv(game?.my_genre).map((label) => ({
+  return personalGenreNames(game).map((label) => ({
     label,
     variant: "personalGenre",
   }));
@@ -554,7 +555,7 @@ function RankedRow({
           <div className="mt-2 flex min-w-0 flex-wrap gap-2">
             <MetaPill icon={Star}>{scoreLabel(game)}</MetaPill>
             <MetaPill icon={Clock3}>{hoursLabel(game)}</MetaPill>
-            <MetaPill icon={Tag}>{game.status}</MetaPill>
+            <MetaPill icon={Tag}>{statusDisplayLabel(game.status)}</MetaPill>
             <MetaPill icon={CalendarDays}>
               {finishedDate
                 ? `Finished ${finishedDate}`
@@ -604,7 +605,7 @@ export function CandidateRow({ game, adding, disabled, onAdd }) {
           {title}
         </div>
         <div className="mt-1 truncate text-xs text-content-muted">
-          {game.status || "No status"}
+          {statusDisplayLabel(game.status) || "No status"}
         </div>
       </div>
       <Button

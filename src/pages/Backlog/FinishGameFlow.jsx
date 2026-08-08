@@ -13,6 +13,7 @@ import {
   useConfirm,
 } from "../../components/ui";
 import { apiErrorMessage } from "./backlogForm";
+import { statusDisplayLabel } from "../../utils/statusDisplay";
 
 function appToday() {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -178,7 +179,7 @@ export default function FinishGameFlow({
             <span>Ready to wrap this one up?</span>
           </div>
           <p className="mt-1 break-words text-sm text-content-secondary">
-            {game.status} → Finished
+            {statusDisplayLabel(game.status)} → Finished
           </p>
           {!game.started_at ? (
             <p className="mt-1 text-xs leading-5 text-content-muted">
