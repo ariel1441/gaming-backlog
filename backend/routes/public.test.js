@@ -27,6 +27,9 @@ test("public game serialization is database-only even with a warm RAWG cache", a
       resume_note: "Private boss strategy",
       thoughts: "Private reflection",
       my_score: 9,
+      user_id: 44,
+      rawg_id: 123,
+      personal_genres: [{ id: 8, name: "Soulslike" }],
     },
     {
       id: 2,
@@ -46,6 +49,9 @@ test("public game serialization is database-only even with a warm RAWG cache", a
     assert.equal("resume_note" in hydrated[0], false);
     assert.equal("thoughts" in hydrated[0], false);
     assert.equal("my_score" in hydrated[0], false);
+    assert.equal("user_id" in hydrated[0], false);
+    assert.equal("rawg_id" in hydrated[0], false);
+    assert.deepEqual(hydrated[0].personal_genres, [{ name: "Soulslike" }]);
     assert.equal(hydrated[1].cover, "https://img.example/persisted.jpg");
     assert.equal(hydrated[1].releaseDate, null);
     assert.equal(Object.keys(app.locals.rawgCache).length, 2);

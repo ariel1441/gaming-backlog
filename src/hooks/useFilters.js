@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { hoursValueForList } from "../utils/hours";
+import { personalGenreNames } from "../utils/gameList";
 
 function toArray(raw) {
   if (Array.isArray(raw)) return raw;
@@ -52,7 +53,7 @@ export function useFilters(games, opts = {}) {
   const allMyGenres = useMemo(() => {
     const set = new Set();
     for (const g of games) {
-      for (const name of toArray(g.my_genre)) {
+      for (const name of personalGenreNames(g)) {
         const v = String(name).trim();
         if (v) set.add(v);
       }

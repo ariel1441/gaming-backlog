@@ -18,6 +18,15 @@ const baseStatusSchema = Joi.string()
 
 const statusSchema = baseStatusSchema.required();
 
+const personalGenreEntrySchema = Joi.alternatives().try(
+  Joi.number().integer().positive(),
+  Joi.string().trim().min(1).max(50).pattern(/^[^,]+$/),
+  Joi.object({ id: Joi.number().integer().positive().required() }),
+  Joi.object({
+    name: Joi.string().trim().min(1).max(50).pattern(/^[^,]+$/).required(),
+  }),
+);
+
 function isCalendarDate(value) {
   if (value === null) return true;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -127,6 +136,13 @@ export const gameSchemas = {
     my_genre: Joi.string().trim().max(120).empty("").allow(null).messages({
       "string.max": "my_genre must be <= 120 chars",
     }),
+    personal_genres: Joi.array()
+      .items(personalGenreEntrySchema)
+      .max(10)
+      .messages({
+        "array.base": "personal_genres must be an array",
+        "array.max": "personal_genres must contain at most 10 genres",
+      }),
     thoughts: Joi.string().trim().max(2000).empty("").allow(null).messages({
       "string.max": "thoughts must be <= 2000 chars",
     }),

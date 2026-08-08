@@ -36,6 +36,12 @@ import {
   selectOwnedGameQuery,
   updateOwnedGameStatusQuery,
 } from "../utils/gameAccess.js";
+import {
+  assertGenreFieldsMatch,
+  genreEntriesFromGameBody,
+  parseLegacyPersonalGenres,
+  replaceGamePersonalGenres,
+} from "../services/personalGenreService.js";
 
 const router = express.Router();
 
@@ -95,6 +101,10 @@ async function lockUserRank(db, userId, status) {
  * We also include displayHLTB and displayName for future UI uses.
  */
 export const decorateGameForClient = (game) => {
+  const personalGenres = Array.isArray(game.personal_genres)
+    ? game.personal_genres
+    : parseLegacyPersonalGenres(game.my_genre).map((name) => ({ name }));
+  const compatibilityGenre = personalGenres.map((genre) => genre.name).join(", ");
   const steamPlaytimeMinutes = Number.isFinite(
     Number(game.steam_playtime_minutes),
   )
@@ -139,6 +149,8 @@ export const decorateGameForClient = (game) => {
   if (catalogDecorated) {
     return {
       ...game,
+      personal_genres: personalGenres,
+      my_genre: compatibilityGenre || null,
       ...catalogDecorated,
       cover: resolvedCover(game),
       ...steamFields,
@@ -150,6 +162,8 @@ export const decorateGameForClient = (game) => {
 
   return {
     ...game,
+    personal_genres: personalGenres,
+    my_genre: compatibilityGenre || null,
     how_long_to_beat: displayHLTB,
     displayHLTB,
     displayName: game.name,
@@ -351,6 +365,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       rawg_id,
       rawg_slug,
     } = req.body || {};
+    const genreEntries = genreEntriesFromGameBody(req.body);
 
     const statusNorm = normStatus(status);
     const userTitle = String(name).trim();
@@ -495,6 +510,13 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const position = await getNextPosition(statusNorm, userId, client);
     params[10] = position;
     const { rows } = await client.query(insertSql, params);
+    const personalGenres = await replaceGamePersonalGenres(
+      client,
+      userId,
+      rows[0].id,
+      genreEntries,
+    );
+    assertGenreFieldsMatch(req.body, personalGenres);
     await client.query("COMMIT");
 
     // Invalidate Insights micro-cache for this user (new game affects analytics)
@@ -603,6 +625,7 @@ router.put(
   gameIdParam,
   upsertGame,
   async (req, res, next) => {
+    let client;
     try {
       const userId = req.user.id;
       const gameId = Number(req.params.id);
@@ -621,6 +644,9 @@ router.put(
         rawg_selection_confirmed = false,
         resume_note,
       } = req.body || {};
+      const genreEntries = genreEntriesFromGameBody(req.body, {
+        preserveWhenMissing: true,
+      });
 
       const statusNorm = normStatus(status);
       const userTitle = String(name || "").trim();
@@ -793,7 +819,7 @@ router.put(
       const params = [
         userTitle, // $1
         statusNorm, // $2
-        (my_genre || "").trim(), // $3
+        genreEntries === null ? row.my_genre : (my_genre || "").trim(), // $3
         (thoughts || "").trim(), // $4
         score, // $5
         hours_new, // $6
@@ -818,25 +844,42 @@ router.put(
         ["playing", "done"].includes(statusGroupOf(statusNorm)), // $23
       ];
 
-      const { rows } = await pool.query(updateSql, params);
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const { rows } = await client.query(updateSql, params);
       const nextRow = rows[0];
+      if (genreEntries !== null) {
+        const personalGenres = await replaceGamePersonalGenres(
+          client,
+          userId,
+          gameId,
+          genreEntries,
+        );
+        assertGenreFieldsMatch(req.body, personalGenres);
+      }
 
       // Invalidate Insights micro-cache if analytics-relevant fields changed
       if (affectsInsights(row, nextRow)) {
         cacheClear(userId);
       }
+      if (genreEntries !== null) cacheClear(userId);
 
       // Reload the enriched row so edit responses preserve Steam/source metadata.
       const detailsQuery = selectOwnedGameDetailsQuery(gameId, userId);
-      const detailsRes = await pool.query(
+      const detailsRes = await client.query(
         detailsQuery.text,
         detailsQuery.values,
       );
       const responseRow = detailsRes.rows[0] || nextRow;
 
+      await client.query("COMMIT");
+
       res.json(decorateGameForClient(responseRow));
     } catch (err) {
+      try { await client?.query("ROLLBACK"); } catch {}
       next(err);
+    } finally {
+      client?.release();
     }
   },
 );

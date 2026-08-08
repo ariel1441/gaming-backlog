@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useGames } from "../hooks/useGames";
+import { usePersonalGenres } from "../hooks/usePersonalGenres";
 import { useStatuses } from "../hooks/useStatuses";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
@@ -62,6 +63,7 @@ import {
 const emptyAddDraft = {
   status: "plan to play",
   my_genre: "",
+  personal_genres: [],
   thoughts: "",
   my_score: "",
   how_long_to_beat: "",
@@ -98,6 +100,7 @@ export default function DiscoverPage() {
     getAuthHeaders,
   } = useAuth();
   const { upsertGame } = useGames();
+  const { genres: personalGenres } = usePersonalGenres(isAuthenticated);
   const { statuses } = useStatuses();
   const toast = useToast();
   const navigate = useNavigate();
@@ -362,6 +365,7 @@ export default function DiscoverPage() {
             : Number(addDraft.how_long_to_beat),
         my_score: addDraft.my_score === "" ? null : Number(addDraft.my_score),
       };
+      if (Array.isArray(payload.personal_genres)) delete payload.my_genre;
       const createdGame = await addCatalogGameToBacklog(selected.id, payload, {
         auth: false,
         headers: getAuthHeaders(),
@@ -668,6 +672,7 @@ export default function DiscoverPage() {
         statuses={statusList}
         addDraft={addDraft}
         setAddDraft={setAddDraft}
+        personalGenreOptions={personalGenres.map((genre) => genre.name)}
         adding={adding || detailLoading}
         refreshing={refreshing}
         onClose={() => setSelected(null)}

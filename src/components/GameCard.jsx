@@ -14,7 +14,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { canDeleteGame, canEditGame } from "../utils/permissions";
-import { splitCsv } from "../utils/gameList";
+import { personalGenreNames } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
 import {
@@ -200,7 +200,7 @@ export default function GameCard({
   const releaseDate = fmtDate(game.releaseDate);
   const startedAt = fmtShortDate(game.started_at);
   const finishedAt = fmtShortDate(game.finished_at);
-  const myGenres = splitCsv(game.my_genre);
+  const myGenres = personalGenreNames(game);
   const hours = resolveGameHours(game);
   const cardStats = [
     {

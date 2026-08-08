@@ -1,5 +1,6 @@
 import React from "react";
 import { statusClassMap } from "../../utils/statusClassMap";
+import { statusDisplayLabel } from "../../utils/statusDisplay";
 
 const fallbackClass =
   "border-content-muted/30 bg-content-muted/15 text-content-muted";
@@ -9,10 +10,11 @@ export default function StatusBadge({
   className = "",
   placeholder = "No status",
 }) {
-  const label = status || placeholder;
+  const rawStatus = status || "";
+  const label = statusDisplayLabel(rawStatus) || placeholder;
   const normalized =
-    typeof label === "string"
-      ? label.toLowerCase().trim().replaceAll("-", " ")
+    typeof rawStatus === "string"
+      ? rawStatus.toLowerCase().trim().replaceAll("-", " ")
       : "";
   const toneClass = statusClassMap[normalized] || fallbackClass;
 

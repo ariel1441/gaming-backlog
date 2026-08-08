@@ -57,6 +57,18 @@ export function splitCsv(value) {
     .filter(Boolean);
 }
 
+export function personalGenreNames(game) {
+  if (Array.isArray(game?.personal_genres)) {
+    return game.personal_genres
+      .map((genre) =>
+        typeof genre === "string" ? genre : genre?.name,
+      )
+      .map((name) => String(name || "").trim())
+      .filter(Boolean);
+  }
+  return splitCsv(game?.my_genre);
+}
+
 const numberOrMax = (value) =>
   Number.isFinite(Number(value)) ? Number(value) : Number.MAX_SAFE_INTEGER;
 
@@ -303,7 +315,7 @@ export function applyGameFilters(
     }
 
     if (myGenres || wantsNoPersonalGenre) {
-      const gameMyGenres = splitCsv(game.my_genre)
+      const gameMyGenres = personalGenreNames(game)
         .map(normalize)
         .filter(Boolean);
       const matchesKnownGenre =

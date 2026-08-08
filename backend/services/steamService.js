@@ -12,6 +12,7 @@ import {
   readProviderText,
 } from "../utils/providerFetch.js";
 import { searchCatalog } from "./catalogService.js";
+import { replaceGamePersonalGenres } from "./personalGenreService.js";
 
 const PROVIDER = "steam";
 export const STEAM_LINK_COOKIE = "gb_steam_link_nonce";
@@ -3001,6 +3002,23 @@ export async function mergeBacklogDuplicateGames(userId, keepGameId, duplicateGa
     const keep = rows.find((row) => row.id === keepId);
     const duplicates = rows.filter((row) => removeIds.includes(row.id));
     const ordered = [keep, ...duplicates];
+    const membershipRows = await client.query(
+      `SELECT game_id, personal_genre_id, position
+         FROM game_personal_genres
+        WHERE user_id = $1 AND game_id = ANY($2::int[])`,
+      [userId, allIds],
+    );
+    const gameOrder = new Map(allIds.map((id, index) => [id, index]));
+    const mergedPersonalGenreIds = membershipRows.rows
+      .sort((a, b) =>
+        gameOrder.get(a.game_id) - gameOrder.get(b.game_id) ||
+        a.position - b.position,
+      )
+      .map((row) => row.personal_genre_id)
+      .filter((id, index, ids) => ids.indexOf(id) === index);
+    if (mergedPersonalGenreIds.length > 10) {
+      throw conflict("The merged game would have more than 10 personal genres. Remove some genres first.");
+    }
     const mergedMyGenre = mergeCsv(...ordered.map((row) => row.my_genre));
     const patch = {
       catalog_game_id: keep.catalog_game_id ?? firstPresent(duplicates, "catalog_game_id"),
@@ -3055,6 +3073,12 @@ export async function mergeBacklogDuplicateGames(userId, keepGameId, duplicateGa
         patch.started_at,
         patch.finished_at,
       ]
+    );
+    await replaceGamePersonalGenres(
+      client,
+      userId,
+      keepId,
+      mergedPersonalGenreIds,
     );
     await client.query(
       `

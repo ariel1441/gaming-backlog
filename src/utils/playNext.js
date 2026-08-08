@@ -1,3 +1,5 @@
+import { personalGenreNames } from "./gameList.js";
+
 function numericId(game) {
   const id = Number(game?.id);
   return Number.isFinite(id) ? id : Number.MAX_SAFE_INTEGER;
@@ -29,10 +31,7 @@ function eligibleGames(games, statusGroupOf) {
 }
 
 function genresOf(game) {
-  return String(game?.my_genre || "")
-    .split(",")
-    .map((genre) => genre.trim().toLowerCase())
-    .filter(Boolean);
+  return personalGenreNames(game).map((genre) => genre.toLowerCase());
 }
 
 export function matchesMyGenres(game, selectedGenres = []) {

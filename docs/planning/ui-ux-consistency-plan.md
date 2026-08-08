@@ -1,9 +1,14 @@
 # UI/UX Consistency And Editing Plan
 
-Last updated: 2026-07-17
+Last updated: 2026-07-25
 
-This is the focused implementation plan for the UI/UX findings reviewed after
-the July 2026 frontend polish batch. It covers remaining work only. Use
+Status: completed historical plan. Phases 1A, 1B, 2, 3, 4, 5, 6, 7, and 8 are
+complete. Remaining shared-table and visual-regression work is maintained in
+[`../ROADMAP.md`](../ROADMAP.md) and should be driven by an active feature
+rather than by reopening this broad track.
+
+This is the preserved implementation plan for the UI/UX findings reviewed after
+the July 2026 frontend polish batch. Use
 [`../SYSTEM_CONTEXT.md`](../SYSTEM_CONTEXT.md) for current architecture,
 [`../NEXT_TASKS.md`](../NEXT_TASKS.md) for the active queue, and
 [`../ROADMAP.md`](../ROADMAP.md) for other product and engineering priorities.

@@ -7,6 +7,7 @@ import {
   LibraryBig,
   Link as LinkIcon,
   SlidersHorizontal,
+  Tags,
   User2,
 } from "lucide-react";
 import { AppPage, PageHeader } from "../../components/layout";
@@ -16,6 +17,7 @@ export const settingsSections = [
   { id: "profile", label: "Profile", icon: User2 },
   { id: "account", label: "Account", icon: User2 },
   { id: "preferences", label: "Preferences", icon: SlidersHorizontal },
+  { id: "genres", label: "Personal genres", icon: Tags },
   { id: "public", label: "Public profile", icon: Globe },
   { id: "data", label: "Data", icon: Database },
   { id: "metadata", label: "Game metadata", icon: DatabaseZap },

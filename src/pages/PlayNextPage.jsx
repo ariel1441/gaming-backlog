@@ -69,7 +69,8 @@ import {
   recommendationCandidates,
   surprisePool,
 } from "../utils/playNext";
-import { splitCsv } from "../utils/gameList";
+import { personalGenreNames } from "../utils/gameList";
+import { statusDisplayLabel } from "../utils/statusDisplay";
 import {
   apiErrorMessage,
   buildEditGamePayload,
@@ -245,7 +246,7 @@ function GameRowBackdrop({ game }) {
 }
 
 function PersonalGenres({ game }) {
-  const genres = splitCsv(game.my_genre);
+  const genres = personalGenreNames(game);
   if (!genres.length) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -545,7 +546,7 @@ export default function PlayNextPage() {
   const genreOptions = useMemo(() => {
     const labels = new Map();
     games.forEach((game) => {
-      splitCsv(game.my_genre).forEach((genre) => {
+      personalGenreNames(game).forEach((genre) => {
         const key = genre.toLowerCase();
         if (!labels.has(key)) labels.set(key, genre);
       });
@@ -1144,7 +1145,7 @@ export default function PlayNextPage() {
                     ? "Planned soon"
                     : knownHours(game) != null
                       ? `Short option: about ${knownHours(game)}h`
-                      : game.status}
+                      : statusDisplayLabel(game.status)}
                 </div>
               </div>
               <Button

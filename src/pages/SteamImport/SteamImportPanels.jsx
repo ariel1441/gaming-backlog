@@ -19,6 +19,7 @@ import {
 } from "../../components/ui";
 import { filteredReasonLabel } from "../../utils/steamImport";
 import { formatSteamDate } from "../../utils/steamDisplay";
+import { statusDisplayLabel, statusOption } from "../../utils/statusDisplay";
 import { groupLabel } from "./steamImportGroups";
 export function SteamAccountPanel({
   account,
@@ -247,7 +248,7 @@ export function DuplicateCleanupPanel({
                         </div>
                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
                           <span>#{game.id}</span>
-                          <span>{game.status}</span>
+                          <span>{statusDisplayLabel(game.status)}</span>
                           {game.steamSourceCount ? (
                             <span>
                               {game.steamSourceCount} Steam link
@@ -376,10 +377,7 @@ export function SelectionActionBar({
   onBulkImport,
   isIgnoredView,
 }) {
-  const statusOptions = statuses.map((status) => ({
-    value: status,
-    label: status,
-  }));
+  const statusOptions = statuses.map(statusOption);
 
   if (!selectedCount) return null;
 
@@ -478,10 +476,7 @@ export function AdvancedTools({
   onScanDuplicates,
   duplicateLoading,
 }) {
-  const statusOptions = statuses.map((status) => ({
-    value: status,
-    label: status,
-  }));
+  const statusOptions = statuses.map(statusOption);
   const hasCategoryActions = group !== "all" && currentGroupCount > 0;
 
   return (

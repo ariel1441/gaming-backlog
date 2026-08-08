@@ -115,7 +115,7 @@ test("Steam link transactions bind signed state to a one-time browser nonce", as
 
 test("upsertSteamAccount refuses to displace another user's active link", async () => {
   await withMockClient(
-    async (text) => {
+    async (text, values) => {
       const sql = compact(text);
       if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
       if (sql.startsWith("SELECT user_id FROM user_external_accounts")) {
@@ -798,7 +798,7 @@ test("unlinkSteamAppFromGame detaches the source and reopens attached import can
 
 test("mergeBacklogDuplicateGames moves Steam links before deleting duplicate rows", async () => {
   await withMockClient(
-    async (text) => {
+    async (text, values) => {
       const sql = compact(text);
       if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
       if (sql.includes("SELECT * FROM games") && sql.includes("FOR UPDATE")) {
@@ -833,6 +833,25 @@ test("mergeBacklogDuplicateGames moves Steam links before deleting duplicate row
           ],
         };
       }
+      if (sql.includes("SELECT game_id, personal_genre_id, position")) {
+        return {
+          rows: [
+            { game_id: 41, personal_genre_id: 5, position: 0 },
+            { game_id: 42, personal_genre_id: 6, position: 0 },
+          ],
+        };
+      }
+      if (sql.includes("SELECT id, name FROM user_personal_genres")) {
+        return {
+          rows: [
+            { id: 5, name: "Roguelike" },
+            { id: 6, name: "Action" },
+          ].filter((genre) => genre.id === values?.[0]),
+        };
+      }
+      if (sql.includes("SELECT 1 FROM games WHERE id = $1 AND user_id = $2")) {
+        return { rows: [{ "?column?": 1 }] };
+      }
       if (sql.includes("DELETE FROM games")) return { rows: [], rowCount: 1 };
       return { rows: [] };
     },
@@ -857,6 +876,14 @@ test("mergeBacklogDuplicateGames moves Steam links before deleting duplicate row
       assert.deepEqual(listMove.values, [7, [42], 41]);
       assert.match(listMove.text, /GROUP BY ulg\.list_id/);
       assert.match(listMove.text, /ON CONFLICT \(list_id, game_id\) DO NOTHING/);
+
+      const genreMoves = calls.filter((call) =>
+        call.text.includes("INSERT INTO game_personal_genres"),
+      );
+      assert.deepEqual(
+        genreMoves.map((call) => call.values),
+        [[7, 41, 5, 0], [7, 41, 6, 1]],
+      );
 
       const deleteCall = calls.find((call) => call.text.includes("DELETE FROM games"));
       assert.deepEqual(deleteCall.values, [7, [42]]);

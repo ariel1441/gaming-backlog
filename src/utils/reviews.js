@@ -1,4 +1,4 @@
-import { sortGames, splitCsv } from "./gameList.js";
+import { personalGenreNames, sortGames, splitCsv } from "./gameList.js";
 import { parseGameDate } from "./gameDateInsights.js";
 
 const REVIEW_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -57,7 +57,13 @@ export function matchesReviewSearch(game, query) {
   const q = normalizeReviewText(query);
   if (!q) return true;
   const haystack = normalizeReviewText(
-    [game?.name, game?.thoughts, game?.my_genre, game?.genres, game?.status]
+    [
+      game?.name,
+      game?.thoughts,
+      personalGenreNames(game).join(" "),
+      game?.genres,
+      game?.status,
+    ]
       .filter(Boolean)
       .join(" ")
   );
@@ -100,7 +106,7 @@ export function filterReviewGames({
 
 export function reviewGenres(game, { myLimit = 2, rawgLimit = 1 } = {}) {
   return {
-    myGenres: splitCsv(game?.my_genre).slice(0, myLimit),
+    myGenres: personalGenreNames(game).slice(0, myLimit),
     rawgGenres: splitCsv(game?.genres).slice(0, rawgLimit),
   };
 }

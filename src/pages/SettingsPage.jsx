@@ -69,6 +69,7 @@ import { PreferencesSection } from "./Settings/PreferencesSettings";
 import { ThemeSettings } from "./Settings/ThemeSettings";
 import { PublicProfileSection } from "./Settings/PublicProfileSettings";
 import MetadataSettings from "./Settings/MetadataSettings";
+import { PersonalGenreSettings } from "./Settings/PersonalGenreSettings";
 
 const MAX_FAVORITES = 5;
 
@@ -214,6 +215,11 @@ export default function SettingsPage() {
                     updatePreferences={updatePreferences}
                   />
                 </>
+              ) : null}
+              {activeSection === "genres" ? (
+                <PersonalGenreSettings
+                  refreshGames={() => refresh({ silent: true })}
+                />
               ) : null}
               {activeSection === "public" ? (
                 <PublicProfileSection

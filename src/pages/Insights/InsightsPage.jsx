@@ -38,6 +38,8 @@ import useQueryBackedState from "../../hooks/useQueryBackedState";
 import useMedia from "../../hooks/useMedia";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useGames } from "../../hooks/useGames";
+import { personalGenreNames } from "../../utils/gameList";
+import { statusDisplayLabel } from "../../utils/statusDisplay";
 
 // utils
 import { useChartTheme } from "../../utils/chartTheme";
@@ -190,7 +192,7 @@ export default function InsightsPage() {
   const games = useMemo(
     () =>
       (Array.isArray(sharedGames) ? sharedGames : []).map((game) => ({
-        my_genre: game.my_genre ?? null,
+        personal_genres: personalGenreNames(game),
         rawg_genres: game.genres ?? null,
         hours: Number.isFinite(game.how_long_to_beat)
           ? game.how_long_to_beat
@@ -208,7 +210,7 @@ export default function InsightsPage() {
     () =>
       (byStatus || []).map((s) => ({
         name: s.status,
-        display: s.status,
+        display: statusDisplayLabel(s.status),
         value: Number(s.hours || 0),
         count: Number(s.count || 0),
       })),
@@ -241,7 +243,7 @@ export default function InsightsPage() {
     for (const g of filteredGames) {
       const hours = Number.isFinite(g.hours) ? g.hours : 0;
 
-      const myTags = new Set(splitCSV(g.my_genre));
+      const myTags = new Set(g.personal_genres);
       const mSize = myTags.size || 1;
       const mShare = hours / mSize;
       if (myTags.size === 0) bump(myMap, "Unknown", 1, hours);

@@ -95,6 +95,25 @@ test("favorites body accepts up to five unique game ids", () => {
   );
 });
 
+test("upsert body accepts bounded structured personal genres", () => {
+  assert.equal(
+    gameSchemas.upsertBody.validate({
+      ...base,
+      personal_genres: [7, { id: 8 }, "Cozy", { name: "Strategy" }],
+    }).error,
+    undefined,
+  );
+  assert.ok(
+    gameSchemas.upsertBody.validate({
+      ...base,
+      personal_genres: Array.from({ length: 11 }, (_, index) => `Genre ${index}`),
+    }).error,
+  );
+  assert.ok(
+    gameSchemas.upsertBody.validate({ ...base, personal_genres: ["Bad, genre"] }).error,
+  );
+});
+
 test("finish body requires a date and accepts optional values as null", () => {
   const valid = gameSchemas.finishBody.validate({
     finished_at: "2026-07-18",

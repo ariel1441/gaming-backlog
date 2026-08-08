@@ -194,7 +194,13 @@ export function smartFuzzySearch(games = [], query = "") {
     if (nameHits < minNameHits) continue; // GATE: must match name enough
 
     let total = nameScore;
-    const secondary = [g.my_genre, g.genres, g.thoughts]
+    const personalGenres = Array.isArray(g.personal_genres)
+      ? g.personal_genres
+          .map((genre) => (typeof genre === "string" ? genre : genre?.name))
+          .filter(Boolean)
+          .join(" ")
+      : g.my_genre;
+    const secondary = [personalGenres, g.genres, g.thoughts]
       .filter(Boolean)
       .join(" ");
     total += Math.floor(scoreSecondary(secondary, tokens) * 0.25);

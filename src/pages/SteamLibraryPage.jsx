@@ -49,6 +49,7 @@ import {
   formatAchievementSyncDate,
 } from "../utils/steamAchievements";
 import { filteredReasonLabel } from "../utils/steamImport";
+import { statusDisplayLabel } from "../utils/statusDisplay";
 import {
   formatAchievementBatchSyncMessage,
   formatAchievementGameSyncMessage,
@@ -944,7 +945,9 @@ export default function SteamLibraryPage() {
                       {game.name}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs text-content-muted">
-                      {game.status ? <span>{game.status}</span> : null}
+                      {game.status ? (
+                        <span>{statusDisplayLabel(game.status)}</span>
+                      ) : null}
                       {game.my_genre ? <span>{game.my_genre}</span> : null}
                     </div>
                   </div>

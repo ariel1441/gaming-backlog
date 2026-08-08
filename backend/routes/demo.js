@@ -38,23 +38,66 @@ async function getTemplateUserId() {
 }
 
 async function cloneTemplateGames(client, templateUserId, toUserId) {
-  // Add more INSERT...SELECT blocks here if you later add child tables.
-  await client.query(
+  const templateGames = await client.query(
+    `SELECT * FROM games WHERE user_id = $1 ORDER BY id`,
+    [templateUserId],
+  );
+  const genreMap = new Map();
+  const templateGenres = await client.query(
+    `SELECT id, name, normalized_name
+       FROM user_personal_genres
+      WHERE user_id = $1
+      ORDER BY id`,
+    [templateUserId],
+  );
+  for (const genre of templateGenres.rows) {
+    const created = await client.query(
+      `INSERT INTO user_personal_genres (user_id, name, normalized_name)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, normalized_name)
+       DO UPDATE SET updated_at = user_personal_genres.updated_at
+       RETURNING id`,
+      [toUserId, genre.name, genre.normalized_name],
+    );
+    genreMap.set(genre.id, created.rows[0].id);
+  }
+
+  for (const game of templateGames.rows) {
+    const inserted = await client.query(
     `
     INSERT INTO games (
       user_id, catalog_game_id, name, status, position, my_genre,
       how_long_to_beat, my_score, thoughts, cover, rawg_id, rawg_slug,
       started_at, finished_at
     )
-    SELECT
-      $1, catalog_game_id, name, status, position, my_genre,
-      how_long_to_beat, my_score, thoughts, cover, rawg_id, rawg_slug,
-      started_at, finished_at
-    FROM games
-    WHERE user_id = $2
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    RETURNING id
   `,
-    [toUserId, templateUserId]
-  );
+      [
+        toUserId, game.catalog_game_id, game.name, game.status, game.position,
+        game.my_genre, game.how_long_to_beat, game.my_score, game.thoughts,
+        game.cover, game.rawg_id, game.rawg_slug, game.started_at, game.finished_at,
+      ],
+    );
+    const memberships = await client.query(
+      `SELECT personal_genre_id, position
+         FROM game_personal_genres
+        WHERE user_id = $1 AND game_id = $2
+        ORDER BY position`,
+      [templateUserId, game.id],
+    );
+    for (const membership of memberships.rows) {
+      const mappedGenreId = genreMap.get(membership.personal_genre_id);
+      if (!mappedGenreId) continue;
+      await client.query(
+        `INSERT INTO game_personal_genres
+          (user_id, game_id, personal_genre_id, position)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
+        [toUserId, inserted.rows[0].id, mappedGenreId, membership.position],
+      );
+    }
+  }
 }
 
 router.post("/start", async (req, res, next) => {
