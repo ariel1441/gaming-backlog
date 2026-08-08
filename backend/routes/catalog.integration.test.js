@@ -60,6 +60,9 @@ test("POST /api/catalog/:id/add-to-backlog ingests exact metadata before linking
         insertParams = values;
         return { rows: [{ id: 301 }] };
       }
+      if (sql.includes("SELECT 1 FROM games")) {
+        return { rows: [{}] };
+      }
       return { rows: [] };
     },
     release: () => {},

@@ -20,7 +20,14 @@ async function withServer(queryImpl, fn, connectImpl, appLocals = {}) {
   const originalQuery = pool.query;
   const originalConnect = pool.connect;
   pool.query = queryImpl;
-  if (connectImpl) pool.connect = connectImpl;
+  pool.connect = connectImpl || (async () => ({
+    query: async (text, values) => {
+      const sql = String(text).trim();
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      return queryImpl(text, values);
+    },
+    release: () => {},
+  }));
 
   const app = express();
   app.locals.rawgCache = {};
@@ -163,6 +170,7 @@ test("POST /api/games keeps title-only additions unresolved and provider-free", 
         insertParams = values;
         return { rows: [{ id: 91, user_id: 7, name: "Unmatched Title" }] };
       }
+      if (sql.includes("SELECT 1 FROM games")) return { rows: [{}] };
       return { rows: [] };
     },
     release: () => {},
@@ -232,6 +240,7 @@ test("POST /api/games durably ingests an explicitly selected RAWG identity", asy
           rows: [{ id: 92, user_id: 7, name: "Grand Theft Auto V" }],
         };
       }
+      if (sql.includes("SELECT 1 FROM games")) return { rows: [{}] };
       return { rows: [] };
     },
     release: () => {},
