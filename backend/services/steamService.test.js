@@ -115,7 +115,7 @@ test("Steam link transactions bind signed state to a one-time browser nonce", as
 
 test("upsertSteamAccount refuses to displace another user's active link", async () => {
   await withMockClient(
-    async (text, values) => {
+    async (text, _values) => {
       const sql = compact(text);
       if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
       if (sql.startsWith("SELECT user_id FROM user_external_accounts")) {

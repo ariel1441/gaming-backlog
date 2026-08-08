@@ -197,6 +197,16 @@ async function mockApi(page) {
       ],
     }),
   );
+  await page.route(`${API_BASE}/api/personal-genres`, (route) =>
+    route.fulfill({
+      json: {
+        genres: [
+          { id: 1, name: "Action", usageCount: 1 },
+          { id: 2, name: "RPG", usageCount: 3 },
+        ],
+      },
+    }),
+  );
   await page.route(`${API_BASE}/api/games/search**`, (route) =>
     route.fulfill({
       json: {
@@ -766,7 +776,11 @@ test("discovers a catalog game and adds it to the backlog", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Status" }).click();
   await page.getByRole("option", { name: "playing" }).click();
-  await page.getByLabel("My Genre").fill("Action Roguelike");
+  await page.getByLabel("My genres").click();
+  await page
+    .getByPlaceholder("Find or add a genre...")
+    .fill("Action Roguelike");
+  await page.getByRole("button", { name: 'Add "Action Roguelike"' }).click();
   await page.getByRole("button", { name: "Add to backlog" }).click();
   await expect(page.getByText("Game added to backlog.")).toBeVisible();
 
