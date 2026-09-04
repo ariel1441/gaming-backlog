@@ -81,6 +81,9 @@ export const steamSchemas = {
     }).optional(),
   }),
   forceBody,
+  accountSettingsBody: Joi.object({
+    autoSyncEnabled: Joi.boolean().required(),
+  }),
   achievementBatchBody: forceBody.keys({
     limit: Joi.number().integer().min(1).max(250).optional(),
   }),
@@ -146,6 +149,7 @@ export const steamSchemas = {
     status: Joi.string().trim().valid("playing").default("playing"),
     setStartedAt: Joi.boolean().default(false),
     startedAt: Joi.date().iso().allow(null).optional(),
+    activityEventId: Joi.number().integer().positive().allow(null).optional(),
   }),
   importBody: Joi.object({
     candidateIds: Joi.array()
@@ -169,6 +173,13 @@ export const steamSync = celebrate(
     [Segments.BODY]: steamSchemas.forceBody,
   },
   opts
+);
+
+export const steamAccountSettings = celebrate(
+  {
+    [Segments.BODY]: steamSchemas.accountSettingsBody,
+  },
+  opts,
 );
 
 export const steamAchievementBatchSync = celebrate(

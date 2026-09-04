@@ -26,6 +26,10 @@ import {
   startSteamLink,
   updateSteamImportCandidate,
 } from "../services/steamService";
+import {
+  listActivityEvents,
+  updateActivityEvent,
+} from "../services/activityService";
 import { useStatuses } from "../hooks/useStatuses";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
@@ -36,9 +40,8 @@ import {
 } from "../features/steam/hooks";
 import { filteredReasonLabel } from "../utils/steamImport";
 import {
+  activityEventsToSyncReview,
   buildSteamStatusSuggestionPayload,
-  loadLastSteamSyncReview,
-  saveLastSteamSyncReview,
 } from "../utils/steamSync";
 import {
   Badge,
@@ -59,10 +62,7 @@ import {
   formatSteamPlaytime,
   steamCapsuleUrl,
 } from "../utils/steamDisplay";
-import {
-  removeSyncReviewItem,
-  SteamSyncReviewModal,
-} from "./SteamImport/SteamSyncReview";
+import { SteamSyncReviewModal } from "./SteamImport/SteamSyncReview";
 import { CandidateRow } from "./SteamImport/SteamCandidateRow";
 import {
   AdvancedTools,
@@ -152,6 +152,7 @@ export default function SteamImportPage() {
   );
   const [sort, setSort] = useState(searchParams.get("sort") || "suggested");
   const [steamSearch, setSteamSearch] = useState(searchParams.get("q") || "");
+  const openLastReview = searchParams.get("review") === "last";
   const debouncedSteamSearch = useDebouncedValue(steamSearch, 180);
   const {
     candidates,
@@ -189,9 +190,7 @@ export default function SteamImportPage() {
   const [duplicateLoading, setDuplicateLoading] = useState(false);
   const [mergingGroupKey, setMergingGroupKey] = useState("");
   const [syncReview, setSyncReview] = useState(null);
-  const [lastSyncReview, setLastSyncReview] = useState(() =>
-    loadLastSteamSyncReview(),
-  );
+  const [lastSyncReview, setLastSyncReview] = useState(null);
   const [applyingSuggestionId, setApplyingSuggestionId] = useState(null);
 
   const isDev = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
@@ -256,18 +255,37 @@ export default function SteamImportPage() {
     const error = searchParams.get("error");
     if (linked) toast.success("Steam account linked.");
     if (error) toast.error("Could not link Steam. Please start the link again.");
-    if (searchParams.get("review") === "last") {
-      const stored = loadLastSteamSyncReview();
-      setLastSyncReview(stored);
-      if (stored?.total) setSyncReview(stored);
-    }
   }, [searchParams, toast]);
 
-  const storeLastSyncReview = (review) => {
-    const stored = saveLastSteamSyncReview(review);
-    setLastSyncReview(stored);
-    return stored;
+  const refreshSteamActivity = async ({ open = false } = {}) => {
+    const payload = await listActivityEvents({
+      source: "steam_library",
+      state: "open",
+      limit: 100,
+    });
+    const review = activityEventsToSyncReview(payload?.events || []);
+    setLastSyncReview(review);
+    if (open) setSyncReview(review);
+    return review;
   };
+
+  useEffect(() => {
+    if (!isAuthenticated || isGuest) return;
+    let ignore = false;
+    listActivityEvents({ source: "steam_library", state: "open", limit: 100 })
+      .then((payload) => {
+        if (ignore) return;
+        const review = activityEventsToSyncReview(payload?.events || []);
+        setLastSyncReview(review);
+        if (openLastReview && review?.total) {
+          setSyncReview(review);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated, isGuest, openLastReview]);
 
   const visibleSelectableIds = candidates
     .filter(
@@ -469,9 +487,7 @@ export default function SteamImportPage() {
         buildSteamStatusSuggestionPayload(item, { setStartedAt }),
       );
       toast.success(`${item.gameName || item.steamName} marked as playing.`);
-      const nextReview = removeSyncReviewItem(syncReview, item);
-      setSyncReview(nextReview);
-      storeLastSyncReview(nextReview);
+      await refreshSteamActivity({ open: true });
       await loadCandidates();
     } catch (error) {
       toast.error(error.message || "Could not apply this Steam suggestion.");
@@ -480,19 +496,22 @@ export default function SteamImportPage() {
     }
   };
 
-  const dismissSyncReviewItem = (item) => {
-    const nextReview = removeSyncReviewItem(syncReview, item);
-    setSyncReview(nextReview);
-    storeLastSyncReview(nextReview);
+  const dismissSyncReviewItem = async (item) => {
+    if (!item?.activityEventId) return;
+    try {
+      await updateActivityEvent(item.activityEventId, "dismiss");
+      await refreshSteamActivity({ open: true });
+    } catch (error) {
+      toast.error(error.message || "Could not dismiss this Steam activity item.");
+    }
   };
 
-  const openLastSyncReview = () => {
-    const stored = loadLastSteamSyncReview();
-    setLastSyncReview(stored);
-    if (stored?.total) {
-      setSyncReview(stored);
-    } else {
-      toast.info("No Steam sync review is waiting.");
+  const openLastSyncReview = async () => {
+    try {
+      const review = await refreshSteamActivity({ open: true });
+      if (!review?.total) toast.info("No Steam sync review is waiting.");
+    } catch (error) {
+      toast.error(error.message || "Could not load Steam activity.");
     }
   };
 

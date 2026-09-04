@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 import { useToast } from "../../../components/ui";
 import { syncSteamLibrary } from "../../../services/steamService";
+import { listActivityEvents } from "../../../services/activityService";
 import {
+  activityEventsToSyncReview,
   formatSteamLibrarySyncMessage,
-  saveLastSteamSyncReview,
 } from "../../../utils/steamSync";
 
 export function useSteamSync({
@@ -26,13 +27,23 @@ export function useSteamSync({
 
       if (payload?.skipped) toast.info(message);
       else if (payload?.private) toast.warning(message);
+      else if (payload?.run?.status === "partial") toast.warning(message);
       else toast.success(message);
 
       let storedReview;
-      if (payload?.syncReview?.total) {
-        storedReview = saveLastSteamSyncReview(payload.syncReview);
-      } else if (!payload?.skipped && !payload?.private) {
-        storedReview = saveLastSteamSyncReview(null);
+      if (!payload?.skipped) {
+        try {
+          const activity = await listActivityEvents({
+            source: "steam_library",
+            state: "open",
+            limit: 100,
+          });
+          storedReview = activityEventsToSyncReview(activity?.events || []);
+        } catch {
+          toast.warning(
+            "Steam sync finished, but the activity review could not be refreshed.",
+          );
+        }
       }
 
       if (payload?.account) onAccount?.(payload.account);

@@ -122,7 +122,8 @@ Discover shelves are stored in Postgres. In production, set
 automatically after startup and then once per day. Leave it false if you prefer
 manual seeding with `npm run catalog:seed`.
 
-Steam integration uses migrations `006`, `007`, and `008`. In production,
+Steam integration uses migrations `006` through `010`, plus `018` and `028`.
+In production,
 configure `STEAM_WEB_API_KEY`, `STEAM_OPENID_REALM`,
 `STEAM_OPENID_RETURN_URL`, and the frontend return origin before enabling real
 Steam linking or achievement sync.

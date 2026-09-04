@@ -401,10 +401,12 @@ Styling:
   to `catalog_game_id`, with legacy fallbacks for unlinked rows.
 - Steam data is private in V1. Public profile serializers should not expose
   Steam ownership or playtime until explicit privacy controls exist.
-- Steam sync is manual-only in V1. A failed/private Steam API response updates
-  sync state but must not break normal backlog reads. Manual sync can return a
-  private Steam Sync Review when it finds new activity that may need user
-  action.
+- Steam library sync uses the durable `steam_sync_jobs` queue for both manual
+  requests and the opt-in daily runner. Failed/private/invalid owned-library
+  responses do not advance the successful snapshot baseline or break normal
+  backlog reads. Actionable Steam changes are persisted as private activity
+  events so review survives browser reloads. Per-claim lease tokens fence stale
+  workers from checkpointing or finalizing a recovered or cancelled job.
 - Steam actual playtime is stored separately from `games.how_long_to_beat`.
   Private backlog UI can show both. For finished and played-a-lot style
   statuses, Steam actual time can be the primary displayed hours; for planned or
@@ -412,8 +414,8 @@ Styling:
   secondary when present. Insights currently prefers Steam actual time only for
   done-style status groups.
 - Steam never silently changes backlog status or dates from sync activity. It
-  may suggest marking a linked game as `playing` and optionally filling a
-  missing `started_at` when first observed Steam play is detected.
+  may suggest marking a linked game as `playing`; filling a missing `started_at`
+  from Steam is a separate, explicitly labelled approximate-date action.
 
 ## Steam Integration Current Shape
 
@@ -425,11 +427,12 @@ Core decisions:
 - Steam account linking uses Steam OpenID to identify the user's SteamID64.
   Private library import uses the backend-only `STEAM_WEB_API_KEY`; the key is
   never exposed to the frontend.
-- Steam-owned apps are synced manually into `user_game_sources` and
-  `steam_import_candidates`. Normal Steam sync can also attempt cooldowned
-  achievement summary refreshes for already linked backlog games. Sync failure
-  or private library state is recorded on the Steam account or per-game
-  achievement fields and should never break normal backlog reads.
+- Steam-owned apps are synced into `user_game_sources` and
+  `steam_import_candidates` through a durable, checkpointed queue. Manual and
+  scheduled runs enqueue the same job; the daily runner selects only linked,
+  non-guest accounts that explicitly enable `auto_sync_enabled`. Owned-library
+  snapshots are diffed before matching and achievement work, and only relevant
+  new/changed linked games receive follow-up processing.
 - `external_game_ids(source='steam')` attaches Steam app ids to catalog games
   where known. The internal catalog id remains the app's durable identity.
 - Import is reviewed. Nothing should blindly flood the user's backlog. The user
@@ -456,15 +459,18 @@ Core decisions:
   match repair, linking to an existing backlog game, and add/link actions. It
   also shows first-observed Steam play activity and can reopen the last sync
   review.
-- Steam Sync Review appears after manual sync when actionable changes exist:
+- Steam Sync Review appears when actionable changes exist:
   newly played games, linked games whose status may be stale, and newly
-  discovered Steam games. The last actionable review is stored locally in the
-  browser so it can be reopened from `/steam/import` or `/steam/library`.
-- Steam achievements summary V1 is private and manual-only. It stores only
+  discovered Steam games. Review items are stored in `user_activity_events`,
+  deduped while open, and can be reopened from `/steam/import` or
+  `/steam/library` after reload or an unattended run.
+- Steam achievements summary V1 is private. It stores only
   unlocked count, total count, completion percent, status, last sync timestamp,
   and failure state on `user_game_sources`; per-achievement detail is deferred.
-  Summary-based completion/status suggestions can appear privately in Steam
-  Library detail views.
+  Library sync refreshes achievements only for relevant changed linked games;
+  the explicit manual batch/per-game actions remain available. Summary-based
+  completion/status suggestions can appear privately in Steam Library detail
+  views.
 - Hidden Steam apps stay hidden across future syncs until explicitly restored
   from Steam Import or Steam Library.
 - Per-game hours source preference supports `auto`, `estimate`, and
@@ -490,8 +496,8 @@ Known rough edges from real-library testing:
 - Hours source behavior now has a small preference model for auto, estimate,
   Steam actual, and locked display/insights choice. A deeper split between
   manual, HLTB, RAWG, and other estimates is still future work.
-- Wishlist import, background/scheduled sync, full achievement detail, global
-  achievement rarity, richer achievement-based status suggestions, better
+- Wishlist import, configurable sync frequencies, full achievement detail,
+  global achievement rarity, richer achievement-based status suggestions, better
   started/finished date intelligence, and public Steam privacy settings are
   deliberately not in V1. Last-played, first-observed play, achievement summary,
   and conservative private activity suggestions now exist.
@@ -545,8 +551,8 @@ Known rough edges from real-library testing:
   Postgres catalog cache, manual refresh, curated shelves, and provider-neutral
   external ids.
 - Steam Integration V1/V1.2 plus the local activity-review polish exists behind
-  migrations `006`, `007`, `008`, `009`, and `010`: linked
-  account, manual sync, persisted reviewed imports, duplicate attachment,
+  migrations `006`, `007`, `008`, `009`, `010`, `018`, and `028`: linked
+  account, durable manual/opt-in daily sync, persisted reviewed imports, duplicate attachment,
   searchable grouped/paginated import review, state-aware pile counts,
   whole-group actions, per-candidate status selection, manual Steam app linking
   from the private edit-game form, source badges, and Steam actual playtime for
@@ -560,11 +566,11 @@ Known rough edges from real-library testing:
   and the dedicated `/steam/library` page. Steam
   Achievements Summary V1 stores private per-user summary fields on
   `user_game_sources`, exposes per-game and batch sync endpoints, participates
-  in normal manual Steam sync for linked backlog games, and appears subtly in
+  for relevant changed linked backlog games during library sync, and appears subtly in
   backlog cards plus more fully in the game modal, edit Steam card, Steam
-  Library table, and Library detail drawer. Full achievement detail, background
-  sync, public Steam privacy controls, global rarity, and wishlist import
-  remain future work.
+  Library table, and Library detail drawer. Full achievement detail, public
+  Steam privacy controls, global rarity, and wishlist import remain future
+  work.
 - Local development now uses `scripts/dev.js` behind `npm run dev` to preflight
   stale Node listeners on ports `5000`/`5173`, run backend and frontend
   together, and stop both sides when either process exits.

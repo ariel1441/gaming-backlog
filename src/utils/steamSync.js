@@ -2,8 +2,6 @@ function plural(value, singular, pluralLabel = `${singular}s`) {
   return `${value} ${value === 1 ? singular : pluralLabel}`;
 }
 
-const LAST_SYNC_REVIEW_KEY = "gaming-backlog:last-steam-sync-review:v1";
-
 function syncReviewTotal(review) {
   return (
     Number(review?.startedPlaying?.length || 0) +
@@ -24,28 +22,26 @@ export function normalizeSyncReview(review) {
   return next.total ? next : null;
 }
 
-export function saveLastSteamSyncReview(review) {
-  if (typeof window === "undefined") return null;
-  const normalized = normalizeSyncReview(review);
-  try {
-    if (!normalized) {
-      window.localStorage.removeItem(LAST_SYNC_REVIEW_KEY);
-      return null;
+export function activityEventsToSyncReview(events = []) {
+  const review = {
+    startedPlaying: [],
+    statusSuggestions: [],
+    newSteamGames: [],
+  };
+  for (const event of events) {
+    const item = {
+      ...(event?.payload || {}),
+      activityEventId: event?.id || null,
+    };
+    if (event?.eventType === "steam_started_playing") {
+      review.startedPlaying.push(item);
+    } else if (event?.eventType === "steam_status_suggestion") {
+      review.statusSuggestions.push(item);
+    } else if (event?.eventType === "steam_new_game") {
+      review.newSteamGames.push(item);
     }
-    window.localStorage.setItem(LAST_SYNC_REVIEW_KEY, JSON.stringify(normalized));
-    return normalized;
-  } catch {
-    return normalized;
   }
-}
-
-export function loadLastSteamSyncReview() {
-  if (typeof window === "undefined") return null;
-  try {
-    return normalizeSyncReview(JSON.parse(window.localStorage.getItem(LAST_SYNC_REVIEW_KEY)));
-  } catch {
-    return null;
-  }
+  return normalizeSyncReview(review);
 }
 
 export function buildSteamStatusSuggestionPayload(item, { setStartedAt = false } = {}) {
@@ -53,12 +49,15 @@ export function buildSteamStatusSuggestionPayload(item, { setStartedAt = false }
     status: "playing",
     setStartedAt: Boolean(setStartedAt),
   };
+  if (item?.activityEventId) payload.activityEventId = item.activityEventId;
   if (!payload.setStartedAt) return payload;
 
   const rawDate = item?.firstPlayObservedAt || item?.lastPlayedAt;
   const parsed = rawDate ? new Date(rawDate) : null;
   if (parsed && Number.isFinite(parsed.getTime())) {
     payload.startedAt = parsed.toISOString();
+  } else {
+    payload.setStartedAt = false;
   }
   return payload;
 }
@@ -99,6 +98,9 @@ export function formatSteamLibrarySyncMessage(payload) {
   }
 
   const parts = [`Checked ${plural(checked, "Steam app")} for library changes.`];
+  if (payload?.run?.status === "partial") {
+    parts.push("Library changes were saved, but some follow-up work could not finish.");
+  }
   if (syncReview?.total) {
     parts.push(`Found ${plural(syncReview.total, "Steam activity item")} to review.`);
   }

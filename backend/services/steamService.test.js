@@ -8,8 +8,7 @@ import {
   bestTitleSimilarity,
   consumeSteamLink,
   disconnectSteamAccount,
-  enqueueSteamSync,
-  getSteamSyncJob,
+  fetchOwnedSteamGames,
   importSteamCandidates,
   isLikelySteamDuplicateTitle,
   likelyFilteredReason,
@@ -19,12 +18,17 @@ import {
   normalizeSteamAchievementSummary,
   steamCandidateOrderBy,
   summarizeAchievementSyncResults,
+  syncSteamAchievementsForSourceIds,
   syncSteamAchievementsForGame,
   titleVariants,
   unlinkSteamAppFromGame,
   updateSteamImportCandidate,
   upsertSteamAccount,
 } from "./steamService.js";
+import {
+  enqueueSteamSync,
+  getSteamSyncJob,
+} from "./steamLibrarySyncService.js";
 
 async function withMockClient(queryImpl, fn) {
   const originalConnect = pool.connect;
@@ -164,9 +168,10 @@ test("Steam sync enqueue returns a durable job and job reads stay user scoped", 
         assert.equal(values[1], 7);
         assert.equal(values[2], 12);
         assert.equal(values[3], false);
+        assert.equal(values[4], "manual");
         return { rows: [{ ...jobRow, id: values[0] }] };
       }
-      if (sql.startsWith("SELECT * FROM steam_sync_jobs WHERE id")) {
+      if (sql.startsWith("SELECT job.*, to_jsonb(run) AS sync_run")) {
         assert.deepEqual(values, [jobRow.id, 7]);
         return { rows: [jobRow] };
       }
@@ -209,6 +214,20 @@ test("normalizeOwnedGamesPayload maps Steam owned library rows", () => {
 test("normalizeOwnedGamesPayload tolerates private or empty libraries", () => {
   assert.deepEqual(normalizeOwnedGamesPayload({ response: {} }), []);
   assert.deepEqual(normalizeOwnedGamesPayload(null), []);
+});
+
+test("fetchOwnedSteamGames rejects structurally invalid responses", async () => {
+  const previous = process.env.STEAM_MOCK_OWNED_GAMES_JSON;
+  process.env.STEAM_MOCK_OWNED_GAMES_JSON = JSON.stringify({ unexpected: true });
+  try {
+    await assert.rejects(
+      fetchOwnedSteamGames("76561198000000000"),
+      (error) => error?.code === "steam_invalid_response",
+    );
+  } finally {
+    if (previous == null) delete process.env.STEAM_MOCK_OWNED_GAMES_JSON;
+    else process.env.STEAM_MOCK_OWNED_GAMES_JSON = previous;
+  }
 });
 
 test("normalizeOwnedGamesPayload keeps app ids even when Steam omits names", () => {
@@ -511,6 +530,23 @@ test("Steam review transactions roll back when a related source write fails", as
   );
 });
 
+test("targeted Steam achievement sync processes every source id in bounded batches", async () => {
+  const sourceIds = Array.from({ length: 251 }, (_, index) => index + 1);
+  await withMockPoolQuery(
+    async (text) => {
+      assert.match(compact(text), /^SELECT ugs\.\*, account\.provider_user_id/);
+      return { rows: [] };
+    },
+    async (calls) => {
+      const result = await syncSteamAchievementsForSourceIds(7, sourceIds);
+      assert.equal(result.total, 0);
+      assert.equal(calls.length, 2);
+      assert.equal(calls[0].values[1].length, 250);
+      assert.deepEqual(calls[1].values[1], [251]);
+    },
+  );
+});
+
 test("disconnectSteamAccount updates account and sources in one transaction", async () => {
   await withMockClient(
     async (text) => {
@@ -624,7 +660,7 @@ test("applySteamStatusSuggestion updates only a Steam-linked game", async () => 
     async (text, values) => {
       const sql = compact(text);
       if (sql.startsWith("WITH updated AS ( UPDATE games g SET status = $3")) {
-        assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03"]);
+        assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03", null]);
         assert.match(sql, /EXISTS \( SELECT 1 FROM user_game_sources ugs/);
         assert.match(sql, /DELETE FROM user_next_up_games/);
         assert.doesNotMatch(sql, /updated_at/);
@@ -651,7 +687,37 @@ test("applySteamStatusSuggestion updates only a Steam-linked game", async () => 
       assert.equal(payload.game.id, 42);
       assert.equal(payload.game.status, "playing");
       assert.equal(payload.game.startedAt, "2026-07-03");
+      assert.equal(payload.activityEventResolved, false);
     }
+  );
+});
+
+test("applySteamStatusSuggestion never substitutes today for an invalid approximate date", async () => {
+  await withMockPoolQuery(
+    async (text, values) => {
+      const sql = compact(text);
+      assert.match(sql, /^WITH updated AS \( UPDATE games g SET status = \$3/);
+      assert.deepEqual(values, [42, 7, "playing", false, null, null]);
+      assert.doesNotMatch(sql, /CURRENT_DATE/);
+      return {
+        rows: [
+          {
+            id: 42,
+            name: "Hades",
+            status: "playing",
+            started_at: null,
+          },
+        ],
+      };
+    },
+    async () => {
+      const payload = await applySteamStatusSuggestion(7, 42, {
+        status: "playing",
+        setStartedAt: true,
+        startedAt: "not-a-date",
+      });
+      assert.equal(payload.game.startedAt, null);
+    },
   );
 });
 

@@ -1,7 +1,9 @@
 -- DEV RESET (optional)
+DROP TABLE IF EXISTS user_activity_events;
 DROP TABLE IF EXISTS steam_import_candidates;
 DROP TABLE IF EXISTS user_game_sources;
 DROP TABLE IF EXISTS steam_sync_jobs;
+DROP TABLE IF EXISTS integration_sync_runs;
 DROP TABLE IF EXISTS user_external_accounts;
 DROP TABLE IF EXISTS steam_link_transactions;
 DROP TABLE IF EXISTS user_next_up_games;
@@ -535,6 +537,7 @@ CREATE TABLE user_external_accounts (
   last_library_sync_at TIMESTAMPTZ,
   last_error_code TEXT,
   last_error_message TEXT,
+  auto_sync_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   disconnected_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -551,6 +554,33 @@ CREATE UNIQUE INDEX user_external_accounts_provider_user_active_unique
 
 CREATE INDEX idx_user_external_accounts_user_id
   ON user_external_accounts (user_id);
+
+CREATE TABLE integration_sync_runs (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  sync_kind TEXT NOT NULL,
+  trigger_type TEXT NOT NULL
+    CHECK (trigger_type IN ('manual', 'scheduled')),
+  status TEXT NOT NULL DEFAULT 'running'
+    CHECK (status IN ('running', 'succeeded', 'partial', 'failed', 'skipped')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  items_seen INTEGER NOT NULL DEFAULT 0 CHECK (items_seen >= 0),
+  items_changed INTEGER NOT NULL DEFAULT 0 CHECK (items_changed >= 0),
+  errors_count INTEGER NOT NULL DEFAULT 0 CHECK (errors_count >= 0),
+  summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_code TEXT,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX integration_sync_runs_user_domain_started
+  ON integration_sync_runs (user_id, provider, sync_kind, started_at DESC);
+
+CREATE INDEX integration_sync_runs_recent_problems
+  ON integration_sync_runs (started_at DESC)
+  WHERE status IN ('partial', 'failed');
 
 CREATE TABLE steam_link_transactions (
   id UUID PRIMARY KEY,
@@ -569,6 +599,10 @@ CREATE TABLE steam_sync_jobs (
   id UUID PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   account_id INTEGER REFERENCES user_external_accounts(id) ON DELETE CASCADE,
+  trigger_type TEXT NOT NULL DEFAULT 'manual'
+    CHECK (trigger_type IN ('manual', 'scheduled')),
+  sync_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL,
+  lease_token UUID,
   status TEXT NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
   force BOOLEAN NOT NULL DEFAULT FALSE,
@@ -593,6 +627,10 @@ CREATE UNIQUE INDEX steam_sync_jobs_one_active_per_user
 CREATE INDEX steam_sync_jobs_runnable
   ON steam_sync_jobs (status, locked_at, created_at)
   WHERE status IN ('queued', 'running');
+
+CREATE UNIQUE INDEX steam_sync_jobs_sync_run_unique
+  ON steam_sync_jobs (sync_run_id)
+  WHERE sync_run_id IS NOT NULL;
 
 CREATE TABLE user_game_sources (
   id SERIAL PRIMARY KEY,
@@ -679,6 +717,35 @@ CREATE INDEX idx_steam_import_candidates_user_status
 CREATE INDEX idx_steam_import_candidates_user_match
   ON steam_import_candidates (user_id, match_confidence, import_status);
 
+CREATE TABLE user_activity_events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+  catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE SET NULL,
+  external_id TEXT,
+  sync_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL,
+  dedupe_key TEXT NOT NULL,
+  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  state TEXT NOT NULL DEFAULT 'open'
+    CHECK (state IN ('open', 'resolved', 'dismissed')),
+  seen_at TIMESTAMPTZ,
+  observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX user_activity_events_user_state_created
+  ON user_activity_events (user_id, state, created_at DESC);
+
+CREATE INDEX user_activity_events_user_source_created
+  ON user_activity_events (user_id, source, created_at DESC);
+
+CREATE UNIQUE INDEX user_activity_events_open_dedupe
+  ON user_activity_events (user_id, source, dedupe_key)
+  WHERE state = 'open';
+
 CREATE OR REPLACE FUNCTION enforce_owned_game_relationship()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE game_owner INTEGER;
@@ -723,6 +790,10 @@ CREATE TRIGGER steam_import_candidates_owner_guard
   BEFORE INSERT OR UPDATE OF user_id, duplicate_game_id ON steam_import_candidates
   FOR EACH ROW EXECUTE FUNCTION enforce_candidate_duplicate_owner();
 
+CREATE TRIGGER user_activity_events_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, game_id ON user_activity_events
+  FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
+
 CREATE TRIGGER user_list_games_owner_guard
   BEFORE INSERT OR UPDATE OF list_id, game_id ON user_list_games
   FOR EACH ROW EXECUTE FUNCTION enforce_list_game_owner();
@@ -742,6 +813,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM user_list_games WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM user_game_sources WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM steam_import_candidates WHERE duplicate_game_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM user_activity_events WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM game_metadata_candidates WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM user_next_up_games WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM game_personal_genres WHERE game_id = OLD.id) THEN

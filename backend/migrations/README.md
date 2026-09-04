@@ -64,5 +64,13 @@ migration.
 queue. Deploy this migration before application code that serves
 `POST /api/steam/sync`.
 
+`028_add_steam_daily_sync_foundation.sql` extends that queue with linked generic
+run history, persistent private activity-review events, and the per-account
+Steam daily-sync opt-in. It does not add wishlist or store-price data.
+
+`029_add_steam_sync_job_lease_token.sql` adds per-claim ownership fencing to the
+Steam sync queue so lease recovery cannot leave two workers able to finalize the
+same job.
+
 Future automation notes live in
 `docs/planning/production-migration-automation.md`.

@@ -39,6 +39,7 @@
     "metadata:repair-exact:local": "node scripts/repair-exact-metadata-links.js --apply",
     "metadata:audit": "node scripts/audit-metadata.js",
     "metadata:audit:prod": "node scripts/audit-metadata.js --production --confirm-production",
+    "steam:sync:daily": "node scripts/sync-steam-daily.js",
     "db:copy-prod-to-local": "node scripts/copy-prod-to-local.js --confirm-local-overwrite",
     "db:reset:local": "node scripts/reset-local-db.js",
     "test:smoke": "playwright test tests/e2e/routes.smoke.spec.js",
