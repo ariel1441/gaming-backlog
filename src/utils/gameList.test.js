@@ -15,7 +15,10 @@ import {
 
 test("structured personal genres are authoritative over the legacy mirror", () => {
   const game = {
-    personal_genres: [{ id: 1, name: "Cozy" }, { id: 2, name: "Strategy" }],
+    personal_genres: [
+      { id: 1, name: "Cozy" },
+      { id: 2, name: "Strategy" },
+    ],
     my_genre: "Legacy",
   };
   assert.deepEqual(personalGenreNames(game), ["Cozy", "Strategy"]);
@@ -122,6 +125,59 @@ test("sortGames supports selected sort keys and reverse order", () => {
       (game) => game.name,
     ),
     ["Elden Ring", "Hades", "Celeste"],
+  );
+});
+
+test("sortGames supports table status, genre, estimated-hours, and score columns", () => {
+  const tableGames = [
+    {
+      id: 1,
+      name: "No values",
+      status: "finished",
+      status_rank: 12,
+      personal_genres: [],
+      my_genre: "Legacy ignored",
+      displayHLTB: null,
+      my_score: null,
+    },
+    {
+      id: 2,
+      name: "Cozy game",
+      status: "playing",
+      status_rank: 1,
+      personal_genres: [{ id: 8, name: "Cozy" }],
+      displayHLTB: 12,
+      my_score: 7,
+    },
+    {
+      id: 3,
+      name: "Action game",
+      status: "planned",
+      status_rank: 5,
+      my_genre: "Action",
+      how_long_to_beat: 40,
+      my_score: 9,
+    },
+  ];
+
+  assert.deepEqual(
+    sortGames(tableGames, { sortKey: "status" }).map((game) => game.id),
+    [2, 3, 1],
+  );
+  assert.deepEqual(
+    sortGames(tableGames, { sortKey: "personalGenres" }).map((game) => game.id),
+    [3, 2, 1],
+  );
+  assert.deepEqual(
+    sortGames(tableGames, {
+      sortKey: "estimatedHours",
+      isReversed: true,
+    }).map((game) => game.id),
+    [3, 2, 1],
+  );
+  assert.deepEqual(
+    sortGames(tableGames, { sortKey: "score" }).map((game) => game.id),
+    [2, 3, 1],
   );
 });
 

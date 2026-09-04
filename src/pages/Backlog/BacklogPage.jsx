@@ -9,7 +9,7 @@ import { Button, EmptyState, useToast } from "../../components/ui";
 import { AppPage, PageError, PageLoading } from "../../components/layout";
 import { buildDisplayGames } from "../../utils/gameList";
 import { canReorderGames } from "../../utils/permissions";
-import { canReorderVisibleGames } from "../../utils/reorder";
+import { getManualReorderAvailability } from "../../utils/reorder";
 import { normalizeUserPreferences } from "../../utils/userPreferences";
 import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
@@ -17,8 +17,10 @@ import { useStatuses } from "../../hooks/useStatuses";
 import { useFilters } from "../../hooks/useFilters";
 import { usePersonalGenres } from "../../hooks/usePersonalGenres";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import useMedia from "../../hooks/useMedia";
 import BacklogModals from "./BacklogModals";
 import BacklogPanels from "./BacklogPanels";
+import BacklogTable from "./BacklogTable";
 import BacklogToolbar from "./BacklogToolbar";
 import useBacklogActions from "./useBacklogActions";
 import { addToNextUp } from "../../services/nextUpService";
@@ -104,10 +106,13 @@ export default function BacklogPage() {
     initialReverse: userPreferences.default_backlog_sort_reversed,
   });
   const allMyGenres = React.useMemo(
-    () => Array.from(new Set([
-      ...reusablePersonalGenres.map((genre) => genre.name),
-      ...usedMyGenres,
-    ])).sort((a, b) => a.localeCompare(b)),
+    () =>
+      Array.from(
+        new Set([
+          ...reusablePersonalGenres.map((genre) => genre.name),
+          ...usedMyGenres,
+        ]),
+      ).sort((a, b) => a.localeCompare(b)),
     [reusablePersonalGenres, usedMyGenres],
   );
 
@@ -172,6 +177,9 @@ export default function BacklogPage() {
 
   const addFormRef = useRef(null);
   const bannerRef = useRef(null);
+  const mainRef = useRef(null);
+  const toolbarRef = useRef(null);
+  const isDesktopTable = useMedia("(min-width: 1024px)");
 
   const {
     newGame,
@@ -242,6 +250,26 @@ export default function BacklogPage() {
       setVar(0);
     };
   }, [isGuest]);
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    const main = mainRef.current;
+    if (!toolbar || !main) return undefined;
+
+    const updateToolbarHeight = () => {
+      main.style.setProperty(
+        "--backlog-toolbar-h",
+        `${toolbar.getBoundingClientRect().height}px`,
+      );
+    };
+    updateToolbarHeight();
+    const observer = new ResizeObserver(updateToolbarHeight);
+    observer.observe(toolbar);
+    return () => {
+      observer.disconnect();
+      main.style.removeProperty("--backlog-toolbar-h");
+    };
+  }, []);
 
   // Clear state and remove query params so URL-driven filters do not re-apply.
   const resetFilters = () => {
@@ -328,11 +356,16 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       hasHoursFilter,
   );
-  const hasCompleteVisibleRanks = canReorderVisibleGames(games, displayGames);
-  const reorderEnabled =
-    canReorder && hasCompleteVisibleRanks && !sortKey && !isReversed;
+  const manualReorder = getManualReorderAvailability({
+    allGames: games,
+    visibleGames: displayGames,
+    canReorder,
+    sortKey,
+    isReversed,
+  });
+  const reorderEnabled = manualReorder.enabled;
   const reorderUnavailableMessage =
-    sortKey || isReversed
+    manualReorder.reason === "sort"
       ? "Manual reordering uses Default order with descending turned off."
       : "Manual reordering is unavailable because this view hides other games in the same status group.";
 
@@ -354,8 +387,11 @@ export default function BacklogPage() {
 
       {/* Single wrapper that applies top padding equal to the banner height */}
       <div className={isGuest ? "pt-[var(--demo-banner-h,0px)]" : ""}>
-        <main className={mainClass}>
-          <div className="sticky top-[calc(var(--mobile-header-h,3.5rem)+var(--demo-banner-h,0px))] z-30 bg-surface-bg lg:top-0">
+        <main ref={mainRef} className={mainClass}>
+          <div
+            ref={toolbarRef}
+            className="sticky top-[calc(var(--mobile-header-h,3.5rem)+var(--demo-banner-h,0px))] z-30 bg-surface-bg lg:top-0"
+          >
             <BacklogToolbar
               identity={{ title: backlogTitle }}
               search={{
@@ -395,9 +431,7 @@ export default function BacklogPage() {
               }}
               actions={{
                 add: () =>
-                  isAuthenticated
-                    ? setShowAddForm(true)
-                    : setShowAuth(true),
+                  isAuthenticated ? setShowAddForm(true) : setShowAuth(true),
                 surprise: handleSurpriseMe,
                 completedActive,
                 toggleCompleted,
@@ -427,23 +461,43 @@ export default function BacklogPage() {
               onClose: () => setShowAddForm(false),
             }}
           />
-          {/* The page owns the full-height scrollbar while the toolbar remains sticky. */}
+          {/* Card views use the page scrollbar; Table uses a bounded sticky-header scroller. */}
           <div className="mx-auto w-full max-w-[1760px]">
             {displayGames.length ? (
-              <GameGrid
-                games={displayGames}
-                onSelectGame={setSelectedGame}
-                onEditGame={(game) => {
-                  setSelectedGame(game);
-                  startEditing(game);
-                }}
-                onDeleteGame={handleDeleteGame}
-                onFinishGame={startFinishing}
-                onAddToNextUp={handleAddToNextUp}
-                onReorder={reorderEnabled ? handleReorderGames : null}
-                canManage={canReorder}
-                viewMode={viewMode}
-              />
+              viewMode === "table" && isDesktopTable ? (
+                <BacklogTable
+                  games={displayGames}
+                  onSelectGame={setSelectedGame}
+                  onEditGame={(game) => {
+                    setSelectedGame(game);
+                    startEditing(game);
+                  }}
+                  onDeleteGame={handleDeleteGame}
+                  onFinishGame={startFinishing}
+                  onAddToNextUp={handleAddToNextUp}
+                  onReorder={reorderEnabled ? handleReorderGames : null}
+                  canManage={canReorder}
+                  sortKey={sortKey}
+                  setSortKey={setSortKey}
+                  isReversed={isReversed}
+                  setIsReversed={setIsReversed}
+                />
+              ) : (
+                <GameGrid
+                  games={displayGames}
+                  onSelectGame={setSelectedGame}
+                  onEditGame={(game) => {
+                    setSelectedGame(game);
+                    startEditing(game);
+                  }}
+                  onDeleteGame={handleDeleteGame}
+                  onFinishGame={startFinishing}
+                  onAddToNextUp={handleAddToNextUp}
+                  onReorder={reorderEnabled ? handleReorderGames : null}
+                  canManage={canReorder}
+                  viewMode={viewMode === "table" ? "list" : viewMode}
+                />
+              )
             ) : (
               <EmptyState
                 icon={hasActiveFilters ? SearchX : Gamepad2}
