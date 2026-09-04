@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildRankReorderRequest,
   canReorderVisibleGames,
+  getManualReorderAvailability,
 } from "./reorder.js";
 
 const games = [
@@ -21,7 +22,7 @@ test("buildRankReorderRequest reorders same-rank games without status payload", 
 
   assert.deepEqual(
     request.newOrder.map((game) => game.id),
-    [2, 1, 3]
+    [2, 1, 3],
   );
   assert.equal(request.gameId, 1);
   assert.equal(request.targetIndex, 1);
@@ -47,5 +48,41 @@ test("filtered reorder is blocked when visible games lack rank metadata", () => 
       { id: 4, name: "Unknown rank", status: "planned" },
     ]),
     false,
+  );
+});
+
+test("manual backlog ordering requires permission, default sort, and complete ranks", () => {
+  assert.deepEqual(
+    getManualReorderAvailability({
+      allGames: games,
+      visibleGames: games.slice(0, 2),
+      canReorder: false,
+    }),
+    { enabled: false, reason: "permission" },
+  );
+  assert.deepEqual(
+    getManualReorderAvailability({
+      allGames: games,
+      visibleGames: games.slice(0, 2),
+      canReorder: true,
+      sortKey: "score",
+    }),
+    { enabled: false, reason: "sort" },
+  );
+  assert.deepEqual(
+    getManualReorderAvailability({
+      allGames: games,
+      visibleGames: [games[0], games[2]],
+      canReorder: true,
+    }),
+    { enabled: false, reason: "incomplete-ranks" },
+  );
+  assert.deepEqual(
+    getManualReorderAvailability({
+      allGames: games,
+      visibleGames: games.slice(0, 2),
+      canReorder: true,
+    }),
+    { enabled: true, reason: null },
   );
 });

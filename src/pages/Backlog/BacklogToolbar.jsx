@@ -23,6 +23,7 @@ import {
 } from "../../components/ui";
 import { resolveGameHours } from "../../utils/hours";
 import { statusOption } from "../../utils/statusDisplay";
+import { backlogSortOptions } from "../../utils/userPreferences";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import {
   NO_PERSONAL_GENRE_FILTER,
@@ -35,18 +36,6 @@ import {
   SearchBox,
   ViewModeSwitch,
 } from "./BacklogToolbarControls";
-
-const sortOptions = [
-  { value: "", label: "Default order" },
-  { value: "name", label: "Name" },
-  { value: "hoursPlayed", label: "Hours" },
-  { value: "rawgRating", label: "RAWG rating" },
-  { value: "metacritic", label: "Metacritic" },
-  { value: "releaseDate", label: "Release date" },
-  { value: "startedDate", label: "Started date" },
-  { value: "finishedDate", label: "Finished date" },
-  { value: "steamLastPlayed", label: "Steam last played" },
-];
 
 const sourceOptions = [
   { value: "all", label: "All sources" },
@@ -282,7 +271,7 @@ export default function BacklogToolbar({
                   id="backlog-sort"
                   value={sort.key}
                   onChange={sort.setKey}
-                  options={sortOptions}
+                  options={backlogSortOptions}
                   className="h-10 min-w-0 flex-1 sm:w-[190px] sm:flex-none"
                   placeholder="Default order"
                 />
@@ -292,18 +281,18 @@ export default function BacklogToolbar({
                   size="sm"
                   onClick={() => sort.setIsReversed(!sort.isReversed)}
                   aria-label={`Sort direction: ${
-                    sort.isReversed ? "ascending" : "descending"
-                  }. Change to ${
                     sort.isReversed ? "descending" : "ascending"
+                  }. Change to ${
+                    sort.isReversed ? "ascending" : "descending"
                   }.`}
                   className="h-10 shrink-0 whitespace-nowrap px-3"
                 >
                   {sort.isReversed ? (
-                    <ArrowUpAZ className="h-4 w-4" aria-hidden="true" />
-                  ) : (
                     <ArrowDownAZ className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <ArrowUpAZ className="h-4 w-4" aria-hidden="true" />
                   )}
-                  <span>{sort.isReversed ? "Ascending" : "Descending"}</span>
+                  <span>{sort.isReversed ? "Descending" : "Ascending"}</span>
                 </Button>
               </div>
             </div>

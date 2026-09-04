@@ -79,12 +79,16 @@ CREATE TABLE users (
 CREATE TABLE user_preferences (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   default_backlog_view TEXT NOT NULL DEFAULT 'grid'
-    CHECK (default_backlog_view IN ('grid', 'compact', 'list')),
+    CHECK (default_backlog_view IN ('grid', 'compact', 'list', 'table')),
   default_backlog_sort_key TEXT NOT NULL DEFAULT ''
     CHECK (
       default_backlog_sort_key IN (
         '',
         'name',
+        'status',
+        'personalGenres',
+        'estimatedHours',
+        'score',
         'hoursPlayed',
         'rawgRating',
         'metacritic',

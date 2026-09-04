@@ -39,12 +39,38 @@ test("canEditGame and canDeleteGame require auth, ownership, and writable view",
   assert.equal(canEditGame({ ...options, game: { user_id: 2 } }), false);
 });
 
+test("main backlog actions stay available to authenticated demo owners only", () => {
+  const guestOwner = { id: 4, is_guest: true };
+  const game = { id: 12, user_id: 4 };
+
+  assert.equal(
+    canEditGame({ user: guestOwner, game, isAuthenticated: true }),
+    true,
+  );
+  assert.equal(
+    canDeleteGame({ user: guestOwner, game, isAuthenticated: true }),
+    true,
+  );
+  assert.equal(
+    canEditGame({ user: guestOwner, game, isAuthenticated: false }),
+    false,
+  );
+  assert.equal(
+    canDeleteGame({
+      user: { id: 8 },
+      game,
+      isAuthenticated: true,
+    }),
+    false,
+  );
+});
+
 test("canReorderGames is controlled by auth and read-only state", () => {
   assert.equal(canReorderGames({ isAuthenticated: true }), true);
   assert.equal(canReorderGames({ isAuthenticated: false }), false);
   assert.equal(
     canReorderGames({ isAuthenticated: true, readOnly: true }),
-    false
+    false,
   );
 });
 
@@ -55,7 +81,7 @@ test("canTogglePublicProfile is blocked for guests", () => {
       isAuthenticated: true,
       isGuest: false,
     }),
-    true
+    true,
   );
   assert.equal(
     canTogglePublicProfile({
@@ -63,6 +89,6 @@ test("canTogglePublicProfile is blocked for guests", () => {
       isAuthenticated: true,
       isGuest: true,
     }),
-    false
+    false,
   );
 });

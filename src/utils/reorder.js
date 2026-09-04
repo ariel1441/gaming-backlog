@@ -35,6 +35,25 @@ export function canReorderVisibleGames(allGames, visibleGames) {
   });
 }
 
+export function getManualReorderAvailability({
+  allGames,
+  visibleGames,
+  canReorder = false,
+  sortKey = "",
+  isReversed = false,
+} = {}) {
+  if (!canReorder) {
+    return { enabled: false, reason: "permission" };
+  }
+  if (sortKey || isReversed) {
+    return { enabled: false, reason: "sort" };
+  }
+  if (!canReorderVisibleGames(allGames, visibleGames)) {
+    return { enabled: false, reason: "incomplete-ranks" };
+  }
+  return { enabled: true, reason: null };
+}
+
 export function buildRankReorderRequest(games, activeId, overId) {
   const current = Array.isArray(games) ? games : [];
   const activeKey = String(activeId);
@@ -52,10 +71,10 @@ export function buildRankReorderRequest(games, activeId, overId) {
 
   const newOrder = moveItem(current, oldIndex, newIndex);
   const sameRankGames = newOrder.filter(
-    (game) => game.status_rank === draggedGame.status_rank
+    (game) => game.status_rank === draggedGame.status_rank,
   );
   const targetIndex = sameRankGames.findIndex(
-    (game) => String(game.id) === activeKey
+    (game) => String(game.id) === activeKey,
   );
 
   if (targetIndex === -1) return null;

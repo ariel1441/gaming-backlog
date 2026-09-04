@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   List,
   Search,
+  Table2,
   X,
 } from "lucide-react";
 import {
@@ -29,6 +30,7 @@ const viewOptions = [
   { value: "grid", label: "Cards", icon: LayoutGrid },
   { value: "compact", label: "Compact cards", icon: Grid2X2 },
   { value: "list", label: "Rows", icon: List },
+  { value: "table", label: "Table", icon: Table2 },
 ];
 
 export function SearchBox({
@@ -108,10 +110,7 @@ export function SearchBox({
         aria-autocomplete="list"
       />
       {query ? (
-        <SearchClearButton
-          onClick={clear}
-          label="Clear search"
-        />
+        <SearchClearButton onClick={clear} label="Clear search" />
       ) : null}
 
       {open && suggestions.length ? (
@@ -504,7 +503,9 @@ export function ViewModeSwitch({ value, onChange }) {
           ? "Cards"
           : optionValue === "compact"
             ? "Compact"
-            : "Rows"}
+            : optionValue === "list"
+              ? "Rows"
+              : "Table"}
       </span>
     ),
   }));
