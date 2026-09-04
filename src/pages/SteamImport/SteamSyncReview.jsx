@@ -5,7 +5,9 @@ import {
   steamCapsuleUrl,
 } from "../../utils/steamDisplay";
 function syncReviewKey(item) {
-  return `${item?.steamAppId || ""}:${item?.gameId || ""}:${item?.candidateId || ""}`;
+  return item?.activityEventId
+    ? `activity:${item.activityEventId}`
+    : `${item?.steamAppId || ""}:${item?.gameId || ""}:${item?.candidateId || ""}`;
 }
 
 export function removeSyncReviewItem(review, item) {
@@ -146,10 +148,12 @@ function SyncReviewRow({
   const observed = formatSteamDate(item.firstPlayObservedAt);
   const lastPlayed = formatSteamDate(item.lastPlayedAt);
   const canApply = Boolean(item.gameId);
+  const approximateStartedAt = item.firstPlayObservedAt || item.lastPlayedAt;
   const canSetStartedAt =
     canApply &&
     !item.startedAt &&
-    (item.firstPlayObservedAt || item.lastPlayedAt);
+    approximateStartedAt &&
+    Number.isFinite(new Date(approximateStartedAt).getTime());
   return (
     <article className="grid gap-3 rounded-lg border border-surface-border bg-surface-bg/35 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="flex min-w-0 items-center gap-3">
@@ -188,9 +192,7 @@ function SyncReviewRow({
               variant="primary"
               size="sm"
               disabled={applying}
-              onClick={() =>
-                onApplyStatus(item, { setStartedAt: canSetStartedAt })
-              }
+              onClick={() => onApplyStatus(item, { setStartedAt: false })}
             >
               {applying ? "Applying..." : "Mark playing"}
             </Button>
@@ -200,9 +202,9 @@ function SyncReviewRow({
                 variant="secondary"
                 size="sm"
                 disabled={applying}
-                onClick={() => onApplyStatus(item, { setStartedAt: false })}
+                onClick={() => onApplyStatus(item, { setStartedAt: true })}
               >
-                Status only
+                Mark playing + approximate date
               </Button>
             ) : null}
           </>

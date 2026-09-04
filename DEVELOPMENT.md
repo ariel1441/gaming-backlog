@@ -308,6 +308,12 @@ For the Steam integration release, confirm production has:
 - migration `009_add_hours_source_preferences.sql` applied
 - migration `010_add_steam_activity_observed.sql` applied when deploying the
   local Steam Sync Review/activity polish
+- migration `018_add_steam_sync_jobs.sql` applied before serving asynchronous
+  Steam library sync
+- migration `028_add_steam_daily_sync_foundation.sql` applied before enabling
+  persistent Steam activity review or the opt-in daily runner
+- migration `029_add_steam_sync_job_lease_token.sql` applied before running the
+  Phase A Steam worker code with lease ownership fencing
 - `STEAM_WEB_API_KEY` configured on the backend
 - `STEAM_OPENID_REALM` set to the backend origin
 - `STEAM_OPENID_RETURN_URL` set to the backend `/api/steam/auth/callback`
@@ -316,12 +322,13 @@ For the Steam integration release, confirm production has:
 Steam production behavior to verify:
 
 - Steam data stays private in public profiles.
-- Manual sync failure or private-library state does not break the normal
-  backlog.
+- Manual/scheduled sync failure or private/invalid/empty library state does not
+  break the normal backlog or advance the successful library baseline.
 - Manual achievement sync records per-game unavailable/private/failure states
   without breaking backlog or Steam library reads.
-- Manual library sync can surface a private Steam Sync Review when newly
-  observed play activity or newly discovered Steam games need user action.
+- Manual or scheduled library sync can persist private Steam Sync Review items
+  when newly observed play activity or newly discovered Steam games need user
+  action.
 - Import candidates can be reviewed before any new backlog row is created.
 - Attach/import flows do not create duplicate `games` rows for an already
   matched backlog game.

@@ -13,6 +13,7 @@ import {
   listSteamLinks as validateListSteamLinks,
   mergeSteamDuplicates as validateMergeSteamDuplicates,
   steamAchievementBatchSync as validateSteamAchievementBatchSync,
+  steamAccountSettings as validateSteamAccountSettings,
   steamGameAchievementSync as validateSteamGameAchievementSync,
   steamSync as validateSteamSync,
   steamSyncJob as validateSteamSyncJob,
@@ -38,15 +39,18 @@ import {
   mergeBacklogDuplicateGames,
   syncSteamAchievementsForGame,
   syncSteamAchievementsForLinkedGames,
-  enqueueSteamSync,
-  getSteamSyncJob,
-  cancelSteamSyncJob,
+  updateSteamAutoSync,
   unlinkSteamAppFromGame,
   updateSteamImportCandidate,
   upsertSteamAccount,
   verifySteamOpenId,
   STEAM_LINK_COOKIE,
 } from "../services/steamService.js";
+import {
+  cancelSteamSyncJob,
+  enqueueSteamSync,
+  getSteamSyncJob,
+} from "../services/steamLibrarySyncService.js";
 
 const router = express.Router();
 
@@ -127,6 +131,24 @@ router.get("/account", verifyToken, async (req, res, next) => {
   }
 });
 
+router.patch(
+  "/account/settings",
+  verifyToken,
+  validateSteamAccountSettings,
+  async (req, res, next) => {
+    try {
+      const payload = await updateSteamAutoSync(
+        req.user.id,
+        req.body.autoSyncEnabled,
+      );
+      res.setHeader("Cache-Control", "no-store");
+      res.json(payload);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.delete("/account", verifyToken, async (req, res, next) => {
   try {
     const payload = await disconnectSteamAccount(req.user.id);
@@ -141,6 +163,7 @@ router.post("/sync", verifyToken, validateSteamSync, async (req, res, next) => {
   try {
     const job = await enqueueSteamSync(req.user.id, {
       force: process.env.NODE_ENV !== "production" && req.body?.force === true,
+      trigger: "manual",
     });
     res.setHeader("Cache-Control", "no-store");
     res.status(202).json({ job });

@@ -4,9 +4,10 @@ import stringSimilarity from "string-similarity";
 import { pool } from "../db.js";
 import { normalizeGameTitle } from "../utils/gameTitle.js";
 import { badRequest, conflict, serviceUnavailable } from "../utils/httpError.js";
-import { normStatus, statusGroupOf } from "../utils/status.js";
+import { normStatus } from "../utils/status.js";
 import {
   fetchProviderResponse,
+  ProviderRequestError,
   providerHttpError,
   readProviderJson,
   readProviderText,
@@ -20,23 +21,17 @@ const STEAM_LINK_TTL_MS = 15 * 60 * 1000;
 const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
 const STEAM_API_BASE = "https://api.steampowered.com";
 const STEAM_MEDIA_BASE = "https://media.steampowered.com/steamcommunity/public/images/apps";
-const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 const ACHIEVEMENT_SYNC_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_CANDIDATE_LIMIT = 100;
 const MAX_CANDIDATE_LIMIT = 250;
 const AUTO_MATCH_LIMIT = 250;
-const SYNC_AUTO_MATCH_LIMIT = 150;
 const BULK_SCOPE_LIMIT = 1000;
 const ACHIEVEMENT_BATCH_LIMIT = 250;
 const ACHIEVEMENT_BATCH_CONCURRENCY = 3;
 const STEAM_TIMEOUT_MS = Number(process.env.STEAM_TIMEOUT_MS) || 10_000;
 const STEAM_MAX_RESPONSE_BYTES =
   Number(process.env.STEAM_MAX_RESPONSE_BYTES) || 5 * 1024 * 1024;
-const STEAM_SYNC_CHUNK_SIZE = Math.min(
-  Math.max(Number(process.env.STEAM_SYNC_CHUNK_SIZE) || 20, 1),
-  100,
-);
-const STEAM_SYNC_JOB_LEASE_MS = 5 * 60 * 1000;
+const STEAM_MAX_RETRIES = 2;
 const DUPLICATE_TITLE_SCORE = 0.86;
 const RECENT_STEAM_ACTIVITY_DAYS = 14;
 const DEV_OWNED_GAMES_SAMPLE = {
@@ -245,17 +240,34 @@ async function steamGet(path, params = {}) {
   Object.entries(params).forEach(([key, value]) => {
     if (value != null && value !== "") url.searchParams.set(key, String(value));
   });
-  const res = await fetchProviderResponse("steam", url, {
-    headers: { Accept: "application/json" },
-    timeoutMs: STEAM_TIMEOUT_MS,
-    maxBytes: STEAM_MAX_RESPONSE_BYTES,
-  });
-  if (!res.ok) {
-    throw providerHttpError("steam", res);
+  for (let attempt = 0; attempt <= STEAM_MAX_RETRIES; attempt += 1) {
+    try {
+      const res = await fetchProviderResponse("steam", url, {
+        headers: { Accept: "application/json" },
+        timeoutMs: STEAM_TIMEOUT_MS,
+        maxBytes: STEAM_MAX_RESPONSE_BYTES,
+      });
+      if (!res.ok) throw providerHttpError("steam", res);
+      return await readProviderJson("steam", res, {
+        maxBytes: STEAM_MAX_RESPONSE_BYTES,
+      });
+    } catch (error) {
+      const retryableCodes = new Set([
+        "steam_timeout",
+        "steam_unavailable",
+        "steam_rate_limited",
+        "steam_http_error",
+      ]);
+      const canRetry =
+        attempt < STEAM_MAX_RETRIES &&
+        error?.retryable !== false &&
+        retryableCodes.has(error?.code);
+      if (!canRetry) throw error;
+      const delayMs = 150 * 2 ** attempt + Math.floor(Math.random() * 100);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
-  return readProviderJson("steam", res, {
-    maxBytes: STEAM_MAX_RESPONSE_BYTES,
-  });
+  throw serviceUnavailable("Steam is temporarily unavailable.");
 }
 
 export function normalizeOwnedGamesPayload(payload) {
@@ -281,9 +293,39 @@ export function normalizeOwnedGamesPayload(payload) {
     .filter(Boolean);
 }
 
+function validateOwnedGamesPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new ProviderRequestError(
+      "steam",
+      "steam_invalid_response",
+      "Steam returned an invalid owned-library response.",
+    );
+  }
+  const response = payload.response;
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new ProviderRequestError(
+      "steam",
+      "steam_invalid_response",
+      "Steam returned an invalid owned-library response.",
+    );
+  }
+  if (response.games != null && !Array.isArray(response.games)) {
+    throw new ProviderRequestError(
+      "steam",
+      "steam_invalid_response",
+      "Steam returned an invalid owned-library response.",
+    );
+  }
+  return payload;
+}
+
 export async function fetchOwnedSteamGames(steamId) {
   if (!isProduction() && process.env.STEAM_MOCK_OWNED_GAMES_JSON) {
-    return normalizeOwnedGamesPayload(JSON.parse(process.env.STEAM_MOCK_OWNED_GAMES_JSON));
+    return normalizeOwnedGamesPayload(
+      validateOwnedGamesPayload(
+        JSON.parse(process.env.STEAM_MOCK_OWNED_GAMES_JSON),
+      ),
+    );
   }
   if (!isProduction() && envFlag("STEAM_DEV_SYNC_SAMPLE") && !steamApiKey()) {
     return normalizeOwnedGamesPayload(DEV_OWNED_GAMES_SAMPLE);
@@ -296,7 +338,7 @@ export async function fetchOwnedSteamGames(steamId) {
     include_played_free_games: 1,
     format: "json",
   });
-  return normalizeOwnedGamesPayload(payload);
+  return normalizeOwnedGamesPayload(validateOwnedGamesPayload(payload));
 }
 
 export async function fetchPlayerSummary(steamId) {
@@ -509,7 +551,7 @@ export async function getSteamAccount(userId) {
   return rows[0] || null;
 }
 
-function serializeAccount(row) {
+export function serializeSteamAccount(row) {
   if (!row) return null;
   return {
     id: row.id,
@@ -524,12 +566,34 @@ function serializeAccount(row) {
     lastLibrarySyncAt: row.last_library_sync_at,
     lastErrorCode: row.last_error_code,
     lastErrorMessage: row.last_error_message,
+    autoSyncEnabled: Boolean(row.auto_sync_enabled),
     linkedAt: row.linked_at,
   };
 }
 
 export async function getSteamAccountPayload(userId) {
-  return { account: serializeAccount(await getSteamAccount(userId)) };
+  return { account: serializeSteamAccount(await getSteamAccount(userId)) };
+}
+
+export async function updateSteamAutoSync(userId, enabled) {
+  const { rows } = await pool.query(
+    `
+    UPDATE user_external_accounts account
+       SET auto_sync_enabled = $2,
+           updated_at = NOW()
+     WHERE account.user_id = $1
+       AND account.provider = 'steam'
+       AND account.disconnected_at IS NULL
+       AND EXISTS (
+         SELECT 1 FROM users
+         WHERE users.id = account.user_id AND users.is_guest = FALSE
+       )
+     RETURNING account.*
+    `,
+    [userId, Boolean(enabled)],
+  );
+  if (!rows[0]) throw badRequest("Linked Steam account not found.");
+  return { account: serializeSteamAccount(rows[0]) };
 }
 
 export async function disconnectSteamAccount(userId) {
@@ -827,6 +891,60 @@ export async function syncSteamAchievementsForLinkedGames(
   return {
     total: sources.length,
     ...summary,
+    results,
+    syncedAt: nowIso(),
+  };
+}
+
+export async function syncSteamAchievementsForSourceIds(
+  userId,
+  sourceIds = [],
+  { force = false } = {},
+) {
+  const ids = Array.from(
+    new Set(sourceIds.map(Number).filter(Number.isInteger)),
+  );
+  if (!ids.length) {
+    return {
+      total: 0,
+      ...summarizeAchievementSyncResults([]),
+      results: [],
+      syncedAt: nowIso(),
+    };
+  }
+  const results = [];
+  let total = 0;
+  for (let offset = 0; offset < ids.length; offset += ACHIEVEMENT_BATCH_LIMIT) {
+    const batchIds = ids.slice(offset, offset + ACHIEVEMENT_BATCH_LIMIT);
+    const { rows } = await pool.query(
+      `
+      SELECT ugs.*, account.provider_user_id AS steam_user_id
+      FROM user_game_sources ugs
+      JOIN user_external_accounts account
+        ON account.user_id = ugs.user_id
+       AND account.provider = 'steam'
+       AND account.disconnected_at IS NULL
+      WHERE ugs.user_id = $1
+        AND ugs.id = ANY($2::int[])
+        AND ugs.provider = 'steam'
+        AND ugs.source_status = 'owned'
+        AND ugs.game_id IS NOT NULL
+      ORDER BY ugs.id
+      `,
+      [userId, batchIds],
+    );
+    total += rows.length;
+    results.push(
+      ...(await mapWithConcurrency(
+        rows,
+        ACHIEVEMENT_BATCH_CONCURRENCY,
+        (source) => syncSteamAchievementSource(source, { force }),
+      )),
+    );
+  }
+  return {
+    total,
+    ...summarizeAchievementSyncResults(results),
     results,
     syncedAt: nowIso(),
   };
@@ -1578,224 +1696,6 @@ async function selectUserGameBriefTx(client, userId, gameId) {
   return rows[0] || null;
 }
 
-function sameNullableString(a, b) {
-  return (a == null ? null : String(a)) === (b == null ? null : String(b));
-}
-
-function sameNullableNumber(a, b) {
-  const left = a == null ? null : Number(a);
-  const right = b == null ? null : Number(b);
-  return left === right;
-}
-
-function sameNullableDate(a, b) {
-  const left = a ? new Date(a).getTime() : null;
-  const right = b ? new Date(b).getTime() : null;
-  return left === right;
-}
-
-function sourceRowsEqual(before, after) {
-  if (!before || !after) return false;
-  return (
-    sameNullableNumber(before.game_id, after.game_id) &&
-    sameNullableNumber(before.catalog_game_id, after.catalog_game_id) &&
-    sameNullableString(before.source_status, after.source_status) &&
-    sameNullableNumber(before.playtime_minutes_forever, after.playtime_minutes_forever) &&
-    sameNullableDate(before.last_played_at, after.last_played_at) &&
-    sameNullableDate(before.first_play_observed_at, after.first_play_observed_at) &&
-    sameNullableNumber(
-      before.first_play_observed_playtime_minutes,
-      after.first_play_observed_playtime_minutes
-    )
-  );
-}
-
-function candidateRowsEqual(before, after) {
-  if (!before || !after) return false;
-  return (
-    sameNullableString(before.steam_name, after.steam_name) &&
-    sameNullableString(before.steam_icon_url, after.steam_icon_url) &&
-    sameNullableNumber(before.playtime_minutes_forever, after.playtime_minutes_forever) &&
-    sameNullableDate(before.last_played_at, after.last_played_at) &&
-    sameNullableNumber(before.proposed_catalog_game_id, after.proposed_catalog_game_id) &&
-    sameNullableNumber(before.duplicate_game_id, after.duplicate_game_id) &&
-    sameNullableString(before.match_confidence, after.match_confidence) &&
-    sameNullableString(before.match_reason, after.match_reason) &&
-    sameNullableString(before.filtered_reason, after.filtered_reason) &&
-    sameNullableString(before.suggested_status, after.suggested_status) &&
-    sameNullableString(before.suggested_status_reason, after.suggested_status_reason) &&
-    sameNullableString(before.suggested_status_confidence, after.suggested_status_confidence)
-  );
-}
-
-function writeState(before, after, equalFn) {
-  if (!before) return "created";
-  return equalFn(before, after) ? "unchanged" : "updated";
-}
-
-async function upsertSourceRow(userId, app, catalogGameId, duplicateGameId, { hasPreviousSync = false } = {}) {
-  const before = await pool.query(
-    `
-    SELECT game_id, catalog_game_id, source_status, playtime_minutes_forever, last_played_at,
-           first_play_observed_at, first_play_observed_playtime_minutes
-    FROM user_game_sources
-    WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = $2
-    LIMIT 1
-    `,
-    [userId, app.appid]
-  );
-  const playtimeMinutes = Math.max(0, Number(app.playtimeMinutes) || 0);
-  const firstObservedAt =
-    hasPreviousSync && playtimeMinutes > 0 ? app.lastPlayedAt || new Date() : null;
-  const { rows } = await pool.query(
-    `
-    INSERT INTO user_game_sources (
-      user_id, game_id, catalog_game_id, provider, provider_app_id,
-      relationship, source_status, playtime_minutes_forever, last_played_at,
-      first_play_observed_at, first_play_observed_playtime_minutes,
-      last_synced_at, updated_at
-    )
-    VALUES ($1, $2, $3, 'steam', $4, 'owned', 'owned', $5, $6, $7, $8, NOW(), NOW())
-    ON CONFLICT (user_id, provider, provider_app_id)
-    DO UPDATE SET
-      game_id = COALESCE(EXCLUDED.game_id, user_game_sources.game_id),
-      catalog_game_id = COALESCE(EXCLUDED.catalog_game_id, user_game_sources.catalog_game_id),
-      source_status = CASE
-        WHEN user_game_sources.source_status = 'ignored' THEN 'ignored'
-        ELSE 'owned'
-      END,
-      playtime_minutes_forever = GREATEST(
-        COALESCE(user_game_sources.playtime_minutes_forever, 0),
-        COALESCE(EXCLUDED.playtime_minutes_forever, 0)
-      ),
-      last_played_at = GREATEST(
-        COALESCE(user_game_sources.last_played_at, EXCLUDED.last_played_at),
-        COALESCE(EXCLUDED.last_played_at, user_game_sources.last_played_at)
-      ),
-      first_play_observed_at = CASE
-        WHEN user_game_sources.first_play_observed_at IS NULL
-         AND COALESCE(user_game_sources.playtime_minutes_forever, 0) <= 0
-         AND COALESCE(EXCLUDED.playtime_minutes_forever, 0) > 0
-          THEN COALESCE(EXCLUDED.last_played_at, NOW())
-        ELSE user_game_sources.first_play_observed_at
-      END,
-      first_play_observed_playtime_minutes = CASE
-        WHEN user_game_sources.first_play_observed_at IS NULL
-         AND COALESCE(user_game_sources.playtime_minutes_forever, 0) <= 0
-         AND COALESCE(EXCLUDED.playtime_minutes_forever, 0) > 0
-          THEN EXCLUDED.playtime_minutes_forever
-        ELSE user_game_sources.first_play_observed_playtime_minutes
-      END,
-      last_synced_at = NOW(),
-      updated_at = NOW()
-    RETURNING game_id, catalog_game_id, source_status, playtime_minutes_forever, last_played_at,
-              first_play_observed_at, first_play_observed_playtime_minutes
-    `,
-    [
-      userId,
-      duplicateGameId || null,
-      catalogGameId || null,
-      app.appid,
-      playtimeMinutes,
-      app.lastPlayedAt,
-      firstObservedAt,
-      firstObservedAt ? playtimeMinutes : null,
-    ]
-  );
-  const state = writeState(before.rows[0], rows[0], sourceRowsEqual);
-  const firstPlayObservedJustSet =
-    !before.rows[0]?.first_play_observed_at && !!rows[0]?.first_play_observed_at;
-  return {
-    state,
-    before: before.rows[0] || null,
-    row: rows[0] || null,
-    firstPlayObservedJustSet,
-  };
-}
-
-async function upsertCandidate(userId, app, match, duplicate, filteredReason, recommendation) {
-  const before = await pool.query(
-    `
-    SELECT id, steam_name, steam_icon_url, playtime_minutes_forever, last_played_at,
-           proposed_catalog_game_id, duplicate_game_id, match_confidence, match_reason,
-           filtered_reason, suggested_status, suggested_status_reason,
-           suggested_status_confidence
-    FROM steam_import_candidates
-    WHERE user_id = $1 AND steam_app_id = $2
-    LIMIT 1
-    `,
-    [userId, app.appid]
-  );
-  const { rows } = await pool.query(
-    `
-    INSERT INTO steam_import_candidates (
-      user_id, steam_app_id, steam_name, steam_icon_url, playtime_minutes_forever,
-      last_played_at, proposed_catalog_game_id, duplicate_game_id,
-      match_confidence, match_reason, filtered_reason, suggested_status,
-      suggested_status_reason, suggested_status_confidence, updated_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
-    ON CONFLICT (user_id, steam_app_id)
-    DO UPDATE SET
-      steam_name = EXCLUDED.steam_name,
-      steam_icon_url = EXCLUDED.steam_icon_url,
-      playtime_minutes_forever = GREATEST(
-        COALESCE(steam_import_candidates.playtime_minutes_forever, 0),
-        COALESCE(EXCLUDED.playtime_minutes_forever, 0)
-      ),
-      last_played_at = GREATEST(
-        COALESCE(steam_import_candidates.last_played_at, EXCLUDED.last_played_at),
-        COALESCE(EXCLUDED.last_played_at, steam_import_candidates.last_played_at)
-      ),
-      proposed_catalog_game_id = COALESCE(
-        steam_import_candidates.user_selected_catalog_game_id,
-        EXCLUDED.proposed_catalog_game_id
-      ),
-      duplicate_game_id = EXCLUDED.duplicate_game_id,
-      match_confidence = CASE
-        WHEN steam_import_candidates.user_selected_catalog_game_id IS NOT NULL THEN 'exact'
-        ELSE EXCLUDED.match_confidence
-      END,
-      match_reason = CASE
-        WHEN steam_import_candidates.user_selected_catalog_game_id IS NOT NULL THEN 'User selected catalog match.'
-        ELSE EXCLUDED.match_reason
-      END,
-      filtered_reason = EXCLUDED.filtered_reason,
-      suggested_status = EXCLUDED.suggested_status,
-      suggested_status_reason = EXCLUDED.suggested_status_reason,
-      suggested_status_confidence = EXCLUDED.suggested_status_confidence,
-      updated_at = NOW()
-    WHERE steam_import_candidates.import_status IN ('pending', 'accepted', 'attached', 'ignored')
-    RETURNING id, steam_name, steam_icon_url, playtime_minutes_forever, last_played_at,
-              proposed_catalog_game_id, duplicate_game_id, match_confidence, match_reason,
-              filtered_reason, suggested_status, suggested_status_reason,
-              suggested_status_confidence
-    `,
-    [
-      userId,
-      app.appid,
-      app.name,
-      app.iconUrl,
-      app.playtimeMinutes,
-      app.lastPlayedAt,
-      match.catalogGameId,
-      duplicate?.id || null,
-      match.confidence,
-      match.reason,
-      filteredReason,
-      recommendation.status,
-      recommendation.reason,
-      recommendation.confidence,
-    ]
-  );
-  if (!rows[0]) return { state: "unchanged", before: before.rows[0] || null, row: before.rows[0] || null };
-  return {
-    state: writeState(before.rows[0], rows[0], candidateRowsEqual),
-    before: before.rows[0] || null,
-    row: rows[0],
-  };
-}
-
 async function backfillCandidateRecommendations(userId) {
   const { rows } = await pool.query(
     `
@@ -1840,239 +1740,13 @@ async function backfillCandidateRecommendations(userId) {
   }
 }
 
-function steamReviewItem(app, { candidate, game, recommendation, sourceRow }) {
-  return {
-    steamAppId: String(app.appid),
-    steamName: app.name,
-    steamIconUrl: app.iconUrl || null,
-    playtimeMinutes: Number(app.playtimeMinutes) || 0,
-    lastPlayedAt: app.lastPlayedAt || null,
-    firstPlayObservedAt: sourceRow?.first_play_observed_at || null,
-    candidateId: candidate?.id || null,
-    gameId: game?.id || null,
-    gameName: game?.name || null,
-    currentStatus: game?.status || null,
-    startedAt: game?.started_at || null,
-    suggestedStatus: recommendation?.status || null,
-    suggestedStatusReason: recommendation?.reason || null,
-    suggestedStatusConfidence: recommendation?.confidence || null,
-  };
-}
-
-function staleLinkedSteamStatus(game) {
-  const status = normStatus(game?.status);
-  if (!status) return false;
-  return !["playing", "done"].includes(statusGroupOf(status));
-}
-
-function createEmptySyncReview() {
-  return {
-    startedPlaying: [],
-    statusSuggestions: [],
-    newSteamGames: [],
-    total: 0,
-  };
-}
-
-function finalizeSyncReview(review) {
-  review.total =
-    review.startedPlaying.length +
-    review.statusSuggestions.length +
-    review.newSteamGames.length;
-  return review;
-}
-
-async function processSteamSyncApp(userId, app, hasPreviousSync) {
+export async function prepareSteamLibraryCandidate(userId, app) {
   const filteredReason = likelyFilteredReason(app.name);
   const match = await findCatalogMatch(app);
   const catalog = await selectCatalogBrief(match.catalogGameId);
   const recommendation = recommendStatus(app, catalog, filteredReason);
   const duplicate = await findDuplicateGame(userId, app, match.catalogGameId);
-  const sourceResult = await upsertSourceRow(
-    userId,
-    app,
-    match.catalogGameId,
-    duplicate?.id,
-    { hasPreviousSync },
-  );
-  const candidateState = await upsertCandidate(
-    userId,
-    app,
-    match,
-    duplicate,
-    filteredReason,
-    recommendation,
-  );
-  const reviewItem = steamReviewItem(app, {
-    candidate: candidateState.row,
-    game: duplicate,
-    recommendation,
-    sourceRow: sourceResult.row,
-  });
-  const hasPlaytime = (Number(app.playtimeMinutes) || 0) > 0;
-  let reviewType = null;
-  if (
-    sourceResult.firstPlayObservedJustSet &&
-    hasPlaytime &&
-    !filteredReason &&
-    recommendation.status === "playing"
-  ) {
-    reviewType = "startedPlaying";
-  } else if (
-    duplicate &&
-    hasPlaytime &&
-    !filteredReason &&
-    recommendation.status === "playing" &&
-    staleLinkedSteamStatus(duplicate)
-  ) {
-    reviewType = "statusSuggestions";
-  } else if (
-    hasPreviousSync &&
-    candidateState.state === "created" &&
-    !sourceResult.firstPlayObservedJustSet &&
-    !duplicate &&
-    !filteredReason
-  ) {
-    reviewType = "newSteamGames";
-  }
-  return {
-    matched: match.catalogGameId ? 1 : 0,
-    duplicates: duplicate ? 1 : 0,
-    filtered: filteredReason ? 1 : 0,
-    needsReview: match.catalogGameId ? 0 : 1,
-    sourceState: sourceResult.state,
-    candidateState: candidateState.state,
-    reviewType,
-    reviewItem,
-  };
-}
-
-export async function syncSteamLibrary(userId, { force = false } = {}) {
-  const account = await getSteamAccount(userId);
-  if (!account) throw badRequest("Link Steam before syncing.");
-  const hasPreviousSync = Boolean(account.last_library_sync_at);
-
-  if (!force && account.last_library_sync_at) {
-    const elapsed = Date.now() - new Date(account.last_library_sync_at).getTime();
-    if (Number.isFinite(elapsed) && elapsed < SYNC_COOLDOWN_MS) {
-      return {
-        account: serializeAccount(account),
-        skipped: true,
-        cooldownSeconds: Math.ceil((SYNC_COOLDOWN_MS - elapsed) / 1000),
-      };
-    }
-  }
-
-  await pool.query(
-    "UPDATE user_external_accounts SET sync_status = 'syncing', updated_at = NOW() WHERE id = $1",
-    [account.id]
-  );
-
-  try {
-    const [summary, games] = await Promise.all([
-      fetchPlayerSummary(account.provider_user_id).catch(() => null),
-      fetchOwnedSteamGames(account.provider_user_id),
-    ]);
-
-    if (!games.length) {
-      const { rows } = await pool.query(
-        `
-        UPDATE user_external_accounts
-           SET sync_status = 'private',
-               last_profile_sync_at = COALESCE(last_profile_sync_at, NOW()),
-               last_library_sync_at = NOW(),
-               last_error_code = 'steam_library_empty_or_private',
-               last_error_message = 'Steam returned no owned games. Your game details may be private.',
-               updated_at = NOW()
-         WHERE id = $1
-         RETURNING *
-        `,
-        [account.id]
-      );
-      return { account: serializeAccount(rows[0]), total: 0, private: true };
-    }
-
-    let matched = 0;
-    let duplicates = 0;
-    let filtered = 0;
-    let needsReview = 0;
-    const review = createEmptySyncReview();
-    const sourceWrites = { created: 0, updated: 0, unchanged: 0 };
-    const candidateWrites = { created: 0, updated: 0, unchanged: 0 };
-
-    for (const app of games) {
-      const item = await processSteamSyncApp(userId, app, hasPreviousSync);
-      matched += item.matched;
-      duplicates += item.duplicates;
-      filtered += item.filtered;
-      needsReview += item.needsReview;
-      sourceWrites[item.sourceState] += 1;
-      candidateWrites[item.candidateState] += 1;
-      if (item.reviewType) review[item.reviewType].push(item.reviewItem);
-    }
-
-    const autoMatch = await autoMatchSteamCandidates(
-      { id: userId },
-      { limit: SYNC_AUTO_MATCH_LIMIT, useCatalogSearch: true }
-    );
-
-    const { rows } = await pool.query(
-      `
-      UPDATE user_external_accounts
-         SET display_name = COALESCE($2, display_name),
-             profile_url = COALESCE($3, profile_url),
-             avatar_url = COALESCE($4, avatar_url),
-             visibility_state = COALESCE($5, visibility_state),
-             sync_status = 'synced',
-             last_profile_sync_at = CASE WHEN $2::text IS NULL THEN last_profile_sync_at ELSE NOW() END,
-             last_library_sync_at = NOW(),
-             last_error_code = NULL,
-             last_error_message = NULL,
-             updated_at = NOW()
-       WHERE id = $1
-       RETURNING *
-      `,
-      [
-        account.id,
-        summary?.displayName || null,
-        summary?.profileUrl || null,
-        summary?.avatarUrl || null,
-        summary?.visibilityState ?? null,
-      ]
-    );
-
-    return {
-      account: serializeAccount(rows[0]),
-      total: games.length,
-      matched,
-      sourcesCreated: sourceWrites.created,
-      sourcesUpdated: sourceWrites.updated,
-      sourcesUnchanged: sourceWrites.unchanged,
-      candidatesCreated: candidateWrites.created,
-      candidatesUpdated: candidateWrites.updated,
-      candidatesUnchanged: candidateWrites.unchanged,
-      autoMatched: autoMatch.matched,
-      autoReviewed: autoMatch.reviewed,
-      duplicates,
-      filtered,
-      needsReview,
-      syncReview: finalizeSyncReview(review),
-      syncedAt: nowIso(),
-    };
-  } catch (err) {
-    await pool.query(
-      `
-      UPDATE user_external_accounts
-         SET sync_status = 'failed',
-             last_error_code = $2,
-             last_error_message = $3,
-             updated_at = NOW()
-       WHERE id = $1
-      `,
-      [account.id, err.code || "steam_sync_failed", err.message || "Steam sync failed."]
-    );
-    throw err;
-  }
+  return { filteredReason, match, recommendation, duplicate };
 }
 
 export async function listSteamImportCandidates(
@@ -2201,388 +1875,15 @@ export async function listSteamImportCandidates(
   };
 }
 
-function emptySyncProgress() {
-  return {
-    matched: 0,
-    duplicates: 0,
-    filtered: 0,
-    needsReview: 0,
-    sourceWrites: { created: 0, updated: 0, unchanged: 0 },
-    candidateWrites: { created: 0, updated: 0, unchanged: 0 },
-    syncReview: createEmptySyncReview(),
-  };
-}
-
-function serializeSyncJob(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    status: row.status,
-    cursor: Number(row.cursor) || 0,
-    total: row.total == null ? null : Number(row.total),
-    progress: row.progress_json || {},
-    result: row.result_json || null,
-    errorCode: row.error_code || null,
-    errorMessage: row.error_message || null,
-    createdAt: row.created_at,
-    startedAt: row.started_at,
-    completedAt: row.completed_at,
-  };
-}
-
-export async function enqueueSteamSync(userId, { force = false } = {}) {
-  const account = await getSteamAccount(userId);
-  if (!account) throw badRequest("Link Steam before syncing.");
-  const jobId = crypto.randomUUID();
-  try {
-    const { rows } = await pool.query(
-      `
-      INSERT INTO steam_sync_jobs (id, user_id, account_id, force)
-      VALUES ($1, $2, $3, $4)
-      RETURNING *
-      `,
-      [jobId, userId, account.id, force],
-    );
-    queueMicrotask(() => void runSteamSyncJobs().catch(() => {}));
-    return serializeSyncJob(rows[0]);
-  } catch (error) {
-    if (error?.code !== "23505") throw error;
-    const { rows } = await pool.query(
-      `
-      SELECT * FROM steam_sync_jobs
-       WHERE user_id = $1 AND status IN ('queued', 'running')
-       ORDER BY created_at DESC LIMIT 1
-      `,
-      [userId],
-    );
-    if (!rows[0]) throw error;
-    return serializeSyncJob(rows[0]);
-  }
-}
-
-export async function getSteamSyncJob(userId, jobId) {
-  const { rows } = await pool.query(
-    "SELECT * FROM steam_sync_jobs WHERE id = $1 AND user_id = $2 LIMIT 1",
-    [jobId, userId],
-  );
-  return serializeSyncJob(rows[0]);
-}
-
-export async function cancelSteamSyncJob(userId, jobId) {
-  return withTransaction(async (client) => {
-    const { rows } = await client.query(
-      `
-      UPDATE steam_sync_jobs
-         SET status = 'cancelled', completed_at = NOW(), locked_at = NULL,
-             updated_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND status IN ('queued', 'running')
-       RETURNING *
-      `,
-      [jobId, userId],
-    );
-    if (!rows[0]) return null;
-    await client.query(
-      `
-      UPDATE user_external_accounts
-         SET sync_status = CASE
-               WHEN last_library_sync_at IS NULL THEN 'linked'
-               ELSE 'synced'
-             END,
-             updated_at = NOW()
-       WHERE id = $1 AND user_id = $2
-      `,
-      [rows[0].account_id, userId],
-    );
-    return serializeSyncJob(rows[0]);
-  });
-}
-
-let steamSyncWorkerRunning = false;
-
-async function claimSteamSyncJob() {
-  const { rows } = await pool.query(
-    `
-    WITH candidate AS (
-      SELECT id
-        FROM steam_sync_jobs
-       WHERE status IN ('queued', 'running')
-         AND (locked_at IS NULL OR locked_at < NOW() - ($1 || ' milliseconds')::interval)
-       ORDER BY created_at ASC
-       FOR UPDATE SKIP LOCKED
-       LIMIT 1
-    )
-    UPDATE steam_sync_jobs job
-       SET status = 'running',
-           locked_at = NOW(),
-           started_at = COALESCE(started_at, NOW()),
-           updated_at = NOW()
-      FROM candidate
-     WHERE job.id = candidate.id
-     RETURNING job.*
-    `,
-    [STEAM_SYNC_JOB_LEASE_MS],
-  );
-  return rows[0] || null;
-}
-
-async function completePrivateSyncJob(job, account) {
-  const { rows: accountRows } = await pool.query(
-    `
-    UPDATE user_external_accounts
-       SET sync_status = 'private',
-           last_profile_sync_at = COALESCE(last_profile_sync_at, NOW()),
-           last_library_sync_at = NOW(),
-           last_error_code = 'steam_library_empty_or_private',
-           last_error_message = 'Steam returned no owned games. Your game details may be private.',
-           updated_at = NOW()
-     WHERE id = $1
-     RETURNING *
-    `,
-    [account.id],
-  );
-  const result = {
-    account: serializeAccount(accountRows[0]),
-    total: 0,
-    private: true,
-  };
-  await pool.query(
-    `
-    UPDATE steam_sync_jobs
-       SET status = 'completed', total = 0, cursor = 0, result_json = $2::jsonb,
-           completed_at = NOW(), locked_at = NULL, updated_at = NOW()
-     WHERE id = $1 AND status = 'running'
-    `,
-    [job.id, JSON.stringify(result)],
-  );
-}
-
-async function initializeSteamSyncJob(job) {
-  const account = await getSteamAccount(job.user_id);
-  if (!account) throw badRequest("Linked Steam account no longer exists.");
-  if (!job.force && account.last_library_sync_at) {
-    const elapsed = Date.now() - new Date(account.last_library_sync_at).getTime();
-    if (Number.isFinite(elapsed) && elapsed < SYNC_COOLDOWN_MS) {
-      const result = {
-        account: serializeAccount(account),
-        skipped: true,
-        cooldownSeconds: Math.ceil((SYNC_COOLDOWN_MS - elapsed) / 1000),
-      };
-      await pool.query(
-        `
-        UPDATE steam_sync_jobs
-           SET status = 'completed', result_json = $2::jsonb,
-               completed_at = NOW(), locked_at = NULL, updated_at = NOW()
-         WHERE id = $1 AND status = 'running'
-        `,
-        [job.id, JSON.stringify(result)],
-      );
-      return null;
-    }
-  }
-
-  await pool.query(
-    "UPDATE user_external_accounts SET sync_status = 'syncing', updated_at = NOW() WHERE id = $1",
-    [account.id],
-  );
-  const [summary, games] = await Promise.all([
-    fetchPlayerSummary(account.provider_user_id).catch(() => null),
-    fetchOwnedSteamGames(account.provider_user_id),
-  ]);
-  if (!games.length) {
-    await completePrivateSyncJob(job, account);
-    return null;
-  }
-  const payload = {
-    games,
-    summary,
-    hasPreviousSync: Boolean(account.last_library_sync_at),
-  };
-  const { rows } = await pool.query(
-    `
-    UPDATE steam_sync_jobs
-       SET payload_json = $2::jsonb, total = $3,
-           progress_json = $4::jsonb, locked_at = NOW(), updated_at = NOW()
-     WHERE id = $1 AND status = 'running'
-     RETURNING *
-    `,
-    [job.id, JSON.stringify(payload), games.length, JSON.stringify(emptySyncProgress())],
-  );
-  return rows[0] || null;
-}
-
-async function finalizeSteamSyncJob(job) {
-  const payload = job.payload_json || {};
-  const progress = job.progress_json || emptySyncProgress();
-  const account = await getSteamAccount(job.user_id);
-  if (!account) throw badRequest("Linked Steam account no longer exists.");
-  const autoMatch = await autoMatchSteamCandidates(
-    { id: job.user_id },
-    { limit: SYNC_AUTO_MATCH_LIMIT, useCatalogSearch: true },
-  );
-  const { rows } = await pool.query(
-    `
-    UPDATE user_external_accounts
-       SET display_name = COALESCE($2, display_name),
-           profile_url = COALESCE($3, profile_url),
-           avatar_url = COALESCE($4, avatar_url),
-           visibility_state = COALESCE($5, visibility_state),
-           sync_status = 'synced',
-           last_profile_sync_at = CASE WHEN $2::text IS NULL THEN last_profile_sync_at ELSE NOW() END,
-           last_library_sync_at = NOW(), last_error_code = NULL,
-           last_error_message = NULL, updated_at = NOW()
-     WHERE id = $1 RETURNING *
-    `,
-    [
-      account.id,
-      payload.summary?.displayName || null,
-      payload.summary?.profileUrl || null,
-      payload.summary?.avatarUrl || null,
-      payload.summary?.visibilityState ?? null,
-    ],
-  );
-  const result = {
-    account: serializeAccount(rows[0]),
-    total: Number(job.total) || 0,
-    matched: progress.matched || 0,
-    sourcesCreated: progress.sourceWrites?.created || 0,
-    sourcesUpdated: progress.sourceWrites?.updated || 0,
-    sourcesUnchanged: progress.sourceWrites?.unchanged || 0,
-    candidatesCreated: progress.candidateWrites?.created || 0,
-    candidatesUpdated: progress.candidateWrites?.updated || 0,
-    candidatesUnchanged: progress.candidateWrites?.unchanged || 0,
-    autoMatched: autoMatch.matched,
-    autoReviewed: autoMatch.reviewed,
-    duplicates: progress.duplicates || 0,
-    filtered: progress.filtered || 0,
-    needsReview: progress.needsReview || 0,
-    syncReview: finalizeSyncReview(progress.syncReview || createEmptySyncReview()),
-    syncedAt: nowIso(),
-  };
-  try {
-    result.achievements = await syncSteamAchievementsForLinkedGames(job.user_id, {
-      force: Boolean(job.force),
-    });
-  } catch (error) {
-    result.achievements = {
-      failed: true,
-      errorCode: error?.code || "steam_achievements_sync_failed",
-      errorMessage: error?.message || "Could not sync Steam achievements.",
-    };
-  }
-  await pool.query(
-    `
-    UPDATE steam_sync_jobs
-       SET status = 'completed', result_json = $2::jsonb, payload_json = NULL,
-           completed_at = NOW(), locked_at = NULL, updated_at = NOW()
-     WHERE id = $1 AND status = 'running'
-    `,
-    [job.id, JSON.stringify(result)],
-  );
-}
-
-async function processSteamSyncJob(job) {
-  try {
-    if (!job.payload_json) {
-      job = await initializeSteamSyncJob(job);
-      if (!job) return;
-    }
-    const games = job.payload_json?.games || [];
-    const start = Number(job.cursor) || 0;
-    if (start >= games.length) {
-      await finalizeSteamSyncJob(job);
-      return;
-    }
-    const end = Math.min(start + STEAM_SYNC_CHUNK_SIZE, games.length);
-    const progress = job.progress_json || emptySyncProgress();
-    for (let index = start; index < end; index += 1) {
-      const item = await processSteamSyncApp(
-        job.user_id,
-        games[index],
-        Boolean(job.payload_json.hasPreviousSync),
-      );
-      progress.matched = (progress.matched || 0) + item.matched;
-      progress.duplicates = (progress.duplicates || 0) + item.duplicates;
-      progress.filtered = (progress.filtered || 0) + item.filtered;
-      progress.needsReview = (progress.needsReview || 0) + item.needsReview;
-      progress.sourceWrites[item.sourceState] += 1;
-      progress.candidateWrites[item.candidateState] += 1;
-      if (item.reviewType) {
-        progress.syncReview[item.reviewType].push(item.reviewItem);
-      }
-      const checkpoint = await pool.query(
-        `
-        UPDATE steam_sync_jobs
-           SET cursor = $2, progress_json = $3::jsonb, locked_at = NOW(),
-               updated_at = NOW()
-         WHERE id = $1 AND status = 'running'
-         RETURNING id
-        `,
-        [job.id, index + 1, JSON.stringify(progress)],
-      );
-      if (!checkpoint.rows[0]) return;
-    }
-    await pool.query(
-      `
-      UPDATE steam_sync_jobs
-         SET locked_at = NULL, updated_at = NOW()
-       WHERE id = $1 AND status = 'running'
-       RETURNING *
-      `,
-      [job.id],
-    );
-  } catch (error) {
-    await pool.query(
-      `
-      UPDATE steam_sync_jobs
-         SET status = 'failed', error_code = $2, error_message = $3,
-             completed_at = NOW(), locked_at = NULL, updated_at = NOW()
-       WHERE id = $1 AND status = 'running'
-      `,
-      [job.id, error?.code || "steam_sync_failed", error?.message || "Steam sync failed."],
-    );
-    await pool.query(
-      `
-      UPDATE user_external_accounts
-         SET sync_status = 'failed', last_error_code = $2,
-             last_error_message = $3, updated_at = NOW()
-       WHERE id = $1
-      `,
-      [job.account_id, error?.code || "steam_sync_failed", error?.message || "Steam sync failed."],
-    );
-  }
-}
-
-export async function runSteamSyncJobs() {
-  if (steamSyncWorkerRunning) return;
-  steamSyncWorkerRunning = true;
-  try {
-    let draining = true;
-    while (draining) {
-      const job = await claimSteamSyncJob();
-      if (!job) draining = false;
-      else await processSteamSyncJob(job);
-    }
-  } finally {
-    steamSyncWorkerRunning = false;
-  }
-}
-
-export function startSteamSyncJobScheduler() {
-  if (process.env.NODE_ENV === "test") return () => {};
-  const run = () =>
-    void runSteamSyncJobs().catch((error) => {
-      console.error("Steam sync job scheduler failed:", error?.message || error);
-    });
-  run();
-  const timer = setInterval(run, 15_000);
-  timer.unref?.();
-  return () => clearInterval(timer);
-}
-
 export async function applySteamStatusSuggestion(
   userId,
   gameId,
-  { status = "playing", setStartedAt = false, startedAt = null } = {}
+  {
+    status = "playing",
+    setStartedAt = false,
+    startedAt = null,
+    activityEventId = null,
+  } = {}
 ) {
   const statusNorm = normStatus(status);
   if (statusNorm !== "playing") {
@@ -2594,6 +1895,7 @@ export async function applySteamStatusSuggestion(
     suggestedDate && Number.isFinite(suggestedDate.getTime())
       ? suggestedDate.toISOString().slice(0, 10)
       : null;
+  const shouldSetStartedAt = Boolean(setStartedAt && dateValue);
 
   const { rows } = await pool.query(
     `
@@ -2601,7 +1903,7 @@ export async function applySteamStatusSuggestion(
       UPDATE games g
          SET status = $3,
              started_at = CASE
-               WHEN $4::boolean AND g.started_at IS NULL THEN COALESCE($5::date, CURRENT_DATE)
+               WHEN $4::boolean AND g.started_at IS NULL THEN $5::date
                ELSE g.started_at
              END
        WHERE g.id = $1
@@ -2621,10 +1923,32 @@ export async function applySteamStatusSuggestion(
        WHERE user_id = $2
          AND game_id IN (SELECT id FROM updated)
        RETURNING game_id
+    ),
+    resolved_event AS (
+      UPDATE user_activity_events
+         SET state = 'resolved',
+             seen_at = COALESCE(seen_at, NOW()),
+             resolved_at = NOW()
+       WHERE id = $6
+         AND user_id = $2
+         AND source = 'steam_library'
+         AND event_type = 'steam_status_suggestion'
+         AND state = 'open'
+         AND game_id IN (SELECT id FROM updated)
+       RETURNING id
     )
-    SELECT * FROM updated
+    SELECT updated.*,
+           EXISTS (SELECT 1 FROM resolved_event) AS activity_event_resolved
+    FROM updated
     `,
-    [gameId, userId, statusNorm, !!setStartedAt, dateValue]
+    [
+      gameId,
+      userId,
+      statusNorm,
+      shouldSetStartedAt,
+      dateValue,
+      activityEventId == null ? null : Number(activityEventId),
+    ]
   );
   if (!rows[0]) throw badRequest("Steam-linked backlog game not found.");
   return {
@@ -2634,6 +1958,7 @@ export async function applySteamStatusSuggestion(
       status: rows[0].status,
       startedAt: rows[0].started_at,
     },
+    activityEventResolved: Boolean(rows[0].activity_event_resolved),
   };
 }
 
@@ -3638,9 +2963,15 @@ export async function bulkUpdateSteamCandidates(
 
 export async function autoMatchSteamCandidates(
   user,
-  { limit = AUTO_MATCH_LIMIT, useCatalogSearch = true } = {}
+  { limit = AUTO_MATCH_LIMIT, useCatalogSearch = true, candidateIds = null } = {}
 ) {
   const safeLimit = Math.min(Math.max(Number(limit) || AUTO_MATCH_LIMIT, 1), AUTO_MATCH_LIMIT);
+  const scopedIds = Array.isArray(candidateIds)
+    ? Array.from(new Set(candidateIds.map(Number).filter(Number.isInteger)))
+    : null;
+  if (scopedIds && !scopedIds.length) {
+    return { reviewed: 0, matched: 0, limit: safeLimit };
+  }
   const { rows } = await pool.query(
     `
     SELECT *
@@ -3650,10 +2981,11 @@ export async function autoMatchSteamCandidates(
       AND proposed_catalog_game_id IS NULL
       AND user_selected_catalog_game_id IS NULL
       AND filtered_reason IS NULL
+      AND ($3::int[] IS NULL OR id = ANY($3::int[]))
     ORDER BY lower(steam_name)
     LIMIT $2
     `,
-    [user.id, safeLimit]
+    [user.id, safeLimit, scopedIds]
   );
 
   let matched = 0;

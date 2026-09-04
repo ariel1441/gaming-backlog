@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  activityEventsToSyncReview,
   buildSteamStatusSuggestionPayload,
   formatAchievementGameSyncMessage,
   formatAchievementBatchSyncMessage,
@@ -8,13 +9,37 @@ import {
   normalizeSyncReview,
 } from "./steamSync.js";
 
+test("persistent Steam activity events map into the existing review groups", () => {
+  const review = activityEventsToSyncReview([
+    {
+      id: 9,
+      eventType: "steam_status_suggestion",
+      payload: { steamAppId: "10", gameId: 3 },
+    },
+    {
+      id: 10,
+      eventType: "steam_new_game",
+      payload: { steamAppId: "20" },
+    },
+  ]);
+  assert.equal(review.total, 2);
+  assert.equal(review.statusSuggestions[0].activityEventId, 9);
+  assert.equal(review.newSteamGames[0].activityEventId, 10);
+});
+
 test("stored Steam reviews build a stable playing-status payload", () => {
+  assert.deepEqual(
+    buildSteamStatusSuggestionPayload({
+      lastPlayedAt: "2026-07-12T10:30:00.000Z",
+    }),
+    { status: "playing", setStartedAt: false },
+  );
   assert.deepEqual(
     buildSteamStatusSuggestionPayload(
       { suggestedStatus: "finished", firstPlayObservedAt: "stale-invalid-date" },
       { setStartedAt: true },
     ),
-    { status: "playing", setStartedAt: true },
+    { status: "playing", setStartedAt: false },
   );
   assert.deepEqual(
     buildSteamStatusSuggestionPayload(

@@ -13,10 +13,15 @@ import {
   Button,
   Field,
   Skeleton,
+  Switch,
   TextInput,
   useToast,
 } from "../../components/ui";
-import { getSteamAccount, startSteamLink } from "../../services/steamService";
+import {
+  getSteamAccount,
+  startSteamLink,
+  updateSteamAccountSettings,
+} from "../../services/steamService";
 import { backlogCsv } from "../../utils/csv";
 export function DataSection({ games }) {
   const toast = useToast();
@@ -89,6 +94,7 @@ export function IntegrationsSection({ isGuest }) {
   const [loading, setLoading] = useState(!isGuest);
   const [error, setError] = useState("");
   const [linking, setLinking] = useState(false);
+  const [savingAutoSync, setSavingAutoSync] = useState(false);
 
   useEffect(() => {
     if (isGuest) {
@@ -128,6 +134,28 @@ export function IntegrationsSection({ isGuest }) {
       toast.error(err?.message || "Could not start Steam link.");
     } finally {
       setLinking(false);
+    }
+  };
+
+  const saveAutoSync = async (autoSyncEnabled) => {
+    const previous = Boolean(account?.autoSyncEnabled);
+    setAccount((current) =>
+      current ? { ...current, autoSyncEnabled } : current,
+    );
+    setSavingAutoSync(true);
+    try {
+      const payload = await updateSteamAccountSettings({ autoSyncEnabled });
+      setAccount(payload?.account || null);
+      toast.success(
+        autoSyncEnabled ? "Daily Steam sync enabled." : "Daily Steam sync disabled.",
+      );
+    } catch (error) {
+      setAccount((current) =>
+        current ? { ...current, autoSyncEnabled: previous } : current,
+      );
+      toast.error(error?.message || "Could not update daily Steam sync.");
+    } finally {
+      setSavingAutoSync(false);
     }
   };
 
@@ -215,6 +243,16 @@ export function IntegrationsSection({ isGuest }) {
               ) : null}
             </div>
           </div>
+          {account ? (
+            <Switch
+              checked={Boolean(account.autoSyncEnabled)}
+              onChange={saveAutoSync}
+              disabled={savingAutoSync}
+              label="Daily Steam sync"
+              description="Once per day, refresh owned games and factual Steam activity. Backlog status changes still require your approval."
+              className="mt-4"
+            />
+          ) : null}
         </div>
       )}
 

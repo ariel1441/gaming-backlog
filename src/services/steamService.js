@@ -4,6 +4,10 @@ export function getSteamAccount(opts = {}) {
   return api.get("/api/steam/account", opts);
 }
 
+export function updateSteamAccountSettings(payload, opts = {}) {
+  return api.patch("/api/steam/account/settings", payload, opts);
+}
+
 export function startSteamLink(opts = {}) {
   return api.get("/api/steam/auth/start", { credentials: "include", ...opts });
 }
