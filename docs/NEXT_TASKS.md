@@ -1,6 +1,6 @@
 # Next Tasks
 
-Last updated: 2026-08-08
+Last updated: 2026-09-05
 
 This is the short active queue. It intentionally contains no completed work.
 See [`ROADMAP.md`](ROADMAP.md) for remaining candidates and
@@ -9,6 +9,15 @@ audit is a historical snapshot; its broad remediation landed in `34fb7c1` and
 must not be treated as the current backlog without revalidation.
 
 ## Selected Next Task
+
+Steam conversation handoff, 2026-09-05: implementation checkpoint `cc8d105` is
+committed locally. The next chat should independently review A/B closeout before
+additional implementation or production rollout. See
+[Steam daily experience vision](daily_sync__wishlist_and_loaded/gaming-backlog-steam-daily-experience-vision.md)
+for A/B closeout state, Phase C boundaries, proposed daily inbox/automation and
+Gaming Activity, and unresolved product defaults. No follow-up implementation or
+release is authorized by this handoff. The older queue below has not been revalidated by this
+documentation update; do not let it override the current handoff or live code.
 
 Close out production verification for the current `main` candidate, then
 implement the approved
