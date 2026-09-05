@@ -35,9 +35,10 @@ import {
   DataTableSortButton,
   GameCover,
   StatusBadge,
+  Button,
 } from "../../components/ui";
 import { parseGameDate } from "../../utils/gameDateInsights";
-import { personalGenreNames } from "../../utils/gameList";
+import { personalGenreNames, splitCsv } from "../../utils/gameList";
 import { canDeleteGame, canEditGame } from "../../utils/permissions";
 import { buildRankReorderRequest } from "../../utils/reorder";
 import { formatAchievementSummary } from "../../utils/steamAchievements";
@@ -237,6 +238,8 @@ function BacklogTableRow({
   onDeleteGame,
   onFinishGame,
   onAddToNextUp,
+  collection,
+  renderItemActions,
 }) {
   const {
     attributes,
@@ -246,7 +249,7 @@ function BacklogTableRow({
     transition,
     isDragging,
   } = useSortable({ id: String(game.id), disabled: !reorderEnabled });
-  const genres = personalGenreNames(game);
+  const genres = collection === "wishlist" || game.entryKind === "wishlist" ? splitCsv(game.genres) : personalGenreNames(game);
   const visibleGenres = genres.slice(0, 3);
   const hiddenGenreCount = Math.max(0, genres.length - visibleGenres.length);
   const hours = estimateHours(game);
@@ -310,7 +313,7 @@ function BacklogTableRow({
         </button>
       </th>
       <td className="min-w-[170px] px-3 py-3">
-        <StatusBadge status={game.status} className="max-w-[180px]" />
+        {collection === "wishlist" ? <span className="text-sm text-content-secondary">{game.steamActive && game.providerOrder != null ? game.providerOrder + 1 : "?"}</span> : <StatusBadge status={game.status} className="max-w-[180px]" />}
       </td>
       <td className="min-w-[210px] max-w-[250px] px-3 py-3">
         {genres.length ? (
@@ -342,13 +345,13 @@ function BacklogTableRow({
         )}
       </td>
       <td className="whitespace-nowrap px-3 py-3 text-sm font-semibold text-content-primary">
-        {scoreLabel(game)}
+        {collection === "wishlist" ? <>{game.rating != null ? `${game.rating}/5` : "N/A"}{game.metacritic != null ? <span className="block text-xs text-content-muted">Metacritic {game.metacritic}</span> : null}</> : scoreLabel(game)}
       </td>
       <td className="whitespace-nowrap px-3 py-3 text-sm text-content-secondary">
-        {formatDate(game.started_at)}
+        {formatDate(collection === "wishlist" ? game.dateAdded : game.started_at)}
       </td>
       <td className="whitespace-nowrap px-3 py-3 text-sm text-content-secondary">
-        {formatDate(game.finished_at)}
+        {formatDate(collection === "wishlist" ? game.releaseDate : game.finished_at)}
       </td>
       {showSteam ? (
         <td className="min-w-[155px] px-3 py-3">
@@ -356,13 +359,13 @@ function BacklogTableRow({
         </td>
       ) : null}
       <td className="sticky right-0 z-10 w-[72px] border-l border-surface-border/80 bg-surface-card px-3 py-3 text-center shadow-[-10px_0_18px_-18px_rgb(var(--color-overlay))] transition-colors group-hover:bg-surface-hover">
-        <GameActions
+        {renderItemActions ? renderItemActions(game) : game.entryKind === "wishlist" ? <Button size="sm" variant="ghost" onClick={() => onSelectGame?.(game)}>Wishlist</Button> : <GameActions
           game={game}
           onEditGame={onEditGame}
           onDeleteGame={onDeleteGame}
           onFinishGame={onFinishGame}
           onAddToNextUp={onAddToNextUp}
-        />
+        />}
       </td>
     </tr>
   );
@@ -381,6 +384,8 @@ export default function BacklogTable({
   setSortKey,
   isReversed = false,
   setIsReversed,
+  collection = "backlog",
+  renderItemActions,
 }) {
   const [localGames, setLocalGames] = React.useState(games);
   const sensors = useSensors(
@@ -437,7 +442,7 @@ export default function BacklogTable({
         >
           <table
             className="w-full min-w-[1260px] border-separate border-spacing-0"
-            aria-label="Backlog table"
+            aria-label={collection === "wishlist" ? "Wishlist table" : "Backlog table"}
           >
             <thead className="relative z-20">
               <tr className="border-b border-surface-border">
@@ -458,16 +463,16 @@ export default function BacklogTable({
                   className="min-w-[280px] border-b border-surface-border"
                 />
                 <SortableHeader
-                  label="Status"
-                  sortKey="status"
+                  label={collection === "wishlist" ? "Steam order" : "Status"}
+                  sortKey={collection === "wishlist" ? "providerOrder" : "status"}
                   activeSortKey={sortKey}
                   isReversed={isReversed}
                   onSort={handleSort}
                   className="border-b border-surface-border"
                 />
                 <SortableHeader
-                  label="Personal genres"
-                  sortKey="personalGenres"
+                  label={collection === "wishlist" ? "Genres & tags" : "Personal genres"}
+                  sortKey={collection === "wishlist" ? "genres" : "personalGenres"}
                   activeSortKey={sortKey}
                   isReversed={isReversed}
                   onSort={handleSort}
@@ -482,24 +487,24 @@ export default function BacklogTable({
                   className="border-b border-surface-border"
                 />
                 <SortableHeader
-                  label="Score"
-                  sortKey="score"
+                  label={collection === "wishlist" ? "Rating" : "Score"}
+                  sortKey={collection === "wishlist" ? "rawgRating" : "score"}
                   activeSortKey={sortKey}
                   isReversed={isReversed}
                   onSort={handleSort}
                   className="border-b border-surface-border"
                 />
                 <SortableHeader
-                  label="Started"
-                  sortKey="startedDate"
+                  label={collection === "wishlist" ? "Added" : "Started"}
+                  sortKey={collection === "wishlist" ? "dateAdded" : "startedDate"}
                   activeSortKey={sortKey}
                   isReversed={isReversed}
                   onSort={handleSort}
                   className="border-b border-surface-border"
                 />
                 <SortableHeader
-                  label="Finished"
-                  sortKey="finishedDate"
+                  label={collection === "wishlist" ? "Released" : "Finished"}
+                  sortKey={collection === "wishlist" ? "releaseDate" : "finishedDate"}
                   activeSortKey={sortKey}
                   isReversed={isReversed}
                   onSort={handleSort}
@@ -528,6 +533,8 @@ export default function BacklogTable({
                 <BacklogTableRow
                   key={game.id}
                   game={game}
+                  collection={collection}
+                  renderItemActions={renderItemActions}
                   showSteam={showSteam}
                   showReorder={showReorder}
                   reorderEnabled={reorderEnabled}

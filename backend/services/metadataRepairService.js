@@ -73,6 +73,7 @@ export async function enqueueMetadataRepair(userId, db = pool) {
         FROM games game
         LEFT JOIN catalog_games catalog ON catalog.id = game.catalog_game_id
        WHERE game.user_id = $1
+         AND LOWER(TRIM(game.status)) <> 'wishlist'
          AND NOT EXISTS (
            SELECT 1 FROM game_metadata_candidates candidate
             WHERE candidate.game_id = game.id
@@ -204,6 +205,7 @@ async function nextGames(job, limit, db = pool) {
         ON external.catalog_game_id = game.catalog_game_id
        AND external.source = 'rawg'
      WHERE game.user_id = $1
+       AND LOWER(TRIM(game.status)) <> 'wishlist'
        AND game.id > $2
        AND NOT EXISTS (
          SELECT 1 FROM game_metadata_candidates candidate

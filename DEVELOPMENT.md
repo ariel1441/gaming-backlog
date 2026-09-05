@@ -90,6 +90,16 @@ For real local Steam testing:
   the user's Steam password with this app.
 - Owned-library sync works only when Steam profile/game details are public
   enough for the Steam Web API to return owned games.
+- Wishlist sync likewise depends on Steam exposing the wishlist. For local
+  deterministic testing, `STEAM_MOCK_WISHLIST_JSON` accepts a wishlist response
+  or `{ "wishlist": ..., "count": ... }`; ambiguous empty responses are not
+  accepted automatically.
+- For an opt-in real local Wishlist browser check, set
+  `STEAM_WISHLIST_LOCAL_SMOKE=1` and run
+  `npx playwright test tests/e2e/wishlist.local.spec.js --project=chromium`.
+  Requires port 5000 to be free and one linked local Wishlist owner; uses real
+  routes with read-only PostgreSQL connections and no background schedulers.
+  Screenshots go to ignored `test-results/`; never commit local account artifacts.
 - Achievement summary sync uses the same backend-only `STEAM_WEB_API_KEY`.
   Per-game achievement data can legitimately come back as no achievements,
   private, unavailable, or failed; those states should be recorded without
@@ -314,6 +324,9 @@ For the Steam integration release, confirm production has:
   persistent Steam activity review or the opt-in daily runner
 - migration `029_add_steam_sync_job_lease_token.sql` applied before running the
   Phase A Steam worker code with lease ownership fencing
+- migrations `030_add_steam_wishlist.sql` and
+  `031_harden_steam_wishlist_sync.sql` applied before running the Wishlist and
+  hardened daily-sync code; preserve existing local intentions during migration
 - `STEAM_WEB_API_KEY` configured on the backend
 - `STEAM_OPENID_REALM` set to the backend origin
 - `STEAM_OPENID_RETURN_URL` set to the backend `/api/steam/auth/callback`

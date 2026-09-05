@@ -14,7 +14,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { canDeleteGame, canEditGame } from "../utils/permissions";
-import { personalGenreNames } from "../utils/gameList";
+import { personalGenreNames, splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
 import {
@@ -151,6 +151,7 @@ export default function GameCard({
   onAddToNextUp,
   readOnly = false,
   variant = "grid",
+  footer = null,
 }) {
   const { user, isAuthenticated } = useAuth();
   const { statusGroupOf } = useStatusGroups();
@@ -200,7 +201,7 @@ export default function GameCard({
   const releaseDate = fmtDate(game.releaseDate);
   const startedAt = fmtShortDate(game.started_at);
   const finishedAt = fmtShortDate(game.finished_at);
-  const myGenres = personalGenreNames(game);
+  const myGenres = game.entryKind === "wishlist" ? splitCsv(game.genres) : personalGenreNames(game);
   const hours = resolveGameHours(game);
   const cardStats = [
     {
@@ -451,6 +452,11 @@ export default function GameCard({
             </div>
           </div>
         </div>
+        {footer ? (
+          <div className="relative z-20 border-t border-surface-border/70 bg-surface-card/95 px-4 py-3 sm:px-5">
+            {footer}
+          </div>
+        ) : null}
       </article>
     );
   }
@@ -603,6 +609,11 @@ export default function GameCard({
                 +{hiddenMyGenres}
               </span>
             ) : null}
+          </div>
+        ) : null}
+        {footer ? (
+          <div className="relative z-20 mt-auto border-t border-surface-border/70 pt-4">
+            {footer}
           </div>
         ) : null}
       </div>

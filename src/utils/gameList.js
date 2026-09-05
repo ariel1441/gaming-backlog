@@ -137,7 +137,7 @@ export function sortByDefaultOrder(a, b) {
   const positionB = b?.position ?? Number.POSITIVE_INFINITY;
   if (positionA !== positionB) return positionA - positionB;
 
-  return numberOrMax(a?.id) - numberOrMax(b?.id);
+  return numberOrMax(a?.id) - numberOrMax(b?.id) || titleCollator.compare(String(a?.id), String(b?.id));
 }
 
 export function sortGames(
@@ -150,11 +150,17 @@ export function sortGames(
     sortKey === "steamLastPlayed" ||
     sortKey === "personalGenres" ||
     sortKey === "estimatedHours" ||
-    sortKey === "score"
+    sortKey === "score" ||
+    ["providerOrder", "dateAdded", "changedAt", "genres"].includes(sortKey)
       ? sortKey
       : "";
   const sorted = [...(Array.isArray(games) ? games : [])].sort((a, b) => {
     switch (sortKey) {
+      case "providerOrder":
+        return compareOptionalNumbers(a, b, (game) => game.steamActive ? game.providerOrder : null, isReversed);
+      case "dateAdded":
+      case "changedAt":
+        return compareOptionalDates(a, b, sortKey, isReversed);
       case "name":
         return titleCollator.compare(
           String(a?.name || ""),
@@ -169,6 +175,8 @@ export function sortGames(
           String(b?.status || ""),
         );
       }
+      case "genres":
+        return compareOptionalText(a, b, (game) => splitCsv(game.genres).join(", "), isReversed);
       case "personalGenres":
         return compareOptionalText(
           a,

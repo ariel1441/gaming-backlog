@@ -36,6 +36,7 @@ async function withMockClient(queryImpl, fn) {
   const client = {
     query: async (text, values) => {
       calls.push({ text: String(text), values });
+      if (String(text).startsWith("SELECT is_guest FROM users")) return { rows: [{ is_guest: false }] };
       return queryImpl(String(text), values, calls);
     },
     release: () => {
@@ -55,6 +56,7 @@ async function withMockPoolQuery(queryImpl, fn) {
   const calls = [];
   pool.query = async (text, values) => {
     calls.push({ text: String(text), values });
+    if (String(text).startsWith("SELECT is_guest FROM users")) return { rows: [{ is_guest: false }] };
     return queryImpl(String(text), values, calls);
   };
   try {
@@ -121,7 +123,7 @@ test("upsertSteamAccount refuses to displace another user's active link", async 
   await withMockClient(
     async (text, _values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
+      if (sql === "BEGIN" || sql === "ROLLBACK" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("SELECT user_id FROM user_external_accounts")) {
         return { rows: [{ user_id: 99 }] };
       }
@@ -438,7 +440,7 @@ test("updateSteamImportCandidate hides and restores both candidate and source ro
   await withMockClient(
     async (text, values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE steam_import_candidates SET import_status = 'ignored'")) {
         assert.deepEqual(values, [12, 7]);
         return {
@@ -508,7 +510,7 @@ test("Steam review transactions roll back when a related source write fails", as
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
+      if (sql === "BEGIN" || sql === "ROLLBACK" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE steam_import_candidates")) {
         return {
           rows: [{ id: 12, steam_app_id: "123", steam_name: "Game", import_status: "ignored" }],
@@ -551,7 +553,7 @@ test("disconnectSteamAccount updates account and sources in one transaction", as
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE user_external_accounts")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("UPDATE user_game_sources")) return { rows: [], rowCount: 2 };
       throw new Error(`Unexpected query: ${sql}`);
@@ -725,7 +727,7 @@ test("importSteamCandidates attaches marked duplicates instead of creating a new
   await withMockClient(
     async (text, values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("FROM steam_import_candidates") && sql.includes("FOR UPDATE")) {
         return {
           rows: [
@@ -778,7 +780,7 @@ test("attachSteamCandidateToGame moves a Steam link and preserves stronger sourc
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE")) {
         return { rows: [{ id: 31, catalog_game_id: null }] };
       }
@@ -834,7 +836,7 @@ test("unlinkSteamAppFromGame detaches the source and reopens attached import can
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("SELECT id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE")) {
         return { rows: [{ id: 31 }] };
       }
@@ -866,7 +868,7 @@ test("mergeBacklogDuplicateGames moves Steam links before deleting duplicate row
   await withMockClient(
     async (text, values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("SELECT * FROM games") && sql.includes("FOR UPDATE")) {
         return {
           rows: [

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { pool } from "../db.js";
+import { assertSteamUser, lockSteamSyncJob } from "./steamSyncLease.js";
 import { badRequest } from "../utils/httpError.js";
 import { normStatus, statusGroupOf } from "../utils/status.js";
 import { createOpenActivityEvent } from "./activityEventService.js";
@@ -18,6 +19,10 @@ import {
   serializeSteamAccount,
   syncSteamAchievementsForSourceIds,
 } from "./steamService.js";
+import {
+  failSteamWishlistJob,
+  processSteamWishlistJob,
+} from "./steamWishlistService.js";
 
 const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 const SYNC_AUTO_MATCH_LIMIT = 150;
@@ -65,17 +70,9 @@ async function withTransaction(work) {
 
 async function withActiveJobLease(job, work) {
   return withTransaction(async (client) => {
-    const { rows } = await client.query(
-      `
-      SELECT *
-      FROM steam_sync_jobs
-      WHERE id = $1 AND status = 'running' AND lease_token = $2
-      FOR UPDATE
-      `,
-      [job.id, job.lease_token],
-    );
-    if (!rows[0]) return { active: false, value: null };
-    return { active: true, value: await work(client, rows[0]) };
+    const current = await lockSteamSyncJob(client, job);
+    if (!current) return { active: false, value: null };
+    return { active: true, value: await work(client, current) };
   });
 }
 
@@ -254,6 +251,7 @@ function serializeSyncJob(row) {
     id: row.id,
     status: row.status,
     triggerType: row.trigger_type || "manual",
+    syncKind: row.sync_kind || "library",
     syncRunId: row.sync_run_id == null ? null : Number(row.sync_run_id),
     run,
     cursor: Number(row.cursor) || 0,
@@ -355,7 +353,7 @@ async function ensureRunForJob(job) {
       current.user_id,
       {
         provider: "steam",
-        syncKind: "library",
+        syncKind: current.sync_kind || "library",
         triggerType: current.trigger_type || "manual",
       },
       client,
@@ -369,7 +367,9 @@ async function ensureRunForJob(job) {
       `,
       [current.id, run.id],
     );
-    await persistLegacyReviewEvents(current, run.id, client);
+    if ((current.sync_kind || "library") === "library") {
+      await persistLegacyReviewEvents(current, run.id, client);
+    }
     return rows[0];
   });
 }
@@ -401,13 +401,8 @@ function reviewItem(app, source, candidate, game, activityEventId) {
 
 async function persistWorkItem(job, item, prepared) {
   return withTransaction(async (client) => {
-    const runningJob = await client.query(
-      `SELECT id FROM steam_sync_jobs
-        WHERE id = $1 AND status = 'running' AND lease_token = $2
-        FOR UPDATE`,
-      [job.id, job.lease_token],
-    );
-    if (!runningJob.rows[0]) return null;
+    const runningJob = await lockSteamSyncJob(client, job);
+    if (!runningJob) return null;
     const beforeSourceResult = await client.query(
       `
       SELECT source.*, game.name AS game_name, game.status AS game_status,
@@ -527,6 +522,9 @@ async function persistWorkItem(job, item, prepared) {
       ],
     );
     const source = sourceRows[0];
+    if (wasNew && job.payload_json.hasPreviousSync) {
+      await client.query("UPDATE user_game_sources SET ownership_observed_run_id = $2 WHERE id = $1", [source.id, job.sync_run_id]);
+    }
 
     let candidate = null;
     let candidateState = "unchanged";
@@ -681,7 +679,7 @@ async function persistWorkItem(job, item, prepared) {
     const legacyReviewItem = event
       ? reviewItem(item.app, source, candidate, game, Number(event.id))
       : null;
-    return {
+    const result = {
       matched: !ignored && prepared?.match?.catalogGameId ? 1 : 0,
       duplicates: !ignored && prepared?.duplicate ? 1 : 0,
       filtered: !ignored && prepared?.filteredReason ? 1 : 0,
@@ -700,6 +698,19 @@ async function persistWorkItem(job, item, prepared) {
       reviewType: event ? reviewType : null,
       reviewItem: legacyReviewItem,
     };
+    const progress = normalizeSyncProgress(runningJob.progress_json);
+    for (const key of ["matched", "duplicates", "filtered", "needsReview"]) progress[key] += result[key];
+    progress.sourceWrites[result.sourceState] += 1;
+    progress.candidateWrites[result.candidateState] += 1;
+    if (result.candidateId && !progress.newCandidateIds.includes(result.candidateId)) progress.newCandidateIds.push(result.candidateId);
+    if (result.achievementSourceId && !progress.achievementSourceIds.includes(result.achievementSourceId)) progress.achievementSourceIds.push(result.achievementSourceId);
+    if (result.eventCreated) progress.reviewItemsCreated += 1;
+    if (result.reviewType) progress.syncReview[result.reviewType].push(result.reviewItem);
+    await client.query(
+      "UPDATE steam_sync_jobs SET cursor = cursor + 1, progress_json = $2::jsonb, locked_at = NOW(), updated_at = NOW() WHERE id = $1",
+      [job.id, JSON.stringify(progress)],
+    );
+    return result;
   });
 }
 
@@ -857,6 +868,7 @@ async function finalizeSteamSyncJob(job) {
         limit: SYNC_AUTO_MATCH_LIMIT,
         useCatalogSearch: true,
         candidateIds: progress.newCandidateIds || [],
+        writeGuard: async (work) => (await withActiveJobLease(job, work)).value,
       },
     );
   } catch (error) {
@@ -872,7 +884,7 @@ async function finalizeSteamSyncJob(job) {
     achievements = await syncSteamAchievementsForSourceIds(
       job.user_id,
       progress.achievementSourceIds || [],
-      { force: Boolean(job.force) },
+      { force: Boolean(job.force), writeGuard: async (work) => (await withActiveJobLease(job, work)).value },
     );
     if (achievements.failed > 0) {
       noncriticalErrors.push({
@@ -952,6 +964,7 @@ async function finalizeSteamSyncJob(job) {
       achievementFailures: achievements?.failed || 0,
       reviewItemsCreated,
       librarySnapshotSucceeded: true,
+      baseline: !payload.hasPreviousSync,
     };
     const status = noncriticalErrors.length ? "partial" : "succeeded";
     const runRow = await finishIntegrationSyncRun(
@@ -1056,6 +1069,10 @@ async function processSteamSyncJob(job) {
   try {
     job = await ensureRunForJob(job);
     if (!job) return;
+    if ((job.sync_kind || "library") === "wishlist") {
+      await processSteamWishlistJob(job);
+      return;
+    }
     if (!job.payload_json) {
       job = await initializeSteamSyncJob(job);
       if (!job) return;
@@ -1067,7 +1084,6 @@ async function processSteamSyncJob(job) {
       return;
     }
     const end = Math.min(start + STEAM_SYNC_CHUNK_SIZE, games.length);
-    const progress = normalizeSyncProgress(job.progress_json);
     for (let index = start; index < end; index += 1) {
       const storedItem = games[index];
       const item = storedItem?.app
@@ -1084,39 +1100,7 @@ async function processSteamSyncJob(job) {
         : null;
       const result = await persistWorkItem(job, item, prepared);
       if (!result) return;
-      progress.matched += result.matched;
-      progress.duplicates += result.duplicates;
-      progress.filtered += result.filtered;
-      progress.needsReview += result.needsReview;
-      progress.sourceWrites[result.sourceState] += 1;
-      progress.candidateWrites[result.candidateState] += 1;
-      if (
-        result.candidateId &&
-        !progress.newCandidateIds.includes(result.candidateId)
-      ) {
-        progress.newCandidateIds.push(result.candidateId);
-      }
-      if (result.achievementSourceId) {
-        if (!progress.achievementSourceIds.includes(result.achievementSourceId)) {
-          progress.achievementSourceIds.push(result.achievementSourceId);
-        }
-      }
-      if (result.eventCreated) progress.reviewItemsCreated += 1;
-      if (result.reviewType) {
-        progress.syncReview[result.reviewType].push(result.reviewItem);
-      }
-      const checkpoint = await pool.query(
-        `
-        UPDATE steam_sync_jobs
-           SET cursor = $2, progress_json = $3::jsonb, locked_at = NOW(),
-               updated_at = NOW()
-         WHERE id = $1 AND status = 'running'
-           AND lease_token = $4
-         RETURNING id
-        `,
-        [job.id, index + 1, JSON.stringify(progress), job.lease_token],
-      );
-      if (!checkpoint.rows[0]) return;
+
     }
     await pool.query(
       `UPDATE steam_sync_jobs
@@ -1125,7 +1109,11 @@ async function processSteamSyncJob(job) {
       [job.id, job.lease_token],
     );
   } catch (error) {
-    await failSteamSyncJob(job, error);
+    if ((job?.sync_kind || "library") === "wishlist") {
+      await failSteamWishlistJob(job, error);
+    } else {
+      await failSteamSyncJob(job, error);
+    }
   } finally {
     stopHeartbeat();
   }
@@ -1133,23 +1121,27 @@ async function processSteamSyncJob(job) {
 
 export async function enqueueSteamSync(
   userId,
-  { force = false, trigger = "manual" } = {},
+  { force = false, trigger = "manual", syncKind = "library" } = {},
 ) {
+  await assertSteamUser(userId);
   const account = await getSteamAccount(userId);
   if (!account) throw badRequest("Link Steam before syncing.");
   const triggerType = trigger === "scheduled" ? "scheduled" : "manual";
+  const normalizedKind = syncKind === "wishlist" ? "wishlist" : "library";
   const jobId = crypto.randomUUID();
   try {
     const { rows } = await pool.query(
       `
       INSERT INTO steam_sync_jobs (
-        id, user_id, account_id, force, trigger_type
+        id, user_id, account_id, force, trigger_type, sync_kind, provider_user_id
       )
-      VALUES ($1, $2, $3, $4, $5)
+      SELECT $1, $2, id, $4, $5, $6, provider_user_id FROM user_external_accounts
+      WHERE id = $3 AND user_id = $2 AND disconnected_at IS NULL AND provider_user_id = $7
       RETURNING *
       `,
-      [jobId, userId, account.id, force, triggerType],
+      [jobId, userId, account.id, force, triggerType, normalizedKind, account.provider_user_id],
     );
+    if (!rows[0]) throw badRequest("Steam account changed. Try again.");
     queueMicrotask(() => void runSteamSyncJobs().catch(() => {}));
     return serializeSyncJob(rows[0]);
   } catch (error) {
@@ -1162,6 +1154,30 @@ export async function enqueueSteamSync(
       [userId],
     );
     if (!rows[0]) throw error;
+    if ((rows[0].sync_kind || "library") !== normalizedKind) {
+      if (triggerType === "scheduled") {
+        await waitForSteamSyncJob(userId, rows[0].id);
+        return enqueueSteamSync(userId, { force, trigger, syncKind: normalizedKind });
+      }
+      const busy = new Error("Another Steam sync is already running.");
+      busy.status = 409;
+      busy.code = "steam_sync_busy";
+      throw busy;
+    }
+    if (force && !rows[0].force) {
+      if (rows[0].status === "queued") {
+        const upgraded = await pool.query(
+          `UPDATE steam_sync_jobs SET force = TRUE, updated_at = NOW()
+            WHERE id = $1 AND user_id = $2 AND status = 'queued' RETURNING *`,
+          [rows[0].id, userId],
+        );
+        if (upgraded.rows[0]) return serializeSyncJob(upgraded.rows[0]);
+      }
+      const busy = new Error("The current Steam sync must finish before confirmation.");
+      busy.status = 409;
+      busy.code = "steam_sync_busy";
+      throw busy;
+    }
     return serializeSyncJob(rows[0]);
   }
 }
@@ -1203,14 +1219,18 @@ export async function cancelSteamSyncJob(userId, jobId) {
     await client.query(
       `
       UPDATE user_external_accounts
-         SET sync_status = CASE
+         SET sync_status = CASE WHEN $3 = 'library' THEN CASE
                WHEN last_library_sync_at IS NULL THEN 'linked'
                ELSE 'synced'
-             END,
+             END ELSE sync_status END,
+             wishlist_sync_status = CASE WHEN $3 = 'wishlist' THEN CASE
+               WHEN last_wishlist_sync_at IS NULL THEN 'never'
+               ELSE 'synced'
+             END ELSE wishlist_sync_status END,
              updated_at = NOW()
        WHERE id = $1 AND user_id = $2
       `,
-      [rows[0].account_id, userId],
+      [rows[0].account_id, userId, rows[0].sync_kind || "library"],
     );
     return serializeSyncJob(rows[0]);
   });

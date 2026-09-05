@@ -3,6 +3,7 @@ export const DEFAULT_USER_PREFERENCES = {
   default_backlog_sort_key: "",
   default_backlog_sort_reversed: false,
   default_landing_path: "/",
+  show_wishlist_in_backlog: false,
 };
 
 export const backlogViewOptions = [
@@ -73,6 +74,10 @@ export function normalizeUserPreferences(preferences) {
         ? source.default_backlog_sort_reversed
         : DEFAULT_USER_PREFERENCES.default_backlog_sort_reversed,
     default_landing_path,
+    show_wishlist_in_backlog:
+      typeof source.show_wishlist_in_backlog === "boolean"
+        ? source.show_wishlist_in_backlog
+        : DEFAULT_USER_PREFERENCES.show_wishlist_in_backlog,
   };
 }
 

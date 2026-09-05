@@ -9,6 +9,7 @@ const routes = [
   ["/insights", "Insights"],
   ["/steam/library", "Steam Library"],
   ["/steam/import", "Steam Import Review"],
+  ["/wishlist", "Wishlist"],
   ["/me", "@smoke_user"],
   ["/settings", "Settings"],
 ];
@@ -47,6 +48,33 @@ async function fulfillSmokeApi(route) {
       totalPages: 1,
     });
   if (path === "/api/steam/account") return json({ account: null });
+  if (path === "/api/wishlist")
+    return json({
+      account: {
+        steamId: "76561190000000000",
+        wishlistSyncStatus: "synced",
+        lastWishlistSyncAt: "2026-09-04T00:00:00.000Z",
+      },
+      items: [
+        {
+          id: 1,
+          steamAppId: "10",
+          name: "A Very Long Wishlist Game Title That Must Remain Readable on Mobile",
+          cover: null,
+          genres: ["Adventure", "RPG"],
+          displayHLTB: 24,
+          rating: 4.4,
+          metacritic: 86,
+          releaseDate: "2026-08-01",
+          priority: 0,
+          dateAdded: "2026-08-01T00:00:00.000Z",
+          steamActive: true,
+          active: true,
+        },
+      ],
+      total: 1,
+      metadata: { missingNames: 0, complete: true },
+    });
   if (path.startsWith("/api/steam/import"))
     return json({
       results: [],
@@ -102,6 +130,21 @@ for (const [route, expectedHeading] of routes) {
     ).toBeVisible({ timeout: 10_000 });
   });
 }
+
+test("wishlist mobile layout handles long titles without horizontal overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "smoke-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route("**/api/**", fulfillSmokeApi);
+  await page.goto("/wishlist", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(/A Very Long Wishlist Game Title/)).toBeVisible();
+  await expect(page.getByText("Wishlist", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("24h", { exact: true })).toBeVisible();
+  await expect(page.getByText("Adventure", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
 
 test("settings game metadata controls render responsively", async ({ page }) => {
   const runtimeErrors = [];

@@ -30,6 +30,7 @@ const SortableGameCard = ({
   onAddToNextUp,
   isDragging,
   viewMode,
+  renderCardFooter,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: String(game.id) });
@@ -57,6 +58,7 @@ const SortableGameCard = ({
         onFinish={onFinish}
         onAddToNextUp={onAddToNextUp}
         variant={viewMode}
+        footer={renderCardFooter?.(game)}
       />
     </div>
   );
@@ -80,6 +82,7 @@ const GameGrid = ({
   canManage = false,
   emptyState,
   viewMode = "grid",
+  renderCardFooter,
 }) => {
   const initial = Array.isArray(games) ? games : [];
   const [localGames, setLocalGames] = React.useState(initial);
@@ -159,6 +162,7 @@ const GameGrid = ({
               canManage ? () => onAddToNextUp?.(only) : undefined
             }
             variant={viewMode}
+            footer={renderCardFooter?.(only)}
           />
         </div>
       </div>
@@ -184,6 +188,7 @@ const GameGrid = ({
                 canManage ? () => onAddToNextUp?.(game) : undefined
               }
               variant={viewMode}
+              footer={renderCardFooter?.(game)}
             />
           </div>
         ))}
@@ -218,6 +223,7 @@ const GameGrid = ({
               onAddToNextUp={() => onAddToNextUp?.(game)}
               isDragging={activeId === String(game.id)}
               viewMode={viewMode}
+              renderCardFooter={renderCardFooter}
             />
           ))}
         </div>

@@ -5,6 +5,7 @@ import {
   Download,
   ExternalLink,
   Gamepad2,
+  Heart,
   LibraryBig,
   Link as LinkIcon,
 } from "lucide-react";
@@ -249,7 +250,7 @@ export function IntegrationsSection({ isGuest }) {
               onChange={saveAutoSync}
               disabled={savingAutoSync}
               label="Daily Steam sync"
-              description="Once per day, refresh owned games and factual Steam activity. Backlog status changes still require your approval."
+              description="Once per day, refresh owned games, factual Steam activity, and wishlist membership. Backlog status changes still require your approval."
               className="mt-4"
             />
           ) : null}
@@ -264,6 +265,10 @@ export function IntegrationsSection({ isGuest }) {
         <Button as={Link} to="/steam/import" variant="secondary">
           <Download className="h-4 w-4" aria-hidden="true" />
           Steam Import Review
+        </Button>
+        <Button as={Link} to="/wishlist" variant="secondary">
+          <Heart className="h-4 w-4" aria-hidden="true" />
+          Wishlist
         </Button>
       </div>
     </section>

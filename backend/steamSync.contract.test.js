@@ -19,6 +19,7 @@ const adminUrl =
 async function createTemporaryDatabase() {
   const database = `steam_contract_${crypto.randomUUID().replaceAll("-", "")}`;
   const target = new URL(adminUrl);
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(target.hostname)) throw new Error("Contract tests require localhost");
   target.pathname = `/${database}`;
   const admin = new pg.Client({ connectionString: adminUrl });
   await admin.connect();

@@ -24,6 +24,7 @@ export function playNextStatusGroup(status, statusGroupOf) {
 function eligibleGames(games, statusGroupOf) {
   return (games || []).filter(
     (game) =>
+      String(game?.status || "").trim().toLowerCase() !== "wishlist" &&
       !["playing", "done"].includes(
         playNextStatusGroup(game?.status, statusGroupOf),
       ),
