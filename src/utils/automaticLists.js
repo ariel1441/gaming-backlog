@@ -345,6 +345,7 @@ export function resolveSmartList(
   const query = normalizeSmartQuery(list?.query || {});
   const sortKey = normalizeSmartSortKey(list?.sortKey || "score");
   const filtered = (Array.isArray(games) ? games : []).filter((game) => {
+    if (normalize(game?.status) === "wishlist") return false;
     if (!matchesStatus(game, query.status, statusGroupOf)) return false;
     if (query.finishedYear && parseGameDate(game?.finished_at)?.year !== Number(query.finishedYear)) return false;
     if (query.releasedYear && parseGameDate(game?.releaseDate || game?.released || game?.released_at)?.year !== Number(query.releasedYear)) return false;

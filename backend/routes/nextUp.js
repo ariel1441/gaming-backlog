@@ -25,6 +25,7 @@ async function lockedQueueRows(client, userId) {
        FROM user_next_up_games n
        JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
       WHERE n.user_id = $1
+        AND LOWER(TRIM(g.status)) <> 'wishlist'
       ORDER BY n.position, n.game_id
       FOR UPDATE OF n`,
     [userId],
@@ -58,6 +59,7 @@ router.get("/", verifyToken, async (req, res, next) => {
          FROM user_next_up_games n
          JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
         WHERE n.user_id = $1
+          AND LOWER(TRIM(g.status)) <> 'wishlist'
         ORDER BY n.position, n.game_id`,
       [req.user.id],
     );
@@ -89,6 +91,9 @@ router.post("/:gameId", verifyToken, nextUpGameId, async (req, res, next) => {
     );
     const game = gameResult.rows[0];
     if (!game) throw notFound("Game not found");
+    if (String(game.status || "").trim().toLowerCase() === "wishlist") {
+      throw badRequest("Move this wishlist item into the backlog first.");
+    }
     if (["playing", "done"].includes(statusGroupOf(game.status))) {
       throw badRequest("Playing and done games cannot be added to Next Up.");
     }

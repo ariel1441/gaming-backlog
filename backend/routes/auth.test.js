@@ -77,6 +77,7 @@ test("GET /api/auth/me returns default preferences when no row exists", async ()
         default_backlog_sort_key: "",
         default_backlog_sort_reversed: false,
         default_landing_path: "/",
+        show_wishlist_in_backlog: false,
       });
     },
   );
@@ -98,6 +99,7 @@ test("PATCH /api/auth/me/preferences upserts preferences for current user", asyn
               default_backlog_sort_key: "score",
               default_backlog_sort_reversed: true,
               default_landing_path: "/me",
+              show_wishlist_in_backlog: true,
             },
           ],
         };
@@ -112,6 +114,7 @@ test("PATCH /api/auth/me/preferences upserts preferences for current user", asyn
           default_backlog_sort_key: "score",
           default_backlog_sort_reversed: true,
           default_landing_path: "/me",
+          show_wishlist_in_backlog: true,
         },
       });
 
@@ -121,11 +124,12 @@ test("PATCH /api/auth/me/preferences upserts preferences for current user", asyn
         default_backlog_sort_key: "score",
         default_backlog_sort_reversed: true,
         default_landing_path: "/me",
+        show_wishlist_in_backlog: true,
       });
       const insert = calls.find((call) =>
         call.text.includes("INSERT INTO user_preferences"),
       );
-      assert.deepEqual(insert.values, [7, "table", "score", true, "/me"]);
+      assert.deepEqual(insert.values, [7, "table", "score", true, "/me", true]);
     },
   );
 });

@@ -66,6 +66,9 @@ export default function BacklogToolbar({
   totalCount,
   games,
   onSelectGame,
+  collection = "backlog",
+  membershipControl = null,
+  sortOptions = backlogSortOptions,
 }) {
   const title = identity?.title || "Backlog";
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
@@ -176,6 +179,8 @@ export default function BacklogToolbar({
         >
           <div className="flex flex-col gap-3 2xl:flex-row 2xl:flex-nowrap 2xl:items-center">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 2xl:flex-nowrap">
+              {membershipControl}
+              {collection !== "wishlist" ? <>
               <FilterDropdown
                 label="Status"
                 options={filters.allStatuses.map(statusOption)}
@@ -194,22 +199,24 @@ export default function BacklogToolbar({
                 onClear={() => filters.setSelectedMyGenres([])}
                 searchable
               />
+              </> : null}
               <HoursDropdown
                 hoursBounds={filters.hoursBounds}
                 hoursRange={filters.hoursRange}
                 setHoursRange={filters.setHoursRange}
               />
               <FilterDropdown
-                label="RAWG genres"
+                label="Genres & tags"
                 options={[
                   ...filters.allGenres,
-                  { value: NO_RAWG_GENRE_FILTER, label: "No RAWG genre" },
+                  { value: NO_RAWG_GENRE_FILTER, label: "No genre or tag" },
                 ]}
                 selected={filters.selectedGenres}
                 onToggle={filters.toggleGenre}
                 onClear={() => filters.setSelectedGenres([])}
                 searchable
               />
+              {collection !== "wishlist" ? <>
               <FilterDropdown
                 label="Sources"
                 options={sourceOptions.filter(
@@ -250,6 +257,7 @@ export default function BacklogToolbar({
                   ) : null}
                 </Button>
               </div>
+              </> : null}
               {filters.count ? (
                 <Button
                   type="button"
@@ -271,7 +279,7 @@ export default function BacklogToolbar({
                   id="backlog-sort"
                   value={sort.key}
                   onChange={sort.setKey}
-                  options={backlogSortOptions}
+                  options={sortOptions}
                   className="h-10 min-w-0 flex-1 sm:w-[190px] sm:flex-none"
                   placeholder="Default order"
                 />

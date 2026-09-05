@@ -370,6 +370,10 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const statusNorm = normStatus(status);
     const userTitle = String(name).trim();
 
+    if (statusNorm === "wishlist") {
+      return next(httpError(422, "Use the Wishlist page instead of a backlog status.", "validation_error"));
+    }
+
     const statusRow = await pool.query(
       "SELECT 1 FROM statuses WHERE status = $1",
       [statusNorm],
@@ -667,6 +671,9 @@ router.put(
       );
       const row = existing.rows[0];
       if (!row) return next(notFound("Not found"));
+      if (statusNorm === "wishlist" && normStatus(row.status) !== "wishlist") {
+        return next(httpError(422, "Use the Wishlist page instead of a backlog status.", "validation_error"));
+      }
 
       const duplicateQuery = listOwnedGameTitlesQuery(userId);
       const duplicateRes = await pool.query(
@@ -909,7 +916,7 @@ router.delete("/:id", verifyToken, gameIdParam, async (req, res, next) => {
 router.get("/statuses-list", async (_req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT status FROM statuses ORDER BY rank, status`,
+      `SELECT status FROM statuses WHERE LOWER(TRIM(status)) <> 'wishlist' ORDER BY rank, status`,
     );
     res.json(rows.map((r) => r.status));
   } catch (err) {
@@ -950,6 +957,10 @@ router.patch(
       }
 
       const targetStatus = resolveTargetStatus(current.status, status);
+      if (normStatus(targetStatus) === "wishlist" && normStatus(current.status) !== "wishlist") {
+        await client.query("ROLLBACK");
+        return next(httpError(422, "Use the Wishlist page instead of a backlog status.", "validation_error"));
+      }
 
       // Resolve ranks for current & target statuses
       const { rows: trgRows } = await client.query(

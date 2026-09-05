@@ -19,6 +19,8 @@ play next, and sharing a read-only public profile.
 - Link Steam, manually sync owned games, browse the synced Steam library,
   review import candidates, attach Steam apps to existing backlog games, and
   show private Steam ownership/playtime/last-played/achievement summary data.
+- Sync a private Steam wishlist with durable removal history without importing
+  wishlist-only apps into the backlog.
 
 ## Tech Stack
 
@@ -122,7 +124,8 @@ Discover shelves are stored in Postgres. In production, set
 automatically after startup and then once per day. Leave it false if you prefer
 manual seeding with `npm run catalog:seed`.
 
-Steam integration uses migrations `006` through `010`, plus `018` and `028`.
+Steam integration uses migrations `006` through `010`, plus `018`, `028`,
+`029`, `030`, and `031`.
 In production,
 configure `STEAM_WEB_API_KEY`, `STEAM_OPENID_REALM`,
 `STEAM_OPENID_RETURN_URL`, and the frontend return origin before enabling real

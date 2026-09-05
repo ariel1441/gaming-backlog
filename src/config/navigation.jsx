@@ -4,6 +4,7 @@ import {
   Compass,
   Download,
   Gamepad2,
+  Heart,
   LibraryBig,
   List,
   MessageSquareText,
@@ -26,6 +27,12 @@ export const primaryNavigationItems = [
 ];
 
 export const libraryNavigationItems = [
+  {
+    to: "/wishlist",
+    label: "Wishlist",
+    icon: Heart,
+    savedAccountOnly: true,
+  },
   {
     to: "/steam/library",
     label: "Steam Library",

@@ -2,6 +2,8 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import stringSimilarity from "string-similarity";
 import { pool } from "../db.js";
+import { assertSteamUser, invalidateSteamSyncJobs } from "./steamSyncLease.js";
+import { absoluteImageUrl, steamCoverUrl } from "../utils/steamAssets.js";
 import { normalizeGameTitle } from "../utils/gameTitle.js";
 import { badRequest, conflict, serviceUnavailable } from "../utils/httpError.js";
 import { normStatus } from "../utils/status.js";
@@ -32,6 +34,9 @@ const STEAM_TIMEOUT_MS = Number(process.env.STEAM_TIMEOUT_MS) || 10_000;
 const STEAM_MAX_RESPONSE_BYTES =
   Number(process.env.STEAM_MAX_RESPONSE_BYTES) || 5 * 1024 * 1024;
 const STEAM_MAX_RETRIES = 2;
+const WISHLIST_ENRICH_PAGE_SIZE = 100;
+const WISHLIST_TAG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+let wishlistTagCache = { expiresAt: 0, byId: new Map() };
 const DUPLICATE_TITLE_SCORE = 0.86;
 const RECENT_STEAM_ACTIVITY_DAYS = 14;
 const DEV_OWNED_GAMES_SAMPLE = {
@@ -146,6 +151,7 @@ function verifySteamState(state) {
 }
 
 export async function beginSteamLink(userId) {
+  await assertSteamUser(userId);
   const transactionId = crypto.randomUUID();
   const nonce = crypto.randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + STEAM_LINK_TTL_MS);
@@ -248,9 +254,19 @@ async function steamGet(path, params = {}) {
         maxBytes: STEAM_MAX_RESPONSE_BYTES,
       });
       if (!res.ok) throw providerHttpError("steam", res);
-      return await readProviderJson("steam", res, {
+      const result = res.headers.get("x-eresult");
+      if (result != null && result !== "1") {
+        throw new ProviderRequestError("steam", "steam_invalid_response", "Steam could not provide an accessible response.", { retryable: false });
+      }
+      const payload = await readProviderJson("steam", res, {
         maxBytes: STEAM_MAX_RESPONSE_BYTES,
       });
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+        // Protobuf JSON may omit zero-valued fields. Only transport success,
+        // never an arbitrary JSON property, can confirm that omitted empty case.
+        payload.__steamResult = result === "1" ? 1 : null;
+      }
+      return payload;
     } catch (error) {
       const retryableCodes = new Set([
         "steam_timeout",
@@ -263,7 +279,10 @@ async function steamGet(path, params = {}) {
         error?.retryable !== false &&
         retryableCodes.has(error?.code);
       if (!canRetry) throw error;
-      const delayMs = 150 * 2 ** attempt + Math.floor(Math.random() * 100);
+      const delayMs = Math.min(
+        Math.max(Number(error?.retryAfterMs) || 0, 150 * 2 ** attempt) + Math.floor(Math.random() * 100),
+        30_000,
+      );
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
@@ -282,7 +301,7 @@ export function normalizeOwnedGamesPayload(payload) {
         appid,
         name: String(game.name || "").trim() || `Steam App ${appid}`,
         iconUrl: iconHash ? `${STEAM_MEDIA_BASE}/${appid}/${iconHash}.jpg` : null,
-        playtimeMinutes: Number.isFinite(Number(game.playtime_forever))
+        playtimeMinutes: game.playtime_forever != null && Number.isFinite(Number(game.playtime_forever))
           ? Math.max(0, Math.trunc(Number(game.playtime_forever)))
           : null,
         lastPlayedAt: Number(game.rtime_last_played)
@@ -291,6 +310,225 @@ export function normalizeOwnedGamesPayload(payload) {
       };
     })
     .filter(Boolean);
+}
+
+export function normalizeWishlistPayload(payload, countPayload = null) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new ProviderRequestError("steam", "steam_wishlist_invalid_response", "Steam returned an invalid wishlist response.");
+  }
+  const response = payload.response;
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new ProviderRequestError("steam", "steam_wishlist_invalid_response", "Steam returned an invalid wishlist response.");
+  }
+  const rawItems = response.items;
+  if (rawItems != null && !Array.isArray(rawItems)) {
+    throw new ProviderRequestError("steam", "steam_wishlist_invalid_response", "Steam returned invalid wishlist items.");
+  }
+  const items = (rawItems || []).map((item) => {
+    const appid = String(item?.appid ?? "").trim();
+    const priority = Number(item?.priority);
+    const dateAdded = Number(item?.date_added);
+    if (item?.date_added != null && (!Number.isInteger(dateAdded) || dateAdded < 0 || dateAdded > 8_640_000_000_000)) {
+      throw new ProviderRequestError("steam", "steam_wishlist_invalid_response", "Steam returned a malformed wishlist date.");
+    }
+    if (!/^[1-9]\d{0,19}$/.test(appid) || !Number.isInteger(priority) || priority < 0) {
+      throw new ProviderRequestError("steam", "steam_wishlist_invalid_response", "Steam returned a malformed wishlist item.");
+    }
+    const normalized = {
+      appid,
+      priority,
+      dateAdded: Number.isInteger(dateAdded) && dateAdded > 0
+        ? new Date(dateAdded * 1000).toISOString()
+        : null,
+    };
+    const name = String(item?.name || "").trim();
+    const coverUrl = String(item?.coverUrl || item?.cover_url || "").trim();
+    const releaseDate = String(item?.releaseDate || item?.release_date || "").trim();
+    const genres = Array.isArray(item?.genres)
+      ? item.genres.map((genre) => String(genre || "").trim()).filter(Boolean)
+      : [];
+    if (name) normalized.name = name;
+    if (absoluteImageUrl(coverUrl)) normalized.coverUrl = absoluteImageUrl(coverUrl);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) normalized.releaseDate = releaseDate;
+    if (genres.length) normalized.genres = genres;
+    return normalized;
+  });
+  if (new Set(items.map((item) => item.appid)).size !== items.length) {
+    throw new ProviderRequestError("steam", "steam_wishlist_invalid_response", "Steam returned duplicate wishlist items.");
+  }
+  const countValue = countPayload?.response?.count;
+  if (countValue != null && (typeof countValue !== "number" || !Number.isInteger(countValue) || countValue < 0)) {
+    throw new ProviderRequestError("steam", "steam_wishlist_invalid_response", "Steam returned an invalid wishlist count.");
+  }
+  const explicitCount = typeof countValue === "number" && Number.isInteger(countValue) && countValue >= 0 ? countValue : null;
+  if (explicitCount != null && explicitCount !== items.length) {
+    throw new ProviderRequestError("steam", "steam_wishlist_count_mismatch", "Steam wishlist count did not match its item list.");
+  }
+  return { items, emptyIsAmbiguous: items.length === 0 && !(
+    (Array.isArray(rawItems) && explicitCount === 0) ||
+    (payload.__steamResult === 1 && countPayload?.__steamResult === 1)
+  ) };
+}
+
+function normalizeWishlistReleaseDate(release) {
+  const timestamp = Number(release?.steam_release_date);
+  if (Number.isInteger(timestamp) && timestamp > 0) {
+    return new Date(timestamp * 1000).toISOString().slice(0, 10);
+  }
+  const candidate = String(release?.release_date || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : null;
+}
+
+export function wishlistEnrichmentRequest(steamId, startIndex, pageSize = WISHLIST_ENRICH_PAGE_SIZE) {
+  const safeStart = Math.max(0, Math.trunc(Number(startIndex) || 0));
+  const safePageSize = Math.min(Math.max(Math.trunc(Number(pageSize) || WISHLIST_ENRICH_PAGE_SIZE), 1), WISHLIST_ENRICH_PAGE_SIZE);
+  return {
+    input_json: JSON.stringify({
+      steamid: String(steamId),
+      context: { language: "english", country_code: "US", steam_realm: 1 },
+      data_request: {
+        include_assets: true,
+        include_release: true,
+        include_basic_info: true,
+        include_tag_count: 5,
+      },
+      filters: {},
+      start_index: safeStart,
+      page_size: safePageSize,
+    }),
+  };
+}
+
+export function normalizeWishlistEnrichmentPayload(payload) {
+  const response = payload?.response;
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new ProviderRequestError("steam", "steam_wishlist_metadata_invalid", "Steam returned invalid wishlist metadata.");
+  }
+  const candidates = [
+    ...(Array.isArray(response?.items) ? response.items : []),
+    ...(Array.isArray(response?.store_items) ? response.store_items : []),
+  ];
+  const byId = new Map();
+  for (const entry of candidates) {
+    const store = entry?.store_item || entry;
+    const appid = String(entry?.appid ?? store?.appid ?? "").trim();
+    if (!/^\d{1,20}$/.test(appid)) continue;
+    const assets = store?.assets || entry?.assets || {};
+    const value = {
+      name: String(store?.name || entry?.name || "").trim() || null,
+      coverUrl: steamCoverUrl(assets, entry?.capsule),
+      releaseDate: normalizeWishlistReleaseDate(store?.release || entry?.release),
+      tagIds: (Array.isArray(store?.tagids) ? store.tagids : store?.tags || [])
+        .map((tag) => String(tag?.tagid ?? tag ?? "").trim())
+        .filter((tagid) => /^\d+$/.test(tagid))
+        .slice(0, 5),
+    };
+    if (value.name || value.coverUrl || value.releaseDate || value.tagIds.length) {
+      byId.set(appid, mergeWishlistMetadata(byId.get(appid), value));
+    }
+  }
+  return byId;
+}
+
+async function wishlistTagNames() {
+  if (wishlistTagCache.expiresAt > Date.now() && wishlistTagCache.byId.size) {
+    return wishlistTagCache.byId;
+  }
+  const payload = await steamGet("/IStoreService/GetMostPopularTags/v1/", {
+    key: requireSteamApiKey(),
+    language: "english",
+  });
+  const tags = payload?.response?.tags;
+  if (!Array.isArray(tags)) {
+    throw new ProviderRequestError("steam", "steam_wishlist_tags_invalid", "Steam returned invalid store tags.");
+  }
+  const byId = new Map();
+  for (const tag of tags) {
+    const tagid = String(tag?.tagid ?? "").trim();
+    const name = String(tag?.name || "").trim();
+    if (/^\d+$/.test(tagid) && name) byId.set(tagid, name);
+  }
+  wishlistTagCache = { expiresAt: Date.now() + WISHLIST_TAG_CACHE_TTL_MS, byId };
+  return byId;
+}
+
+export function mergeWishlistMetadata(previous = {}, next = {}) {
+  return Object.fromEntries(Object.entries({ ...previous, ...Object.fromEntries(
+    Object.entries(next).filter(([, value]) => value != null && value !== "" && (!Array.isArray(value) || value.length)),
+  ) }));
+}
+
+function summarizeWishlistMetadata(items, failedPages = []) {
+  const named = items.filter((item) => item.name).length;
+  const covered = items.filter((item) => absoluteImageUrl(item.coverUrl)).length;
+  const tagged = items.filter((item) => Array.isArray(item.genres) && item.genres.length).length;
+  return {
+    expected: items.length,
+    named,
+    covered,
+    tagged,
+    failedPages,
+    complete: failedPages.length === 0 && named === items.length && covered === items.length && tagged === items.length,
+  };
+}
+
+export async function fetchSteamWishlist(steamId) {
+  if (!isProduction() && process.env.STEAM_MOCK_WISHLIST_JSON) {
+    const mocked = JSON.parse(process.env.STEAM_MOCK_WISHLIST_JSON);
+    const normalized = normalizeWishlistPayload(mocked.wishlist || mocked, mocked.count || null);
+    return { ...normalized, items: normalized.items.map((item, providerOrder) => ({ ...item, providerOrder })), metadata: summarizeWishlistMetadata(normalized.items) };
+  }
+  const [wishlist, count] = await Promise.all([
+    steamGet("/IWishlistService/GetWishlist/v1/", { steamid: steamId }),
+    steamGet("/IWishlistService/GetWishlistItemCount/v1/", { steamid: steamId }),
+  ]);
+  const normalized = normalizeWishlistPayload(wishlist, count);
+  const metadata = new Map();
+  const failedPages = [];
+  let orderedIds = null;
+  for (let startIndex = 0; startIndex < normalized.items.length; startIndex += WISHLIST_ENRICH_PAGE_SIZE) {
+    try {
+      const page = await steamGet(
+        "/IWishlistService/GetWishlistSortedFiltered/v1/",
+        wishlistEnrichmentRequest(steamId, startIndex),
+      );
+      // Steam repeats the FULL ordered membership list; only store_item metadata is paged.
+      const sequence = normalizeWishlistPayload(page).items.map((item) => item.appid);
+      const expected = new Set(normalized.items.map((item) => item.appid));
+      if (sequence.length !== expected.size || sequence.some((id) => !expected.has(id)) ||
+          (orderedIds && sequence.some((id, index) => id !== orderedIds[index]))) {
+        throw new ProviderRequestError("steam", "steam_wishlist_snapshot_changed", "Steam wishlist changed while syncing. Retry to get a consistent snapshot.");
+      }
+      orderedIds = sequence;
+      for (const [appid, value] of normalizeWishlistEnrichmentPayload(page)) {
+        metadata.set(appid, mergeWishlistMetadata(metadata.get(appid), value));
+      }
+    } catch (error) {
+      if (error?.code === "steam_wishlist_snapshot_changed") throw error;
+      failedPages.push({ startIndex, code: error?.code || "steam_wishlist_metadata_failed" });
+    }
+  }
+  if ([...metadata.values()].some((item) => item.tagIds?.length)) {
+    try {
+      const tagNames = await wishlistTagNames();
+      for (const value of metadata.values()) {
+        value.genres = (value.tagIds || []).map((tagid) => tagNames.get(tagid)).filter(Boolean);
+        delete value.tagIds;
+      }
+    } catch (error) {
+      failedPages.push({ startIndex: null, code: error?.code || "steam_wishlist_tags_failed" });
+      for (const value of metadata.values()) delete value.tagIds;
+    }
+  }
+  const order = new Map((orderedIds || []).map((id, index) => [id, index]));
+  const items = normalized.items.map((item) => ({ ...mergeWishlistMetadata(item, metadata.get(item.appid)),
+    providerOrder: order.get(item.appid) ?? null,
+  }));
+  return {
+    ...normalized,
+    items,
+    metadata: summarizeWishlistMetadata(items, failedPages),
+  };
 }
 
 function validateOwnedGamesPayload(payload) {
@@ -315,6 +553,22 @@ function validateOwnedGamesPayload(payload) {
       "steam_invalid_response",
       "Steam returned an invalid owned-library response.",
     );
+  }
+  const games = response.games || [];
+  const ids = new Set();
+  for (const game of games) {
+    const id = String(game?.appid ?? "");
+    const minutes = game?.playtime_forever;
+    const played = game?.rtime_last_played;
+    if (!/^[1-9]\d*$/.test(id) || ids.has(id) ||
+        (minutes != null && (!Number.isInteger(minutes) || minutes < 0)) ||
+        (played != null && (!Number.isInteger(played) || played < 0 || played > 8_640_000_000_000))) {
+      throw new ProviderRequestError("steam", "steam_invalid_response", "Steam returned malformed or duplicate library items.");
+    }
+    ids.add(id);
+  }
+  if (response.game_count != null && (!Number.isInteger(response.game_count) || response.game_count !== games.length)) {
+    throw new ProviderRequestError("steam", "steam_invalid_response", "Steam library count did not match its items.");
   }
   return payload;
 }
@@ -476,6 +730,8 @@ export async function upsertSteamAccount(userId, steamId, summary = {}) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await assertSteamUser(userId, client);
+    await invalidateSteamSyncJobs(client, userId);
     const owner = await client.query(
       `
       SELECT user_id
@@ -491,6 +747,14 @@ export async function upsertSteamAccount(userId, steamId, summary = {}) {
     if (owner.rows[0]) {
       throw conflict("This Steam account is already linked to another account.");
     }
+    await client.query(
+      `UPDATE user_game_sources SET source_status = 'disconnected',
+          ownership_observed_run_id = NULL, updated_at = NOW()
+       WHERE user_id = $1 AND provider = 'steam' AND EXISTS (
+         SELECT 1 FROM user_external_accounts WHERE user_id = $1
+           AND provider = 'steam' AND disconnected_at IS NULL AND provider_user_id <> $2
+       )`, [userId, String(steamId)],
+    );
     const { rows } = await client.query(
       `
       INSERT INTO user_external_accounts (
@@ -501,6 +765,9 @@ export async function upsertSteamAccount(userId, steamId, summary = {}) {
       VALUES ($1, 'steam', $2, $3, $4, $5, $6, 'linked', NOW(), NULL, NULL, NULL, NOW())
       ON CONFLICT (user_id, provider) WHERE disconnected_at IS NULL
       DO UPDATE SET
+        last_library_sync_at = CASE WHEN user_external_accounts.provider_user_id = EXCLUDED.provider_user_id THEN user_external_accounts.last_library_sync_at ELSE NULL END,
+        last_wishlist_sync_at = CASE WHEN user_external_accounts.provider_user_id = EXCLUDED.provider_user_id THEN user_external_accounts.last_wishlist_sync_at ELSE NULL END,
+        auto_sync_enabled = CASE WHEN user_external_accounts.provider_user_id = EXCLUDED.provider_user_id THEN user_external_accounts.auto_sync_enabled ELSE FALSE END,
         provider_user_id = EXCLUDED.provider_user_id,
         display_name = EXCLUDED.display_name,
         profile_url = EXCLUDED.profile_url,
@@ -538,8 +805,8 @@ export async function upsertSteamAccount(userId, steamId, summary = {}) {
   }
 }
 
-export async function getSteamAccount(userId) {
-  const { rows } = await pool.query(
+export async function getSteamAccount(userId, client = pool) {
+  const { rows } = await client.query(
     `
     SELECT *
     FROM user_external_accounts
@@ -567,6 +834,12 @@ export function serializeSteamAccount(row) {
     lastErrorCode: row.last_error_code,
     lastErrorMessage: row.last_error_message,
     autoSyncEnabled: Boolean(row.auto_sync_enabled),
+    wishlistSyncStatus: row.wishlist_sync_status || "never",
+    lastWishlistSyncAttemptAt: row.last_wishlist_sync_attempt_at || null,
+    lastWishlistSyncAt: row.last_wishlist_sync_at || null,
+    wishlistLastErrorCode: row.wishlist_last_error_code || null,
+    wishlistLastErrorMessage: row.wishlist_last_error_message || null,
+    wishlistEmptyObservations: Number(row.wishlist_empty_observations) || 0,
     linkedAt: row.linked_at,
   };
 }
@@ -598,6 +871,7 @@ export async function updateSteamAutoSync(userId, enabled) {
 
 export async function disconnectSteamAccount(userId) {
   return withTransaction(async (client) => {
+  await invalidateSteamSyncJobs(client, userId);
   await client.query(
     `
     UPDATE user_external_accounts
@@ -690,8 +964,8 @@ function achievementSyncCoolingDown(source, force) {
   return Number.isFinite(elapsed) && elapsed < ACHIEVEMENT_SYNC_COOLDOWN_MS;
 }
 
-async function saveAchievementSummary(sourceId, summary) {
-  const { rows } = await pool.query(
+async function saveAchievementSummary(sourceId, summary, client = pool) {
+  const { rows } = await client.query(
     `
     UPDATE user_game_sources
        SET achievements_unlocked = $2,
@@ -718,8 +992,8 @@ async function saveAchievementSummary(sourceId, summary) {
   return rows[0];
 }
 
-async function saveAchievementFailure(sourceId, err) {
-  const { rows } = await pool.query(
+async function saveAchievementFailure(sourceId, err, client = pool) {
+  const { rows } = await client.query(
     `
     UPDATE user_game_sources
        SET achievements_status = 'failed',
@@ -739,7 +1013,7 @@ async function saveAchievementFailure(sourceId, err) {
   return rows[0];
 }
 
-async function syncSteamAchievementSource(source, { force = false } = {}) {
+async function syncSteamAchievementSource(source, { force = false, writeGuard = null } = {}) {
   if (achievementSyncCoolingDown(source, force)) {
     return {
       skipped: true,
@@ -776,7 +1050,10 @@ async function syncSteamAchievementSource(source, { force = false } = {}) {
             },
           };
     const summary = normalizeSteamAchievementSummary(playerPayload, schemaPayload);
-    const updated = await saveAchievementSummary(source.id, summary);
+    const updated = writeGuard
+      ? await writeGuard((client) => saveAchievementSummary(source.id, summary, client))
+      : await saveAchievementSummary(source.id, summary);
+    if (!updated) return { skipped: true, reason: "lease_lost" };
     return {
       skipped: false,
       status: summary.status,
@@ -785,7 +1062,10 @@ async function syncSteamAchievementSource(source, { force = false } = {}) {
       achievements: serializeAchievementSummary(updated),
     };
   } catch (err) {
-    const updated = await saveAchievementFailure(source.id, err);
+    const updated = writeGuard
+      ? await writeGuard((client) => saveAchievementFailure(source.id, err, client))
+      : await saveAchievementFailure(source.id, err);
+    if (!updated) return { skipped: true, reason: "lease_lost" };
     return {
       skipped: false,
       failed: true,
@@ -899,7 +1179,7 @@ export async function syncSteamAchievementsForLinkedGames(
 export async function syncSteamAchievementsForSourceIds(
   userId,
   sourceIds = [],
-  { force = false } = {},
+  { force = false, writeGuard = null } = {},
 ) {
   const ids = Array.from(
     new Set(sourceIds.map(Number).filter(Number.isInteger)),
@@ -938,7 +1218,7 @@ export async function syncSteamAchievementsForSourceIds(
       ...(await mapWithConcurrency(
         rows,
         ACHIEVEMENT_BATCH_CONCURRENCY,
-        (source) => syncSteamAchievementSource(source, { force }),
+        (source) => syncSteamAchievementSource(source, { force, writeGuard }),
       )),
     );
   }
@@ -2736,7 +3016,7 @@ export async function updateSteamImportCandidate(userId, candidateId, action, pa
     const nextStatus = String(payload.status || "").trim();
     if (!nextStatus) throw badRequest("status is required.");
     const status = await client.query(
-      "SELECT status FROM statuses WHERE status = $1 LIMIT 1",
+      "SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist' LIMIT 1",
       [nextStatus]
     );
     if (!status.rows[0]) throw badRequest("Selected status was not found.");
@@ -2942,7 +3222,7 @@ export async function bulkUpdateSteamCandidates(
   if (action === "set_status") {
     const nextStatus = String(status || "").trim();
     const statusRow = await client.query(
-      "SELECT status FROM statuses WHERE status = $1 LIMIT 1",
+      "SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist' LIMIT 1",
       [nextStatus]
     );
     if (!statusRow.rows[0]) throw badRequest("Selected status was not found.");
@@ -2963,7 +3243,7 @@ export async function bulkUpdateSteamCandidates(
 
 export async function autoMatchSteamCandidates(
   user,
-  { limit = AUTO_MATCH_LIMIT, useCatalogSearch = true, candidateIds = null } = {}
+  { limit = AUTO_MATCH_LIMIT, useCatalogSearch = true, candidateIds = null, writeGuard = null } = {}
 ) {
   const safeLimit = Math.min(Math.max(Number(limit) || AUTO_MATCH_LIMIT, 1), AUTO_MATCH_LIMIT);
   const scopedIds = Array.isArray(candidateIds)
@@ -3028,8 +3308,8 @@ export async function autoMatchSteamCandidates(
     };
     const recommendation = recommendStatus(app, catalog, null);
     const duplicate = await findDuplicateGame(user.id, app, first.id);
-    await withTransaction(async (client) => {
-    await client.query(
+    const updated = await (writeGuard || withTransaction)(async (client) => {
+    const candidate = await client.query(
       `
       UPDATE steam_import_candidates
          SET proposed_catalog_game_id = $3,
@@ -3040,7 +3320,8 @@ export async function autoMatchSteamCandidates(
              suggested_status_confidence = $8,
              duplicate_game_id = $9,
              updated_at = NOW()
-       WHERE id = $1 AND user_id = $2
+       WHERE id = $1 AND user_id = $2 AND import_status IN ('pending', 'accepted') AND user_selected_catalog_game_id IS NULL
+       RETURNING id
       `,
       [
         row.id,
@@ -3054,6 +3335,7 @@ export async function autoMatchSteamCandidates(
         duplicate?.id || null,
       ]
     );
+    if (!candidate.rows.length) return false;
     await client.query(
       `
       UPDATE user_game_sources
@@ -3064,8 +3346,9 @@ export async function autoMatchSteamCandidates(
       `,
       [user.id, row.steam_app_id, first.id, duplicate?.id || null]
     );
+    return true;
     });
-    matched++;
+    if (updated) matched++;
   }
   return { reviewed, matched, limit: safeLimit };
 }
@@ -3155,7 +3438,7 @@ export async function importSteamCandidates(userId, candidateIds = []) {
         fallbackRecommendation.status ||
         "plan to play";
       const validStatus = await client.query(
-        "SELECT status FROM statuses WHERE status = $1 LIMIT 1",
+        "SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist' LIMIT 1",
         [targetStatus]
       );
       const importStatus = validStatus.rows[0]?.status || "plan to play";

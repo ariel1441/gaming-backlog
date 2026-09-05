@@ -140,6 +140,15 @@ export function PreferencesSection({ user, isGuest, updatePreferences }) {
             disabled={disabled || saving}
           />
         </div>
+        <div className="flex flex-col justify-end lg:col-span-2">
+          <Switch
+            checked={draft.show_wishlist_in_backlog}
+            onChange={(checked) => updateDraft("show_wishlist_in_backlog", checked)}
+            label="Show wishlist games in Backlog"
+            description="Adds a separate read-only wishlist section below your backlog. Wishlist games never enter backlog filters, ordering, insights, or exports."
+            disabled={disabled || saving}
+          />
+        </div>
       </div>
 
       <div className="mt-5 flex flex-wrap justify-end gap-2">

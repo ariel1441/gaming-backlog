@@ -401,7 +401,8 @@ function ownedCatalogPredicate(alias, userParam) {
       ${alias}.catalog_game_id IS NULL AND
       ${normalizeSql(`${alias}.name`)} = ${normalizeSql("cg.name")}
     )
-  ) AND ${alias}.user_id = $${userParam}`;
+  ) AND ${alias}.user_id = $${userParam}
+    AND LOWER(TRIM(${alias}.status)) <> 'wishlist'`;
 }
 
 async function selectCatalogById(id, userId) {

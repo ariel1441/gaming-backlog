@@ -16,35 +16,28 @@ export async function runDailySteamSync({
   const userIds = await listUsers();
   const totals = {
     eligible: userIds.length,
-    succeeded: 0,
-    partial: 0,
-    failed: 0,
-    skipped: 0,
+    library: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
+    wishlist: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
   };
 
   for (const userId of userIds) {
-    try {
-      const queued = await enqueue(userId, {
-        trigger: "scheduled",
-        force: false,
-      });
-      const job = await waitForJob(userId, queued.id);
-      const runStatus = job?.result?.run?.status || job?.run?.status;
-      if (job?.status === "failed") totals.failed += 1;
-      else if (runStatus === "partial") totals.partial += 1;
-      else if (runStatus === "skipped") totals.skipped += 1;
-      else if (runStatus === "succeeded") totals.succeeded += 1;
-      else totals.failed += 1;
-    } catch (error) {
-      totals.failed += 1;
-      logger.error(
-        `Steam daily sync failed for user ${userId}: ${error?.message || error}`,
-      );
+    for (const syncKind of ["library", "wishlist"]) {
+      try {
+        const queued = await enqueue(userId, { trigger: "scheduled", force: false, syncKind });
+        const job = await waitForJob(userId, queued.id);
+        const runStatus = job?.result?.run?.status || job?.run?.status;
+        if (job?.status === "failed") totals[syncKind].failed += 1;
+        else if (["partial", "skipped", "succeeded"].includes(runStatus)) totals[syncKind][runStatus] += 1;
+        else totals[syncKind].failed += 1;
+      } catch (error) {
+        totals[syncKind].failed += 1;
+        logger.error(`Steam ${syncKind} daily sync failed for user ${userId}: ${error?.message || error}`);
+      }
     }
   }
 
   logger.log(
-    `Steam daily sync: eligible=${totals.eligible} succeeded=${totals.succeeded} partial=${totals.partial} skipped=${totals.skipped} failed=${totals.failed}`,
+    `Steam daily sync: eligible=${totals.eligible} library=${JSON.stringify(totals.library)} wishlist=${JSON.stringify(totals.wishlist)}`,
   );
   return totals;
 }
@@ -52,7 +45,7 @@ export async function runDailySteamSync({
 async function main() {
   try {
     const totals = await runDailySteamSync();
-    process.exitCode = totals.failed ? 1 : 0;
+    process.exitCode = totals.library.failed || totals.wishlist.failed ? 1 : 0;
   } finally {
     await pool.end();
   }

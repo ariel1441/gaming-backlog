@@ -68,7 +68,7 @@ router.get("/:username", usernameParam, async (req, res, next) => {
     }
 
     const countRes = await pool.query(
-      "SELECT COUNT(*)::int AS game_count FROM games WHERE user_id = $1",
+      "SELECT COUNT(*)::int AS game_count FROM games WHERE user_id = $1 AND LOWER(TRIM(status)) <> 'wishlist'",
       [user.id]
     );
 

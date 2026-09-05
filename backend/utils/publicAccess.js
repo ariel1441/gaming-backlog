@@ -39,6 +39,7 @@ export function listPublicGamesQuery(userId) {
         WHERE membership.game_id = g.id AND membership.user_id = g.user_id
       ) personal ON TRUE
       WHERE g.user_id = $1
+        AND LOWER(TRIM(g.status)) <> 'wishlist'
       ORDER BY s.rank ASC, g.position ASC NULLS LAST, g.id ASC
       `,
     values: [userId],

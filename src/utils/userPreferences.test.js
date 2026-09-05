@@ -17,12 +17,14 @@ test("normalizeUserPreferences keeps valid preference values", () => {
       default_backlog_sort_key: "score",
       default_backlog_sort_reversed: true,
       default_landing_path: "/me",
+      show_wishlist_in_backlog: true,
     }),
     {
       default_backlog_view: "table",
       default_backlog_sort_key: "score",
       default_backlog_sort_reversed: true,
       default_landing_path: "/me",
+      show_wishlist_in_backlog: true,
     },
   );
 });

@@ -18,6 +18,7 @@ const ReviewsPage = lazy(() => loadRoute("/reviews"));
 const SettingsPage = lazy(() => loadRoute("/settings"));
 const SteamImportPage = lazy(() => loadRoute("/steam/import"));
 const SteamLibraryPage = lazy(() => loadRoute("/steam/library"));
+const WishlistPage = lazy(() => loadRoute("/wishlist"));
 const TimelinePage = lazy(() => loadRoute("/timeline"));
 const ListsPage = lazy(() => loadRoute("/lists"));
 const CustomListPage = lazy(() => loadRoute("/lists/:id"));
@@ -48,6 +49,7 @@ const App = () => {
                   <Route path="/timeline" element={<TimelinePage />} />
                   <Route path="/reviews" element={<ReviewsPage />} />
                   <Route path="/steam/library" element={<SteamLibraryPage />} />
+                  <Route path="/wishlist" element={<WishlistPage />} />
                   <Route path="/steam/import" element={<SteamImportPage />} />
                   <Route path="/insights" element={<InsightsPage />} />
                   <Route path="*" element={<NotFoundPage />} />

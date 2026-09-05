@@ -10,6 +10,8 @@ export function serializeActivityEvent(row) {
     gameId: row.game_id == null ? null : Number(row.game_id),
     catalogGameId:
       row.catalog_game_id == null ? null : Number(row.catalog_game_id),
+    wishlistItemId:
+      row.wishlist_item_id == null ? null : Number(row.wishlist_item_id),
     externalId: row.external_id || null,
     syncRunId: row.sync_run_id == null ? null : Number(row.sync_run_id),
     dedupeKey: row.dedupe_key,
@@ -29,6 +31,7 @@ export async function createOpenActivityEvent(
     eventType,
     gameId = null,
     catalogGameId = null,
+    wishlistItemId = null,
     externalId = null,
     syncRunId = null,
     dedupeKey,
@@ -37,29 +40,21 @@ export async function createOpenActivityEvent(
   },
   client = pool,
 ) {
+  const withWishlist = wishlistItemId != null;
+  const columns = withWishlist
+    ? "user_id, source, event_type, game_id, catalog_game_id, wishlist_item_id, external_id, sync_run_id, dedupe_key, payload_json, observed_at"
+    : "user_id, source, event_type, game_id, catalog_game_id, external_id, sync_run_id, dedupe_key, payload_json, observed_at";
+  const values = withWishlist
+    ? "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, COALESCE($11::timestamptz, NOW())"
+    : "$1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, COALESCE($10::timestamptz, NOW())";
+  const params = [userId, source, eventType, gameId, catalogGameId];
+  if (withWishlist) params.push(wishlistItemId);
+  params.push(externalId, syncRunId, dedupeKey, JSON.stringify(payload || {}), observedAt);
   const { rows } = await client.query(
-    `
-    INSERT INTO user_activity_events (
-      user_id, source, event_type, game_id, catalog_game_id, external_id,
-      sync_run_id, dedupe_key, payload_json, observed_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, COALESCE($10::timestamptz, NOW()))
-    ON CONFLICT (user_id, source, dedupe_key) WHERE state = 'open'
-    DO NOTHING
-    RETURNING *
-    `,
-    [
-      userId,
-      source,
-      eventType,
-      gameId,
-      catalogGameId,
-      externalId,
-      syncRunId,
-      dedupeKey,
-      JSON.stringify(payload || {}),
-      observedAt,
-    ],
+    `INSERT INTO user_activity_events (${columns}) VALUES (${values})
+     ON CONFLICT (user_id, source, dedupe_key) WHERE state = 'open'
+     DO NOTHING RETURNING *`,
+    params,
   );
   return rows[0] || null;
 }

@@ -72,5 +72,14 @@ Steam daily-sync opt-in. It does not add wishlist or store-price data.
 Steam sync queue so lease recovery cannot leave two workers able to finalize the
 same job.
 
+`030_add_steam_wishlist.sql` adds private wishlist relationships, safe legacy
+status backfill, per-domain account health, and a wishlist discriminator on the
+existing Steam queue. It does not create backlog games for synced wishlist apps.
+
+`031_harden_steam_wishlist_sync.sql` adds explicit provider order, metadata
+provenance, incremental ownership evidence and queued Steam account identity.
+Apply it before running the hardened sync code; it preserves migration 030 and
+existing membership/local intentions.
+
 Future automation notes live in
 `docs/planning/production-migration-automation.md`.
