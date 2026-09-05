@@ -1,11 +1,19 @@
 # System Context
 
-Last updated: 2026-07-25
+Last updated: 2026-09-05
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
 whole repository. For plans, feature ideas, and improvement candidates, use
 [`ROADMAP.md`](ROADMAP.md).
+
+Steam planning handoff, 2026-09-05:
+[Daily experience vision and decisions](daily_sync__wishlist_and_loaded/gaming-backlog-steam-daily-experience-vision.md)
+records confirmed goals, proposed automation/notifications/daily activity history,
+open decisions and local A/B release state. These proposals are not implemented
+features. Implementation checkpoint `cc8d105` is committed locally; the next chat
+should independently review A/B closeout. Push, deployment and daily production
+scheduler configuration remain pending and require a separately selected release task.
 
 ## Project Summary
 
@@ -19,7 +27,7 @@ Tech stack:
 - Backend: Express, PostgreSQL via `pg`, JWT auth, Celebrate/Joi validation.
 - Deployment model: Vercel frontend, Railway backend/Postgres.
 - Main app routes: `/`, `/next-up`, `/me`, `/settings`, `/lists`, `/discover`,
-  `/timeline`, `/insights`, `/u/:username`.
+  `/wishlist`, `/timeline`, `/insights`, `/u/:username`.
 
 ## Commands
 
@@ -78,6 +86,8 @@ deliberately set.
   review queue, attach Steam ownership/playtime to existing backlog games,
   import reviewed catalog matches into the backlog, and review newly detected
   Steam activity after sync.
+- Sync a private Steam wishlist with priority/date-added data and durable
+  removal history without creating backlog rows for wishlist-only apps.
 - Enrich games from Postgres catalog metadata, RAWG metadata, and local HLTB
   data while preserving user-entered fields.
 - Cache catalog search results, curated Discover shelves, external ids, and
@@ -127,6 +137,8 @@ Routes:
 - `backend/routes/steam.js` - authenticated Steam OpenID link, account state,
   manual owned-library sync, import candidate review, duplicate attachment, and
   reviewed import.
+- `backend/routes/wishlist.js` - authenticated private wishlist reads, sync,
+  empty confirmation, and explicit move-to-backlog actions.
 - `backend/routes/insights.js` - analytics aggregation and micro-cache.
 - `backend/routes/public.js` - public profile metadata and read-only games.
 - `backend/routes/meta.js` - status group definitions with ETag caching.
@@ -250,6 +262,10 @@ Routes:
 - `/steam/import` - Steam account link/sync, reviewed import flow, and Steam
   Sync Review for newly detected activity.
 - `/steam/library` - private synced Steam library and match/link repair tools.
+- `/wishlist` - private active/removed Steam wishlist using the shared Backlog toolbar,
+  cards/compact/rows/table, filters and ascending/descending provider order.
+  Reuses catalog/HLTB metadata. The Backlog preference merges active relationships
+  into the display pipeline as read-only projections. Pricing remains Phase C.
 - `/timeline` - private read-only chronological started/finished date feed.
 - `/reviews` - private completed-game review history with notes and scores.
 - `/insights` - analytics dashboard.
@@ -401,7 +417,7 @@ Styling:
   to `catalog_game_id`, with legacy fallbacks for unlinked rows.
 - Steam data is private in V1. Public profile serializers should not expose
   Steam ownership or playtime until explicit privacy controls exist.
-- Steam library sync uses the durable `steam_sync_jobs` queue for both manual
+- Steam library and wishlist sync use the durable `steam_sync_jobs` queue for both manual
   requests and the opt-in daily runner. Failed/private/invalid owned-library
   responses do not advance the successful snapshot baseline or break normal
   backlog reads. Actionable Steam changes are persisted as private activity

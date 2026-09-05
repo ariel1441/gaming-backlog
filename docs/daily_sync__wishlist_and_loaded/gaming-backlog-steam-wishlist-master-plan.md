@@ -2,6 +2,12 @@
 
 ## Purpose
 
+Product direction update, 2026-09-05: read the companion
+[Daily experience vision and handoff](gaming-backlog-steam-daily-experience-vision.md)
+for the agreed daily-use goal, proposed automation/inbox/activity-history behavior,
+explicitly undecided defaults, and current A/B implementation/release state.
+The next implementation task and any change in phase order are not yet selected.
+
 Integrate Steam activity automation, Steam wishlist management, and external-store deal tracking into the existing Gaming Backlog application.
 
 This is not a separate product. It should feel like a natural extension of Gaming Backlog while keeping the three sync domains operationally independent:
@@ -28,7 +34,7 @@ Safe to update automatically:
 - observed prices
 - store availability/stock/region metadata
 
-Require a suggestion or explicit user action:
+By default, require a suggestion or explicit user action:
 - add a newly owned game to the backlog
 - add a newly played game to the backlog
 - change a backlog status to Playing
@@ -37,6 +43,11 @@ Require a suggestion or explicit user action:
 - mark a game Finished
 
 Steam activity is evidence, not permission to rewrite personal organization choices.
+
+The newer daily-experience discussion proposes optional user-configured acquisition
+and Playing rules with explanations, exceptions and safe undo. Those policies and
+defaults are undecided and unimplemented; do not interpret this plan as permission
+to enable automatic Backlog additions, status changes or date changes now.
 
 ## 2. The three sync domains must fail independently
 
@@ -66,7 +77,7 @@ For pricing:
 - fetch current prices for monitored items
 - compare against the previous successful observation
 
-## 4. Failed/partial runs never become a new baseline
+## 4. Only validated domain data advances its baseline
 
 Track:
 - last attempt
@@ -76,6 +87,11 @@ Track:
 - counts
 
 Only successful/valid data may advance the comparison baseline.
+
+A partial overall run may contain a valid membership snapshot plus failed display
+metadata or achievement follow-up. Preserve the failed component's good data and
+record partial health; valid membership can still advance independently. Failed,
+ambiguous or invalid membership itself must never establish removals or a new baseline.
 
 ## 5. Do not model uncertainty as "not found"
 
@@ -592,6 +608,12 @@ Deliver:
 - integration into comparison UI
 
 ## Phase F — Notifications / Deal Polish
+
+Sequencing proposal, not an approved reorder: the
+[daily-experience vision](gaming-backlog-steam-daily-experience-vision.md)
+suggests bringing a lightweight in-app activity inbox and automation-policy design
+forward before or alongside Phase C. External notification channels remain later.
+
 Deliver:
 - digest/notification rules
 - event inbox integration
