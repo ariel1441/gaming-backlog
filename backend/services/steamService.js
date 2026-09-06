@@ -2030,6 +2030,45 @@ async function selectUserGameBriefTx(client, userId, gameId) {
   return rows[0] || null;
 }
 
+// Candidate decisions survive reconnects; ownership evidence does not. A retained
+// candidate is current only after its source was observed on this connection.
+function currentSteamCandidateWhere(candidate = "c") {
+  return `EXISTS (
+    SELECT 1 FROM user_game_sources candidate_source
+    JOIN user_external_accounts candidate_account
+      ON candidate_account.user_id = candidate_source.user_id
+     AND candidate_account.provider = 'steam'
+     AND candidate_account.disconnected_at IS NULL
+    WHERE candidate_source.user_id = ${candidate}.user_id
+      AND candidate_source.provider = 'steam'
+      AND candidate_source.provider_app_id = ${candidate}.steam_app_id
+      AND candidate_source.source_status IN ('owned', 'ignored')
+      AND candidate_source.last_synced_at >= candidate_account.linked_at
+  )`;
+}
+
+async function lockCurrentSteamCandidates(client, userId, candidateIds, expectedAccountId = null) {
+  // Lock account before candidates/games/sources, matching sync and retirement.
+  // This keeps validation and every subsequent candidate mutation in one epoch.
+  const account = await client.query(
+    `SELECT id FROM user_external_accounts
+     WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE`,
+    [userId],
+  );
+  if (!account.rows[0] || (expectedAccountId != null && Number(account.rows[0].id) !== Number(expectedAccountId))) {
+    throw conflict("Steam connection changed. Refresh the library before reviewing these games.");
+  }
+  const ids = [...new Set(candidateIds)];
+  const current = await client.query(
+    `SELECT c.id FROM steam_import_candidates c
+     WHERE c.user_id = $1 AND c.id = ANY($2::int[]) AND ${currentSteamCandidateWhere()}`,
+    [userId, ids],
+  );
+  if (current.rows.length !== ids.length) {
+    throw conflict("These games are not in the current Steam connection. Refresh the library and try again.");
+  }
+}
+
 async function backfillCandidateRecommendations(userId) {
   const { rows } = await pool.query(
     `
@@ -2040,6 +2079,7 @@ async function backfillCandidateRecommendations(userId) {
     LEFT JOIN catalog_games pc ON pc.id = c.proposed_catalog_game_id
     LEFT JOIN catalog_games uc ON uc.id = c.user_selected_catalog_game_id
     WHERE c.user_id = $1
+      AND ${currentSteamCandidateWhere()}
       AND c.suggested_status IS NULL
       AND c.import_status IN ('pending', 'accepted')
     LIMIT 1000
@@ -2109,7 +2149,7 @@ export async function listSteamImportCandidates(
   if (!allowedStatuses.has(status)) throw badRequest("Invalid import status filter.");
 
   const params = [userId];
-  const where = ["c.user_id = $1"];
+  const where = ["c.user_id = $1", currentSteamCandidateWhere()];
   if (status === "active") {
     where.push("c.import_status IN ('pending', 'accepted')");
   } else if (status === "done") {
@@ -2318,6 +2358,7 @@ async function summarizeAllCandidateStates(userId) {
      AND ugs.provider_app_id = c.steam_app_id
      AND ugs.source_status = 'owned'
     WHERE c.user_id = $1
+      AND ${currentSteamCandidateWhere()}
     `,
     [userId]
   );
@@ -2345,7 +2386,7 @@ async function summarizeCandidatesForState(userId, status) {
   ]);
   if (!allowedStatuses.has(status)) throw badRequest("Invalid import status filter.");
   const params = [userId];
-  const where = ["c.user_id = $1"];
+  const where = ["c.user_id = $1", currentSteamCandidateWhere()];
   if (status === "active") {
     where.push("c.import_status IN ('pending', 'accepted')");
   } else if (status === "done") {
@@ -2792,7 +2833,7 @@ export async function listSteamLinkCandidates(
 ) {
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
   const params = [userId];
-  const where = ["c.user_id = $1"];
+  const where = ["c.user_id = $1", currentSteamCandidateWhere()];
   const search = String(query || "").trim();
   if (search) {
     params.push(`%${search.replace(/[%_\\]/g, "\\$&")}%`);
@@ -2854,6 +2895,7 @@ export async function attachSteamCandidateToGame(userId, candidateId, gameId) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockCurrentSteamCandidates(client, userId, [id]);
     const game = await client.query(
       "SELECT id, catalog_game_id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE",
       [targetGameId, userId]
@@ -2884,34 +2926,18 @@ export async function attachSteamCandidateToGame(userId, candidateId, gameId) {
 
     await client.query(
       `
-      INSERT INTO user_game_sources (
-        user_id, game_id, catalog_game_id, provider, provider_app_id,
-        relationship, source_status, playtime_minutes_forever, last_played_at,
-        last_synced_at, updated_at
-      )
-      VALUES ($1, $3, $4, 'steam', $2, 'owned', 'owned', $5, $6, NOW(), NOW())
-      ON CONFLICT (user_id, provider, provider_app_id)
-      DO UPDATE SET
-        game_id = EXCLUDED.game_id,
-        catalog_game_id = COALESCE(EXCLUDED.catalog_game_id, user_game_sources.catalog_game_id),
+      UPDATE user_game_sources SET
+        game_id = $3,
+        catalog_game_id = COALESCE($4, catalog_game_id),
         source_status = 'owned',
-        playtime_minutes_forever = GREATEST(
-          COALESCE(user_game_sources.playtime_minutes_forever, 0),
-          COALESCE(EXCLUDED.playtime_minutes_forever, 0)
-        ),
-        last_played_at = GREATEST(
-          COALESCE(user_game_sources.last_played_at, EXCLUDED.last_played_at),
-          COALESCE(EXCLUDED.last_played_at, user_game_sources.last_played_at)
-        ),
         updated_at = NOW()
+      WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = $2
       `,
       [
         userId,
         row.steam_app_id,
         targetGameId,
         catalogGameId,
-        row.playtime_minutes_forever,
-        row.last_played_at,
       ]
     );
     if (catalogGameId && !game.rows[0].catalog_game_id) {
@@ -3014,6 +3040,7 @@ export async function updateSteamImportCandidate(userId, candidateId, action, pa
   if (!Number.isInteger(id)) throw badRequest("Invalid candidate id.");
 
   return withTransaction(async (client) => {
+  await lockCurrentSteamCandidates(client, userId, [id]);
 
   if (action === "ignore") {
     const { rows } = await client.query(
@@ -3169,7 +3196,7 @@ async function resolveBulkCandidateIds(userId, candidateIds = [], scope = {}) {
   if (!allowedStatuses.has(status)) throw badRequest("Invalid import status filter.");
 
   const params = [userId];
-  const where = ["c.user_id = $1"];
+  const where = ["c.user_id = $1", currentSteamCandidateWhere()];
   if (status === "active") {
     where.push("c.import_status IN ('pending', 'accepted')");
   } else if (status === "done") {
@@ -3191,6 +3218,9 @@ async function resolveBulkCandidateIds(userId, candidateIds = [], scope = {}) {
     `
     SELECT c.id
     FROM steam_import_candidates c
+    LEFT JOIN user_game_sources ugs ON ugs.user_id = c.user_id
+      AND ugs.provider = 'steam' AND ugs.provider_app_id = c.steam_app_id
+      AND ugs.source_status = 'owned'
     WHERE ${where.join(" AND ")}
       AND c.import_status IN ('pending', 'accepted')
     ORDER BY lower(c.steam_name)
@@ -3209,6 +3239,7 @@ export async function bulkUpdateSteamCandidates(
   if (!ids.length) throw badRequest("Choose at least one Steam import candidate.");
 
   return withTransaction(async (client) => {
+  await lockCurrentSteamCandidates(client, userId, ids);
 
   if (action === "ignore") {
     const result = await client.query(
@@ -3308,9 +3339,11 @@ export async function autoMatchSteamCandidates(
   }
   const { rows } = await pool.query(
     `
-    SELECT *
+    SELECT *, (SELECT id FROM user_external_accounts
+      WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL) AS steam_account_id
     FROM steam_import_candidates
     WHERE user_id = $1
+      AND ${currentSteamCandidateWhere("steam_import_candidates")}
       AND import_status IN ('pending', 'accepted')
       AND proposed_catalog_game_id IS NULL
       AND user_selected_catalog_game_id IS NULL
@@ -3363,6 +3396,7 @@ export async function autoMatchSteamCandidates(
     const recommendation = recommendStatus(app, catalog, null);
     const duplicate = await findDuplicateGame(user.id, app, first.id);
     const updated = await (writeGuard || withTransaction)(async (client) => {
+    await lockCurrentSteamCandidates(client, user.id, [row.id], row.steam_account_id);
     const candidate = await client.query(
       `
       UPDATE steam_import_candidates
@@ -3428,6 +3462,7 @@ export async function importSteamCandidates(userId, candidateIds = []) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockCurrentSteamCandidates(client, userId, ids);
     const { rows } = await client.query(
       `
       SELECT *
