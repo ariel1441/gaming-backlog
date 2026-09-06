@@ -20,10 +20,11 @@ export async function runDailySteamSync({
     wishlist: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
   };
 
-  for (const userId of userIds) {
+  for (const { userId, accountId } of userIds) {
     for (const syncKind of ["library", "wishlist"]) {
       try {
-        const queued = await enqueue(userId, { trigger: "scheduled", force: false, syncKind });
+        const queued = await enqueue(userId, { trigger: "scheduled", force: false, syncKind, expectedAccountId: accountId });
+        if (!queued) { totals[syncKind].skipped += 1; continue; }
         const job = await waitForJob(userId, queued.id);
         const runStatus = job?.result?.run?.status || job?.run?.status;
         if (job?.status === "failed") totals[syncKind].failed += 1;

@@ -327,6 +327,8 @@ For the Steam integration release, confirm production has:
 - migrations `030_add_steam_wishlist.sql` and
   `031_harden_steam_wishlist_sync.sql` applied before running the Wishlist and
   hardened daily-sync code; preserve existing local intentions during migration
+- migration `032_add_steam_achievement_follow_up.sql` applied before running the
+  A/B closeout code with durable achievement retries
 - `STEAM_WEB_API_KEY` configured on the backend
 - `STEAM_OPENID_REALM` set to the backend origin
 - `STEAM_OPENID_RETURN_URL` set to the backend `/api/steam/auth/callback`

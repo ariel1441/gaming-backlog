@@ -15,6 +15,7 @@ import {
   fetchOwnedSteamGames,
   fetchPlayerSummary,
   getSteamAccount,
+  listDueSteamAchievementSourceIds,
   prepareSteamLibraryCandidate,
   serializeSteamAccount,
   syncSteamAchievementsForSourceIds,
@@ -522,6 +523,18 @@ async function persistWorkItem(job, item, prepared) {
       ],
     );
     const source = sourceRows[0];
+    if (source.source_status === 'owned' && source.game_id &&
+        (activityChanged || (wasNew && nextPlaytime > 0))) {
+      await client.query(
+        `UPDATE user_game_sources SET
+          achievements_pending_at = COALESCE(achievements_pending_at, NOW()),
+          achievements_next_attempt_at = COALESCE(achievements_next_attempt_at,
+            GREATEST(NOW(), COALESCE(achievements_last_attempt_at, achievements_last_synced_at) + INTERVAL '6 hours')),
+          achievements_revision = achievements_revision + 1
+         WHERE id = $1`,
+        [source.id],
+      );
+    }
     if (wasNew && job.payload_json.hasPreviousSync) {
       await client.query("UPDATE user_game_sources SET ownership_observed_run_id = $2 WHERE id = $1", [source.id, job.sync_run_id]);
     }
@@ -883,13 +896,13 @@ async function finalizeSteamSyncJob(job) {
   try {
     achievements = await syncSteamAchievementsForSourceIds(
       job.user_id,
-      progress.achievementSourceIds || [],
+      [...(progress.achievementSourceIds || []), ...(await listDueSteamAchievementSourceIds(job.user_id))],
       { force: Boolean(job.force), writeGuard: async (work) => (await withActiveJobLease(job, work)).value },
     );
-    if (achievements.failed > 0) {
+    if (achievements.failed + achievements.unavailable > 0) {
       noncriticalErrors.push({
         code: "steam_achievements_partial",
-        message: `${achievements.failed} achievement refreshes failed.`,
+        message: `${achievements.failed + achievements.unavailable} achievement refreshes incomplete.`,
       });
     }
   } catch (error) {
@@ -960,8 +973,11 @@ async function finalizeSteamSyncJob(job) {
       newlyObserved: Number(payload.newGames) || 0,
       activityChanged: Number(payload.activityChanged) || 0,
       matchingAttempted: autoMatch.reviewed || 0,
-      achievementsAttempted: achievements?.total || 0,
+      achievementsSelected: achievements?.total || 0,
+      achievementsAttempted: (achievements?.total || 0) - (achievements?.skipped || 0),
       achievementFailures: achievements?.failed || 0,
+      achievementUnavailable: achievements?.unavailable || 0,
+      achievementSkipped: achievements?.skipped || 0,
       reviewItemsCreated,
       librarySnapshotSucceeded: true,
       baseline: !payload.hasPreviousSync,
@@ -1069,6 +1085,9 @@ async function processSteamSyncJob(job) {
   try {
     job = await ensureRunForJob(job);
     if (!job) return;
+    // Reclaimed jobs may already have a payload. Validate eligibility before
+    // doing discovery or other provider work from that saved payload.
+    if (!(await withActiveJobLease(job, async () => true)).active) return;
     if ((job.sync_kind || "library") === "wishlist") {
       await processSteamWishlistJob(job);
       return;
@@ -1121,10 +1140,12 @@ async function processSteamSyncJob(job) {
 
 export async function enqueueSteamSync(
   userId,
-  { force = false, trigger = "manual", syncKind = "library" } = {},
+  { force = false, trigger = "manual", syncKind = "library", expectedAccountId = null } = {},
 ) {
   await assertSteamUser(userId);
   const account = await getSteamAccount(userId);
+  if (trigger === 'scheduled' && (!account?.auto_sync_enabled ||
+      (expectedAccountId != null && Number(account.id) !== Number(expectedAccountId)))) return null;
   if (!account) throw badRequest("Link Steam before syncing.");
   const triggerType = trigger === "scheduled" ? "scheduled" : "manual";
   const normalizedKind = syncKind === "wishlist" ? "wishlist" : "library";
@@ -1136,12 +1157,16 @@ export async function enqueueSteamSync(
         id, user_id, account_id, force, trigger_type, sync_kind, provider_user_id
       )
       SELECT $1, $2, id, $4, $5, $6, provider_user_id FROM user_external_accounts
-      WHERE id = $3 AND user_id = $2 AND disconnected_at IS NULL AND provider_user_id = $7
+       WHERE id = $3 AND user_id = $2 AND disconnected_at IS NULL AND provider_user_id = $7
+         AND ($5 <> 'scheduled' OR auto_sync_enabled = TRUE)
       RETURNING *
       `,
       [jobId, userId, account.id, force, triggerType, normalizedKind, account.provider_user_id],
     );
-    if (!rows[0]) throw badRequest("Steam account changed. Try again.");
+    if (!rows[0]) {
+      if (triggerType === 'scheduled') return null;
+      throw badRequest("Steam account changed. Try again.");
+    }
     queueMicrotask(() => void runSteamSyncJobs().catch(() => {}));
     return serializeSyncJob(rows[0]);
   } catch (error) {
@@ -1157,7 +1182,7 @@ export async function enqueueSteamSync(
     if ((rows[0].sync_kind || "library") !== normalizedKind) {
       if (triggerType === "scheduled") {
         await waitForSteamSyncJob(userId, rows[0].id);
-        return enqueueSteamSync(userId, { force, trigger, syncKind: normalizedKind });
+        return enqueueSteamSync(userId, { force, trigger, syncKind: normalizedKind, expectedAccountId: expectedAccountId ?? account.id });
       }
       const busy = new Error("Another Steam sync is already running.");
       busy.status = 409;
@@ -1294,7 +1319,7 @@ export function startSteamSyncJobScheduler() {
 export async function listEligibleSteamAutoSyncUsers() {
   const { rows } = await pool.query(
     `
-    SELECT account.user_id
+    SELECT account.user_id, account.id AS account_id
     FROM user_external_accounts account
     JOIN users ON users.id = account.user_id
     WHERE account.provider = 'steam'
@@ -1304,7 +1329,7 @@ export async function listEligibleSteamAutoSyncUsers() {
     ORDER BY account.user_id
     `,
   );
-  return rows.map((row) => Number(row.user_id));
+  return rows.map((row) => ({ userId: Number(row.user_id), accountId: Number(row.account_id) }));
 }
 
 export async function waitForSteamSyncJob(

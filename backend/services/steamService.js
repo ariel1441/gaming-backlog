@@ -726,6 +726,38 @@ export function normalizeSteamAchievementSummary(playerPayload, schemaPayload) {
   };
 }
 
+// Keep the disconnected account row as provenance for Wishlist history. Re-linking
+// starts a fresh factual baseline while retaining catalog links and user decisions.
+async function retireSteamAccount(client, userId) {
+  await client.query(
+    `UPDATE user_external_accounts SET sync_status = 'disconnected',
+      disconnected_at = NOW(), auto_sync_enabled = FALSE, updated_at = NOW()
+     WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL`, [userId],
+  );
+  await client.query(
+    `UPDATE user_game_sources SET source_status = 'disconnected', game_id = NULL,
+      playtime_minutes_forever = NULL, last_played_at = NULL, last_synced_at = NULL,
+      first_play_observed_at = NULL, first_play_observed_playtime_minutes = NULL,
+      ownership_observed_run_id = NULL,
+      achievements_unlocked = NULL, achievements_total = NULL, achievements_percent = NULL,
+      achievements_status = 'unknown', achievements_last_synced_at = NULL,
+      achievements_last_attempt_at = NULL, achievements_last_error_code = NULL,
+      achievements_last_error_message = NULL, achievements_pending_at = NULL,
+      achievements_next_attempt_at = NULL, achievements_attempts = 0,
+      achievements_revision = achievements_revision + 1, updated_at = NOW()
+     WHERE user_id = $1 AND provider = 'steam'`, [userId],
+  );
+  await client.query(
+    `UPDATE steam_wishlist_items SET is_active = FALSE, removed_at = NOW(),
+      removal_reason = 'account_disconnected', last_changed_at = NOW(), updated_at = NOW()
+     WHERE user_id = $1 AND is_active`, [userId],
+  );
+  await client.query(
+    `UPDATE user_activity_events SET state = 'resolved', resolved_at = NOW()
+     WHERE user_id = $1 AND source IN ('steam_library', 'steam_wishlist') AND state = 'open'`, [userId],
+  );
+}
+
 export async function upsertSteamAccount(userId, steamId, summary = {}) {
   const client = await pool.connect();
   try {
@@ -747,14 +779,13 @@ export async function upsertSteamAccount(userId, steamId, summary = {}) {
     if (owner.rows[0]) {
       throw conflict("This Steam account is already linked to another account.");
     }
-    await client.query(
-      `UPDATE user_game_sources SET source_status = 'disconnected',
-          ownership_observed_run_id = NULL, updated_at = NOW()
-       WHERE user_id = $1 AND provider = 'steam' AND EXISTS (
-         SELECT 1 FROM user_external_accounts WHERE user_id = $1
-           AND provider = 'steam' AND disconnected_at IS NULL AND provider_user_id <> $2
-       )`, [userId, String(steamId)],
+    const previous = await client.query(
+      `SELECT id, provider_user_id FROM user_external_accounts
+       WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE`, [userId],
     );
+    if (!previous.rows[0] || previous.rows[0].provider_user_id !== String(steamId)) {
+      await retireSteamAccount(client, userId);
+    }
     const { rows } = await client.query(
       `
       INSERT INTO user_external_accounts (
@@ -871,28 +902,9 @@ export async function updateSteamAutoSync(userId, enabled) {
 
 export async function disconnectSteamAccount(userId) {
   return withTransaction(async (client) => {
-  await invalidateSteamSyncJobs(client, userId);
-  await client.query(
-    `
-    UPDATE user_external_accounts
-       SET sync_status = 'disconnected',
-           disconnected_at = NOW(),
-           updated_at = NOW()
-     WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL
-    `,
-    [userId]
-  );
-  await client.query(
-    `
-    UPDATE user_game_sources
-       SET source_status = 'disconnected',
-           game_id = NULL,
-           updated_at = NOW()
-     WHERE user_id = $1 AND provider = 'steam'
-    `,
-    [userId]
-  );
-  return { account: null };
+    await invalidateSteamSyncJobs(client, userId);
+    await retireSteamAccount(client, userId);
+    return { account: null };
   });
 }
 
@@ -916,7 +928,7 @@ function serializeAchievementSummary(row) {
 async function selectSteamAchievementSource(userId, gameId) {
   const { rows } = await pool.query(
     `
-    SELECT ugs.*, account.provider_user_id AS steam_user_id
+    SELECT ugs.*, account.id AS steam_account_id, account.provider_user_id AS steam_user_id
     FROM user_game_sources ugs
     JOIN user_external_accounts account
       ON account.user_id = ugs.user_id
@@ -940,7 +952,7 @@ async function selectSteamAchievementSource(userId, gameId) {
 async function selectSteamAchievementSourceById(userId, sourceId) {
   const { rows } = await pool.query(
     `
-    SELECT ugs.*, account.provider_user_id AS steam_user_id
+    SELECT ugs.*, account.id AS steam_account_id, account.provider_user_id AS steam_user_id
     FROM user_game_sources ugs
     JOIN user_external_accounts account
       ON account.user_id = ugs.user_id
@@ -959,9 +971,49 @@ async function selectSteamAchievementSourceById(userId, sourceId) {
 }
 
 function achievementSyncCoolingDown(source, force) {
-  if (force || !source?.achievements_last_synced_at) return false;
-  const elapsed = Date.now() - new Date(source.achievements_last_synced_at).getTime();
-  return Number.isFinite(elapsed) && elapsed < ACHIEVEMENT_SYNC_COOLDOWN_MS;
+  return !force && achievementNextAttempt(source) > Date.now();
+}
+
+function achievementNextAttempt(source) {
+  const lastAttempt = source?.achievements_last_attempt_at || source?.achievements_last_synced_at;
+  return Math.max(
+    new Date(source?.achievements_next_attempt_at || 0).getTime(),
+    lastAttempt ? new Date(lastAttempt).getTime() + ACHIEVEMENT_SYNC_COOLDOWN_MS : 0,
+  );
+}
+
+// Manual refreshes use the same account/source fence as queued follow-up writes.
+// A response observed before new activity must not clear that activity's pending work.
+async function writeAchievementResult(source, writeGuard, work) {
+  return (writeGuard || withTransaction)(async (client) => {
+    const account = await client.query(
+      `SELECT id FROM user_external_accounts WHERE id = $1 AND user_id = $2
+        AND provider_user_id = $3 AND disconnected_at IS NULL FOR UPDATE`,
+      [source.steam_account_id, source.user_id, source.steam_user_id],
+    );
+    if (!account.rows[0]) return null;
+    const current = await client.query(
+      `SELECT id FROM user_game_sources WHERE id = $1 AND user_id = $2
+        AND source_status = 'owned' AND game_id = $3 AND achievements_revision = $4 FOR UPDATE`,
+      [source.id, source.user_id, source.game_id, source.achievements_revision],
+    );
+    if (!current.rows[0]) return null;
+    return work(client);
+  });
+}
+
+export async function listDueSteamAchievementSourceIds(userId) {
+  const { rows } = await pool.query(
+    `SELECT id FROM user_game_sources WHERE user_id = $1 AND provider = 'steam'
+      AND source_status = 'owned' AND game_id IS NOT NULL
+      AND (achievements_pending_at IS NOT NULL OR achievements_status IN ('failed', 'private', 'unavailable'))
+      AND COALESCE(achievements_next_attempt_at,
+        achievements_last_attempt_at + INTERVAL '6 hours',
+        achievements_last_synced_at + INTERVAL '6 hours', NOW()) <= NOW()
+      ORDER BY achievements_next_attempt_at NULLS FIRST, id LIMIT $2`,
+    [userId, ACHIEVEMENT_BATCH_LIMIT],
+  );
+  return rows.map((row) => row.id);
 }
 
 async function saveAchievementSummary(sourceId, summary, client = pool) {
@@ -973,6 +1025,11 @@ async function saveAchievementSummary(sourceId, summary, client = pool) {
            achievements_percent = $4,
            achievements_status = $5,
            achievements_last_synced_at = NOW(),
+           achievements_last_attempt_at = NOW(),
+           achievements_pending_at = NULL,
+           achievements_next_attempt_at = NULL,
+           achievements_attempts = 0,
+           achievements_revision = achievements_revision + 1,
            achievements_last_error_code = $6,
            achievements_last_error_message = $7,
            updated_at = NOW()
@@ -996,8 +1053,12 @@ async function saveAchievementFailure(sourceId, err, client = pool) {
   const { rows } = await client.query(
     `
     UPDATE user_game_sources
-       SET achievements_status = 'failed',
-           achievements_last_synced_at = NOW(),
+       SET achievements_status = $4,
+           achievements_last_attempt_at = NOW(),
+           achievements_pending_at = COALESCE(achievements_pending_at, NOW()),
+           achievements_next_attempt_at = NOW() + LEAST(INTERVAL '7 days', INTERVAL '6 hours' * POWER(2, LEAST(achievements_attempts, 5))),
+           achievements_attempts = LEAST(achievements_attempts + 1, 32),
+           achievements_revision = achievements_revision + 1,
            achievements_last_error_code = $2,
            achievements_last_error_message = $3,
            updated_at = NOW()
@@ -1008,6 +1069,7 @@ async function saveAchievementFailure(sourceId, err, client = pool) {
       sourceId,
       err?.code || "steam_achievements_failed",
       err?.message || "Could not sync Steam achievements.",
+      ['private', 'unavailable'].includes(err?.achievementStatus) ? err.achievementStatus : 'failed',
     ]
   );
   return rows[0];
@@ -1022,9 +1084,7 @@ async function syncSteamAchievementSource(source, { force = false, writeGuard = 
       steamAppId: source.provider_app_id,
       achievements: serializeAchievementSummary(source),
       cooldownSeconds: Math.ceil(
-        (ACHIEVEMENT_SYNC_COOLDOWN_MS -
-          (Date.now() - new Date(source.achievements_last_synced_at).getTime())) /
-          1000
+        (achievementNextAttempt(source) - Date.now()) / 1000
       ),
     };
   }
@@ -1034,25 +1094,20 @@ async function syncSteamAchievementSource(source, { force = false, writeGuard = 
       fetchSteamPlayerAchievements(source.steam_user_id, source.provider_app_id),
       fetchSteamAchievementSchema(source.provider_app_id),
     ]);
-    if (playerResult.status === "rejected" && schemaResult.status === "rejected") {
-      throw playerResult.reason || schemaResult.reason;
+    if (playerResult.status === "rejected" || schemaResult.status === "rejected") {
+      throw playerResult.status === "rejected" ? playerResult.reason : schemaResult.reason;
     }
-    const schemaPayload = schemaResult.status === "fulfilled" ? schemaResult.value : null;
-    const playerPayload =
-      playerResult.status === "fulfilled"
-        ? playerResult.value
-        : {
-            playerstats: {
-              success: false,
-              error:
-                playerResult.reason?.message ||
-                "Steam did not return player achievement data for this game.",
-            },
-          };
+    const schemaPayload = schemaResult.value;
+    const playerPayload = playerResult.value;
     const summary = normalizeSteamAchievementSummary(playerPayload, schemaPayload);
-    const updated = writeGuard
-      ? await writeGuard((client) => saveAchievementSummary(source.id, summary, client))
-      : await saveAchievementSummary(source.id, summary);
+    if (["private", "unavailable"].includes(summary.status)) {
+      const error = new Error(summary.errorMessage);
+      error.code = summary.errorCode;
+      error.achievementStatus = summary.status;
+      throw error;
+    }
+    const updated = await writeAchievementResult(source, writeGuard,
+      (client) => saveAchievementSummary(source.id, summary, client));
     if (!updated) return { skipped: true, reason: "lease_lost" };
     return {
       skipped: false,
@@ -1062,14 +1117,13 @@ async function syncSteamAchievementSource(source, { force = false, writeGuard = 
       achievements: serializeAchievementSummary(updated),
     };
   } catch (err) {
-    const updated = writeGuard
-      ? await writeGuard((client) => saveAchievementFailure(source.id, err, client))
-      : await saveAchievementFailure(source.id, err);
+    const updated = await writeAchievementResult(source, writeGuard,
+      (client) => saveAchievementFailure(source.id, err, client));
     if (!updated) return { skipped: true, reason: "lease_lost" };
     return {
       skipped: false,
       failed: true,
-      status: "failed",
+      status: updated.achievements_status,
       gameId: updated.game_id,
       steamAppId: updated.provider_app_id,
       achievements: serializeAchievementSummary(updated),
@@ -1198,7 +1252,7 @@ export async function syncSteamAchievementsForSourceIds(
     const batchIds = ids.slice(offset, offset + ACHIEVEMENT_BATCH_LIMIT);
     const { rows } = await pool.query(
       `
-      SELECT ugs.*, account.provider_user_id AS steam_user_id
+      SELECT ugs.*, account.id AS steam_account_id, account.provider_user_id AS steam_user_id
       FROM user_game_sources ugs
       JOIN user_external_accounts account
         ON account.user_id = ugs.user_id

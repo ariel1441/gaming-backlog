@@ -536,7 +536,7 @@ test("targeted Steam achievement sync processes every source id in bounded batch
   const sourceIds = Array.from({ length: 251 }, (_, index) => index + 1);
   await withMockPoolQuery(
     async (text) => {
-      assert.match(compact(text), /^SELECT ugs\.\*, account\.provider_user_id/);
+      assert.match(compact(text), /^SELECT ugs\.\*, account\.id AS steam_account_id, account\.provider_user_id/);
       return { rows: [] };
     },
     async (calls) => {
@@ -556,6 +556,7 @@ test("disconnectSteamAccount updates account and sources in one transaction", as
       if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE user_external_accounts")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("UPDATE user_game_sources")) return { rows: [], rowCount: 2 };
+      if (sql.startsWith("UPDATE steam_wishlist_items") || sql.startsWith("UPDATE user_activity_events")) return { rows: [] };
       throw new Error(`Unexpected query: ${sql}`);
     },
     async (calls) => {

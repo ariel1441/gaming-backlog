@@ -81,5 +81,9 @@ provenance, incremental ownership evidence and queued Steam account identity.
 Apply it before running the hardened sync code; it preserves migration 030 and
 existing membership/local intentions.
 
+`032_add_steam_achievement_follow_up.sql` adds durable pending achievement work,
+retry timing and source revisions. Apply it before the A/B closeout service code.
+It only adds columns/indexes; it does not backfill or replace saved Steam data.
+
 Future automation notes live in
 `docs/planning/production-migration-automation.md`.

@@ -2,11 +2,27 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { runDailySteamSync } from "./sync-steam-daily.js";
 
+test("daily runner preserves the selected account identity and counts later ineligibility as skipped", async () => {
+  const selections = [];
+  const totals = await runDailySteamSync({
+    listUsers: async () => [{ userId: 7, accountId: 42 }],
+    enqueue: async (userId, options) => {
+      selections.push([userId, options.expectedAccountId]);
+      return options.syncKind === "library" ? { id: "library" } : null;
+    },
+    waitForJob: async () => ({ status: "completed", run: { status: "succeeded" } }),
+    logger: { log() {}, error() {} },
+  });
+  assert.deepEqual(selections, [[7, 42], [7, 42]]);
+  assert.equal(totals.library.succeeded, 1);
+  assert.equal(totals.wishlist.skipped, 1);
+});
+
 test("daily Steam runner continues after one user fails", async () => {
   const enqueued = [];
   const errors = [];
   const totals = await runDailySteamSync({
-    listUsers: async () => [1, 2, 3],
+    listUsers: async () => [1, 2, 3].map(userId => ({ userId, accountId: userId + 10 })),
     enqueue: async (userId, options) => {
       enqueued.push([userId, options]);
       if (userId === 2 && options.syncKind === "library") throw new Error("private");
@@ -23,12 +39,12 @@ test("daily Steam runner continues after one user fails", async () => {
   });
 
   assert.deepEqual(enqueued, [
-    [1, { trigger: "scheduled", force: false, syncKind: "library" }],
-    [1, { trigger: "scheduled", force: false, syncKind: "wishlist" }],
-    [2, { trigger: "scheduled", force: false, syncKind: "library" }],
-    [2, { trigger: "scheduled", force: false, syncKind: "wishlist" }],
-    [3, { trigger: "scheduled", force: false, syncKind: "library" }],
-    [3, { trigger: "scheduled", force: false, syncKind: "wishlist" }],
+    [1, { trigger: "scheduled", force: false, syncKind: "library", expectedAccountId: 11 }],
+    [1, { trigger: "scheduled", force: false, syncKind: "wishlist", expectedAccountId: 11 }],
+    [2, { trigger: "scheduled", force: false, syncKind: "library", expectedAccountId: 12 }],
+    [2, { trigger: "scheduled", force: false, syncKind: "wishlist", expectedAccountId: 12 }],
+    [3, { trigger: "scheduled", force: false, syncKind: "library", expectedAccountId: 13 }],
+    [3, { trigger: "scheduled", force: false, syncKind: "wishlist", expectedAccountId: 13 }],
   ]);
   assert.deepEqual(totals, {
     eligible: 3,
@@ -42,7 +58,7 @@ test("daily Steam runner continues after waiting for one job times out", async (
   const waited = [];
   const errors = [];
   const totals = await runDailySteamSync({
-    listUsers: async () => [1, 2],
+    listUsers: async () => [1, 2].map(userId => ({ userId, accountId: userId + 10 })),
     enqueue: async (userId, options) => ({ id: `job-${userId}-${options.syncKind}` }),
     waitForJob: async (userId, jobId) => {
       waited.push(jobId);
