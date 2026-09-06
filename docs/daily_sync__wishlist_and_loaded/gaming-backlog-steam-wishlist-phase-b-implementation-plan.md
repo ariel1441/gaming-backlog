@@ -119,3 +119,23 @@ Verification completed locally on 2026-09-06:
 No real Steam sync, production configuration, deployment or scheduler activation
 was performed. The next phase is independent review/CI and a separately authorized
 release, not further A/B product scope.
+
+## Candidate account-isolation follow-up, 2026-09-06
+
+Saved in the candidate-isolation follow-up commit on
+`fix/steam-candidate-account-isolation`; not pushed or deployed.
+Reproduced replacement-account attachment restoring old ownership before
+the fix. Candidate reads, counts and scoped selections now require source evidence
+observed during the active connection. Attach/import, review mutations and match
+writes revalidate under an account lock; attachment preserves current source facts
+instead of copying candidate telemetry. Matching, ignore and selected-status
+decisions remain stored and become available after the app is observed again.
+
+One final focused invocation passed 43 tests with no failures or skips across
+`steamCandidateAccount.contract.test.js`, `services/steamService.test.js`,
+`steamDailyCloseout.contract.test.js`, `steamSync.contract.test.js` and
+`steamSyncFencing.contract.test.js`. The new disposable-PostgreSQL contract covers
+replacement/disconnection, stale client actions, bulk and duplicate imports,
+current-account telemetry, user isolation and retained decisions. No migration or
+saved development-library change was needed. Full CI/release and production
+scheduling remain pending; Phase C pricing has not started.

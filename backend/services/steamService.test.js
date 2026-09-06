@@ -37,6 +37,12 @@ async function withMockClient(queryImpl, fn) {
     query: async (text, values) => {
       calls.push({ text: String(text), values });
       if (String(text).startsWith("SELECT is_guest FROM users")) return { rows: [{ is_guest: false }] };
+      if (compact(text) === "SELECT id FROM user_external_accounts WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE") {
+        return { rows: [{ id: 1 }] };
+      }
+      if (compact(text).startsWith("SELECT c.id FROM steam_import_candidates c WHERE c.user_id = $1 AND c.id = ANY")) {
+        return { rows: values[1].map(id => ({ id })) };
+      }
       return queryImpl(String(text), values, calls);
     },
     release: () => {
@@ -777,7 +783,7 @@ test("importSteamCandidates attaches marked duplicates instead of creating a new
   );
 });
 
-test("attachSteamCandidateToGame moves a Steam link and preserves stronger source data", async () => {
+test("attachSteamCandidateToGame moves a current Steam link without copying candidate telemetry", async () => {
   await withMockClient(
     async (text) => {
       const sql = compact(text);
@@ -806,18 +812,15 @@ test("attachSteamCandidateToGame moves a Steam link and preserves stronger sourc
       const result = await attachSteamCandidateToGame(7, 12, 31);
 
       assert.deepEqual(result, { attached: true, candidateId: 12, gameId: 31 });
-      const sourceUpsert = calls.find((call) => call.text.includes("INSERT INTO user_game_sources"));
-      assert.match(sourceUpsert.text, /ON CONFLICT \(user_id, provider, provider_app_id\)/);
-      assert.match(sourceUpsert.text, /game_id = EXCLUDED\.game_id/);
-      assert.match(sourceUpsert.text, /playtime_minutes_forever = GREATEST/);
-      assert.match(sourceUpsert.text, /last_played_at = GREATEST/);
-      assert.deepEqual(sourceUpsert.values, [
+      const sourceUpdate = calls.find((call) => call.text.includes("UPDATE user_game_sources"));
+      assert.match(sourceUpdate.text, /game_id = \$3/);
+      assert.doesNotMatch(sourceUpdate.text, /playtime_minutes_forever|last_played_at|last_synced_at/);
+      assert.equal(calls.some(call => call.text.includes("INSERT INTO user_game_sources")), false);
+      assert.deepEqual(sourceUpdate.values, [
         7,
         "367520",
         31,
         77,
-        3600,
-        "2026-05-01T00:00:00.000Z",
       ]);
 
       const candidateUpdate = calls.find((call) =>
