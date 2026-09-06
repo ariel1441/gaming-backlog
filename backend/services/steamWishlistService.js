@@ -342,9 +342,12 @@ export async function processSteamWishlistJob(job) {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $8::int IS NOT NULL THEN $7::bigint END)
          ON CONFLICT (user_id, steam_app_id) DO UPDATE SET account_id = EXCLUDED.account_id,
            wishlist_item_id = EXCLUDED.wishlist_item_id, priority = EXCLUDED.priority,
-           provider_order = COALESCE(EXCLUDED.provider_order, steam_wishlist_items.provider_order),
-           order_sync_run_id = COALESCE(EXCLUDED.order_sync_run_id, steam_wishlist_items.order_sync_run_id),
-           date_added = COALESCE(EXCLUDED.date_added, steam_wishlist_items.date_added), is_active = TRUE,
+           provider_order = CASE WHEN steam_wishlist_items.account_id = EXCLUDED.account_id
+             THEN COALESCE(EXCLUDED.provider_order, steam_wishlist_items.provider_order) ELSE EXCLUDED.provider_order END,
+           order_sync_run_id = CASE WHEN steam_wishlist_items.account_id = EXCLUDED.account_id
+             THEN COALESCE(EXCLUDED.order_sync_run_id, steam_wishlist_items.order_sync_run_id) ELSE EXCLUDED.order_sync_run_id END,
+           date_added = CASE WHEN steam_wishlist_items.account_id = EXCLUDED.account_id
+             THEN COALESCE(EXCLUDED.date_added, steam_wishlist_items.date_added) ELSE EXCLUDED.date_added END, is_active = TRUE,
            last_seen_at = NOW(), removed_at = NULL, removal_reason = NULL,
            last_changed_at = CASE WHEN steam_wishlist_items.is_active = FALSE OR steam_wishlist_items.priority IS DISTINCT FROM EXCLUDED.priority THEN NOW() ELSE steam_wishlist_items.last_changed_at END,
            last_sync_run_id = EXCLUDED.last_sync_run_id, updated_at = NOW()`,
@@ -424,8 +427,7 @@ export async function processSteamWishlistJob(job) {
 export async function failSteamWishlistJob(job, error) {
   if (!job?.lease_token) return;
   await withTransaction(async (client) => {
-    const locked = await client.query("SELECT * FROM steam_sync_jobs WHERE id = $1 AND status = 'running' AND lease_token = $2 FOR UPDATE", [job.id, job.lease_token]);
-    if (!locked.rows[0]) return;
+    if (!(await lockSteamSyncJob(client, job))) return;
     const code = error?.code || "steam_wishlist_sync_failed";
     const message = error?.message || "Steam wishlist sync failed.";
     if (job.sync_run_id) await finishIntegrationSyncRun(job.sync_run_id, { status: "failed", errorsCount: 1, summary: { baselineAdvanced: false }, errorCode: code, errorMessage: message }, client);

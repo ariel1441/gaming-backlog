@@ -22,7 +22,7 @@ export default function WishlistCardFooter({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-content-muted">
         <span className="inline-flex items-center gap-1.5">
           <Heart className="h-3.5 w-3.5 text-primary-light" aria-hidden="true" />
-          {game.steamActive ? (game.providerOrder != null ? `Steam order ${game.providerOrder + 1}` : "Steam wishlist") : game.steamAppId ? "Removed from Steam" : "Local wishlist"}
+          {game.steamActive ? (game.providerOrder != null ? `Steam order ${game.providerOrder + 1}` : "Steam wishlist") : game.removalReason === "account_disconnected" ? "Previous Steam connection" : game.steamAppId ? "Removed from Steam" : "Local wishlist"}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />

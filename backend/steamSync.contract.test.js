@@ -86,8 +86,8 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     const userId = user.rows[0].id;
     await pool.query(
       `INSERT INTO user_external_accounts
-         (user_id, provider, provider_user_id, sync_status)
-       VALUES ($1, 'steam', $2, 'linked')`,
+         (user_id, provider, provider_user_id, sync_status, auto_sync_enabled)
+       VALUES ($1, 'steam', $2, 'linked', TRUE)`,
       [userId, `7656119${String(userId).padStart(10, "0")}`],
     );
 
@@ -476,8 +476,8 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     const privateUserId = privateUser.rows[0].id;
     await pool.query(
       `INSERT INTO user_external_accounts
-         (user_id, provider, provider_user_id, sync_status)
-       VALUES ($1, 'steam', $2, 'linked')`,
+         (user_id, provider, provider_user_id, sync_status, auto_sync_enabled)
+       VALUES ($1, 'steam', $2, 'linked', TRUE)`,
       [privateUserId, `7656120${String(privateUserId).padStart(10, "0")}`],
     );
     const privateJob = await steamSync.enqueueSteamSync(privateUserId, { force: true });

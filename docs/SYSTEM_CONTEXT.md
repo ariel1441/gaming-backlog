@@ -1,6 +1,6 @@
 # System Context
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
@@ -14,6 +14,18 @@ open decisions and local A/B release state. These proposals are not implemented
 features. Implementation checkpoint `cc8d105` is committed locally; the next chat
 should independently review A/B closeout. Push, deployment and daily production
 scheduler configuration remain pending and require a separately selected release task.
+
+Local A/B closeout follow-up (2026-09-06): achievement work is now persisted with
+source telemetry, retried on unchanged Library runs when due, and fenced against
+late manual responses. Failures preserve successful counts; backoff starts at six
+hours and caps at seven days, with up to 250 due sources selected per run in addition
+to current activity. Migration 032 is required. Disconnect/replacement retires the
+old account and active Steam memberships, resets factual source caches, and preserves
+ordinary games, local Wishlist intentions and removal history. Daily selection captures
+account IDs; enqueue and lease guards recheck scheduled opt-in. Release/CI and actual
+production daily execution remain separate pending gates. See the Phase B record for
+verification status; the closeout changes are saved in local Git history, with
+push and release still pending.
 
 ## Project Summary
 

@@ -53,7 +53,7 @@ test(
       );
       const [userId, otherId, guestId] = users.rows.map((row) => row.id);
       await pool.query(
-        "INSERT INTO user_external_accounts (user_id, provider, provider_user_id, sync_status) VALUES ($1, 'steam', '76561190000000000', 'linked')",
+        "INSERT INTO user_external_accounts (user_id, provider, provider_user_id, sync_status, auto_sync_enabled) VALUES ($1, 'steam', '76561190000000000', 'linked', TRUE)",
         [userId],
       );
       await pool.query(

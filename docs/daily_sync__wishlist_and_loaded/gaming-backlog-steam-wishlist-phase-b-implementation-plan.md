@@ -67,9 +67,55 @@ One formerly current membership became historical. Ordinary game count stayed 60
 First provider item: Crimson Desert Enhanced. Last: Guildrun. These are observations
 at verification time, not fixed assertions about future Steam account contents.
 
-Closeout review still needs to assess achievement retry/cooldown eligibility,
+At the original checkpoint, closeout review still needed to assess achievement retry/cooldown eligibility,
 changed-game provider request budgets, and final verification/release requirements.
 No production daily scheduler was configured. The earlier unused
 `WishlistBacklogSection.jsx` was preserved in the checkpoint; the live Backlog uses
 `useWishlist` and `composeBacklogWishlist` instead. Removing the unused component
 is a possible later cleanup, not required to preserve the current data or UI.
+
+## Local closeout implementation, 2026-09-06
+
+The review above is followed by a local reliability patch recorded in Git history. Migration 032
+adds pending achievement work, next-attempt/last-attempt timestamps, retry counts
+and source revisions. Source changes and pending work commit together; cancelled
+or completed jobs cannot discard it. Unchanged Library runs select up to 250 due
+sources in addition to current activity. Repeated failure backs off from six hours
+to seven days; the daily trigger determines when due work is actually attempted.
+Failed/private/unavailable refreshes retain successful counts and report partial
+health. Revisions and account locks fence late manual and queued responses.
+
+Disconnect or replacement retires the linked account, clears current factual source
+caches and pending retries, archives active Steam memberships and resolves old open
+Steam review events. Ordinary games, matching decisions, local Wishlist intentions
+and saved membership history remain. Reconnection establishes a new factual baseline;
+old account order/date/empty-confirmation evidence does not become the new baseline.
+The daily runner carries the originally selected account ID into both domains and
+skips work if that identity or opt-in changes. Manual sync remains available when
+daily sync is disabled.
+
+Existing failed/unavailable source summaries also become eligible when due. Historical
+cooldown skips that left neither pending state nor an error cannot be reconstructed;
+an explicit manual achievement refresh can repair such pre-patch stale summaries.
+
+Verification completed locally on 2026-09-06:
+
+- `npm run env:check`: localhost PostgreSQL confirmed.
+- `npm run db:migrate:local`: only migration 032 applied; 030/031 stayed unchanged.
+- One focused `node --test` invocation passed across the closeout, Library,
+  fencing, Wishlist and Wishlist regression PostgreSQL contracts, service/provider
+  unit tests, Wishlist schema tests and daily-runner tests (11 files).
+- After adding the older-version disconnect/relink regression, only
+  `node --test --test-reporter=spec backend/steamDailyCloseout.contract.test.js`
+  was rerun: 8 passed, no failures or skips. Its provider boundary counts six
+  Steam requests for 1,000 saved apps plus two changed linked games and one
+  acquisition, and two requests for an unchanged snapshot. It also covers
+  exhausted retries, cooldown persistence, cancellation after source persistence,
+  stale manual responses, private responses, account history and scheduled opt-out.
+- `git diff --check` passed. The only frontend change labels disconnected history
+  as "Previous Steam connection". Browser checks were not repeated for this text
+  change; full lint/build/browser CI remains the release gate.
+
+No real Steam sync, production configuration, deployment or scheduler activation
+was performed. The next phase is independent review/CI and a separately authorized
+release, not further A/B product scope.
