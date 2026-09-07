@@ -1,6 +1,6 @@
 # Next Tasks
 
-Last updated: 2026-09-05
+Last updated: 2026-09-07
 
 This is the short active queue. It intentionally contains no completed work.
 See [`ROADMAP.md`](ROADMAP.md) for remaining candidates and
@@ -9,6 +9,14 @@ audit is a historical snapshot; its broad remediation landed in `34fb7c1` and
 must not be treated as the current backlog without revalidation.
 
 ## Selected Next Task
+
+Current Steam handoff: plan C.5 in a new conversation, focused on daily background
+sync UI/UX, Wishlist improvements and grouped in-app activity. Read the
+[C.5 handoff](daily_sync__wishlist_and_loaded/gaming-backlog-steam-phase-c5-handoff.md)
+and Phase C record first. C is locally implemented; 19 offer/type failures remain
+documented. Full CI/release/scheduling remain pending. Loaded stays Phase D.
+The older queue and September 5 handoff below are historical and do not supersede
+this selection.
 
 Steam conversation handoff, 2026-09-05: implementation checkpoint `cc8d105` is
 committed locally. The next chat should independently review A/B closeout before

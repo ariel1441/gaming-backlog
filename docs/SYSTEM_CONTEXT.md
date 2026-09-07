@@ -1,11 +1,23 @@
 # System Context
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 This is the main handoff file for future chats. Keep it current when the system
 changes so a new AI/chat can quickly understand the app without rereading the
 whole repository. For plans, feature ideas, and improvement candidates, use
 [`ROADMAP.md`](ROADMAP.md).
+
+Steam Phase C local implementation, 2026-09-07:
+[Wishlist prices implementation record](daily_sync__wishlist_and_loaded/gaming-backlog-steam-wishlist-phase-c-implementation-record.md)
+describes independent Israel pricing jobs, append-only observations, replay-safe
+facts and private Wishlist price/freshness displays. Migration 033 is applied to
+localhost. Phase C is the local closeout checkpoint on the account-isolation branch
+after `389477a`; focused backend and desktop/mobile checks passed after test fixes.
+Latest local coverage is 411/430 with 19 offer/type validation failures, documented
+in the record. The next separate conversation is
+[C.5 daily UI/UX and inbox planning](daily_sync__wishlist_and_loaded/gaming-backlog-steam-phase-c5-handoff.md).
+Full CI/release and production scheduling remain pending. Loaded, inbox,
+automation and broader activity history remain outside C.
 
 Steam planning handoff, 2026-09-05:
 [Daily experience vision and decisions](daily_sync__wishlist_and_loaded/gaming-backlog-steam-daily-experience-vision.md)
@@ -277,7 +289,8 @@ Routes:
 - `/wishlist` - private active/removed Steam wishlist using the shared Backlog toolbar,
   cards/compact/rows/table, filters and ascending/descending provider order.
   Reuses catalog/HLTB metadata. The Backlog preference merges active relationships
-  into the display pipeline as read-only projections. Pricing remains Phase C.
+  into the display pipeline as read-only projections. Phase C adds private Steam
+  Israel prices, freshness and historical fallback without provider calls on reads.
 - `/timeline` - private read-only chronological started/finished date feed.
 - `/reviews` - private completed-game review history with notes and scores.
 - `/insights` - analytics dashboard.

@@ -1,4 +1,5 @@
 import React from "react";
+import SteamPrice from './SteamPrice';
 import {
   CalendarDays,
   CheckCircle2,
@@ -435,6 +436,7 @@ export default function GameCard({
                 <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
               </div>
 
+              <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
               {visibleMyGenres.length ? (
                 <div className="flex flex-wrap gap-2">
                   {visibleMyGenres.map((genre) => (
@@ -494,6 +496,7 @@ export default function GameCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-4 px-3.5 py-4">
+        <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
         {isCompact ? (
           <div className="grid content-start gap-2">
             <div className="flex flex-wrap gap-1.5">

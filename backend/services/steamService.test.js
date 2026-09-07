@@ -562,6 +562,7 @@ test("disconnectSteamAccount updates account and sources in one transaction", as
       if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE user_external_accounts")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("UPDATE user_game_sources")) return { rows: [], rowCount: 2 };
+      if (sql.startsWith("UPDATE steam_price_monitors")) return { rows: [] };
       if (sql.startsWith("UPDATE steam_wishlist_items") || sql.startsWith("UPDATE user_activity_events")) return { rows: [] };
       throw new Error(`Unexpected query: ${sql}`);
     },

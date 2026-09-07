@@ -729,6 +729,8 @@ export function normalizeSteamAchievementSummary(playerPayload, schemaPayload) {
 // Keep the disconnected account row as provenance for Wishlist history. Re-linking
 // starts a fresh factual baseline while retaining catalog links and user decisions.
 async function retireSteamAccount(client, userId) {
+  await client.query(`UPDATE steam_price_monitors SET active = FALSE, comparison_observation_id = NULL
+    WHERE user_id = $1 AND active`, [userId]);
   await client.query(
     `UPDATE user_external_accounts SET sync_status = 'disconnected',
       disconnected_at = NOW(), auto_sync_enabled = FALSE, updated_at = NOW()
@@ -871,6 +873,12 @@ export function serializeSteamAccount(row) {
     wishlistLastErrorCode: row.wishlist_last_error_code || null,
     wishlistLastErrorMessage: row.wishlist_last_error_message || null,
     wishlistEmptyObservations: Number(row.wishlist_empty_observations) || 0,
+    priceSyncStatus: row.price_sync_status || 'never',
+    lastPriceAttemptAt: row.last_price_attempt_at || null,
+    lastPriceSyncAt: row.last_price_sync_at || null,
+    priceNextAttemptAt: row.price_next_attempt_at || null,
+    priceLastError: row.price_last_error || null,
+    priceRevision: String(row.price_revision || 0),
     linkedAt: row.linked_at,
   };
 }

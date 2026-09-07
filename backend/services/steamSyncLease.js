@@ -42,6 +42,8 @@ export async function lockSteamSyncJob(client, job) {
     `UPDATE user_external_accounts SET
       sync_status = CASE WHEN $2 = 'library' THEN CASE WHEN last_library_sync_at IS NULL THEN 'linked' ELSE 'synced' END ELSE sync_status END,
       wishlist_sync_status = CASE WHEN $2 = 'wishlist' THEN CASE WHEN last_wishlist_sync_at IS NULL THEN 'never' ELSE 'synced' END ELSE wishlist_sync_status END,
+      price_sync_status = CASE WHEN $2 = 'wishlist_prices' THEN 'cancelled' ELSE price_sync_status END,
+      price_revision = price_revision + CASE WHEN $2 = 'wishlist_prices' THEN 1 ELSE 0 END,
       updated_at = NOW() WHERE id = $1`, [current.account_id, current.sync_kind || 'library'],
   );
   return null;

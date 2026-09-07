@@ -18,10 +18,11 @@ export async function runDailySteamSync({
     eligible: userIds.length,
     library: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
     wishlist: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
+    wishlist_prices: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
   };
 
   for (const { userId, accountId } of userIds) {
-    for (const syncKind of ["library", "wishlist"]) {
+    for (const syncKind of ["library", "wishlist", "wishlist_prices"]) {
       try {
         const queued = await enqueue(userId, { trigger: "scheduled", force: false, syncKind, expectedAccountId: accountId });
         if (!queued) { totals[syncKind].skipped += 1; continue; }
@@ -38,7 +39,7 @@ export async function runDailySteamSync({
   }
 
   logger.log(
-    `Steam daily sync: eligible=${totals.eligible} library=${JSON.stringify(totals.library)} wishlist=${JSON.stringify(totals.wishlist)}`,
+    `Steam daily sync: eligible=${totals.eligible} library=${JSON.stringify(totals.library)} wishlist=${JSON.stringify(totals.wishlist)} prices=${JSON.stringify(totals.wishlist_prices)}`,
   );
   return totals;
 }
@@ -46,7 +47,7 @@ export async function runDailySteamSync({
 async function main() {
   try {
     const totals = await runDailySteamSync();
-    process.exitCode = totals.library.failed || totals.wishlist.failed ? 1 : 0;
+    process.exitCode = totals.library.failed || totals.wishlist.failed || totals.wishlist_prices.failed ? 1 : 0;
   } finally {
     await pool.end();
   }

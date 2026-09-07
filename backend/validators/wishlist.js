@@ -3,6 +3,10 @@ import { celebrate, Joi, Segments } from "celebrate";
 const opts = { convert: true, abortEarly: false, stripUnknown: true };
 const itemId = Joi.number().integer().positive().required();
 
+export const syncWishlistPrices = celebrate({
+  [Segments.BODY]: Joi.object({}).default({}),
+}, opts);
+
 export const listWishlist = celebrate({
   [Segments.QUERY]: Joi.object({
     active: Joi.string().valid("active", "removed", "all").default("active"),
