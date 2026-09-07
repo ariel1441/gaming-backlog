@@ -591,6 +591,13 @@ Deliver:
 - sale/price change events
 - price display on Wishlist page
 
+September 7 local checkpoint: see the
+[C implementation record](gaming-backlog-steam-wishlist-phase-c-implementation-record.md).
+The user selected a separate C.5 daily UI/UX and in-app notification planning
+conversation after C; see the [handoff](gaming-backlog-steam-phase-c5-handoff.md).
+This intermediate label does not renumber D/E/F or approve notification defaults,
+automation, production scheduling or Loaded work.
+
 ## Phase D — External Store Framework + Loaded
 Deliver:
 - store adapter contract

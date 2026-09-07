@@ -1,4 +1,5 @@
 import React from "react";
+import SteamPrice from '../../components/SteamPrice';
 import {
   CalendarDays,
   CheckCircle2,
@@ -311,6 +312,9 @@ function BacklogTableRow({
             ) : null}
           </span>
         </button>
+        {game.steamPrice || game.wishlist?.steamPrice ? (
+          <div className="mt-2 max-w-[340px] font-normal"><SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} /></div>
+        ) : null}
       </th>
       <td className="min-w-[170px] px-3 py-3">
         {collection === "wishlist" ? <span className="text-sm text-content-secondary">{game.steamActive && game.providerOrder != null ? game.providerOrder + 1 : "?"}</span> : <StatusBadge status={game.status} className="max-w-[180px]" />}

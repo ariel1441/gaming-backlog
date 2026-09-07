@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Heart, RefreshCw } from "lucide-react";
+import { priceSyncMessage } from '../utils/steamPrice';
 import { Link } from "react-router-dom";
 import GameGrid from "../components/GameGrid";
 import GameCard from "../components/GameCard";
@@ -97,20 +98,25 @@ export default function WishlistPage() {
     filters.setIsReversed(value);
   };
 
-  const runSync = async (confirmEmpty = false) => {
+  const runSync = async (confirmEmpty = false, prices = false) => {
     const controller = new AbortController();
     syncRequest.current = controller;
     setSyncing(true);
     try {
       const result = await syncWishlist({
         confirmEmpty,
+        prices,
         signal: controller.signal,
         onJob: (job) =>
           setActiveJobId(
             ["queued", "running"].includes(job?.status) ? job.id : null,
           ),
       });
-      if (result.needsEmptyConfirmation)
+      if (prices) {
+        const message = priceSyncMessage(result.summary || result.run?.summary);
+        if (['partial', 'failed'].includes(result.run?.status)) toast.warning(message);
+        else toast.success(message);
+      } else if (result.needsEmptyConfirmation)
         toast.warning(
           "Steam did not establish a confirmed empty wishlist. Saved membership was preserved.",
         );
@@ -258,6 +264,11 @@ export default function WishlistPage() {
                 ? new Date(state.account.lastWishlistSyncAt).toLocaleString()
                 : "Never"}
             </span>
+            <span>Prices: {state.account.priceSyncStatus || 'never'}</span>
+            <span>Latest saved price: {state.priceHealth?.last_observation_at ? new Date(state.priceHealth.last_observation_at).toLocaleString() : 'None yet'}</span>
+            <Button variant="secondary" size="sm" disabled={syncing} onClick={() => runSync(false, true)}>
+              Refresh prices
+            </Button>
             {activeJobId ? (
               <Button
                 variant="dangerGhost"
@@ -300,6 +311,16 @@ export default function WishlistPage() {
           <p className="mb-4 text-sm text-state-warning">
             {state.account.wishlistLastErrorMessage}
           </p>
+        ) : null}
+        {state.account?.priceLastError ? <p className="mb-4 text-sm text-state-warning">{state.account.priceLastError}</p> : null}
+        {state.priceHealth ? <p className="mb-4 text-sm text-content-muted">
+          {state.priceHealth.observed} of {state.priceHealth.eligible} monitored games have saved observations;
+          {' '}{state.priceHealth.unchecked} not checked, {state.priceHealth.failed} need a retry.
+          {state.priceHealth.unresolved ? ` ${state.priceHealth.unresolved} local intentions need a Steam identity.` : ''}
+        </p> : null}
+        {state.account?.priceNextAttemptAt && new Date(state.account.priceNextAttemptAt) > new Date() ? (
+          <p className="mb-4 text-sm text-state-warning">Steam pricing is cooling down until {new Date(state.account.priceNextAttemptAt).toLocaleString()}.
+            {' '}{state.account.autoSyncEnabled ? 'Remaining work is eligible at the next scheduled run after that time.' : 'Daily sync is off. Use Refresh prices after that time to continue.'}</p>
         ) : null}
         {games.some((game) => game.metadataComplete === false) ? (
           <p className="mb-4 text-sm text-state-warning">

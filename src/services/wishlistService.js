@@ -1,4 +1,4 @@
-import { api } from "./apiClient";
+import { api } from "./apiClient.js";
 
 export function listWishlist(params = {}, opts = {}) {
   const query = new URLSearchParams();
@@ -16,7 +16,8 @@ export async function listAllWishlist(params = {}, opts = {}) {
   const items = [];
   do {
     const page = await listWishlist({ ...params, limit, offset }, opts);
-    if (result && (String(result.snapshotVersion || "") !== String(page.snapshotVersion || "") || result.total !== page.total)) {
+    if (result && (String(result.snapshotVersion || "") !== String(page.snapshotVersion || "") ||
+        String(result.priceRevision || '') !== String(page.priceRevision || '') || result.total !== page.total)) {
       throw new Error("Wishlist changed while loading. Please retry.");
     }
     result ||= page;
@@ -43,8 +44,8 @@ function wait(milliseconds, signal) {
   });
 }
 
-export async function syncWishlist({ confirmEmpty = false, onJob, ...opts } = {}) {
-  const started = await api.post(confirmEmpty ? "/api/wishlist/confirm-empty" : "/api/wishlist/sync", {}, opts);
+export async function syncWishlist({ confirmEmpty = false, prices = false, onJob, ...opts } = {}) {
+  const started = await api.post(prices ? '/api/wishlist/prices/sync' : confirmEmpty ? "/api/wishlist/confirm-empty" : "/api/wishlist/sync", {}, opts);
   let job = started?.job;
   if (!job?.id) throw new Error("Wishlist sync did not return a job ID.");
   onJob?.(job);

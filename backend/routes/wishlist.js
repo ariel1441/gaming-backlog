@@ -6,7 +6,7 @@ import {
   listWishlistItems,
   moveWishlistItemToBacklog,
 } from "../services/steamWishlistService.js";
-import { listWishlist, wishlistItemAction } from "../validators/wishlist.js";
+import { listWishlist, wishlistItemAction, syncWishlistPrices } from "../validators/wishlist.js";
 
 const router = express.Router();
 
@@ -25,6 +25,14 @@ router.post("/sync", verifyToken, async (req, res, next) => {
   try {
     await assertSavedAccountUser(req.user.id);
     const job = await enqueueSteamSync(req.user.id, { trigger: "manual", syncKind: "wishlist" });
+    res.status(202).json({ job });
+  } catch (error) { next(error); }
+});
+
+router.post('/prices/sync', verifyToken, syncWishlistPrices, async (req, res, next) => {
+  try {
+    await assertSavedAccountUser(req.user.id);
+    const job = await enqueueSteamSync(req.user.id, { trigger: 'manual', syncKind: 'wishlist_prices' });
     res.status(202).json({ job });
   } catch (error) { next(error); }
 });

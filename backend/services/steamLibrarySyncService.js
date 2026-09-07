@@ -24,6 +24,7 @@ import {
   failSteamWishlistJob,
   processSteamWishlistJob,
 } from "./steamWishlistService.js";
+import { processSteamPriceJob, failSteamPriceJob } from './steamPriceSyncService.js';
 
 const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 const SYNC_AUTO_MATCH_LIMIT = 150;
@@ -1088,6 +1089,10 @@ async function processSteamSyncJob(job) {
     // Reclaimed jobs may already have a payload. Validate eligibility before
     // doing discovery or other provider work from that saved payload.
     if (!(await withActiveJobLease(job, async () => true)).active) return;
+    if (job.sync_kind === 'wishlist_prices') {
+      await processSteamPriceJob(job);
+      return;
+    }
     if ((job.sync_kind || "library") === "wishlist") {
       await processSteamWishlistJob(job);
       return;
@@ -1128,7 +1133,9 @@ async function processSteamSyncJob(job) {
       [job.id, job.lease_token],
     );
   } catch (error) {
-    if ((job?.sync_kind || "library") === "wishlist") {
+    if (job?.sync_kind === 'wishlist_prices') {
+      await failSteamPriceJob(job, error);
+    } else if ((job?.sync_kind || "library") === "wishlist") {
       await failSteamWishlistJob(job, error);
     } else {
       await failSteamSyncJob(job, error);
@@ -1148,7 +1155,8 @@ export async function enqueueSteamSync(
       (expectedAccountId != null && Number(account.id) !== Number(expectedAccountId)))) return null;
   if (!account) throw badRequest("Link Steam before syncing.");
   const triggerType = trigger === "scheduled" ? "scheduled" : "manual";
-  const normalizedKind = syncKind === "wishlist" ? "wishlist" : "library";
+  if (!['library', 'wishlist', 'wishlist_prices'].includes(syncKind)) throw badRequest('Unsupported Steam sync kind.');
+  const normalizedKind = syncKind;
   const jobId = crypto.randomUUID();
   try {
     const { rows } = await pool.query(
@@ -1252,6 +1260,8 @@ export async function cancelSteamSyncJob(userId, jobId) {
                WHEN last_wishlist_sync_at IS NULL THEN 'never'
                ELSE 'synced'
              END ELSE wishlist_sync_status END,
+             price_sync_status = CASE WHEN $3 = 'wishlist_prices' THEN 'cancelled' ELSE price_sync_status END,
+             price_revision = price_revision + CASE WHEN $3 = 'wishlist_prices' THEN 1 ELSE 0 END,
              updated_at = NOW()
        WHERE id = $1 AND user_id = $2
       `,

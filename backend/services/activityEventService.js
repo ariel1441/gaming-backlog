@@ -6,6 +6,8 @@ export function serializeActivityEvent(row) {
   return {
     id: Number(row.id),
     source: row.source,
+    eventKind: row.event_kind || 'decision',
+    occurrenceKey: row.occurrence_key || null,
     eventType: row.event_type,
     gameId: row.game_id == null ? null : Number(row.game_id),
     catalogGameId:
@@ -22,6 +24,20 @@ export function serializeActivityEvent(row) {
     resolvedAt: row.resolved_at,
     createdAt: row.created_at,
   };
+}
+
+// Informational facts have permanent identity; read/dismiss state never controls
+// replay protection. A later inbox can deliver/group these without open tasks.
+export async function createFactualActivityEvent({ userId, source, eventType, wishlistItemId,
+  externalId, syncRunId, occurrenceKey, payload, observedAt }, client = pool) {
+  const { rows } = await client.query(
+    `INSERT INTO user_activity_events (user_id, source, event_type, wishlist_item_id,
+      external_id, sync_run_id, dedupe_key, occurrence_key, event_kind, state, payload_json, observed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $7, 'fact', 'resolved', $8::jsonb, $9)
+     ON CONFLICT (user_id, source, occurrence_key) WHERE occurrence_key IS NOT NULL DO NOTHING RETURNING *`,
+    [userId, source, eventType, wishlistItemId, externalId, syncRunId, occurrenceKey, JSON.stringify(payload), observedAt],
+  );
+  return rows[0] || null;
 }
 
 export async function createOpenActivityEvent(
