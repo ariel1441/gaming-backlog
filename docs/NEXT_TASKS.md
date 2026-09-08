@@ -1,6 +1,6 @@
 # Next Tasks
 
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 This is the short active queue. It intentionally contains no completed work.
 See [`ROADMAP.md`](ROADMAP.md) for remaining candidates and
@@ -13,8 +13,10 @@ must not be treated as the current backlog without revalidation.
 Current Steam handoff: plan C.5 in a new conversation, focused on daily background
 sync UI/UX, Wishlist improvements and grouped in-app activity. Read the
 [C.5 handoff](daily_sync__wishlist_and_loaded/gaming-backlog-steam-phase-c5-handoff.md)
-and Phase C record first. C is locally implemented; 19 offer/type failures remain
-documented. Full CI/release/scheduling remain pending. Loaded stays Phase D.
+and Phase C record first. C is locally implemented; the September 8 live adapter
+probe resolved 15 of the earlier 19 errors, leaving four unusual offers restricted.
+Saved coverage awaits a normal refresh. Full CI/release/scheduling remain pending.
+Loaded stays Phase D.
 The older queue and September 5 handoff below are historical and do not supersede
 this selection.
 

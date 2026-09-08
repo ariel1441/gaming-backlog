@@ -13,8 +13,10 @@ describes independent Israel pricing jobs, append-only observations, replay-safe
 facts and private Wishlist price/freshness displays. Migration 033 is applied to
 localhost. Phase C is the local closeout checkpoint on the account-isolation branch
 after `389477a`; focused backend and desktop/mobile checks passed after test fixes.
-Latest local coverage is 411/430 with 19 offer/type validation failures, documented
-in the record. The next separate conversation is
+Last saved local coverage was 411/430 with 19 failures. The September 8 hardening
+live probe resolved 15 (14 ILS prices, one unreleased state); four unusual offers
+remain restricted. The probe did not persist observations. See the record for
+the subsequent commit and 32 passing focused tests. The next separate conversation is
 [C.5 daily UI/UX and inbox planning](daily_sync__wishlist_and_loaded/gaming-backlog-steam-phase-c5-handoff.md).
 Full CI/release and production scheduling remain pending. Loaded, inbox,
 automation and broader activity history remain outside C.

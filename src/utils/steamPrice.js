@@ -17,7 +17,7 @@ export function steamPriceDisplay(price, now = Date.now()) {
     note: price.monitoringReason === 'owned' ? 'Owned · monitoring stopped' : price.monitoringReason === 'identity_unresolved' ? 'Steam identity needs verification'
       : !price.monitoring ? 'Monitoring paused' : price.errorCode === 'steam_price_offer_uncertain' ? 'Standard offer needs verification'
       : price.errorCode === 'steam_price_package_mismatch' ? 'Package contents need verification'
-      : price.errorCode === 'steam_price_unsupported_type' ? 'DLC and other content are not included in game pricing'
+      : price.errorCode === 'steam_price_unsupported_type' ? 'This content type is not supported for pricing'
       : price.errorCode === 'steam_rate_limited' ? 'Steam rate limit reached; waiting to retry'
       : price.status === 'failed' ? (hasPrice ? 'Refresh failed; saved price retained' : 'Refresh failed; no price saved yet')
       : price.status === 'not_checked' ? 'Waiting for a price refresh' : stale ? 'Price may be out of date' : null,

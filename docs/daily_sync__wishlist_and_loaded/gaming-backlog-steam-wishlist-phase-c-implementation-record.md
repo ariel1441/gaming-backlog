@@ -1,5 +1,47 @@
 # Phase C: Steam Wishlist prices
 
+## Additional Phase C offer hardening, 2026-09-08
+
+Follow-up to local commit `86a8539`, authorized before moving to C.5. The previously
+reported 19 errors below are historical; the live adapter probe now resolves 15:
+14 verified ILS prices and one successful unreleased/no-price state. This probe
+made no account sync or local observation writes. Saved coverage remains the last
+DB snapshot until the user runs Refresh prices; 426/430 observed is the expected
+result if those responses remain unchanged, not a measured saved-data count.
+
+Changes:
+
+- Ten reviewed label exceptions require exact AppID, package ID and normalized
+  offer label. Package response name, target AppID/name and monetary checks still
+  apply. No broad fuzzy matching or automatic acceptance of new package IDs.
+- A base-game package may include additional AppIDs only when Steam's successful
+  IL appdetails response identifies the exact base game and lists every extra as
+  its DLC. Other games, unverified extras and duplicate IDs remain rejected.
+- Standalone type-4 DLC may use its own exact single-AppID package, reporting zero
+  included base games. DLC plus base-game packages remain rejected. Coming-soon DLC
+  without an offer is a successful unreleased observation with null money, not zero.
+- Additional relationship requests use the existing timeout/size bounds, pacing,
+  request budget, retries and lease callback. Failure preserves saved baselines.
+  Normalizer version remains 1: monetary and comparison semantics are unchanged;
+  newly accepted offers establish their first baseline without events.
+- Unsupported-type UI copy now describes unsupported content without claiming all
+  DLC is excluded. No layout, schema, scheduler or notification behavior changed.
+
+Read-only public adapter verification returned valid ILS prices for all ten label
+cases, AOE2 DE, Sea of Stars, Cuphead DLC and Outer Wilds DLC. Witcher Songs of the
+Past returned unreleased. MGS1, Path of Exile 2, Resident Evil 5 and South of Midnight
+remain offer-uncertain as planned; their regional multi-game/supporter/edition
+contracts are not silently expanded. Repeated retries still do not solve these
+four; clearer aggregate classification remains a C.5 concern.
+
+Verification: `NODE_ENV=test node --test backend/services/steamPriceProvider.test.js
+backend/steamPrices.contract.test.js src/utils/steamPrice.test.js` passed 32 tests,
+zero failures/skips. Covers prior working price cases, all ten reviewed aliases,
+changed package/edition rejection, unrelated extras, DLC, ILS consistency and the
+extra request's budget callback, plus durable history and account fencing.
+`git diff --check` passed. Existing desktop/mobile layout checks were not repeated
+for a text-only UI adjustment. Full CI and production rollout remain pending.
+
 ## Local closeout and remaining errors, 2026-09-07
 
 Phase C is a locally implemented and focused-tested checkpoint, not a production
