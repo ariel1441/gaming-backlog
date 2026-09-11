@@ -165,9 +165,14 @@ test("Steam candidates cannot restore facts from a previous connection", { timeo
     await rejected;
     assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM games WHERE user_id = $1", [userId])).rows[0].n, 2);
   } finally {
-    await pool?.end();
-    await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1", [database]);
-    await admin.query(`DROP DATABASE ${database}`);
-    await admin.end();
+    try {
+      await pool?.end();
+      // Let graceful client shutdown finish. Forcing termination here can race
+      // pg-pool's socket close and emit an uncaught administrator-command error.
+      // Ordinary DROP also exposes genuinely leaked connections instead of hiding them.
+      await admin.query(`DROP DATABASE ${database}`);
+    } finally {
+      await admin.end();
+    }
   }
 });
