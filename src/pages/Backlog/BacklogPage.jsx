@@ -68,7 +68,7 @@ export default function BacklogPage() {
   const presentationGames = React.useMemo(() => composeBacklogWishlist(games,
     userPreferences.show_wishlist_in_backlog && !isGuest ? wishlist.items : []),
     [games, wishlist.items, userPreferences.show_wishlist_in_backlog, isGuest]);
-  const selectGame = (game) => game.entryKind === "wishlist" ? nav("/wishlist") : setSelectedGame(game);
+  const selectGame = (game) => game.entryKind === "wishlist" ? nav(`/wishlist?item=${game.wishlistItemId}`) : setSelectedGame(game);
   const backlogTitle = React.useMemo(() => {
     if (!isAuthenticated) return "Backlog";
     if (isGuest) return "Your demo backlog";
@@ -402,6 +402,7 @@ export default function BacklogPage() {
             className="sticky top-[calc(var(--mobile-header-h,3.5rem)+var(--demo-banner-h,0px))] z-30 bg-surface-bg lg:top-0"
           >
             <BacklogToolbar
+              showNotifications
               identity={{ title: backlogTitle }}
               search={{
                 query: searchQuery,

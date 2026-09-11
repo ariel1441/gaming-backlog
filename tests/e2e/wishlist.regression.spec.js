@@ -1,11 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { steamCoverUrl } from "../../backend/utils/steamAssets.js";
 
-// Recorded Steam assets shape. Load and decode the real CDN response in Chromium.
+// Recorded Steam assets shape; decode fixture artwork without contacting the CDN.
 const cover = steamCoverUrl({
   asset_url_format: "steam/apps/951770/${FILENAME}?t=1787230575",
   library_capsule: "library_600x900.jpg",
 });
+const landscapeCover = "https://cdn.akamai.steamstatic.com/steam/apps/951770/header.jpg";
 const items = Array.from({ length: 444 }, (_, index) => ({
   id: index + 1,
   steamAppId: index < 436 ? String(100000 + index) : null,
@@ -29,6 +30,10 @@ const items = Array.from({ length: 444 }, (_, index) => ({
   dateAdded: "2026-08-01T00:00:00Z",
 }));
 async function fixture(page, showWishlist = false) {
+  await page.route("https://**.steamstatic.com/**", (route) => route.fulfill({
+    contentType: "image/svg+xml",
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="920" height="430"><rect width="920" height="430" fill="#214769"/></svg>',
+  }));
   await page.addInitScript(() => {
     localStorage.setItem("token", "fixture");
     localStorage.setItem("seen_onboarding_v1", "1");
@@ -70,7 +75,7 @@ async function fixture(page, showWishlist = false) {
 }
 
 for (const width of [1440, 375]) {
-  test(`Wishlist parity and real decoded Steam covers at ${width}px`, async ({
+  test(`Wishlist parity and decoded Steam artwork fixtures at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -80,7 +85,7 @@ for (const width of [1440, 375]) {
     await page.goto("/wishlist");
     await expect(page.locator("article h3").first()).toHaveText(items[0].name);
     const image = page.locator("article img").first();
-    await expect(image).toHaveAttribute("src", cover);
+    await expect(image).toHaveAttribute("src", landscapeCover);
     await expect
       .poll(
         () => image.evaluate((img) => img.complete && img.naturalWidth > 0),

@@ -39,9 +39,9 @@ export function steamAssetUrl(assets = {}, filename) {
 
 export function steamCoverUrl(assets = {}, fallback = null) {
   for (const asset of [
-    assets.library_capsule,
     assets.header,
     assets.main_capsule,
+    assets.library_capsule,
     fallback,
   ]) {
     const url = steamAssetUrl(assets, asset);

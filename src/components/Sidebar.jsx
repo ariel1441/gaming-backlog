@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronRight,
   LogIn,
@@ -19,6 +19,8 @@ import {
   visibleNavigationItems,
 } from "../config/navigation";
 import { preloadRoute } from "../config/routeLoaders";
+import { useSteamExperience } from '../features/steam/SteamExperienceContext';
+import { NotificationBell } from '../features/notifications/Notifications';
 
 const COLLAPSED_STORAGE_KEY = "gaming_backlog_sidebar_collapsed_v1";
 const NARROW_DESKTOP_QUERY = "(max-width: 1279px)";
@@ -145,6 +147,8 @@ function AccountMenu({ collapsed, user, onClose, onNavigate, onLogout }) {
 }
 
 export default function Sidebar() {
+  const { pathname } = useLocation();
+  const { activeJob } = useSteamExperience();
   const { user, isAuthenticated, isGuest, logout } = useAuth();
   const navigate = useNavigate();
   const accountRef = useRef(null);
@@ -252,6 +256,9 @@ export default function Sidebar() {
             "min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-4",
           ].join(" ")}
         >
+          {!['/', '/wishlist'].includes(pathname.replace(/\/$/, '') || '/') ? (
+            <div className="mb-3"><NotificationBell collapsed={collapsed} /></div>
+          ) : null}
           <div className="space-y-1">
             {allowedPrimary.map((item) => (
               <NavigationItem key={item.to} item={item} collapsed={collapsed} />
@@ -280,6 +287,7 @@ export default function Sidebar() {
               </div>
             </div>
           ) : null}
+          {activeJob ? <NavLink to="/activity" title="Steam updating in background" className="mt-3 block rounded-lg px-3 py-2 text-xs text-content-muted" role="status">{collapsed ? 'Sync' : 'Steam updating in background'}</NavLink> : null}
         </nav>
 
         <div
@@ -288,11 +296,10 @@ export default function Sidebar() {
         >
           {isAuthenticated ? (
             <>
-              <div className="overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setAccountOpen((current) => !current)}
-                  className="flex h-12 w-[188px] items-center gap-2.5 rounded-xl border border-transparent px-1.5 text-left transition-colors hover:border-surface-border/70 hover:bg-surface-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70"
+                  className={`flex h-12 ${collapsed ? 'w-12' : 'w-full'} items-center gap-2.5 rounded-xl border border-transparent px-1.5 text-left transition-colors hover:border-surface-border/70 hover:bg-surface-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70`}
                   aria-expanded={accountOpen}
                   aria-label="Open account menu"
                   title={collapsed ? primaryAccountLabel : undefined}
@@ -327,7 +334,6 @@ export default function Sidebar() {
                     aria-hidden="true"
                   />
                 </button>
-              </div>
               {accountOpen ? (
                 <AccountMenu
                   collapsed={collapsed}

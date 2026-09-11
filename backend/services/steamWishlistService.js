@@ -1,4 +1,5 @@
 import { pool } from "../db.js";
+import { sanitizeGameHtml } from '../utils/sanitizeHtml.js';
 import { absoluteImageUrl } from "../utils/steamAssets.js";
 import { lockSteamSyncJob } from "./steamSyncLease.js";
 import { badRequest, forbidden, notFound } from "../utils/httpError.js";
@@ -101,7 +102,7 @@ function serializeWishlistItem(row, { hltbLookup } = {}) {
     rating: row.catalog_rawg_rating == null ? null : Number(row.catalog_rawg_rating),
     metacritic: row.catalog_metacritic == null ? null : Number(row.catalog_metacritic),
     releaseDate: row.catalog_released_at || row.release_date || null,
-    description: row.catalog_description_html || "",
+    description: sanitizeGameHtml(row.catalog_description_html || ""),
     priority: row.priority == null ? null : Number(row.priority),
     providerOrder: row.provider_order == null ? null : Number(row.provider_order),
     changedAt: row.last_changed_at || row.updated_at,
@@ -171,7 +172,13 @@ export async function listWishlistItems(userId, options = {}) {
             COUNT(*) OVER()::int AS total_count,
             COUNT(*) FILTER (WHERE COALESCE(catalog.name, game.name, candidate.steam_name, wishlist.display_name) ~ '^Steam App [0-9]+$') OVER()::int AS metadata_missing_count
        FROM user_wishlist_items wishlist
-       LEFT JOIN steam_wishlist_items steam ON steam.wishlist_item_id = wishlist.id AND steam.user_id = wishlist.user_id
+       LEFT JOIN LATERAL (
+         SELECT membership.* FROM steam_wishlist_items membership
+         WHERE membership.wishlist_item_id = wishlist.id AND membership.user_id = wishlist.user_id
+         ORDER BY membership.is_active DESC, membership.provider_order ASC NULLS LAST,
+           membership.last_seen_at DESC, membership.steam_app_id
+         LIMIT 1
+       ) steam ON TRUE
        LEFT JOIN games game ON game.id = wishlist.game_id AND game.user_id = wishlist.user_id
        LEFT JOIN catalog_games catalog ON catalog.id = wishlist.catalog_game_id
        LEFT JOIN steam_price_targets target ON target.wishlist_item_id = wishlist.id AND target.user_id = wishlist.user_id
@@ -197,6 +204,10 @@ export async function listWishlistItems(userId, options = {}) {
       COUNT(*) FILTER (WHERE t.reason = 'eligible')::int AS eligible,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.latest_observation_id IS NOT NULL)::int AS observed,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error IS NOT NULL)::int AS failed,
+      COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error IN ('steam_price_offer_uncertain', 'steam_price_package_mismatch'))::int AS verification,
+      COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error = 'steam_price_unsupported_type')::int AS unsupported,
+      COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error IS NOT NULL AND m.last_error NOT IN ('steam_price_offer_uncertain', 'steam_price_package_mismatch', 'steam_price_unsupported_type'))::int AS retrying,
+      COUNT(*) FILTER (WHERE t.reason = 'eligible' AND o.epoch = m.epoch AND o.observed_at >= NOW() - INTERVAL '36 hours' AND m.last_error IS NULL)::int AS fresh,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.latest_observation_id IS NULL AND m.last_error IS NULL)::int AS unchecked,
       COUNT(*) FILTER (WHERE t.reason = 'identity_unresolved')::int AS unresolved,
       MAX(o.observed_at) AS last_observation_at
@@ -523,5 +534,28 @@ export async function moveWishlistItemToBacklog(userId, wishlistItemId, status) 
       );
     }
     return { gameId: Number(gameId), wishlistItemId: Number(wishlistItemId) };
+  });
+}
+
+// Explicit local-intention retirement after the owned game has been added/linked.
+// This never changes Steam membership, personal status or dates.
+export async function retireOwnedWishlistIntention(userId, wishlistItemId, gameId) {
+  await assertSavedAccountUser(userId);
+  return withTransaction(async (client) => {
+    await client.query(`SELECT id FROM user_external_accounts
+      WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE`, [userId]);
+    const { rows } = await client.query(`UPDATE user_wishlist_items w
+      SET local_intent_active = FALSE, updated_at = NOW()
+      WHERE w.id = $2 AND w.user_id = $1 AND EXISTS (
+        SELECT 1 FROM steam_price_targets t
+        JOIN user_external_accounts a ON a.id = t.account_id AND a.user_id = t.user_id
+          AND a.provider = 'steam' AND a.disconnected_at IS NULL
+        JOIN user_game_sources s ON s.user_id = t.user_id AND s.provider = 'steam'
+          AND s.provider_app_id = t.steam_app_id AND s.source_status = 'owned' AND s.last_synced_at >= a.linked_at
+        JOIN games g ON g.id = s.game_id AND g.user_id = s.user_id AND LOWER(TRIM(g.status)) <> 'wishlist'
+        WHERE t.user_id = w.user_id AND t.wishlist_item_id = w.id AND t.reason IN ('owned', 'removed') AND g.id = $3
+      ) RETURNING w.id`, [userId, wishlistItemId, gameId]);
+    if (!rows[0]) throw badRequest('Add or link this owned game to your Backlog before removing its local Wishlist intention.');
+    return { wishlistItemId: Number(rows[0].id), localActive: false };
   });
 }

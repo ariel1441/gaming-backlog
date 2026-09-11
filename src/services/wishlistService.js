@@ -1,4 +1,5 @@
 import { api } from "./apiClient.js";
+import { invalidateWishlistCache } from './wishlistCache.js';
 
 export function listWishlist(params = {}, opts = {}) {
   const query = new URLSearchParams();
@@ -9,7 +10,7 @@ export function listWishlist(params = {}, opts = {}) {
   return api.get(`/api/wishlist${suffix}`, opts);
 }
 
-export async function listAllWishlist(params = {}, opts = {}) {
+async function readCompleteWishlist(params = {}, opts = {}) {
   const limit = 100;
   let offset = 0;
   let result = null;
@@ -18,7 +19,9 @@ export async function listAllWishlist(params = {}, opts = {}) {
     const page = await listWishlist({ ...params, limit, offset }, opts);
     if (result && (String(result.snapshotVersion || "") !== String(page.snapshotVersion || "") ||
         String(result.priceRevision || '') !== String(page.priceRevision || '') || result.total !== page.total)) {
-      throw new Error("Wishlist changed while loading. Please retry.");
+      const error = new Error("Wishlist changed while loading. Please retry.");
+      error.code = 'wishlist_revision_changed';
+      throw error;
     }
     result ||= page;
     items.push(...(page.items || []));
@@ -29,6 +32,13 @@ export async function listAllWishlist(params = {}, opts = {}) {
     throw new Error("Could not load a complete wishlist. Please retry.");
   }
   return { ...(result || {}), items, total: Number(result?.total || items.length) };
+}
+
+export async function listAllWishlist(params = {}, opts = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await readCompleteWishlist(params, opts); }
+    catch (error) { if (attempt >= 1 || error.code !== 'wishlist_revision_changed' || opts.signal?.aborted) throw error; }
+  }
 }
 
 function wait(milliseconds, signal) {
@@ -64,6 +74,14 @@ export function cancelWishlistSync(jobId, opts = {}) {
   return api.del(`/api/steam/sync/${jobId}`, opts);
 }
 
-export function moveWishlistToBacklog(itemId, status, opts = {}) {
-  return api.post(`/api/wishlist/${itemId}/move-to-backlog`, { status }, opts);
+export async function moveWishlistToBacklog(itemId, status, opts = {}) {
+  const result = await api.post(`/api/wishlist/${itemId}/move-to-backlog`, { status }, opts);
+  invalidateWishlistCache();
+  return result;
+}
+
+export async function retireWishlistIntention(itemId, gameId, opts = {}) {
+  const result = await api.post(`/api/wishlist/${itemId}/retire-intention`, { gameId }, opts);
+  invalidateWishlistCache();
+  return result;
 }

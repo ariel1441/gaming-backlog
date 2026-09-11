@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { resolveGameArtwork } from "../../utils/gameArtwork.js";
 import { Gamepad2, ImageOff } from "lucide-react";
 
 const variantClasses = {
@@ -25,6 +26,8 @@ function initialsFor(name) {
 
 export default function GameCover({
   src,
+  fallbackSources = [],
+  artwork = false,
   name,
   alt = "",
   variant = "custom",
@@ -38,13 +41,17 @@ export default function GameCover({
   decorative = alt === "",
   ...props
 }) {
-  const normalizedSrc = typeof src === "string" ? src.trim() : "";
-  const [failedSrc, setFailedSrc] = useState("");
+  const resolved = artwork ? resolveGameArtwork(src) : {};
+  const normalizedSrc = resolved.cover || (typeof src === "string" ? src.trim() : "");
+  const sources = [normalizedSrc, ...(resolved.coverFallbacks || fallbackSources)].filter((value) => typeof value === "string" && value.trim());
+  const [failedSources, setFailedSources] = useState([]);
+  const activeSrc = sources.find((value) => !failedSources.includes(value));
+  const contain = fit === "contain";
   const initials = useMemo(() => initialsFor(name), [name]);
-  const failed = !normalizedSrc || failedSrc === normalizedSrc;
+  const failed = !activeSrc;
 
   useEffect(() => {
-    setFailedSrc("");
+    setFailedSources([]);
   }, [normalizedSrc]);
 
   return (
@@ -61,14 +68,14 @@ export default function GameCover({
     >
       {!failed ? (
         <img
-          src={normalizedSrc}
+          src={activeSrc}
           alt={decorative ? "" : alt || name || ""}
           loading={loading}
           decoding="async"
-          onError={() => setFailedSrc(normalizedSrc)}
+          onError={() => setFailedSources((previous) => [...previous, activeSrc])}
           className={[
             "h-full w-full",
-            fit === "contain" ? "object-contain" : "object-cover",
+            contain ? "object-contain" : "object-cover",
             imageClassName,
           ].join(" ")}
         />

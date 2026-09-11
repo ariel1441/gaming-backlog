@@ -1,3 +1,6 @@
+import { resolveGameArtwork as wishlistArtwork } from "../../utils/gameArtwork.js";
+export { wishlistArtwork };
+
 export function wishlistItemToGame(item = {}) {
   const hours = item.displayHLTB ?? item.howLongToBeat ?? null;
   return {
@@ -6,6 +9,7 @@ export function wishlistItemToGame(item = {}) {
     wishlistItemId: item.id,
     name: item.name || (item.steamAppId ? `Steam App ${item.steamAppId}` : "Unknown Steam app"),
     cover: item.cover || null,
+    ...wishlistArtwork(item.cover),
     status: "wishlist",
     personal_genres: [],
     entryKind: "wishlist",
@@ -43,6 +47,8 @@ export function composeBacklogWishlist(games = [], items = []) {
 }
 
 export const wishlistSortOptions = [
+  { value: "price", label: "Price (ILS)" },
+  { value: "discount", label: "Discount %" },
   { value: "providerOrder", label: "Steam order" },
   { value: "name", label: "Name" },
   { value: "dateAdded", label: "Date added" },

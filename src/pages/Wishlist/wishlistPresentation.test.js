@@ -1,6 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wishlistItemToGame, composeBacklogWishlist } from "./wishlistPresentation.js";
+import { wishlistItemToGame, composeBacklogWishlist, wishlistArtwork } from "./wishlistPresentation.js";
+
+test("saved Steam portraits use landscape art with an original-image fallback", () => {
+  const cover = "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3321460/hash/library_capsule.jpg?t=123";
+  const game = wishlistItemToGame({ id: 1, cover });
+  assert.equal(game.cover, "https://cdn.akamai.steamstatic.com/steam/apps/3321460/header.jpg");
+  assert.equal(game.posterCover, cover);
+  assert.deepEqual(game.coverFallbacks, ["https://cdn.akamai.steamstatic.com/steam/apps/3321460/library_hero.jpg", cover]);
+  assert.deepEqual(wishlistArtwork("https://example.com/steam/apps/10/library_capsule.jpg"), {});
+  assert.deepEqual(wishlistArtwork("https://shared.fastly.steamstatic.com/steam/apps/10/header.jpg"), {});
+  assert.equal(composeBacklogWishlist([{ id: 2, cover: "manual.jpg" }], [{ id: 1, gameId: 2, active: true, cover }])[0].cover, "manual.jpg");
+});
 import { buildDisplayGames } from "../../utils/gameList.js";
 import { canEditGame, canDeleteGame } from "../../utils/permissions.js";
 

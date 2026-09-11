@@ -5,10 +5,15 @@ import {
   assertSavedAccountUser,
   listWishlistItems,
   moveWishlistItemToBacklog,
+  retireOwnedWishlistIntention,
 } from "../services/steamWishlistService.js";
-import { listWishlist, wishlistItemAction, syncWishlistPrices } from "../validators/wishlist.js";
+import { listWishlist, wishlistItemAction, syncWishlistPrices, retireWishlistIntention } from "../validators/wishlist.js";
 
 const router = express.Router();
+router.post('/:itemId/retire-intention', verifyToken, retireWishlistIntention, async (req, res, next) => {
+  try { res.json(await retireOwnedWishlistIntention(req.user.id, req.params.itemId, req.body.gameId)); }
+  catch (error) { next(error); }
+});
 
 router.get("/", verifyToken, listWishlist, async (req, res, next) => {
   try {

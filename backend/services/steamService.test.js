@@ -666,11 +666,14 @@ test("Steam import summaries exclude ignored rows from active review groups", as
 });
 
 test("applySteamStatusSuggestion updates only a Steam-linked game", async () => {
-  await withMockPoolQuery(
+  await withMockClient(
     async (text, values) => {
       const sql = compact(text);
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.startsWith("SELECT id, linked_at FROM user_external_accounts")) return { rows: [{ id: 1, linked_at: "2026-01-01" }] };
+      if (sql.startsWith("SELECT status FROM games")) return { rows: [{ status: "plan to play" }] };
       if (sql.startsWith("WITH updated AS ( UPDATE games g SET status = $3")) {
-        assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03", null]);
+        assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03", null, "2026-01-01"]);
         assert.match(sql, /EXISTS \( SELECT 1 FROM user_game_sources ugs/);
         assert.match(sql, /DELETE FROM user_next_up_games/);
         assert.doesNotMatch(sql, /updated_at/);
@@ -703,11 +706,14 @@ test("applySteamStatusSuggestion updates only a Steam-linked game", async () => 
 });
 
 test("applySteamStatusSuggestion never substitutes today for an invalid approximate date", async () => {
-  await withMockPoolQuery(
+  await withMockClient(
     async (text, values) => {
       const sql = compact(text);
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.startsWith("SELECT id, linked_at FROM user_external_accounts")) return { rows: [{ id: 1, linked_at: "2026-01-01" }] };
+      if (sql.startsWith("SELECT status FROM games")) return { rows: [{ status: "plan to play" }] };
       assert.match(sql, /^WITH updated AS \( UPDATE games g SET status = \$3/);
-      assert.deepEqual(values, [42, 7, "playing", false, null, null]);
+      assert.deepEqual(values, [42, 7, "playing", false, null, null, "2026-01-01"]);
       assert.doesNotMatch(sql, /CURRENT_DATE/);
       return {
         rows: [

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Heart, RefreshCw } from "lucide-react";
+import { Heart, Percent } from "lucide-react";
 import { priceSyncMessage } from '../utils/steamPrice';
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import GameGrid from "../components/GameGrid";
-import GameCard from "../components/GameCard";
+import GameModal from "../components/GameModal";
+import SteamSyncStatus from "../features/steam/SteamSyncStatus";
+import { useSteamExperience } from "../features/steam/SteamExperienceContext";
 import { AppPage, PageError, PageLoading } from "../components/layout";
 import {
-  Badge,
   Button,
   EmptyState,
-  Modal,
   SelectMenu,
   useConfirm,
   useToast,
@@ -21,7 +21,6 @@ import { useFilters } from "../hooks/useFilters";
 import useMedia from "../hooks/useMedia";
 import { buildDisplayGames, isHoursFilterActive } from "../utils/gameList";
 import {
-  cancelWishlistSync,
   moveWishlistToBacklog,
   syncWishlist,
 } from "../services/wishlistService";
@@ -47,6 +46,8 @@ export default function WishlistPage() {
   const { statuses } = useStatuses();
   const { refresh: refreshGames } = useGames();
   const toast = useToast();
+  const experience = useSteamExperience();
+  const [onSaleOnly, setOnSaleOnly] = useState(false);
   const confirm = useConfirm();
   const [membership, setMembership] = useState("active");
   const state = useWishlist({
@@ -61,16 +62,27 @@ export default function WishlistPage() {
   );
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedItem = searchParams.get('item');
+  useEffect(() => {
+    if (requestedItem && /^\d+$/.test(requestedItem)) {
+      setMembership('all');
+      setSelectedId(`wishlist-${requestedItem}`);
+    }
+  }, [requestedItem]);
+  const closeDetails = () => {
+    setSelectedId(null);
+    if (requestedItem) setSearchParams({}, { replace: true });
+  };
   const [syncing, setSyncing] = useState(false);
-  const [activeJobId, setActiveJobId] = useState(null);
   const [movingId, setMovingId] = useState(null);
   const [moveStatus, setMoveStatus] = useState("plan to play");
   const syncRequest = useRef(null);
   useEffect(() => () => syncRequest.current?.abort(), []);
   const isDesktop = useMedia("(min-width: 1024px)");
   const displayGames = useMemo(
-    () => buildDisplayGames({ games, ...filters }),
-    [games, filters],
+    () => buildDisplayGames({ games, ...filters, onSaleOnly }),
+    [games, filters, onSaleOnly],
   );
   const pageCount = Math.max(1, Math.ceil(displayGames.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -80,7 +92,7 @@ export default function WishlistPage() {
   );
   const selected = games.find((game) => game.id === selectedId);
   const filterCount =
-    filters.selectedGenres.length +
+    Number(onSaleOnly) + filters.selectedGenres.length +
     (isHoursFilterActive(filters.hoursRange, filters.hoursBounds) ? 1 : 0);
   const statusOptions = (statuses || [])
     .filter((status) => status.toLowerCase().trim() !== "wishlist")
@@ -107,10 +119,7 @@ export default function WishlistPage() {
         confirmEmpty,
         prices,
         signal: controller.signal,
-        onJob: (job) =>
-          setActiveJobId(
-            ["queued", "running"].includes(job?.status) ? job.id : null,
-          ),
+        onJob: (job) => { if (job.status === 'queued' || job.status === 'completed') void experience.reload(); },
       });
       if (prices) {
         const message = priceSyncMessage(result.summary || result.run?.summary);
@@ -134,8 +143,7 @@ export default function WishlistPage() {
     } finally {
       if (!controller.signal.aborted) {
         setSyncing(false);
-        setActiveJobId(null);
-        await state.refresh();
+        await Promise.all([state.refresh(), experience.reload()]);
       }
     }
   };
@@ -180,24 +188,13 @@ export default function WishlistPage() {
     );
 
   return (
-    <AppPage width="full" className="lg:px-5">
+    <main className="min-h-screen overflow-x-clip bg-surface-bg px-3 pb-8 text-content-primary sm:px-6 lg:h-screen lg:min-h-0 lg:overflow-y-auto lg:px-5 lg:pb-8">
+      <div className="sticky top-[var(--mobile-header-h,3.5rem)] z-30 bg-surface-bg lg:top-0">
       <BacklogToolbar
+        showNotifications
         collection="wishlist"
         identity={{
           title: "Wishlist",
-          action: (
-            <Button
-              variant="primary"
-              onClick={() => runSync()}
-              disabled={syncing || !state.account}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
-                aria-hidden="true"
-              />
-              {syncing ? "Syncing..." : "Sync Steam wishlist"}
-            </Button>
-          ),
         }}
         search={{
           query: filters.searchQuery,
@@ -217,6 +214,7 @@ export default function WishlistPage() {
           count: filterCount,
           clear: () => {
             filters.clearFilters();
+            setOnSaleOnly(false);
             setPage(0);
           },
           toggleGenre: (value) => {
@@ -224,6 +222,7 @@ export default function WishlistPage() {
             setPage(0);
           },
         }}
+        collectionControl={<Button variant={onSaleOnly ? 'filterActive' : 'secondary'} aria-pressed={onSaleOnly} onClick={() => { setOnSaleOnly(value => !value); setPage(0); }}><Percent className="h-4 w-4" aria-hidden="true" />On sale</Button>}
         membershipControl={
           <SelectMenu
             value={membership}
@@ -242,96 +241,15 @@ export default function WishlistPage() {
         games={games}
         onSelectGame={(game) => setSelectedId(game.id)}
       />
-      <div className="mx-auto max-w-[1760px]">
-        {state.account ? (
-          <div className="mb-5 flex flex-wrap items-center gap-3 text-sm text-content-muted">
-            <Badge
-              variant={
-                ["failed", "private"].includes(state.account.wishlistSyncStatus)
-                  ? "danger"
-                  : ["partial", "empty_unconfirmed"].includes(
-                        state.account.wishlistSyncStatus,
-                      )
-                    ? "warning"
-                    : "neutral"
-              }
-            >
-              {state.account.wishlistSyncStatus}
-            </Badge>
-            <span>
-              Last membership sync:{" "}
-              {state.account.lastWishlistSyncAt
-                ? new Date(state.account.lastWishlistSyncAt).toLocaleString()
-                : "Never"}
-            </span>
-            <span>Prices: {state.account.priceSyncStatus || 'never'}</span>
-            <span>Latest saved price: {state.priceHealth?.last_observation_at ? new Date(state.priceHealth.last_observation_at).toLocaleString() : 'None yet'}</span>
-            <Button variant="secondary" size="sm" disabled={syncing} onClick={() => runSync(false, true)}>
-              Refresh prices
-            </Button>
-            {activeJobId ? (
-              <Button
-                variant="dangerGhost"
-                onClick={async () => {
-                  try {
-                    await cancelWishlistSync(activeJobId);
-                  } catch (error) {
-                    toast.error(error.message);
-                  }
-                }}
-              >
-                Cancel sync
-              </Button>
-            ) : null}
-          </div>
-        ) : !state.loading && !state.error ? (
-          <div className="mb-5">
-            <Button as={Link} to="/steam/import" variant="secondary">
-              Link Steam to sync your wishlist
-            </Button>
-          </div>
-        ) : null}
-        {state.account?.wishlistSyncStatus === "empty_unconfirmed" ? (
-          <div className="mb-5 rounded-xl border border-state-warning/40 bg-state-warning/10 p-4 text-sm">
-            <p>
-              Steam may be empty or inaccessible. Saved membership has been
-              preserved.
-            </p>
-            <Button
-              className="mt-3"
-              variant="secondary"
-              disabled={syncing}
-              onClick={confirmEmpty}
-            >
-              Confirm genuinely empty wishlist
-            </Button>
-          </div>
-        ) : null}
-        {state.account?.wishlistLastErrorMessage ? (
-          <p className="mb-4 text-sm text-state-warning">
-            {state.account.wishlistLastErrorMessage}
-          </p>
-        ) : null}
-        {state.account?.priceLastError ? <p className="mb-4 text-sm text-state-warning">{state.account.priceLastError}</p> : null}
-        {state.priceHealth ? <p className="mb-4 text-sm text-content-muted">
-          {state.priceHealth.observed} of {state.priceHealth.eligible} monitored games have saved observations;
-          {' '}{state.priceHealth.unchecked} not checked, {state.priceHealth.failed} need a retry.
-          {state.priceHealth.unresolved ? ` ${state.priceHealth.unresolved} local intentions need a Steam identity.` : ''}
-        </p> : null}
-        {state.account?.priceNextAttemptAt && new Date(state.account.priceNextAttemptAt) > new Date() ? (
-          <p className="mb-4 text-sm text-state-warning">Steam pricing is cooling down until {new Date(state.account.priceNextAttemptAt).toLocaleString()}.
-            {' '}{state.account.autoSyncEnabled ? 'Remaining work is eligible at the next scheduled run after that time.' : 'Daily sync is off. Use Refresh prices after that time to continue.'}</p>
-        ) : null}
-        {games.some((game) => game.metadataComplete === false) ? (
-          <p className="mb-4 text-sm text-state-warning">
-            Some titles, artwork or tags are unavailable. Sync again to refresh
-            missing metadata.
-          </p>
-        ) : null}
+      </div>
+      <div className="mx-auto w-full max-w-[1760px]">
+        <SteamSyncStatus savedAccount={state.account} priceHealth={state.priceHealth}
+          onMembershipRefresh={() => runSync()} onPriceRefresh={() => runSync(false, true)} busy={syncing}
+          confirmEmpty={confirmEmpty} hasMissingMetadata={games.some(game => game.metadataComplete === false)} />
         {state.loading && !games.length ? <PageLoading rows={5} /> : null}
-        {state.error ? (
+        {state.error && state.saved ? <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-content-muted" role="status"><span>Saved Wishlist shown; could not check for updates</span><Button size="sm" variant="ghost" onClick={state.refresh}>Retry saved data</Button></div> : state.error ? (
           <PageError
-            title="Could not load wishlist"
+            title={state.saved ? "Saved Wishlist shown; could not check for updates" : "Could not load wishlist"}
             description={state.error}
             onRetry={state.refresh}
           />
@@ -407,24 +325,10 @@ export default function WishlistPage() {
         ) : null}
       </div>
       {selected ? (
-        <Modal
-          title={selected.name}
-          onClose={() => setSelectedId(null)}
-          size="lg"
-        >
-          <GameCard game={selected} readOnly variant="list" />
-          <div className="mt-4">
-            <WishlistCardFooter
-              game={selected}
-              statusOptions={statusOptions}
-              moveStatus={moveStatus}
-              onMoveStatusChange={setMoveStatus}
-              onMove={move}
-              moving={movingId === selected.wishlistItemId}
-            />
-          </div>
-        </Modal>
+        <GameModal game={selected} onClose={closeDetails} readOnly hidePrivateFields
+          footer={<WishlistCardFooter game={selected} statusOptions={statusOptions} moveStatus={moveStatus}
+            onMoveStatusChange={setMoveStatus} onMove={move} moving={movingId === selected.wishlistItemId} />} />
       ) : null}
-    </AppPage>
+    </main>
   );
 }

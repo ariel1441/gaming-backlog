@@ -1,6 +1,7 @@
 import { smartFuzzySearch } from "./fuzzySearch.js";
 import { parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
+import { currentSteamPrice, isSteamSale } from "./steamPrice.js";
 import {
   NO_PERSONAL_GENRE_FILTER,
   NO_RAWG_GENRE_FILTER,
@@ -151,11 +152,18 @@ export function sortGames(
     sortKey === "personalGenres" ||
     sortKey === "estimatedHours" ||
     sortKey === "score" ||
-    ["providerOrder", "dateAdded", "changedAt", "genres"].includes(sortKey)
+    ["providerOrder", "dateAdded", "changedAt", "genres", "price", "discount"].includes(sortKey)
       ? sortKey
       : "";
   const sorted = [...(Array.isArray(games) ? games : [])].sort((a, b) => {
     switch (sortKey) {
+      case "price":
+        return compareOptionalNumbers(a, b, (game) => currentSteamPrice(game.steamPrice || game.wishlist?.steamPrice), isReversed);
+      case "discount":
+        return compareOptionalNumbers(a, b, (game) => {
+          const price = game.steamPrice || game.wishlist?.steamPrice;
+          return currentSteamPrice(price) == null ? null : (isSteamSale(price) ? price.discountPercent : 0);
+        }, isReversed);
       case "providerOrder":
         return compareOptionalNumbers(a, b, (game) => game.steamActive ? game.providerOrder : null, isReversed);
       case "dateAdded":
@@ -345,6 +353,7 @@ export function applyGameFilters(
     hoursBounds = null,
     dateFilter = null,
     sourceFilter = "all",
+    onSaleOnly = false,
     now = new Date(),
   } = {},
 ) {
@@ -375,6 +384,7 @@ export function applyGameFilters(
 
   return (Array.isArray(games) ? games : []).filter((game) => {
     if (!game) return false;
+    if (onSaleOnly && !isSteamSale(game.steamPrice || game.wishlist?.steamPrice)) return false;
 
     if (statuses && !statuses.has(normalize(game.status))) return false;
 
@@ -420,6 +430,7 @@ export function buildDisplayGames({
   hoursBounds = null,
   dateFilter = null,
   sourceFilter = "all",
+  onSaleOnly = false,
   sortKey = "",
   isReversed = false,
 } = {}) {
@@ -431,6 +442,7 @@ export function buildDisplayGames({
     hoursBounds,
     dateFilter,
     sourceFilter,
+    onSaleOnly,
   });
 
   const searched = searchQuery?.trim()

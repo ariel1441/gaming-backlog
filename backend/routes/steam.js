@@ -1,4 +1,5 @@
 import express from "express";
+import { getSteamExperienceHealth } from '../services/steamExperienceService.js';
 import { verifyToken } from "../middleware/auth.js";
 import { cacheClear } from "../utils/microCache.js";
 import { badRequest, notFound } from "../utils/httpError.js";
@@ -129,6 +130,13 @@ router.get("/account", verifyToken, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+router.get('/sync-health', verifyToken, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await getSteamExperienceHealth(req.user.id));
+  } catch (error) { next(error); }
 });
 
 router.patch(
@@ -332,6 +340,7 @@ router.get("/link-candidates", verifyToken, validateListSteamLinks, async (req, 
     const payload = await listSteamLinkCandidates(req.user.id, {
       query: req.query.q,
       gameId: req.query.gameId,
+      appId: req.query.appId,
       limit: req.query.limit,
     });
     res.setHeader("Cache-Control", "no-store");

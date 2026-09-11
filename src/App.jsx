@@ -7,6 +7,8 @@ import { RouteLoading } from "./components/layout";
 import AppShell from "./components/AppShell";
 import { GamesProvider } from "./hooks/useGames";
 import { loadRoute } from "./config/routeLoaders";
+import { SteamExperienceProvider } from './features/steam/SteamExperienceContext';
+import { NotificationsProvider } from './features/notifications/Notifications';
 
 const BacklogPage = lazy(() => loadRoute("/"));
 const PlayNextPage = lazy(() => loadRoute("/next-up"));
@@ -19,6 +21,7 @@ const SettingsPage = lazy(() => loadRoute("/settings"));
 const SteamImportPage = lazy(() => loadRoute("/steam/import"));
 const SteamLibraryPage = lazy(() => loadRoute("/steam/library"));
 const WishlistPage = lazy(() => loadRoute("/wishlist"));
+const ActivityPage = lazy(() => loadRoute('/activity'));
 const TimelinePage = lazy(() => loadRoute("/timeline"));
 const ListsPage = lazy(() => loadRoute("/lists"));
 const CustomListPage = lazy(() => loadRoute("/lists/:id"));
@@ -35,7 +38,7 @@ const App = () => {
                 <Route
                   element={
                     <GamesProvider>
-                      <AppShell />
+                      <SteamExperienceProvider><NotificationsProvider><AppShell /></NotificationsProvider></SteamExperienceProvider>
                     </GamesProvider>
                   }
                 >
@@ -50,6 +53,7 @@ const App = () => {
                   <Route path="/reviews" element={<ReviewsPage />} />
                   <Route path="/steam/library" element={<SteamLibraryPage />} />
                   <Route path="/wishlist" element={<WishlistPage />} />
+                  <Route path="/activity" element={<ActivityPage />} />
                   <Route path="/steam/import" element={<SteamImportPage />} />
                   <Route path="/insights" element={<InsightsPage />} />
                   <Route path="*" element={<NotFoundPage />} />

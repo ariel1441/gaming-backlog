@@ -49,6 +49,7 @@ import { statusOption } from "../utils/statusDisplay";
 import { searchGames } from "../services/gameService";
 import GameSearchResult from "./GameSearchResult";
 import EditGameSteamSection from "./EditGameSteamSection";
+import SteamPrice from "./SteamPrice";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 
 const hourSourceOptions = [
@@ -225,6 +226,7 @@ export default function GameModal({
   onAddToNextUp,
   onFinish,
   onDelete,
+  footer,
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [isEditMode, setIsEditMode] = useState(startInEditMode);
@@ -261,7 +263,7 @@ export default function GameModal({
     !!onFinish && normalizedStatus !== "finished";
   const tabs = isEditMode
     ? [...viewTabs, { value: "metadata", label: "Metadata", icon: Tag }]
-    : viewTabs;
+    : game?.entryKind === 'wishlist' ? viewTabs.filter(tab => tab.value === 'overview') : viewTabs;
 
   useEffect(() => {
     setLocalAchievements(null);
@@ -596,6 +598,8 @@ export default function GameModal({
           <div className="relative h-[320px] shrink-0 overflow-hidden sm:h-[400px]">
             <GameCover
               src={cover}
+              fallbackSources={isEditMode ? undefined : game.coverFallbacks}
+              artwork={!isEditMode}
               name={game.name}
               className="absolute inset-0 h-full w-full"
               imageClassName="scale-105 opacity-45 blur-xl"
@@ -604,6 +608,8 @@ export default function GameModal({
             />
             <GameCover
               src={cover}
+              fallbackSources={isEditMode ? undefined : game.coverFallbacks}
+              artwork={!isEditMode}
               name={game.name}
               fit="contain"
               className="absolute inset-0 h-full w-full bg-transparent"
@@ -615,7 +621,7 @@ export default function GameModal({
 
             <div className="absolute inset-x-0 bottom-0 flex items-end gap-4 px-5 pb-5 sm:gap-6 sm:px-7 sm:pb-6">
               <GameCover
-                src={cover}
+                src={isEditMode ? cover : game.posterCover || cover}
                 name={game.name}
                 alt={`${game.name || "Game"} cover`}
                 decorative={false}
@@ -682,6 +688,7 @@ export default function GameModal({
             </div>
           </div>
 
+          {game.steamPrice ? <div className="shrink-0 px-5 py-3 sm:px-7"><SteamPrice price={game.steamPrice} details /></div> : null}
           <div className="grid shrink-0 grid-cols-2 gap-4 border-b border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:grid-cols-4 sm:px-7">
             {isEditMode ? (
               <EditMetric
@@ -1184,6 +1191,7 @@ export default function GameModal({
             ) : null}
           </div>
 
+          {footer && !isEditMode ? <div className="shrink-0 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:px-7">{footer}</div> : null}
           {isEditMode ? (
             <div className="flex shrink-0 flex-col gap-3 border-t border-surface-border/65 bg-surface-card/95 px-5 py-4 shadow-sticky-footer backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-7">
               <div className="text-xs text-content-muted">

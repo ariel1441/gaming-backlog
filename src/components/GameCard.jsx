@@ -366,9 +366,11 @@ export default function GameCard({
             <>
               <GameCover
                 src={game.cover}
+                fallbackSources={game.coverFallbacks}
+                artwork
                 name={game.name}
                 className="absolute inset-0 h-full w-full"
-                imageClassName="opacity-35"
+                imageClassName="absolute inset-0 opacity-35"
                 fallbackClassName="opacity-35"
               />
               <div className="absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/72" />
@@ -379,10 +381,13 @@ export default function GameCard({
           <div className="relative flex min-h-[172px] gap-4 p-4 pr-14 sm:min-h-[184px] sm:gap-5 sm:p-5 sm:pr-16">
             <GameCover
               src={game.cover}
+              fallbackSources={game.coverFallbacks}
+              artwork
               name={game.name}
               alt={`${game.name || "Game"} cover`}
               decorative={false}
-              className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 shadow-lg`}
+              imageClassName="absolute inset-0"
+              className={`relative ${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 shadow-lg`}
             />
 
             <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
@@ -474,10 +479,13 @@ export default function GameCard({
       <div className="relative overflow-hidden border-b border-surface-border/70 bg-surface-card">
         <GameCover
           src={game.cover}
+          fallbackSources={game.coverFallbacks}
+          artwork
           name={game.name}
           alt={`${game.name || "Game"} cover`}
           decorative={false}
-          className={`${imageHeight} w-full`}
+          className={`relative ${imageHeight} w-full`}
+          imageClassName="absolute inset-0"
           showFallbackLabel
         />
         <div className="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/25 to-transparent" />

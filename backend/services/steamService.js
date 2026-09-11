@@ -6,7 +6,7 @@ import { assertSteamUser, invalidateSteamSyncJobs } from "./steamSyncLease.js";
 import { absoluteImageUrl, steamCoverUrl } from "../utils/steamAssets.js";
 import { normalizeGameTitle } from "../utils/gameTitle.js";
 import { badRequest, conflict, serviceUnavailable } from "../utils/httpError.js";
-import { normStatus } from "../utils/status.js";
+import { normStatus, statusGroupOf } from "../utils/status.js";
 import {
   fetchProviderResponse,
   ProviderRequestError,
@@ -2279,7 +2279,28 @@ export async function applySteamStatusSuggestion(
       : null;
   const shouldSetStartedAt = Boolean(setStartedAt && dateValue);
 
-  const { rows } = await pool.query(
+  return withTransaction(async (client) => {
+  await assertSteamUser(userId, client);
+  const account = (await client.query(`SELECT id, linked_at FROM user_external_accounts
+    WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE`, [userId])).rows[0];
+  if (!account) throw conflict("Steam connection changed. Refresh before accepting this suggestion.");
+  const game = (await client.query("SELECT status FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE", [gameId, userId])).rows[0];
+  if (!game) throw badRequest("Steam-linked backlog game not found.");
+  if (activityEventId != null) {
+    const event = await client.query(`SELECT e.id FROM user_activity_events e
+      JOIN steam_sync_jobs j ON j.sync_run_id = e.sync_run_id AND j.user_id = e.user_id
+      JOIN user_game_sources s ON s.user_id = e.user_id AND s.provider = 'steam'
+        AND s.provider_app_id = e.external_id AND s.game_id = e.game_id
+        AND s.source_status = 'owned' AND s.last_synced_at >= $5
+      WHERE e.id = $1 AND e.user_id = $2 AND e.game_id = $3 AND j.account_id = $4
+        AND e.source = 'steam_library' AND e.event_type = 'steam_status_suggestion' AND e.state = 'open'
+        AND e.payload_json->>'currentStatus' = $6
+      FOR UPDATE OF e`, [activityEventId, userId, gameId, account.id, account.linked_at, game.status]);
+    if (!event.rows[0]) throw conflict("This suggestion is no longer current. Refresh to see your saved game.");
+  }
+  if (statusGroupOf(normStatus(game.status)) === 'done')
+    throw conflict("This game is already completed. Use its Backlog editor to change its status.");
+  const { rows } = await client.query(
     `
     WITH updated AS (
       UPDATE games g
@@ -2297,6 +2318,7 @@ export async function applySteamStatusSuggestion(
              AND ugs.game_id = g.id
              AND ugs.provider = 'steam'
              AND ugs.source_status = 'owned'
+             AND ugs.last_synced_at >= $7
          )
        RETURNING id, name, status, started_at
     ),
@@ -2330,6 +2352,7 @@ export async function applySteamStatusSuggestion(
       shouldSetStartedAt,
       dateValue,
       activityEventId == null ? null : Number(activityEventId),
+      account.linked_at,
     ]
   );
   if (!rows[0]) throw badRequest("Steam-linked backlog game not found.");
@@ -2342,6 +2365,7 @@ export async function applySteamStatusSuggestion(
     },
     activityEventResolved: Boolean(rows[0].activity_event_resolved),
   };
+  });
 }
 
 async function summarizeAllCandidateStates(userId) {
@@ -2537,6 +2561,7 @@ function serializeSteamLinkCandidate(row) {
     achievements: serializeAchievementSummary(row),
     linkedGameId: row.linked_game_id,
     linkedGameName: row.linked_game_name,
+    linkedGameStatus: row.linked_game_status,
     proposedCatalogGameId: row.user_selected_catalog_game_id || row.proposed_catalog_game_id,
     proposedCatalogName: row.user_selected_catalog_name || row.proposed_catalog_name,
     importStatus: row.import_status,
@@ -2837,11 +2862,15 @@ export async function mergeBacklogDuplicateGames(userId, keepGameId, duplicateGa
 
 export async function listSteamLinkCandidates(
   userId,
-  { query = "", gameId = null, limit = 20 } = {}
+  { query = "", gameId = null, appId = null, limit = 20 } = {}
 ) {
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
   const params = [userId];
   const where = ["c.user_id = $1", currentSteamCandidateWhere()];
+  if (appId != null) {
+    params.push(String(appId));
+    where.push(`c.steam_app_id = $${params.length}`);
+  }
   const search = String(query || "").trim();
   if (search) {
     params.push(`%${search.replace(/[%_\\]/g, "\\$&")}%`);
@@ -2869,7 +2898,8 @@ export async function listSteamLinkCandidates(
            ugs.achievements_last_error_code,
            ugs.achievements_last_error_message,
            ugs.game_id AS linked_game_id,
-           g.name AS linked_game_name
+           g.name AS linked_game_name,
+           g.status AS linked_game_status
     FROM steam_import_candidates c
     LEFT JOIN user_game_sources ugs
       ON ugs.user_id = c.user_id

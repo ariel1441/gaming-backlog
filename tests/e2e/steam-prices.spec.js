@@ -42,13 +42,14 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
       await page.getByTitle(name, { exact: true }).click();
       await expect(page.getByText('Steam Israel', { exact: true })).toHaveCount(3);
     }
+    await page.getByRole('button', { name: 'Details', exact: true }).click();
     await page.getByRole('button', { name: 'Refresh prices', exact: true }).click();
     await expect(page.getByText('3 prices refreshed, 0 failed, 0 still waiting.')).toBeVisible();
     expect(mutations).toEqual(['/api/wishlist/prices/sync']);
     await page.getByRole('button', { name: 'Refresh prices', exact: true }).click();
     await expect(page.getByText('0 prices refreshed, 0 failed, 2 still waiting. Steam cooldown.')).toBeVisible();
-    await expect(page.getByText(/Daily sync is off. Use Refresh prices after that time/)).toBeVisible();
-    await expect(page.getByText(/3 of 3 monitored games have saved observations/)).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Steam sync settings' })).toBeVisible();
+    await expect(page.getByText(/1 prices need attention/)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`prices-${label}.png`), fullPage: true });
     await page.goto('/');
