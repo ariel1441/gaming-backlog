@@ -43,12 +43,6 @@ async function createTemporaryDatabase() {
   return {
     url: target.toString(),
     async cleanup() {
-      await admin
-        .query(
-          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
-          [database],
-        )
-        .catch(() => {});
       await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
       await admin.end();
     },

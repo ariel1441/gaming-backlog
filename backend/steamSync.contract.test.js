@@ -28,10 +28,6 @@ async function createTemporaryDatabase() {
     database,
     url: target.toString(),
     async cleanup() {
-      await admin.query(
-        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
-        [database],
-      ).catch(() => {});
       await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
       await admin.end();
     },
@@ -64,6 +60,7 @@ function generatedLibrary(size) {
 
 test("durable Steam sync processes 1,000 apps asynchronously and idempotently", { timeout: 120_000 }, async () => {
   const temporary = await createTemporaryDatabase();
+  let pool;
   try {
     await migrate(temporary.url);
     process.env.DATABASE_URL = temporary.url;
@@ -78,7 +75,7 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     const steam = await import("./services/steamService.js");
     const steamSync = await import("./services/steamLibrarySyncService.js");
     const activity = await import("./services/activityEventService.js");
-    const { pool } = await import("./db.js");
+    ({ pool } = await import("./db.js"));
     const user = await pool.query(
       "INSERT INTO users (username, password_hash) VALUES ($1, 'x') RETURNING id",
       [`steam_contract_${crypto.randomUUID()}`],
@@ -530,11 +527,11 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
       0,
     );
 
-    await pool.end();
     process.stdout.write(
       `Steam 1k contract: enqueue=${enqueueMs.toFixed(1)}ms process=${processingMs.toFixed(1)}ms firstSyncQueries=${firstSyncQueryCount}\n`,
     );
   } finally {
+    await pool?.end();
     await temporary.cleanup();
   }
 });

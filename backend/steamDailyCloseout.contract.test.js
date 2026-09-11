@@ -258,7 +258,6 @@ test("daily Steam follow-up survives unchanged snapshots, cancellation and accou
     releasePlayer?.();
     globalThis.fetch = nativeFetch;
     await pool?.end();
-    await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1", [database]);
     await admin.query(`DROP DATABASE ${database}`);
     await admin.end();
   }
