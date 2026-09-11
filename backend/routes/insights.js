@@ -47,6 +47,7 @@ async function fetchBaseRows(userId) {
       LIMIT 1
     ) ugs ON TRUE
     WHERE g.user_id = $1
+      AND LOWER(TRIM(g.status)) <> 'wishlist'
   `;
   const { rows } = await pool.query(sql, [userId]);
   return rows;

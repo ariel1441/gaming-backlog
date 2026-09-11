@@ -64,5 +64,26 @@ migration.
 queue. Deploy this migration before application code that serves
 `POST /api/steam/sync`.
 
+`028_add_steam_daily_sync_foundation.sql` extends that queue with linked generic
+run history, persistent private activity-review events, and the per-account
+Steam daily-sync opt-in. It does not add wishlist or store-price data.
+
+`029_add_steam_sync_job_lease_token.sql` adds per-claim ownership fencing to the
+Steam sync queue so lease recovery cannot leave two workers able to finalize the
+same job.
+
+`030_add_steam_wishlist.sql` adds private wishlist relationships, safe legacy
+status backfill, per-domain account health, and a wishlist discriminator on the
+existing Steam queue. It does not create backlog games for synced wishlist apps.
+
+`031_harden_steam_wishlist_sync.sql` adds explicit provider order, metadata
+provenance, incremental ownership evidence and queued Steam account identity.
+Apply it before running the hardened sync code; it preserves migration 030 and
+existing membership/local intentions.
+
+`032_add_steam_achievement_follow_up.sql` adds durable pending achievement work,
+retry timing and source revisions. Apply it before the A/B closeout service code.
+It only adds columns/indexes; it does not backfill or replace saved Steam data.
+
 Future automation notes live in
 `docs/planning/production-migration-automation.md`.

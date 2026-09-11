@@ -8,8 +8,7 @@ import {
   bestTitleSimilarity,
   consumeSteamLink,
   disconnectSteamAccount,
-  enqueueSteamSync,
-  getSteamSyncJob,
+  fetchOwnedSteamGames,
   importSteamCandidates,
   isLikelySteamDuplicateTitle,
   likelyFilteredReason,
@@ -19,12 +18,17 @@ import {
   normalizeSteamAchievementSummary,
   steamCandidateOrderBy,
   summarizeAchievementSyncResults,
+  syncSteamAchievementsForSourceIds,
   syncSteamAchievementsForGame,
   titleVariants,
   unlinkSteamAppFromGame,
   updateSteamImportCandidate,
   upsertSteamAccount,
 } from "./steamService.js";
+import {
+  enqueueSteamSync,
+  getSteamSyncJob,
+} from "./steamLibrarySyncService.js";
 
 async function withMockClient(queryImpl, fn) {
   const originalConnect = pool.connect;
@@ -32,6 +36,13 @@ async function withMockClient(queryImpl, fn) {
   const client = {
     query: async (text, values) => {
       calls.push({ text: String(text), values });
+      if (String(text).startsWith("SELECT is_guest FROM users")) return { rows: [{ is_guest: false }] };
+      if (compact(text) === "SELECT id FROM user_external_accounts WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE") {
+        return { rows: [{ id: 1 }] };
+      }
+      if (compact(text).startsWith("SELECT c.id FROM steam_import_candidates c WHERE c.user_id = $1 AND c.id = ANY")) {
+        return { rows: values[1].map(id => ({ id })) };
+      }
       return queryImpl(String(text), values, calls);
     },
     release: () => {
@@ -51,6 +62,7 @@ async function withMockPoolQuery(queryImpl, fn) {
   const calls = [];
   pool.query = async (text, values) => {
     calls.push({ text: String(text), values });
+    if (String(text).startsWith("SELECT is_guest FROM users")) return { rows: [{ is_guest: false }] };
     return queryImpl(String(text), values, calls);
   };
   try {
@@ -117,7 +129,7 @@ test("upsertSteamAccount refuses to displace another user's active link", async 
   await withMockClient(
     async (text, _values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
+      if (sql === "BEGIN" || sql === "ROLLBACK" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("SELECT user_id FROM user_external_accounts")) {
         return { rows: [{ user_id: 99 }] };
       }
@@ -164,9 +176,10 @@ test("Steam sync enqueue returns a durable job and job reads stay user scoped", 
         assert.equal(values[1], 7);
         assert.equal(values[2], 12);
         assert.equal(values[3], false);
+        assert.equal(values[4], "manual");
         return { rows: [{ ...jobRow, id: values[0] }] };
       }
-      if (sql.startsWith("SELECT * FROM steam_sync_jobs WHERE id")) {
+      if (sql.startsWith("SELECT job.*, to_jsonb(run) AS sync_run")) {
         assert.deepEqual(values, [jobRow.id, 7]);
         return { rows: [jobRow] };
       }
@@ -209,6 +222,20 @@ test("normalizeOwnedGamesPayload maps Steam owned library rows", () => {
 test("normalizeOwnedGamesPayload tolerates private or empty libraries", () => {
   assert.deepEqual(normalizeOwnedGamesPayload({ response: {} }), []);
   assert.deepEqual(normalizeOwnedGamesPayload(null), []);
+});
+
+test("fetchOwnedSteamGames rejects structurally invalid responses", async () => {
+  const previous = process.env.STEAM_MOCK_OWNED_GAMES_JSON;
+  process.env.STEAM_MOCK_OWNED_GAMES_JSON = JSON.stringify({ unexpected: true });
+  try {
+    await assert.rejects(
+      fetchOwnedSteamGames("76561198000000000"),
+      (error) => error?.code === "steam_invalid_response",
+    );
+  } finally {
+    if (previous == null) delete process.env.STEAM_MOCK_OWNED_GAMES_JSON;
+    else process.env.STEAM_MOCK_OWNED_GAMES_JSON = previous;
+  }
 });
 
 test("normalizeOwnedGamesPayload keeps app ids even when Steam omits names", () => {
@@ -419,7 +446,7 @@ test("updateSteamImportCandidate hides and restores both candidate and source ro
   await withMockClient(
     async (text, values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE steam_import_candidates SET import_status = 'ignored'")) {
         assert.deepEqual(values, [12, 7]);
         return {
@@ -489,7 +516,7 @@ test("Steam review transactions roll back when a related source write fails", as
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
+      if (sql === "BEGIN" || sql === "ROLLBACK" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE steam_import_candidates")) {
         return {
           rows: [{ id: 12, steam_app_id: "123", steam_name: "Game", import_status: "ignored" }],
@@ -511,13 +538,32 @@ test("Steam review transactions roll back when a related source write fails", as
   );
 });
 
+test("targeted Steam achievement sync processes every source id in bounded batches", async () => {
+  const sourceIds = Array.from({ length: 251 }, (_, index) => index + 1);
+  await withMockPoolQuery(
+    async (text) => {
+      assert.match(compact(text), /^SELECT ugs\.\*, account\.id AS steam_account_id, account\.provider_user_id/);
+      return { rows: [] };
+    },
+    async (calls) => {
+      const result = await syncSteamAchievementsForSourceIds(7, sourceIds);
+      assert.equal(result.total, 0);
+      assert.equal(calls.length, 2);
+      assert.equal(calls[0].values[1].length, 250);
+      assert.deepEqual(calls[1].values[1], [251]);
+    },
+  );
+});
+
 test("disconnectSteamAccount updates account and sources in one transaction", async () => {
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.startsWith("UPDATE user_external_accounts")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("UPDATE user_game_sources")) return { rows: [], rowCount: 2 };
+      if (sql.startsWith("UPDATE steam_price_monitors")) return { rows: [] };
+      if (sql.startsWith("UPDATE steam_wishlist_items") || sql.startsWith("UPDATE user_activity_events")) return { rows: [] };
       throw new Error(`Unexpected query: ${sql}`);
     },
     async (calls) => {
@@ -620,11 +666,14 @@ test("Steam import summaries exclude ignored rows from active review groups", as
 });
 
 test("applySteamStatusSuggestion updates only a Steam-linked game", async () => {
-  await withMockPoolQuery(
+  await withMockClient(
     async (text, values) => {
       const sql = compact(text);
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.startsWith("SELECT id, linked_at FROM user_external_accounts")) return { rows: [{ id: 1, linked_at: "2026-01-01" }] };
+      if (sql.startsWith("SELECT status FROM games")) return { rows: [{ status: "plan to play" }] };
       if (sql.startsWith("WITH updated AS ( UPDATE games g SET status = $3")) {
-        assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03"]);
+        assert.deepEqual(values, [42, 7, "playing", true, "2026-07-03", null, "2026-01-01"]);
         assert.match(sql, /EXISTS \( SELECT 1 FROM user_game_sources ugs/);
         assert.match(sql, /DELETE FROM user_next_up_games/);
         assert.doesNotMatch(sql, /updated_at/);
@@ -651,7 +700,40 @@ test("applySteamStatusSuggestion updates only a Steam-linked game", async () => 
       assert.equal(payload.game.id, 42);
       assert.equal(payload.game.status, "playing");
       assert.equal(payload.game.startedAt, "2026-07-03");
+      assert.equal(payload.activityEventResolved, false);
     }
+  );
+});
+
+test("applySteamStatusSuggestion never substitutes today for an invalid approximate date", async () => {
+  await withMockClient(
+    async (text, values) => {
+      const sql = compact(text);
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.startsWith("SELECT id, linked_at FROM user_external_accounts")) return { rows: [{ id: 1, linked_at: "2026-01-01" }] };
+      if (sql.startsWith("SELECT status FROM games")) return { rows: [{ status: "plan to play" }] };
+      assert.match(sql, /^WITH updated AS \( UPDATE games g SET status = \$3/);
+      assert.deepEqual(values, [42, 7, "playing", false, null, null, "2026-01-01"]);
+      assert.doesNotMatch(sql, /CURRENT_DATE/);
+      return {
+        rows: [
+          {
+            id: 42,
+            name: "Hades",
+            status: "playing",
+            started_at: null,
+          },
+        ],
+      };
+    },
+    async () => {
+      const payload = await applySteamStatusSuggestion(7, 42, {
+        status: "playing",
+        setStartedAt: true,
+        startedAt: "not-a-date",
+      });
+      assert.equal(payload.game.startedAt, null);
+    },
   );
 });
 
@@ -659,7 +741,7 @@ test("importSteamCandidates attaches marked duplicates instead of creating a new
   await withMockClient(
     async (text, values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("FROM steam_import_candidates") && sql.includes("FOR UPDATE")) {
         return {
           rows: [
@@ -708,11 +790,11 @@ test("importSteamCandidates attaches marked duplicates instead of creating a new
   );
 });
 
-test("attachSteamCandidateToGame moves a Steam link and preserves stronger source data", async () => {
+test("attachSteamCandidateToGame moves a current Steam link without copying candidate telemetry", async () => {
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE")) {
         return { rows: [{ id: 31, catalog_game_id: null }] };
       }
@@ -737,18 +819,15 @@ test("attachSteamCandidateToGame moves a Steam link and preserves stronger sourc
       const result = await attachSteamCandidateToGame(7, 12, 31);
 
       assert.deepEqual(result, { attached: true, candidateId: 12, gameId: 31 });
-      const sourceUpsert = calls.find((call) => call.text.includes("INSERT INTO user_game_sources"));
-      assert.match(sourceUpsert.text, /ON CONFLICT \(user_id, provider, provider_app_id\)/);
-      assert.match(sourceUpsert.text, /game_id = EXCLUDED\.game_id/);
-      assert.match(sourceUpsert.text, /playtime_minutes_forever = GREATEST/);
-      assert.match(sourceUpsert.text, /last_played_at = GREATEST/);
-      assert.deepEqual(sourceUpsert.values, [
+      const sourceUpdate = calls.find((call) => call.text.includes("UPDATE user_game_sources"));
+      assert.match(sourceUpdate.text, /game_id = \$3/);
+      assert.doesNotMatch(sourceUpdate.text, /playtime_minutes_forever|last_played_at|last_synced_at/);
+      assert.equal(calls.some(call => call.text.includes("INSERT INTO user_game_sources")), false);
+      assert.deepEqual(sourceUpdate.values, [
         7,
         "367520",
         31,
         77,
-        3600,
-        "2026-05-01T00:00:00.000Z",
       ]);
 
       const candidateUpdate = calls.find((call) =>
@@ -768,7 +847,7 @@ test("unlinkSteamAppFromGame detaches the source and reopens attached import can
   await withMockClient(
     async (text) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("SELECT id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE")) {
         return { rows: [{ id: 31 }] };
       }
@@ -800,7 +879,7 @@ test("mergeBacklogDuplicateGames moves Steam links before deleting duplicate row
   await withMockClient(
     async (text, values) => {
       const sql = compact(text);
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql === "BEGIN" || sql === "COMMIT" || sql.startsWith("WITH cancelled AS")) return { rows: [] };
       if (sql.includes("SELECT * FROM games") && sql.includes("FOR UPDATE")) {
         return {
           rows: [

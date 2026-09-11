@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import pg from "pg";
 import { buildPgConfig } from "../backend/config/pg.js";
+import { preflightMigration } from "./migrationPreflight.js";
 
 const args = new Set(process.argv.slice(2));
 const mode = args.has("--production") ? "production" : "local";
@@ -118,6 +119,7 @@ try {
 
         await client.query("BEGIN");
         try {
+          await preflightMigration(client, file);
           await client.query(sql);
           await client.query(
             "INSERT INTO schema_migrations (filename) VALUES ($1)",

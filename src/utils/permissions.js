@@ -15,7 +15,8 @@ export function canEditGame({
   readOnly = false,
 } = {}) {
   return Boolean(
-    isAuthenticated && !isReadOnlyView({ readOnly }) && ownsGame(user, game)
+    isAuthenticated && !isReadOnlyView({ readOnly: readOnly || game?.readOnly }) &&
+      game?.entryKind !== "wishlist" && !game?.isWishlistOnly && ownsGame(user, game)
   );
 }
 

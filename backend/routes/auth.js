@@ -24,11 +24,16 @@ const DEFAULT_PREFERENCES = {
   default_backlog_sort_key: "",
   default_backlog_sort_reversed: false,
   default_landing_path: "/",
+  show_wishlist_in_backlog: false,
 };
-const ALLOWED_BACKLOG_VIEWS = new Set(["grid", "compact", "list"]);
+const ALLOWED_BACKLOG_VIEWS = new Set(["grid", "compact", "list", "table"]);
 const ALLOWED_BACKLOG_SORT_KEYS = new Set([
   "",
   "name",
+  "status",
+  "personalGenres",
+  "estimatedHours",
+  "score",
   "hoursPlayed",
   "rawgRating",
   "metacritic",
@@ -106,6 +111,10 @@ function serializePreferences(row = {}) {
         : DEFAULT_PREFERENCES.default_backlog_sort_reversed,
     default_landing_path:
       source.default_landing_path || DEFAULT_PREFERENCES.default_landing_path,
+    show_wishlist_in_backlog:
+      typeof source.show_wishlist_in_backlog === "boolean"
+        ? source.show_wishlist_in_backlog
+        : DEFAULT_PREFERENCES.show_wishlist_in_backlog,
   };
 }
 
@@ -193,6 +202,9 @@ function normalizePreferencesInput(body = {}, current = DEFAULT_PREFERENCES) {
   if (!ALLOWED_LANDING_PATHS.has(next.default_landing_path)) {
     throw badRequest("default_landing_path is invalid");
   }
+  if (typeof next.show_wishlist_in_backlog !== "boolean") {
+    throw badRequest("show_wishlist_in_backlog must be boolean");
+  }
 
   return next;
 }
@@ -202,10 +214,11 @@ async function getPreferenceRow(userId) {
     `SELECT default_backlog_view,
             default_backlog_sort_key,
             default_backlog_sort_reversed,
-            default_landing_path
+            default_landing_path,
+            show_wishlist_in_backlog
        FROM user_preferences
       WHERE user_id = $1`,
-    [userId]
+    [userId],
   );
   return result.rows[0] || null;
 }
@@ -215,7 +228,7 @@ async function getProfileRow(userId) {
     `SELECT display_name, bio, avatar_icon, avatar_color
        FROM users
       WHERE id = $1`,
-    [userId]
+    [userId],
   );
   return result.rows[0] || null;
 }
@@ -258,7 +271,7 @@ router.post("/register", async (req, res, next) => {
 
     const existing = await pool.query(
       "SELECT id FROM users WHERE username = $1",
-      [username]
+      [username],
     );
     if (existing.rows.length > 0) {
       return next(conflict("username already taken"));
@@ -269,7 +282,7 @@ router.post("/register", async (req, res, next) => {
       `INSERT INTO users (username, password_hash, is_public)
        VALUES ($1, $2, false)
        RETURNING id, username, is_public, display_name, bio, avatar_icon, avatar_color`,
-      [username, hash]
+      [username, hash],
     );
 
     const user = insert.rows[0];
@@ -278,7 +291,7 @@ router.post("/register", async (req, res, next) => {
       JWT_SECRET,
       {
         expiresIn: "7d",
-      }
+      },
     );
 
     res.status(201).json({ token, user: serializeUser(user) });
@@ -311,11 +324,12 @@ router.post("/login", loginLimiter, async (req, res, next) => {
               p.default_backlog_view,
               p.default_backlog_sort_key,
               p.default_backlog_sort_reversed,
-              p.default_landing_path
+              p.default_landing_path,
+              p.show_wishlist_in_backlog
          FROM users u
          LEFT JOIN user_preferences p ON p.user_id = u.id
         WHERE u.username = $1`,
-      [username]
+      [username],
     );
 
     if (result.rows.length === 0) {
@@ -333,7 +347,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
       JWT_SECRET,
       {
         expiresIn: "7d",
-      }
+      },
     );
 
     // Return without password hash
@@ -363,11 +377,12 @@ router.get("/me", verifyToken, async (req, res, next) => {
               p.default_backlog_view,
               p.default_backlog_sort_key,
               p.default_backlog_sort_reversed,
-              p.default_landing_path
+              p.default_landing_path,
+              p.show_wishlist_in_backlog
          FROM users u
          LEFT JOIN user_preferences p ON p.user_id = u.id
         WHERE u.id = $1`,
-      [req.user.id]
+      [req.user.id],
     );
     if (me.rows.length === 0) {
       return next(notFound("user not found"));
@@ -395,7 +410,7 @@ router.patch("/me/is-public", verifyToken, async (req, res, next) => {
           SET is_public = $1
         WHERE id = $2
         RETURNING id, username, is_public, display_name, bio, avatar_icon, avatar_color`,
-      [is_public, req.user.id]
+      [is_public, req.user.id],
     );
 
     const preferences = await getPreferenceRow(req.user.id);
@@ -432,14 +447,15 @@ router.patch("/me/profile", verifyToken, async (req, res, next) => {
         profile.avatar_icon,
         profile.avatar_color,
         req.user.id,
-      ]
+      ],
     );
 
     res.json({
       display_name: updated.rows[0].display_name || "",
       bio: updated.rows[0].bio || "",
       avatar_icon: updated.rows[0].avatar_icon || DEFAULT_PROFILE.avatar_icon,
-      avatar_color: updated.rows[0].avatar_color || DEFAULT_PROFILE.avatar_color,
+      avatar_color:
+        updated.rows[0].avatar_color || DEFAULT_PROFILE.avatar_color,
     });
   } catch (err) {
     next(err);
@@ -462,26 +478,30 @@ router.patch("/me/preferences", verifyToken, async (req, res, next) => {
          default_backlog_view,
          default_backlog_sort_key,
          default_backlog_sort_reversed,
-         default_landing_path
+         default_landing_path,
+         show_wishlist_in_backlog
        )
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (user_id) DO UPDATE SET
          default_backlog_view = EXCLUDED.default_backlog_view,
          default_backlog_sort_key = EXCLUDED.default_backlog_sort_key,
          default_backlog_sort_reversed = EXCLUDED.default_backlog_sort_reversed,
          default_landing_path = EXCLUDED.default_landing_path,
+         show_wishlist_in_backlog = EXCLUDED.show_wishlist_in_backlog,
          updated_at = NOW()
        RETURNING default_backlog_view,
                  default_backlog_sort_key,
                  default_backlog_sort_reversed,
-                 default_landing_path`,
+                 default_landing_path,
+                 show_wishlist_in_backlog`,
       [
         req.user.id,
         nextPreferences.default_backlog_view,
         nextPreferences.default_backlog_sort_key,
         nextPreferences.default_backlog_sort_reversed,
         nextPreferences.default_landing_path,
-      ]
+        nextPreferences.show_wishlist_in_backlog,
+      ],
     );
 
     res.json(serializePreferences(updated.rows[0]));

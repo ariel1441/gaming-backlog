@@ -1,4 +1,5 @@
 import React from "react";
+import SteamPrice from './SteamPrice';
 import {
   CalendarDays,
   CheckCircle2,
@@ -14,7 +15,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { canDeleteGame, canEditGame } from "../utils/permissions";
-import { personalGenreNames } from "../utils/gameList";
+import { personalGenreNames, splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
 import {
@@ -151,6 +152,7 @@ export default function GameCard({
   onAddToNextUp,
   readOnly = false,
   variant = "grid",
+  footer = null,
 }) {
   const { user, isAuthenticated } = useAuth();
   const { statusGroupOf } = useStatusGroups();
@@ -200,7 +202,7 @@ export default function GameCard({
   const releaseDate = fmtDate(game.releaseDate);
   const startedAt = fmtShortDate(game.started_at);
   const finishedAt = fmtShortDate(game.finished_at);
-  const myGenres = personalGenreNames(game);
+  const myGenres = game.entryKind === "wishlist" ? splitCsv(game.genres) : personalGenreNames(game);
   const hours = resolveGameHours(game);
   const cardStats = [
     {
@@ -364,9 +366,11 @@ export default function GameCard({
             <>
               <GameCover
                 src={game.cover}
+                fallbackSources={game.coverFallbacks}
+                artwork
                 name={game.name}
                 className="absolute inset-0 h-full w-full"
-                imageClassName="opacity-35"
+                imageClassName="absolute inset-0 opacity-35"
                 fallbackClassName="opacity-35"
               />
               <div className="absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/72" />
@@ -377,10 +381,13 @@ export default function GameCard({
           <div className="relative flex min-h-[172px] gap-4 p-4 pr-14 sm:min-h-[184px] sm:gap-5 sm:p-5 sm:pr-16">
             <GameCover
               src={game.cover}
+              fallbackSources={game.coverFallbacks}
+              artwork
               name={game.name}
               alt={`${game.name || "Game"} cover`}
               decorative={false}
-              className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 shadow-lg`}
+              imageClassName="absolute inset-0"
+              className={`relative ${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 shadow-lg`}
             />
 
             <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
@@ -434,6 +441,7 @@ export default function GameCard({
                 <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
               </div>
 
+              <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
               {visibleMyGenres.length ? (
                 <div className="flex flex-wrap gap-2">
                   {visibleMyGenres.map((genre) => (
@@ -451,6 +459,11 @@ export default function GameCard({
             </div>
           </div>
         </div>
+        {footer ? (
+          <div className="relative z-20 border-t border-surface-border/70 bg-surface-card/95 px-4 py-3 sm:px-5">
+            {footer}
+          </div>
+        ) : null}
       </article>
     );
   }
@@ -466,10 +479,13 @@ export default function GameCard({
       <div className="relative overflow-hidden border-b border-surface-border/70 bg-surface-card">
         <GameCover
           src={game.cover}
+          fallbackSources={game.coverFallbacks}
+          artwork
           name={game.name}
           alt={`${game.name || "Game"} cover`}
           decorative={false}
-          className={`${imageHeight} w-full`}
+          className={`relative ${imageHeight} w-full`}
+          imageClassName="absolute inset-0"
           showFallbackLabel
         />
         <div className="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/25 to-transparent" />
@@ -488,6 +504,7 @@ export default function GameCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-4 px-3.5 py-4">
+        <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
         {isCompact ? (
           <div className="grid content-start gap-2">
             <div className="flex flex-wrap gap-1.5">
@@ -603,6 +620,11 @@ export default function GameCard({
                 +{hiddenMyGenres}
               </span>
             ) : null}
+          </div>
+        ) : null}
+        {footer ? (
+          <div className="relative z-20 mt-auto border-t border-surface-border/70 pt-4">
+            {footer}
           </div>
         ) : null}
       </div>

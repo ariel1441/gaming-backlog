@@ -3,17 +3,23 @@ export const DEFAULT_USER_PREFERENCES = {
   default_backlog_sort_key: "",
   default_backlog_sort_reversed: false,
   default_landing_path: "/",
+  show_wishlist_in_backlog: false,
 };
 
 export const backlogViewOptions = [
   { value: "grid", label: "Cards" },
   { value: "compact", label: "Compact cards" },
   { value: "list", label: "Rows" },
+  { value: "table", label: "Table" },
 ];
 
 export const backlogSortOptions = [
   { value: "", label: "Default order" },
   { value: "name", label: "Name" },
+  { value: "status", label: "Status" },
+  { value: "personalGenres", label: "Personal genres" },
+  { value: "estimatedHours", label: "Estimated hours" },
+  { value: "score", label: "My score" },
   { value: "hoursPlayed", label: "Hours" },
   { value: "rawgRating", label: "RAWG rating" },
   { value: "metacritic", label: "Metacritic" },
@@ -32,21 +38,31 @@ export const landingPathOptions = [
   { value: "/insights", label: "Insights" },
 ];
 
-const backlogViewValues = new Set(backlogViewOptions.map((option) => option.value));
-const backlogSortValues = new Set(backlogSortOptions.map((option) => option.value));
-const landingPathValues = new Set(landingPathOptions.map((option) => option.value));
+const backlogViewValues = new Set(
+  backlogViewOptions.map((option) => option.value),
+);
+const backlogSortValues = new Set(
+  backlogSortOptions.map((option) => option.value),
+);
+const landingPathValues = new Set(
+  landingPathOptions.map((option) => option.value),
+);
 
 export function normalizeUserPreferences(preferences) {
   const source = preferences || {};
-  const default_backlog_view = backlogViewValues.has(source.default_backlog_view)
+  const default_backlog_view = backlogViewValues.has(
+    source.default_backlog_view,
+  )
     ? source.default_backlog_view
     : DEFAULT_USER_PREFERENCES.default_backlog_view;
   const default_backlog_sort_key = backlogSortValues.has(
-    source.default_backlog_sort_key
+    source.default_backlog_sort_key,
   )
     ? source.default_backlog_sort_key
     : DEFAULT_USER_PREFERENCES.default_backlog_sort_key;
-  const default_landing_path = landingPathValues.has(source.default_landing_path)
+  const default_landing_path = landingPathValues.has(
+    source.default_landing_path,
+  )
     ? source.default_landing_path
     : DEFAULT_USER_PREFERENCES.default_landing_path;
 
@@ -58,6 +74,10 @@ export function normalizeUserPreferences(preferences) {
         ? source.default_backlog_sort_reversed
         : DEFAULT_USER_PREFERENCES.default_backlog_sort_reversed,
     default_landing_path,
+    show_wishlist_in_backlog:
+      typeof source.show_wishlist_in_backlog === "boolean"
+        ? source.show_wishlist_in_backlog
+        : DEFAULT_USER_PREFERENCES.show_wishlist_in_backlog,
   };
 }
 

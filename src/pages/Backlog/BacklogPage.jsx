@@ -9,7 +9,7 @@ import { Button, EmptyState, useToast } from "../../components/ui";
 import { AppPage, PageError, PageLoading } from "../../components/layout";
 import { buildDisplayGames } from "../../utils/gameList";
 import { canReorderGames } from "../../utils/permissions";
-import { canReorderVisibleGames } from "../../utils/reorder";
+import { getManualReorderAvailability } from "../../utils/reorder";
 import { normalizeUserPreferences } from "../../utils/userPreferences";
 import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
@@ -17,11 +17,15 @@ import { useStatuses } from "../../hooks/useStatuses";
 import { useFilters } from "../../hooks/useFilters";
 import { usePersonalGenres } from "../../hooks/usePersonalGenres";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import useMedia from "../../hooks/useMedia";
 import BacklogModals from "./BacklogModals";
 import BacklogPanels from "./BacklogPanels";
+import BacklogTable from "./BacklogTable";
 import BacklogToolbar from "./BacklogToolbar";
 import useBacklogActions from "./useBacklogActions";
 import { addToNextUp } from "../../services/nextUpService";
+import useWishlist from "../Wishlist/useWishlist";
+import { composeBacklogWishlist } from "../Wishlist/wishlistPresentation";
 
 function possessiveName(value) {
   const name = String(value || "").trim();
@@ -58,6 +62,13 @@ export default function BacklogPage() {
     () => normalizeUserPreferences(user?.preferences),
     [user?.preferences],
   );
+  const wishlist = useWishlist({ userId: user?.id,
+    enabled: userPreferences.show_wishlist_in_backlog && isAuthenticated && !isGuest,
+  });
+  const presentationGames = React.useMemo(() => composeBacklogWishlist(games,
+    userPreferences.show_wishlist_in_backlog && !isGuest ? wishlist.items : []),
+    [games, wishlist.items, userPreferences.show_wishlist_in_backlog, isGuest]);
+  const selectGame = (game) => game.entryKind === "wishlist" ? nav(`/wishlist?item=${game.wishlistItemId}`) : setSelectedGame(game);
   const backlogTitle = React.useMemo(() => {
     if (!isAuthenticated) return "Backlog";
     if (isGuest) return "Your demo backlog";
@@ -99,15 +110,18 @@ export default function BacklogPage() {
     hoursBounds,
     hoursRange,
     setHoursRange,
-  } = useFilters(games, {
+  } = useFilters(presentationGames, {
     initialSortKey: userPreferences.default_backlog_sort_key,
     initialReverse: userPreferences.default_backlog_sort_reversed,
   });
   const allMyGenres = React.useMemo(
-    () => Array.from(new Set([
-      ...reusablePersonalGenres.map((genre) => genre.name),
-      ...usedMyGenres,
-    ])).sort((a, b) => a.localeCompare(b)),
+    () =>
+      Array.from(
+        new Set([
+          ...reusablePersonalGenres.map((genre) => genre.name),
+          ...usedMyGenres,
+        ]),
+      ).sort((a, b) => a.localeCompare(b)),
     [reusablePersonalGenres, usedMyGenres],
   );
 
@@ -172,6 +186,9 @@ export default function BacklogPage() {
 
   const addFormRef = useRef(null);
   const bannerRef = useRef(null);
+  const mainRef = useRef(null);
+  const toolbarRef = useRef(null);
+  const isDesktopTable = useMedia("(min-width: 1024px)");
 
   const {
     newGame,
@@ -243,6 +260,26 @@ export default function BacklogPage() {
     };
   }, [isGuest]);
 
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    const main = mainRef.current;
+    if (!toolbar || !main) return undefined;
+
+    const updateToolbarHeight = () => {
+      main.style.setProperty(
+        "--backlog-toolbar-h",
+        `${toolbar.getBoundingClientRect().height}px`,
+      );
+    };
+    updateToolbarHeight();
+    const observer = new ResizeObserver(updateToolbarHeight);
+    observer.observe(toolbar);
+    return () => {
+      observer.disconnect();
+      main.style.removeProperty("--backlog-toolbar-h");
+    };
+  }, []);
+
   // Clear state and remove query params so URL-driven filters do not re-apply.
   const resetFilters = () => {
     clearFilters();
@@ -293,7 +330,7 @@ export default function BacklogPage() {
   const displayGames = isAuthError
     ? []
     : buildDisplayGames({
-        games,
+        games: presentationGames,
         searchQuery: debouncedQuery,
         selectedStatuses,
         selectedGenres,
@@ -328,11 +365,16 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       hasHoursFilter,
   );
-  const hasCompleteVisibleRanks = canReorderVisibleGames(games, displayGames);
-  const reorderEnabled =
-    canReorder && hasCompleteVisibleRanks && !sortKey && !isReversed;
+  const manualReorder = getManualReorderAvailability({
+    allGames: games,
+    visibleGames: displayGames,
+    canReorder,
+    sortKey,
+    isReversed,
+  });
+  const reorderEnabled = manualReorder.enabled && !displayGames.some((game) => game.entryKind === "wishlist");
   const reorderUnavailableMessage =
-    sortKey || isReversed
+    manualReorder.reason === "sort"
       ? "Manual reordering uses Default order with descending turned off."
       : "Manual reordering is unavailable because this view hides other games in the same status group.";
 
@@ -354,9 +396,13 @@ export default function BacklogPage() {
 
       {/* Single wrapper that applies top padding equal to the banner height */}
       <div className={isGuest ? "pt-[var(--demo-banner-h,0px)]" : ""}>
-        <main className={mainClass}>
-          <div className="sticky top-[calc(var(--mobile-header-h,3.5rem)+var(--demo-banner-h,0px))] z-30 bg-surface-bg lg:top-0">
+        <main ref={mainRef} className={mainClass}>
+          <div
+            ref={toolbarRef}
+            className="sticky top-[calc(var(--mobile-header-h,3.5rem)+var(--demo-banner-h,0px))] z-30 bg-surface-bg lg:top-0"
+          >
             <BacklogToolbar
+              showNotifications
               identity={{ title: backlogTitle }}
               search={{
                 query: searchQuery,
@@ -372,7 +418,7 @@ export default function BacklogPage() {
               }}
               filters={{
                 count: activeFilterCount,
-                allStatuses,
+                allStatuses: userPreferences.show_wishlist_in_backlog ? [...allStatuses, "wishlist"] : allStatuses,
                 allGenres,
                 allMyGenres,
                 selectedStatuses,
@@ -395,9 +441,7 @@ export default function BacklogPage() {
               }}
               actions={{
                 add: () =>
-                  isAuthenticated
-                    ? setShowAddForm(true)
-                    : setShowAuth(true),
+                  isAuthenticated ? setShowAddForm(true) : setShowAuth(true),
                 surprise: handleSurpriseMe,
                 completedActive,
                 toggleCompleted,
@@ -405,9 +449,9 @@ export default function BacklogPage() {
               viewMode={viewMode}
               setViewMode={setViewMode}
               resultCount={displayGames.length}
-              totalCount={games.length}
-              games={games}
-              onSelectGame={setSelectedGame}
+              totalCount={presentationGames.length}
+              games={presentationGames}
+              onSelectGame={selectGame}
             />
           </div>
           <BacklogPanels
@@ -427,23 +471,45 @@ export default function BacklogPage() {
               onClose: () => setShowAddForm(false),
             }}
           />
-          {/* The page owns the full-height scrollbar while the toolbar remains sticky. */}
+          {/* Card views use the page scrollbar; Table uses a bounded sticky-header scroller. */}
           <div className="mx-auto w-full max-w-[1760px]">
+            {wishlist.loading ? <p className="mb-3 text-sm text-content-muted">Loading wishlist...</p> : null}
+            {wishlist.error ? <PageError title="Could not load wishlist" description={wishlist.error} onRetry={wishlist.refresh} /> : null}
             {displayGames.length ? (
-              <GameGrid
-                games={displayGames}
-                onSelectGame={setSelectedGame}
-                onEditGame={(game) => {
-                  setSelectedGame(game);
-                  startEditing(game);
-                }}
-                onDeleteGame={handleDeleteGame}
-                onFinishGame={startFinishing}
-                onAddToNextUp={handleAddToNextUp}
-                onReorder={reorderEnabled ? handleReorderGames : null}
-                canManage={canReorder}
-                viewMode={viewMode}
-              />
+              viewMode === "table" && isDesktopTable ? (
+                <BacklogTable
+                  games={displayGames}
+                  onSelectGame={selectGame}
+                  onEditGame={(game) => {
+                    setSelectedGame(game);
+                    startEditing(game);
+                  }}
+                  onDeleteGame={handleDeleteGame}
+                  onFinishGame={startFinishing}
+                  onAddToNextUp={handleAddToNextUp}
+                  onReorder={reorderEnabled ? handleReorderGames : null}
+                  canManage={canReorder}
+                  sortKey={sortKey}
+                  setSortKey={setSortKey}
+                  isReversed={isReversed}
+                  setIsReversed={setIsReversed}
+                />
+              ) : (
+                <GameGrid
+                  games={displayGames}
+                  onSelectGame={selectGame}
+                  onEditGame={(game) => {
+                    setSelectedGame(game);
+                    startEditing(game);
+                  }}
+                  onDeleteGame={handleDeleteGame}
+                  onFinishGame={startFinishing}
+                  onAddToNextUp={handleAddToNextUp}
+                  onReorder={reorderEnabled ? handleReorderGames : null}
+                  canManage={canReorder}
+                  viewMode={viewMode === "table" ? "list" : viewMode}
+                />
+              )
             ) : (
               <EmptyState
                 icon={hasActiveFilters ? SearchX : Gamepad2}
@@ -491,6 +557,7 @@ export default function BacklogPage() {
               </p>
             ) : null}
           </div>
+
 
           <BacklogModals
             selectedGame={selectedGame}

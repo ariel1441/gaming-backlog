@@ -13,29 +13,31 @@ test("normalizeUserPreferences fills defaults for missing preferences", () => {
 test("normalizeUserPreferences keeps valid preference values", () => {
   assert.deepEqual(
     normalizeUserPreferences({
-      default_backlog_view: "list",
-      default_backlog_sort_key: "finishedDate",
+      default_backlog_view: "table",
+      default_backlog_sort_key: "score",
       default_backlog_sort_reversed: true,
       default_landing_path: "/me",
+      show_wishlist_in_backlog: true,
     }),
     {
-      default_backlog_view: "list",
-      default_backlog_sort_key: "finishedDate",
+      default_backlog_view: "table",
+      default_backlog_sort_key: "score",
       default_backlog_sort_reversed: true,
       default_landing_path: "/me",
-    }
+      show_wishlist_in_backlog: true,
+    },
   );
 });
 
 test("normalizeUserPreferences rejects unknown values back to defaults", () => {
   assert.deepEqual(
     normalizeUserPreferences({
-      default_backlog_view: "table",
+      default_backlog_view: "timeline",
       default_backlog_sort_key: "privateField",
       default_backlog_sort_reversed: "yes",
       default_landing_path: "https://example.com",
     }),
-    DEFAULT_USER_PREFERENCES
+    DEFAULT_USER_PREFERENCES,
   );
 });
 
@@ -44,7 +46,7 @@ test("preferredLandingPath reads normalized landing preference", () => {
     preferredLandingPath({
       preferences: { default_landing_path: "/timeline" },
     }),
-    "/timeline"
+    "/timeline",
   );
   assert.equal(preferredLandingPath({}), "/");
 });

@@ -27,6 +27,7 @@ import {
   syncSteamLibrary,
   updateSteamImportCandidate,
 } from "../services/steamService";
+import { listActivityEvents } from "../services/activityService";
 import { searchCatalog } from "../services/catalogService";
 import { listGames } from "../services/gameService";
 import {
@@ -51,11 +52,10 @@ import {
 import { filteredReasonLabel } from "../utils/steamImport";
 import { statusDisplayLabel } from "../utils/statusDisplay";
 import {
+  activityEventsToSyncReview,
   formatAchievementBatchSyncMessage,
   formatAchievementGameSyncMessage,
   formatSteamLibrarySyncMessage,
-  loadLastSteamSyncReview,
-  saveLastSteamSyncReview,
 } from "../utils/steamSync";
 import {
   formatSteamDate,
@@ -195,9 +195,7 @@ export default function SteamLibraryPage() {
   const [linkQuery, setLinkQuery] = useState("");
   const [linkResults, setLinkResults] = useState([]);
   const [linkLoading, setLinkLoading] = useState(false);
-  const [lastSyncReview, setLastSyncReview] = useState(() =>
-    loadLastSteamSyncReview(),
-  );
+  const [lastSyncReview, setLastSyncReview] = useState(null);
   const libraryLoadSequence = useRef(0);
 
   const selectedView = useMemo(() => currentView(view), [view]);
@@ -213,6 +211,17 @@ export default function SteamLibraryPage() {
     } finally {
       setAccountLoading(false);
     }
+  };
+
+  const loadSteamActivity = async () => {
+    const payload = await listActivityEvents({
+      source: "steam_library",
+      state: "open",
+      limit: 100,
+    });
+    const review = activityEventsToSyncReview(payload?.events || []);
+    setLastSyncReview(review);
+    return review;
   };
 
   const loadApps = async ({ append = false, offset = 0 } = {}) => {
@@ -267,6 +276,7 @@ export default function SteamLibraryPage() {
   useEffect(() => {
     if (!authLoading && isAuthenticated && !isGuest) {
       loadAccount();
+      loadSteamActivity().catch(() => {});
     }
   }, [authLoading, isAuthenticated, isGuest]);
 
@@ -294,15 +304,17 @@ export default function SteamLibraryPage() {
       const payload = await syncSteamLibrary();
       if (payload?.skipped) {
         toast.info(formatSteamLibrarySyncMessage(payload));
-      } else if (payload?.private) {
+      } else if (payload?.private || payload?.run?.status === "partial") {
         toast.warning(formatSteamLibrarySyncMessage(payload));
       } else {
         toast.success(formatSteamLibrarySyncMessage(payload));
       }
-      if (payload?.syncReview?.total) {
-        setLastSyncReview(saveLastSteamSyncReview(payload.syncReview));
-      } else if (!payload?.skipped && !payload?.private) {
-        setLastSyncReview(saveLastSteamSyncReview(null));
+      try {
+        await loadSteamActivity();
+      } catch {
+        toast.warning(
+          "Steam sync finished, but the activity review could not be refreshed.",
+        );
       }
       await loadAccount();
       await loadApps({ append: false, offset: 0 });
@@ -520,13 +532,16 @@ export default function SteamLibraryPage() {
     setSort("suggested");
   };
 
-  const openLastSyncReview = () => {
-    const stored = loadLastSteamSyncReview();
-    setLastSyncReview(stored);
-    if (stored?.total) {
-      navigate("/steam/import?review=last");
-    } else {
-      toast.info("No Steam sync review is waiting.");
+  const openLastSyncReview = async () => {
+    try {
+      const review = await loadSteamActivity();
+      if (review?.total) {
+        navigate("/steam/import?review=last");
+      } else {
+        toast.info("No Steam sync review is waiting.");
+      }
+    } catch (error) {
+      toast.error(error.message || "Could not load Steam activity.");
     }
   };
 

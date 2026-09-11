@@ -38,6 +38,9 @@ Read:
 
 ## Verification
 
+Follow [the shared verification policy](../../VERIFICATION.md); the notes below
+identify task-specific coverage, not additional automatic test runs.
+
 - Follow the CI-first verification policy in `AGENTS.md`; do not run checks after
   each UI edit.
 - For a reported UI bug, reproduce the user's exact click/scroll sequence and,

@@ -1,91 +1,39 @@
 # Next Tasks
 
-Last updated: 2026-08-08
+Updated: 2026-09-11. Read when choosing priorities, not on every small task.
 
-This is the short active queue. It intentionally contains no completed work.
-See [`ROADMAP.md`](ROADMAP.md) for remaining candidates and
-[`DONE.md`](DONE.md) for completed milestones. The July 2026 comprehensive
-audit is a historical snapshot; its broad remediation landed in `34fb7c1` and
-must not be treated as the current backlog without revalidation.
+## Selected next phase: release preparation
 
-## Selected Next Task
+The release review/fixes and requested local gate are complete. Runtime candidate
+`6dd5338` is on `fix/steam-candidate-account-isolation`, with a subsequent docs
+commit. Reverify Git before acting. Read the
+[preparation record](daily_sync__wishlist_and_loaded/local-release-preparation.md)
+for evidence and the remaining remote CI/environment limits.
 
-Close out production verification for the current `main` candidate, then
-implement the approved
-[`Personal Genre And Status Model V1`](planning/personal-genre-status-v1.md)
-foundation in bounded slices. The focused plan defines the genre-management
-behavior, stable status identities, compatibility contract, migration order,
-and approval gates that must be settled before schema work begins.
+1. Review the three local commits; publish the feature branch only when authorized.
+2. Obtain full CI for the exact candidate through a PR or Dev/main workflow.
+3. Apply required migrations through the approved runner during an authorized
+   rollout. Migration 035 was tested only in disposable localhost databases.
+4. Verify CI, migrations, Railway, Vercel and production smoke targets separately.
+   Verify actual daily Steam scheduling; do not infer it from code or local settings.
 
-Play Next & Resume V1 and Finish Game V1 are complete on `main`. The planned
-[`Play Next V2 mood and session matching`](planning/play-next-session-matching-v2.md)
-work remains a later candidate and is not the selected next task.
+No commit, push, deploy or production configuration is authorized by this queue.
+Preserve the local candidate and existing stashes; do not restore old drafts incidentally.
 
-Acceptance criteria for the next planning phase:
+## Later, separately scoped work
 
-- Replace comma-separated personal genres with a backward-compatible,
-  user-owned model that supports reuse, rename, merge, and future presets.
-- Keep personal genres distinct from provider metadata genres.
-- Separate stable status identity and semantic grouping from user-facing
-  wording before renaming existing statuses.
-- Preserve ordering, filtering, Insights, Lists, owner/demo, and public
-  read-only behavior through the migration.
-- Identify the compatibility sequence for the API, frontend, migrations, and
-  existing saved data before implementation.
+- Loaded: Phase D; Fanatical: E; remaining deal/notification polish: F.
+- Broader Gaming Activity, metadata repairs and acquisition/status automation stay
+  separate. Scheduling, saved-data polling and metadata refresh are distinct concerns.
+- Other candidates remain in [ROADMAP.md](ROADMAP.md); do not treat old plans as
+  missing implementation without checking code. Personal genres and Backlog table
+  are already implemented in this branch.
 
-## Active Order
+Older queues are preserved in [the pre-trim snapshot](NEXT_TASKS_history_2026-09-11.md)
+for targeted historical lookup only. They do not override this queue.
 
-1. Independently smoke-check the current `main` SHA in Railway, Vercel, and
-   representative production routes.
-2. Approve and implement Personal Genre And Status Model V1 in bounded slices.
-3. Add the main-backlog table view as the first consumer of the remaining
-   shared-table foundation.
-4. Add a focused Library Needs Attention view for data cleanup and repair.
-5. Build Insights V2 on the stable genre and status models.
-6. Organize the public profile into optional modules and add explicit privacy
-   controls before exposing newer private data.
-7. Add opt-in daily Steam sync that processes only new or changed games.
-8. Keep planning, implementation, review, and release as separate phases for
-   medium or larger work.
+## New-chat handoff
 
-Operational safety is no longer the selected product task. Remaining
-database-aware readiness, diagnostic, and production backup/restore work stays
-in the Engineering Follow-Up section of [`ROADMAP.md`](ROADMAP.md) until the
-repository contains and verifies the complete behavior.
-
-## Completed UI/UX Consolidation Track
-
-The completed UI/UX, editing, navigation, media fallback, loading-state, and
-accessibility phases are preserved in the historical
-[`planning/ui-ux-consistency-plan.md`](planning/ui-ux-consistency-plan.md).
-Phases 1A, 1B, 2, 3, 4, 5, 6, 7, and 8 are complete. Reopen a phase only for a
-demonstrated regression or a separately approved follow-up.
-
-The remaining shared-UI work is intentionally narrow: table primitives,
-table-specific responsive and interaction behavior, a development showcase,
-and representative cross-theme visual regression coverage. It should be driven
-by the selected backlog table feature rather than treated as another broad
-redesign.
-
-## Workflow Improvements
-
-- Install/adapt repo-local skill drafts only if the active Codex environment
-  needs direct installation.
-- Use the prompt templates in `docs/templates/` for repeated phases.
-- Add practical pre-task, pre-export, pre-commit, and pre-release hooks where
-  the environment supports them.
-
-## Default New-Chat Context
-
-```text
-Follow AGENTS.md.
-Read docs/SYSTEM_CONTEXT.md for current architecture.
-Read docs/NEXT_TASKS.md only when choosing priorities.
-For the selected UI/UX track, read docs/planning/ui-ux-consistency-plan.md.
-Read one focused planning or historical audit section only when directly
-relevant.
-Mode:
-Goal:
-Acceptance criteria:
-Checks:
-```
+Give the phase, goal, acceptance criteria, branch/SHA, dirty-file risks, exact
+completed checks and next action. Point to one relevant record; do not paste the
+whole documentation set. Follow AGENTS.md and docs/VERIFICATION.md.

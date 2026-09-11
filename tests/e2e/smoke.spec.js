@@ -187,6 +187,18 @@ async function mockApi(page) {
       },
     });
   });
+  // Steam experience polling is a saved-data read. Keep generic smoke tests
+  // independent of a separately running Express server.
+  await page.route(`${API_BASE}/api/steam/sync-health`, (route) =>
+    route.fulfill({
+      json: {
+        account: null,
+        activeJob: null,
+        runs: [],
+        lastScheduledAt: null,
+      },
+    }),
+  );
   await page.route(`${API_BASE}/api/games/statuses-list`, (route) =>
     route.fulfill({
       json: [

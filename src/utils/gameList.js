@@ -1,6 +1,7 @@
 import { smartFuzzySearch } from "./fuzzySearch.js";
 import { parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
+import { currentSteamPrice, isSteamSale } from "./steamPrice.js";
 import {
   NO_PERSONAL_GENRE_FILTER,
   NO_RAWG_GENRE_FILTER,
@@ -60,9 +61,7 @@ export function splitCsv(value) {
 export function personalGenreNames(game) {
   if (Array.isArray(game?.personal_genres)) {
     return game.personal_genres
-      .map((genre) =>
-        typeof genre === "string" ? genre : genre?.name,
-      )
+      .map((genre) => (typeof genre === "string" ? genre : genre?.name))
       .map((name) => String(name || "").trim())
       .filter(Boolean);
   }
@@ -74,6 +73,12 @@ const numberOrMax = (value) =>
 
 const numberOrNegativeInfinity = (value) =>
   value == null || Number.isNaN(Number(value)) ? -Infinity : Number(value);
+
+const optionalNumber = (value) => {
+  if (value === "" || value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
 
 const dateValue = (value) => (value ? Date.parse(value) || 0 : 0);
 
@@ -97,6 +102,33 @@ const compareOptionalDates = (a, b, field, isReversed) => {
   return sortByDefaultOrder(a, b);
 };
 
+const compareOptionalNumbers = (a, b, getValue, isReversed) => {
+  const valueA = optionalNumber(getValue(a));
+  const valueB = optionalNumber(getValue(b));
+  const hasA = valueA != null;
+  const hasB = valueB != null;
+
+  if (hasA && hasB && valueA !== valueB) {
+    return isReversed ? valueB - valueA : valueA - valueB;
+  }
+  if (hasA !== hasB) return hasA ? -1 : 1;
+  return sortByDefaultOrder(a, b);
+};
+
+const compareOptionalText = (a, b, getValue, isReversed) => {
+  const valueA = String(getValue(a) || "").trim();
+  const valueB = String(getValue(b) || "").trim();
+  const hasA = Boolean(valueA);
+  const hasB = Boolean(valueB);
+
+  if (hasA && hasB) {
+    const comparison = titleCollator.compare(valueA, valueB);
+    if (comparison) return isReversed ? -comparison : comparison;
+  }
+  if (hasA !== hasB) return hasA ? -1 : 1;
+  return sortByDefaultOrder(a, b);
+};
+
 export function sortByDefaultOrder(a, b) {
   const rankA = a?.status_rank ?? 999;
   const rankB = b?.status_rank ?? 999;
@@ -106,25 +138,73 @@ export function sortByDefaultOrder(a, b) {
   const positionB = b?.position ?? Number.POSITIVE_INFINITY;
   if (positionA !== positionB) return positionA - positionB;
 
-  return numberOrMax(a?.id) - numberOrMax(b?.id);
+  return numberOrMax(a?.id) - numberOrMax(b?.id) || titleCollator.compare(String(a?.id), String(b?.id));
 }
 
 export function sortGames(
   games = [],
   { sortKey = "", isReversed = false } = {},
 ) {
-  const dateSortKey =
+  const directionAwareSortKey =
     sortKey === "startedDate" ||
     sortKey === "finishedDate" ||
-    sortKey === "steamLastPlayed"
+    sortKey === "steamLastPlayed" ||
+    sortKey === "personalGenres" ||
+    sortKey === "estimatedHours" ||
+    sortKey === "score" ||
+    ["providerOrder", "dateAdded", "changedAt", "genres", "price", "discount"].includes(sortKey)
       ? sortKey
       : "";
   const sorted = [...(Array.isArray(games) ? games : [])].sort((a, b) => {
     switch (sortKey) {
+      case "price":
+        return compareOptionalNumbers(a, b, (game) => currentSteamPrice(game.steamPrice || game.wishlist?.steamPrice), isReversed);
+      case "discount":
+        return compareOptionalNumbers(a, b, (game) => {
+          const price = game.steamPrice || game.wishlist?.steamPrice;
+          return currentSteamPrice(price) == null ? null : (isSteamSale(price) ? price.discountPercent : 0);
+        }, isReversed);
+      case "providerOrder":
+        return compareOptionalNumbers(a, b, (game) => game.steamActive ? game.providerOrder : null, isReversed);
+      case "dateAdded":
+      case "changedAt":
+        return compareOptionalDates(a, b, sortKey, isReversed);
       case "name":
         return titleCollator.compare(
           String(a?.name || ""),
           String(b?.name || ""),
+        );
+      case "status": {
+        const rankDifference =
+          (a?.status_rank ?? 999) - (b?.status_rank ?? 999);
+        if (rankDifference) return rankDifference;
+        return titleCollator.compare(
+          String(a?.status || ""),
+          String(b?.status || ""),
+        );
+      }
+      case "genres":
+        return compareOptionalText(a, b, (game) => splitCsv(game.genres).join(", "), isReversed);
+      case "personalGenres":
+        return compareOptionalText(
+          a,
+          b,
+          (game) => personalGenreNames(game).join(", "),
+          isReversed,
+        );
+      case "estimatedHours":
+        return compareOptionalNumbers(
+          a,
+          b,
+          (game) => game?.displayHLTB ?? game?.how_long_to_beat,
+          isReversed,
+        );
+      case "score":
+        return compareOptionalNumbers(
+          a,
+          b,
+          (game) => game?.my_score,
+          isReversed,
         );
       case "hoursPlayed":
         return (
@@ -157,7 +237,7 @@ export function sortGames(
     }
   });
 
-  if (isReversed && !dateSortKey) sorted.reverse();
+  if (isReversed && !directionAwareSortKey) sorted.reverse();
   return sorted;
 }
 
@@ -273,6 +353,7 @@ export function applyGameFilters(
     hoursBounds = null,
     dateFilter = null,
     sourceFilter = "all",
+    onSaleOnly = false,
     now = new Date(),
   } = {},
 ) {
@@ -303,6 +384,7 @@ export function applyGameFilters(
 
   return (Array.isArray(games) ? games : []).filter((game) => {
     if (!game) return false;
+    if (onSaleOnly && !isSteamSale(game.steamPrice || game.wishlist?.steamPrice)) return false;
 
     if (statuses && !statuses.has(normalize(game.status))) return false;
 
@@ -348,6 +430,7 @@ export function buildDisplayGames({
   hoursBounds = null,
   dateFilter = null,
   sourceFilter = "all",
+  onSaleOnly = false,
   sortKey = "",
   isReversed = false,
 } = {}) {
@@ -359,6 +442,7 @@ export function buildDisplayGames({
     hoursBounds,
     dateFilter,
     sourceFilter,
+    onSaleOnly,
   });
 
   const searched = searchQuery?.trim()

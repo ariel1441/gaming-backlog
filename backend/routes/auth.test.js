@@ -10,7 +10,10 @@ const { default: authRouter } = await import("./auth.js");
 const { default: errorHandler } = await import("../middleware/errorHandler.js");
 
 function makeToken(payload = {}) {
-  return jwt.sign({ id: 7, username: "tester", ...payload }, process.env.JWT_SECRET);
+  return jwt.sign(
+    { id: 7, username: "tester", ...payload },
+    process.env.JWT_SECRET,
+  );
 }
 
 async function withServer(queryImpl, fn) {
@@ -74,8 +77,9 @@ test("GET /api/auth/me returns default preferences when no row exists", async ()
         default_backlog_sort_key: "",
         default_backlog_sort_reversed: false,
         default_landing_path: "/",
+        show_wishlist_in_backlog: false,
       });
-    }
+    },
   );
 });
 
@@ -91,10 +95,11 @@ test("PATCH /api/auth/me/preferences upserts preferences for current user", asyn
         return {
           rows: [
             {
-              default_backlog_view: "list",
-              default_backlog_sort_key: "finishedDate",
+              default_backlog_view: "table",
+              default_backlog_sort_key: "score",
               default_backlog_sort_reversed: true,
               default_landing_path: "/me",
+              show_wishlist_in_backlog: true,
             },
           ],
         };
@@ -105,25 +110,27 @@ test("PATCH /api/auth/me/preferences upserts preferences for current user", asyn
       const res = await request(baseUrl, "/api/auth/me/preferences", {
         method: "PATCH",
         body: {
-          default_backlog_view: "list",
-          default_backlog_sort_key: "finishedDate",
+          default_backlog_view: "table",
+          default_backlog_sort_key: "score",
           default_backlog_sort_reversed: true,
           default_landing_path: "/me",
+          show_wishlist_in_backlog: true,
         },
       });
 
       assert.equal(res.status, 200);
       assert.deepEqual(res.body, {
-        default_backlog_view: "list",
-        default_backlog_sort_key: "finishedDate",
+        default_backlog_view: "table",
+        default_backlog_sort_key: "score",
         default_backlog_sort_reversed: true,
         default_landing_path: "/me",
+        show_wishlist_in_backlog: true,
       });
       const insert = calls.find((call) =>
-        call.text.includes("INSERT INTO user_preferences")
+        call.text.includes("INSERT INTO user_preferences"),
       );
-      assert.deepEqual(insert.values, [7, "list", "finishedDate", true, "/me"]);
-    }
+      assert.deepEqual(insert.values, [7, "table", "score", true, "/me", true]);
+    },
   );
 });
 
@@ -134,7 +141,7 @@ test("PATCH /api/auth/me/preferences rejects invalid preference values", async (
       const res = await request(baseUrl, "/api/auth/me/preferences", {
         method: "PATCH",
         body: {
-          default_backlog_view: "table",
+          default_backlog_view: "timeline",
           default_backlog_sort_key: "",
           default_backlog_sort_reversed: false,
           default_landing_path: "/",
@@ -144,7 +151,7 @@ test("PATCH /api/auth/me/preferences rejects invalid preference values", async (
       assert.equal(res.status, 400);
       assert.equal(res.body.error.code, "bad_request");
       assert.match(res.body.error.message, /default_backlog_view/);
-    }
+    },
   );
 });
 
@@ -205,7 +212,7 @@ test("PATCH /api/auth/me/profile updates profile basics for current user", async
         "violet",
         7,
       ]);
-    }
+    },
   );
 });
 
@@ -235,6 +242,6 @@ test("PATCH /api/auth/me/profile rejects invalid avatar values", async () => {
       assert.equal(res.status, 400);
       assert.equal(res.body.error.code, "bad_request");
       assert.match(res.body.error.message, /avatar_icon/);
-    }
+    },
   );
 });

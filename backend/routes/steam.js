@@ -1,4 +1,5 @@
 import express from "express";
+import { getSteamExperienceHealth } from '../services/steamExperienceService.js';
 import { verifyToken } from "../middleware/auth.js";
 import { cacheClear } from "../utils/microCache.js";
 import { badRequest, notFound } from "../utils/httpError.js";
@@ -13,6 +14,7 @@ import {
   listSteamLinks as validateListSteamLinks,
   mergeSteamDuplicates as validateMergeSteamDuplicates,
   steamAchievementBatchSync as validateSteamAchievementBatchSync,
+  steamAccountSettings as validateSteamAccountSettings,
   steamGameAchievementSync as validateSteamGameAchievementSync,
   steamSync as validateSteamSync,
   steamSyncJob as validateSteamSyncJob,
@@ -38,15 +40,18 @@ import {
   mergeBacklogDuplicateGames,
   syncSteamAchievementsForGame,
   syncSteamAchievementsForLinkedGames,
-  enqueueSteamSync,
-  getSteamSyncJob,
-  cancelSteamSyncJob,
+  updateSteamAutoSync,
   unlinkSteamAppFromGame,
   updateSteamImportCandidate,
   upsertSteamAccount,
   verifySteamOpenId,
   STEAM_LINK_COOKIE,
 } from "../services/steamService.js";
+import {
+  cancelSteamSyncJob,
+  enqueueSteamSync,
+  getSteamSyncJob,
+} from "../services/steamLibrarySyncService.js";
 
 const router = express.Router();
 
@@ -127,6 +132,31 @@ router.get("/account", verifyToken, async (req, res, next) => {
   }
 });
 
+router.get('/sync-health', verifyToken, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await getSteamExperienceHealth(req.user.id));
+  } catch (error) { next(error); }
+});
+
+router.patch(
+  "/account/settings",
+  verifyToken,
+  validateSteamAccountSettings,
+  async (req, res, next) => {
+    try {
+      const payload = await updateSteamAutoSync(
+        req.user.id,
+        req.body.autoSyncEnabled,
+      );
+      res.setHeader("Cache-Control", "no-store");
+      res.json(payload);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.delete("/account", verifyToken, async (req, res, next) => {
   try {
     const payload = await disconnectSteamAccount(req.user.id);
@@ -141,6 +171,7 @@ router.post("/sync", verifyToken, validateSteamSync, async (req, res, next) => {
   try {
     const job = await enqueueSteamSync(req.user.id, {
       force: process.env.NODE_ENV !== "production" && req.body?.force === true,
+      trigger: "manual",
     });
     res.setHeader("Cache-Control", "no-store");
     res.status(202).json({ job });
@@ -309,6 +340,7 @@ router.get("/link-candidates", verifyToken, validateListSteamLinks, async (req, 
     const payload = await listSteamLinkCandidates(req.user.id, {
       query: req.query.q,
       gameId: req.query.gameId,
+      appId: req.query.appId,
       limit: req.query.limit,
     });
     res.setHeader("Cache-Control", "no-store");

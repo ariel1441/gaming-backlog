@@ -90,6 +90,16 @@ For real local Steam testing:
   the user's Steam password with this app.
 - Owned-library sync works only when Steam profile/game details are public
   enough for the Steam Web API to return owned games.
+- Wishlist sync likewise depends on Steam exposing the wishlist. For local
+  deterministic testing, `STEAM_MOCK_WISHLIST_JSON` accepts a wishlist response
+  or `{ "wishlist": ..., "count": ... }`; ambiguous empty responses are not
+  accepted automatically.
+- For an opt-in real local Wishlist browser check, set
+  `STEAM_WISHLIST_LOCAL_SMOKE=1` and run
+  `npx playwright test tests/e2e/wishlist.local.spec.js --project=chromium`.
+  Requires port 5000 to be free and one linked local Wishlist owner; uses real
+  routes with read-only PostgreSQL connections and no background schedulers.
+  Screenshots go to ignored `test-results/`; never commit local account artifacts.
 - Achievement summary sync uses the same backend-only `STEAM_WEB_API_KEY`.
   Per-game achievement data can legitimately come back as no achievements,
   private, unavailable, or failed; those states should be recorded without
@@ -167,7 +177,7 @@ port.
 3. Run the app locally.
 4. Make changes.
 5. Test the changed flow locally.
-6. Run `npm run check` before pushing.
+6. Run the focused checks selected by [the verification policy](docs/VERIFICATION.md).
 7. Commit in small chunks.
 8. Open a PR into `Dev`.
 9. Merge `Dev` into `main` only when ready to deploy.
@@ -179,7 +189,7 @@ git switch Dev
 git pull
 git switch -c feature/some-small-change
 npm run dev
-npm run check
+# After the coherent change, run its selected focused check; use PR CI for the full gate.
 ```
 
 ## CI/CD
@@ -267,9 +277,10 @@ Use this order for schema work:
 
 1. Add a SQL file under `backend/migrations/`.
 2. Update `backend/schema.sql` so fresh installs match the latest shape.
-3. Test locally with `npm run db:migrate:local` for existing DBs, or
-   `npm run db:reset:local` for fresh disposable DBs.
-4. Run `npm run check`.
+3. Exercise the migration runner against disposable localhost data. A contract
+   invoking `scripts/db-migrate.js` satisfies this; do not repeat it against saved
+   development data. Use `npm run db:reset:local` only for a disposable fresh install.
+4. Run warranted focused schema/service coverage; use exact-candidate CI for the full gate.
 5. Merge through `Dev`.
 6. Merge to `main` when ready; GitHub Actions applies production migrations if
    `PROD_DATABASE_URL` is configured.
@@ -308,6 +319,17 @@ For the Steam integration release, confirm production has:
 - migration `009_add_hours_source_preferences.sql` applied
 - migration `010_add_steam_activity_observed.sql` applied when deploying the
   local Steam Sync Review/activity polish
+- migration `018_add_steam_sync_jobs.sql` applied before serving asynchronous
+  Steam library sync
+- migration `028_add_steam_daily_sync_foundation.sql` applied before enabling
+  persistent Steam activity review or the opt-in daily runner
+- migration `029_add_steam_sync_job_lease_token.sql` applied before running the
+  Phase A Steam worker code with lease ownership fencing
+- migrations `030_add_steam_wishlist.sql` and
+  `031_harden_steam_wishlist_sync.sql` applied before running the Wishlist and
+  hardened daily-sync code; preserve existing local intentions during migration
+- migration `032_add_steam_achievement_follow_up.sql` applied before running the
+  A/B closeout code with durable achievement retries
 - `STEAM_WEB_API_KEY` configured on the backend
 - `STEAM_OPENID_REALM` set to the backend origin
 - `STEAM_OPENID_RETURN_URL` set to the backend `/api/steam/auth/callback`
@@ -316,12 +338,13 @@ For the Steam integration release, confirm production has:
 Steam production behavior to verify:
 
 - Steam data stays private in public profiles.
-- Manual sync failure or private-library state does not break the normal
-  backlog.
+- Manual/scheduled sync failure or private/invalid/empty library state does not
+  break the normal backlog or advance the successful library baseline.
 - Manual achievement sync records per-game unavailable/private/failure states
   without breaking backlog or Steam library reads.
-- Manual library sync can surface a private Steam Sync Review when newly
-  observed play activity or newly discovered Steam games need user action.
+- Manual or scheduled library sync can persist private Steam Sync Review items
+  when newly observed play activity or newly discovered Steam games need user
+  action.
 - Import candidates can be reviewed before any new backlog row is created.
 - Attach/import flows do not create duplicate `games` rows for an already
   matched backlog game.
@@ -336,8 +359,8 @@ For each new feature or bug fix:
 3. Implement backend changes.
 4. Implement frontend changes.
 5. Test the full user flow locally.
-6. Run `npm run check`.
-7. Push and verify the deploy after merge.
+6. Follow [the verification policy](docs/VERIFICATION.md); avoid duplicating passing checks.
+7. When authorized, open a PR for exact-candidate CI; deploy/verify only as a separate release action.
 
 Good examples of feature branches:
 
@@ -350,12 +373,14 @@ Good examples of feature branches:
 - Keep each branch focused on one feature or bug.
 - Write down the exact user flow to test before editing.
 - Ask AI tools for implementation plus tests/checks, not only code snippets.
-- Before merging, ask for a review against the diff and run `npm run check`.
+- Before merging, review the diff and require full CI for the exact candidate.
 - Never paste live secrets into chat; use redacted env summaries instead.
 
 ## Safety checks
 
-Run the fast validation suite before committing:
+Follow [the verification policy](docs/VERIFICATION.md). The following are full
+local gates, not default pre-commit commands. Use them only when explicitly required
+or equivalent exact-candidate CI is unavailable:
 
 ```bash
 npm run check
@@ -365,8 +390,8 @@ This runs ESLint, the Node test suite, and the production build. ESLint includes
 undefined-variable checks, so missing component imports fail before reaching the
 browser.
 
-For route-level browser smoke coverage, install Playwright's Chromium build once
-and run the full check:
+For a required full local gate including browser coverage, install Chromium once
+if missing and use `check:full` instead of separately running both gates:
 
 ```bash
 npx playwright install chromium

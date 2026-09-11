@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import SteamSyncSettings from '../../features/steam/SteamSyncSettings';
 import { Link } from "react-router-dom";
 import {
   Database,
   Download,
   ExternalLink,
   Gamepad2,
+  Heart,
   LibraryBig,
   Link as LinkIcon,
 } from "lucide-react";
@@ -16,7 +18,10 @@ import {
   TextInput,
   useToast,
 } from "../../components/ui";
-import { getSteamAccount, startSteamLink } from "../../services/steamService";
+import {
+  getSteamAccount,
+  startSteamLink,
+} from "../../services/steamService";
 import { backlogCsv } from "../../utils/csv";
 export function DataSection({ games }) {
   const toast = useToast();
@@ -143,7 +148,7 @@ export function IntegrationsSection({ isGuest }) {
             Integrations
           </h2>
           <p className="mt-1 text-sm leading-6 text-content-muted">
-            Steam linking and import stay in the dedicated Steam screens.
+            Manage Steam connection, scheduled updates and sync recovery.
           </p>
         </div>
         <Badge variant={account ? "success" : "default"}>
@@ -215,6 +220,7 @@ export function IntegrationsSection({ isGuest }) {
               ) : null}
             </div>
           </div>
+          {account ? <SteamSyncSettings /> : null}
         </div>
       )}
 
@@ -226,6 +232,10 @@ export function IntegrationsSection({ isGuest }) {
         <Button as={Link} to="/steam/import" variant="secondary">
           <Download className="h-4 w-4" aria-hidden="true" />
           Steam Import Review
+        </Button>
+        <Button as={Link} to="/wishlist" variant="secondary">
+          <Heart className="h-4 w-4" aria-hidden="true" />
+          Wishlist
         </Button>
       </div>
     </section>

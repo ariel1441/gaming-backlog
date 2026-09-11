@@ -9,6 +9,7 @@ export class ProviderRequestError extends Error {
     this.code = code;
     this.status = options.status || 503;
     this.retryable = options.retryable !== false;
+    this.retryAfterMs = Number(options.retryAfterMs) || null;
   }
 }
 
@@ -120,13 +121,19 @@ export async function fetchProviderResponse(
 export function providerHttpError(provider, response) {
   const status = Number(response?.status) || 503;
   const retryable = status === 429 || status >= 500;
+  const retryAfter = response?.headers?.get?.("retry-after");
+  let retryAfterMs = Number(retryAfter) * 1000;
+  if (!Number.isFinite(retryAfterMs)) {
+    const retryAt = retryAfter ? new Date(retryAfter).getTime() : NaN;
+    retryAfterMs = Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : null;
+  }
   return new ProviderRequestError(
     provider,
     status === 429 ? `${provider}_rate_limited` : `${provider}_http_error`,
     retryable
       ? `${provider} is temporarily unavailable.`
       : `${provider} rejected the request.`,
-    { status: retryable ? 503 : 502, retryable },
+    { status: retryable ? 503 : 502, retryable, retryAfterMs },
   );
 }
 

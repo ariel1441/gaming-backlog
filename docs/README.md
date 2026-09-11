@@ -72,6 +72,11 @@ environment.
 
 ## Planning Notes
 
+- [`daily_sync__wishlist_and_loaded/gaming-backlog-steam-wishlist-master-plan.md`](daily_sync__wishlist_and_loaded/gaming-backlog-steam-wishlist-master-plan.md) -
+  approved multi-phase direction for Steam automation, wishlist, and later
+  store deal tracking; implement only the explicitly selected phase.
+- [`daily_sync__wishlist_and_loaded/steam-library-daily-sync-implementation-plan.md`](daily_sync__wishlist_and_loaded/steam-library-daily-sync-implementation-plan.md) -
+  Phase A implementation plan adapted to the live durable Steam job system.
 - [`planning/ideas.md`](planning/ideas.md) - small unscheduled ideas that remain
   open.
 - [`planning/metadata-catalog-refactor.md`](planning/metadata-catalog-refactor.md) -

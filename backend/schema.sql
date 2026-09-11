@@ -1,7 +1,11 @@
 -- DEV RESET (optional)
+DROP TABLE IF EXISTS user_activity_events;
+DROP TABLE IF EXISTS steam_wishlist_items;
+DROP TABLE IF EXISTS user_wishlist_items;
 DROP TABLE IF EXISTS steam_import_candidates;
 DROP TABLE IF EXISTS user_game_sources;
 DROP TABLE IF EXISTS steam_sync_jobs;
+DROP TABLE IF EXISTS integration_sync_runs;
 DROP TABLE IF EXISTS user_external_accounts;
 DROP TABLE IF EXISTS steam_link_transactions;
 DROP TABLE IF EXISTS user_next_up_games;
@@ -79,12 +83,16 @@ CREATE TABLE users (
 CREATE TABLE user_preferences (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   default_backlog_view TEXT NOT NULL DEFAULT 'grid'
-    CHECK (default_backlog_view IN ('grid', 'compact', 'list')),
+    CHECK (default_backlog_view IN ('grid', 'compact', 'list', 'table')),
   default_backlog_sort_key TEXT NOT NULL DEFAULT ''
     CHECK (
       default_backlog_sort_key IN (
         '',
         'name',
+        'status',
+        'personalGenres',
+        'estimatedHours',
+        'score',
         'hoursPlayed',
         'rawgRating',
         'metacritic',
@@ -106,6 +114,7 @@ CREATE TABLE user_preferences (
         '/insights'
       )
     ),
+  show_wishlist_in_backlog BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -531,6 +540,15 @@ CREATE TABLE user_external_accounts (
   last_library_sync_at TIMESTAMPTZ,
   last_error_code TEXT,
   last_error_message TEXT,
+  auto_sync_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  wishlist_sync_status TEXT NOT NULL DEFAULT 'never'
+    CHECK (wishlist_sync_status IN ('never', 'syncing', 'synced', 'partial', 'empty', 'empty_unconfirmed', 'private', 'failed')),
+  last_wishlist_sync_attempt_at TIMESTAMPTZ,
+  last_wishlist_sync_at TIMESTAMPTZ,
+  wishlist_last_error_code TEXT,
+  wishlist_last_error_message TEXT,
+  wishlist_empty_observations INTEGER NOT NULL DEFAULT 0 CHECK (wishlist_empty_observations >= 0),
+  wishlist_empty_observed_at TIMESTAMPTZ,
   linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   disconnected_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -547,6 +565,33 @@ CREATE UNIQUE INDEX user_external_accounts_provider_user_active_unique
 
 CREATE INDEX idx_user_external_accounts_user_id
   ON user_external_accounts (user_id);
+
+CREATE TABLE integration_sync_runs (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  sync_kind TEXT NOT NULL,
+  trigger_type TEXT NOT NULL
+    CHECK (trigger_type IN ('manual', 'scheduled')),
+  status TEXT NOT NULL DEFAULT 'running'
+    CHECK (status IN ('running', 'succeeded', 'partial', 'failed', 'skipped')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  items_seen INTEGER NOT NULL DEFAULT 0 CHECK (items_seen >= 0),
+  items_changed INTEGER NOT NULL DEFAULT 0 CHECK (items_changed >= 0),
+  errors_count INTEGER NOT NULL DEFAULT 0 CHECK (errors_count >= 0),
+  summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_code TEXT,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX integration_sync_runs_user_domain_started
+  ON integration_sync_runs (user_id, provider, sync_kind, started_at DESC);
+
+CREATE INDEX integration_sync_runs_recent_problems
+  ON integration_sync_runs (started_at DESC)
+  WHERE status IN ('partial', 'failed');
 
 CREATE TABLE steam_link_transactions (
   id UUID PRIMARY KEY,
@@ -565,6 +610,12 @@ CREATE TABLE steam_sync_jobs (
   id UUID PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   account_id INTEGER REFERENCES user_external_accounts(id) ON DELETE CASCADE,
+  trigger_type TEXT NOT NULL DEFAULT 'manual'
+    CHECK (trigger_type IN ('manual', 'scheduled')),
+  sync_kind TEXT NOT NULL DEFAULT 'library'
+    CHECK (sync_kind IN ('library', 'wishlist')),
+  sync_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL,
+  lease_token UUID,
   status TEXT NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
   force BOOLEAN NOT NULL DEFAULT FALSE,
@@ -589,6 +640,10 @@ CREATE UNIQUE INDEX steam_sync_jobs_one_active_per_user
 CREATE INDEX steam_sync_jobs_runnable
   ON steam_sync_jobs (status, locked_at, created_at)
   WHERE status IN ('queued', 'running');
+
+CREATE UNIQUE INDEX steam_sync_jobs_sync_run_unique
+  ON steam_sync_jobs (sync_run_id)
+  WHERE sync_run_id IS NOT NULL;
 
 CREATE TABLE user_game_sources (
   id SERIAL PRIMARY KEY,
@@ -675,6 +730,82 @@ CREATE INDEX idx_steam_import_candidates_user_status
 CREATE INDEX idx_steam_import_candidates_user_match
   ON steam_import_candidates (user_id, match_confidence, import_status);
 
+CREATE TABLE user_wishlist_items (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+  catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE SET NULL,
+  display_name TEXT NOT NULL,
+  cover_url TEXT,
+  release_date DATE,
+  tags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  local_intent_active BOOLEAN NOT NULL DEFAULT FALSE,
+  local_intent_source TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX user_wishlist_items_user_game_unique
+  ON user_wishlist_items (user_id, game_id) WHERE game_id IS NOT NULL;
+CREATE UNIQUE INDEX user_wishlist_items_user_catalog_unique
+  ON user_wishlist_items (user_id, catalog_game_id) WHERE catalog_game_id IS NOT NULL;
+CREATE INDEX user_wishlist_items_user_active
+  ON user_wishlist_items (user_id, local_intent_active, updated_at DESC);
+
+CREATE TABLE steam_wishlist_items (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id INTEGER NOT NULL REFERENCES user_external_accounts(id) ON DELETE CASCADE,
+  wishlist_item_id BIGINT NOT NULL REFERENCES user_wishlist_items(id) ON DELETE CASCADE,
+  steam_app_id TEXT NOT NULL,
+  priority INTEGER CHECK (priority IS NULL OR priority >= 0),
+  date_added TIMESTAMPTZ,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  removed_at TIMESTAMPTZ,
+  removal_reason TEXT,
+  last_changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_sync_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, steam_app_id)
+);
+
+CREATE INDEX steam_wishlist_items_user_active_priority
+  ON steam_wishlist_items (user_id, is_active, priority, date_added DESC);
+CREATE INDEX steam_wishlist_items_account_id ON steam_wishlist_items (account_id);
+
+CREATE TABLE user_activity_events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+  catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE SET NULL,
+  wishlist_item_id BIGINT REFERENCES user_wishlist_items(id) ON DELETE SET NULL,
+  external_id TEXT,
+  sync_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL,
+  dedupe_key TEXT NOT NULL,
+  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  state TEXT NOT NULL DEFAULT 'open'
+    CHECK (state IN ('open', 'resolved', 'dismissed')),
+  seen_at TIMESTAMPTZ,
+  observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX user_activity_events_user_state_created
+  ON user_activity_events (user_id, state, created_at DESC);
+
+CREATE INDEX user_activity_events_user_source_created
+  ON user_activity_events (user_id, source, created_at DESC);
+
+CREATE UNIQUE INDEX user_activity_events_open_dedupe
+  ON user_activity_events (user_id, source, dedupe_key)
+  WHERE state = 'open';
+
 CREATE OR REPLACE FUNCTION enforce_owned_game_relationship()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE game_owner INTEGER;
@@ -683,6 +814,46 @@ BEGIN
   SELECT user_id INTO game_owner FROM games WHERE id = NEW.game_id;
   IF game_owner IS NULL OR game_owner <> NEW.user_id THEN
     RAISE EXCEPTION 'game relationship owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION enforce_wishlist_item_owner()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE game_owner INTEGER; item_owner INTEGER; account_owner INTEGER;
+BEGIN
+  IF TG_TABLE_NAME = 'user_wishlist_items' THEN
+    IF NEW.game_id IS NOT NULL THEN
+      SELECT user_id INTO game_owner FROM games WHERE id = NEW.game_id;
+      IF game_owner IS NULL OR game_owner <> NEW.user_id THEN
+        RAISE EXCEPTION 'wishlist game owner mismatch' USING ERRCODE = '23514';
+      END IF;
+    END IF;
+    RETURN NEW;
+  END IF;
+  SELECT user_id INTO item_owner FROM user_wishlist_items WHERE id = NEW.wishlist_item_id;
+  SELECT user_id INTO account_owner FROM user_external_accounts WHERE id = NEW.account_id;
+  IF item_owner IS NULL OR account_owner IS NULL OR item_owner <> NEW.user_id OR account_owner <> NEW.user_id THEN
+    RAISE EXCEPTION 'steam wishlist owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION enforce_activity_event_relationships()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE game_owner INTEGER; wishlist_owner INTEGER;
+BEGIN
+  IF NEW.game_id IS NOT NULL THEN
+    SELECT user_id INTO game_owner FROM games WHERE id = NEW.game_id;
+    IF game_owner IS NULL OR game_owner <> NEW.user_id THEN
+      RAISE EXCEPTION 'game relationship owner mismatch' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  IF NEW.wishlist_item_id IS NOT NULL THEN
+    SELECT user_id INTO wishlist_owner FROM user_wishlist_items WHERE id = NEW.wishlist_item_id;
+    IF wishlist_owner IS NULL OR wishlist_owner <> NEW.user_id THEN
+      RAISE EXCEPTION 'wishlist activity owner mismatch' USING ERRCODE = '23514';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -719,6 +890,60 @@ CREATE TRIGGER steam_import_candidates_owner_guard
   BEFORE INSERT OR UPDATE OF user_id, duplicate_game_id ON steam_import_candidates
   FOR EACH ROW EXECUTE FUNCTION enforce_candidate_duplicate_owner();
 
+CREATE TRIGGER user_activity_events_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, game_id, wishlist_item_id ON user_activity_events
+  FOR EACH ROW EXECUTE FUNCTION enforce_activity_event_relationships();
+
+CREATE TRIGGER user_wishlist_items_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, game_id ON user_wishlist_items
+  FOR EACH ROW EXECUTE FUNCTION enforce_wishlist_item_owner();
+
+CREATE TRIGGER steam_wishlist_items_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, account_id, wishlist_item_id ON steam_wishlist_items
+  FOR EACH ROW EXECUTE FUNCTION enforce_wishlist_item_owner();
+
+CREATE OR REPLACE FUNCTION prevent_wishlist_game_owner_change()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.user_id <> OLD.user_id AND EXISTS (SELECT 1 FROM user_wishlist_items WHERE game_id = OLD.id) THEN
+    RAISE EXCEPTION 'cannot change game owner while wishlist relationships exist' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER games_wishlist_owner_change_guard
+  BEFORE UPDATE OF user_id ON games
+  FOR EACH ROW EXECUTE FUNCTION prevent_wishlist_game_owner_change();
+
+CREATE OR REPLACE FUNCTION prevent_wishlist_item_owner_change()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.user_id <> OLD.user_id AND (
+    EXISTS (SELECT 1 FROM steam_wishlist_items WHERE wishlist_item_id = OLD.id) OR
+    EXISTS (SELECT 1 FROM user_activity_events WHERE wishlist_item_id = OLD.id)
+  ) THEN
+    RAISE EXCEPTION 'cannot change wishlist owner while relationships exist' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER user_wishlist_items_owner_change_guard
+  BEFORE UPDATE OF user_id ON user_wishlist_items
+  FOR EACH ROW EXECUTE FUNCTION prevent_wishlist_item_owner_change();
+
+CREATE OR REPLACE FUNCTION prevent_wishlist_account_owner_change()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.user_id <> OLD.user_id AND EXISTS (SELECT 1 FROM steam_wishlist_items WHERE account_id = OLD.id) THEN
+    RAISE EXCEPTION 'cannot change Steam account owner while wishlist relationships exist' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER steam_account_wishlist_owner_change_guard
+  BEFORE UPDATE OF user_id ON user_external_accounts
+  FOR EACH ROW EXECUTE FUNCTION prevent_wishlist_account_owner_change();
+
 CREATE TRIGGER user_list_games_owner_guard
   BEFORE INSERT OR UPDATE OF list_id, game_id ON user_list_games
   FOR EACH ROW EXECUTE FUNCTION enforce_list_game_owner();
@@ -738,6 +963,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM user_list_games WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM user_game_sources WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM steam_import_candidates WHERE duplicate_game_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM user_activity_events WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM game_metadata_candidates WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM user_next_up_games WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM game_personal_genres WHERE game_id = OLD.id) THEN
@@ -765,3 +991,220 @@ CREATE TRIGGER games_owner_change_guard
 CREATE TRIGGER user_lists_owner_change_guard
   BEFORE UPDATE OF user_id ON user_lists
   FOR EACH ROW EXECUTE FUNCTION prevent_list_owner_change_with_memberships();
+
+-- Preserve the already-applied 030 migration and all historical/local intentions.
+ALTER TABLE steam_wishlist_items
+  ADD COLUMN IF NOT EXISTS provider_order INTEGER CHECK (provider_order >= 0),
+  ADD COLUMN IF NOT EXISTS order_sync_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS steam_wishlist_items_provider_order
+  ON steam_wishlist_items (user_id, is_active, provider_order, steam_app_id);
+
+ALTER TABLE user_wishlist_items
+  ADD COLUMN IF NOT EXISTS metadata_provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- An observation in a successful incremental library run is stronger evidence
+-- than first_imported_at (which also includes historical baseline imports).
+ALTER TABLE user_game_sources
+  ADD COLUMN IF NOT EXISTS ownership_observed_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL;
+
+-- Retain the provider identity captured at enqueue, even if the link changes.
+ALTER TABLE steam_sync_jobs ADD COLUMN IF NOT EXISTS provider_user_id TEXT;
+
+ALTER TABLE user_game_sources
+  ADD COLUMN IF NOT EXISTS achievements_pending_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS achievements_next_attempt_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS achievements_last_attempt_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS achievements_attempts INTEGER NOT NULL DEFAULT 0 CHECK (achievements_attempts >= 0),
+  ADD COLUMN IF NOT EXISTS achievements_revision BIGINT NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS user_game_sources_achievement_follow_up
+  ON user_game_sources (user_id, achievements_next_attempt_at, id)
+  WHERE provider = 'steam' AND source_status = 'owned' AND game_id IS NOT NULL;
+
+ALTER TABLE steam_sync_jobs DROP CONSTRAINT IF EXISTS steam_sync_jobs_sync_kind_check;
+ALTER TABLE steam_sync_jobs ADD CONSTRAINT steam_sync_jobs_sync_kind_check
+  CHECK (sync_kind IN ('library', 'wishlist', 'wishlist_prices'));
+
+ALTER TABLE user_external_accounts
+  ADD COLUMN IF NOT EXISTS price_sync_status TEXT NOT NULL DEFAULT 'never' CHECK (price_sync_status IN ('never','syncing','succeeded','partial','failed','skipped','cancelled')),
+  ADD COLUMN IF NOT EXISTS last_price_attempt_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS last_price_sync_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS price_next_attempt_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS price_last_error TEXT,
+  ADD COLUMN IF NOT EXISTS price_revision BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE user_activity_events
+  ADD COLUMN IF NOT EXISTS occurrence_key TEXT,
+  ADD COLUMN IF NOT EXISTS event_kind TEXT NOT NULL DEFAULT 'decision';
+CREATE UNIQUE INDEX IF NOT EXISTS user_activity_events_occurrence_unique
+  ON user_activity_events(user_id, source, occurrence_key) WHERE occurrence_key IS NOT NULL;
+
+-- Exact saved identities only. A local intention may retain an old Steam AppID,
+-- but ownership must have been observed during the current connection.
+CREATE OR REPLACE VIEW steam_price_targets AS
+SELECT w.user_id, a.id AS account_id, w.id AS wishlist_item_id,
+       CASE WHEN cardinality(ids.app_ids) = 1 THEN ids.app_ids[1] END AS steam_app_id,
+       CASE WHEN NOT (w.local_intent_active OR COALESCE(s.is_active AND s.account_id = a.id, FALSE)) THEN 'removed'
+            WHEN cardinality(ids.app_ids) IS DISTINCT FROM 1 THEN 'identity_unresolved'
+            WHEN EXISTS (SELECT 1 FROM user_game_sources source
+              WHERE source.user_id = w.user_id AND source.provider = 'steam'
+                AND source.provider_app_id = ids.app_ids[1]
+                AND source.source_status IN ('owned', 'ignored')
+                AND source.last_synced_at >= a.linked_at) THEN 'owned'
+            ELSE 'eligible' END AS reason
+FROM user_wishlist_items w
+JOIN user_external_accounts a ON a.user_id = w.user_id AND a.provider = 'steam' AND a.disconnected_at IS NULL
+JOIN users u ON u.id = w.user_id AND u.is_guest = FALSE
+LEFT JOIN steam_wishlist_items s ON s.wishlist_item_id = w.id AND s.user_id = w.user_id
+LEFT JOIN games g ON g.id = w.game_id AND g.user_id = w.user_id
+LEFT JOIN LATERAL (
+  SELECT array_agg(DISTINCT app_id) AS app_ids FROM (
+    SELECT s.steam_app_id AS app_id
+    UNION ALL
+    SELECT e.external_id FROM external_game_ids e
+      WHERE e.source = 'steam' AND e.catalog_game_id IN (w.catalog_game_id, g.catalog_game_id)
+  ) exact_ids WHERE app_id ~ '^[1-9][0-9]*$'
+) ids ON TRUE;
+
+CREATE TABLE IF NOT EXISTS steam_price_monitors (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id INTEGER NOT NULL REFERENCES user_external_accounts(id) ON DELETE CASCADE,
+  wishlist_item_id BIGINT NOT NULL REFERENCES user_wishlist_items(id) ON DELETE CASCADE,
+  steam_app_id TEXT NOT NULL CHECK (steam_app_id ~ '^[1-9][0-9]*$'),
+  epoch UUID NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_attempt_at TIMESTAMPTZ,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  last_error TEXT,
+  latest_observation_id BIGINT,
+  comparison_observation_id BIGINT,
+  UNIQUE (account_id, wishlist_item_id, steam_app_id)
+);
+CREATE INDEX IF NOT EXISTS steam_price_monitors_due ON steam_price_monitors(account_id, next_attempt_at, id) WHERE active;
+
+CREATE TABLE IF NOT EXISTS steam_price_observations (
+  id BIGSERIAL PRIMARY KEY,
+  monitor_id BIGINT NOT NULL REFERENCES steam_price_monitors(id) ON DELETE CASCADE,
+  sync_run_id BIGINT NOT NULL REFERENCES integration_sync_runs(id),
+  epoch UUID NOT NULL,
+  observed_at TIMESTAMPTZ NOT NULL,
+  country TEXT NOT NULL CHECK (country = 'IL'),
+  currency TEXT CHECK (currency = 'ILS'),
+  offer_id TEXT,
+  offer_name TEXT,
+  availability TEXT NOT NULL CHECK (availability IN ('available', 'free', 'unavailable', 'unreleased')),
+  current_minor BIGINT CHECK (current_minor >= 0),
+  regular_minor BIGINT CHECK (regular_minor >= 0),
+  discount_percent INTEGER CHECK (discount_percent BETWEEN 0 AND 100),
+  sale BOOLEAN,
+  normalizer_version INTEGER NOT NULL,
+  evidence_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (monitor_id, sync_run_id),
+  CHECK (regular_minor IS NULL OR current_minor IS NULL OR regular_minor >= current_minor),
+  CHECK (availability NOT IN ('available', 'free') OR (currency IS NOT NULL AND current_minor IS NOT NULL AND offer_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS steam_price_observations_history ON steam_price_observations(monitor_id, observed_at DESC, id DESC);
+ALTER TABLE steam_price_monitors
+  DROP CONSTRAINT IF EXISTS steam_price_monitors_latest_fk,
+  DROP CONSTRAINT IF EXISTS steam_price_monitors_comparison_fk;
+ALTER TABLE steam_price_monitors
+  ADD CONSTRAINT steam_price_monitors_latest_fk FOREIGN KEY (latest_observation_id) REFERENCES steam_price_observations(id),
+  ADD CONSTRAINT steam_price_monitors_comparison_fk FOREIGN KEY (comparison_observation_id) REFERENCES steam_price_observations(id);
+
+CREATE OR REPLACE FUNCTION enforce_steam_price_relationships() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_TABLE_NAME = 'steam_price_monitors' THEN
+    IF NOT EXISTS (SELECT 1 FROM user_wishlist_items w JOIN user_external_accounts a ON a.user_id = w.user_id
+      WHERE w.id = NEW.wishlist_item_id AND w.user_id = NEW.user_id AND a.id = NEW.account_id AND a.provider = 'steam') THEN
+      RAISE EXCEPTION 'price monitor owner mismatch' USING ERRCODE = '23514';
+    END IF;
+    IF TG_OP = 'UPDATE' AND (NEW.user_id, NEW.account_id, NEW.wishlist_item_id, NEW.steam_app_id)
+      IS DISTINCT FROM (OLD.user_id, OLD.account_id, OLD.wishlist_item_id, OLD.steam_app_id) THEN
+      RAISE EXCEPTION 'price monitor identity is immutable' USING ERRCODE = '23514';
+    END IF;
+    IF EXISTS (SELECT 1 FROM steam_price_observations o WHERE o.id IN (NEW.latest_observation_id, NEW.comparison_observation_id)
+      AND o.monitor_id <> NEW.id) THEN
+      RAISE EXCEPTION 'price observation monitor mismatch' USING ERRCODE = '23514';
+    END IF;
+  ELSE
+    IF NOT EXISTS (SELECT 1 FROM steam_price_monitors m JOIN integration_sync_runs r ON r.user_id = m.user_id
+      WHERE m.id = NEW.monitor_id AND m.epoch = NEW.epoch AND r.id = NEW.sync_run_id AND r.sync_kind = 'wishlist_prices') THEN
+      RAISE EXCEPTION 'price observation run mismatch' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS steam_price_monitor_guard ON steam_price_monitors;
+CREATE TRIGGER steam_price_monitor_guard BEFORE INSERT OR UPDATE ON steam_price_monitors
+  FOR EACH ROW EXECUTE FUNCTION enforce_steam_price_relationships();
+DROP TRIGGER IF EXISTS steam_price_observation_guard ON steam_price_observations;
+CREATE TRIGGER steam_price_observation_guard BEFORE INSERT ON steam_price_observations
+  FOR EACH ROW EXECUTE FUNCTION enforce_steam_price_relationships();
+
+-- Preserve provenance even when the parent relationship has no membership/events.
+CREATE OR REPLACE FUNCTION prevent_price_parent_owner_change() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.user_id <> OLD.user_id AND EXISTS (SELECT 1 FROM steam_price_monitors
+    WHERE (TG_TABLE_NAME = 'user_wishlist_items' AND wishlist_item_id = OLD.id)
+       OR (TG_TABLE_NAME = 'user_external_accounts' AND account_id = OLD.id)) THEN
+    RAISE EXCEPTION 'cannot change price history owner' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS wishlist_price_owner_guard ON user_wishlist_items;
+CREATE TRIGGER wishlist_price_owner_guard BEFORE UPDATE OF user_id ON user_wishlist_items
+  FOR EACH ROW EXECUTE FUNCTION prevent_price_parent_owner_change();
+DROP TRIGGER IF EXISTS account_price_owner_guard ON user_external_accounts;
+CREATE TRIGGER account_price_owner_guard BEFORE UPDATE OF user_id ON user_external_accounts
+  FOR EACH ROW EXECUTE FUNCTION prevent_price_parent_owner_change();
+
+-- Steam C.5: private inbox delivery state (migration 034).
+-- Delivery state is independent of facts and existing review decisions.
+CREATE UNIQUE INDEX IF NOT EXISTS user_activity_events_id_owner ON user_activity_events(id, user_id);
+CREATE TABLE IF NOT EXISTS user_activity_inbox (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  baseline_event_id BIGINT NOT NULL DEFAULT 0 CHECK (baseline_event_id >= 0),
+  activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS user_activity_receipts (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  event_id BIGINT NOT NULL,
+  read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  dismissed_at TIMESTAMPTZ,
+  PRIMARY KEY (user_id, event_id),
+  FOREIGN KEY (event_id, user_id) REFERENCES user_activity_events(id, user_id) ON DELETE CASCADE
+);
+
+-- One target per local Wishlist item. Multiple exact identities remain unresolved;
+-- do not pick a price merely because one Steam membership sorts first.
+CREATE OR REPLACE VIEW steam_price_targets AS
+SELECT w.user_id, a.id AS account_id, w.id AS wishlist_item_id,
+       CASE WHEN cardinality(ids.app_ids) = 1 THEN ids.app_ids[1] END AS steam_app_id,
+       CASE WHEN NOT (w.local_intent_active OR COALESCE(s.is_active, FALSE)) THEN 'removed'
+            WHEN cardinality(ids.app_ids) IS DISTINCT FROM 1 THEN 'identity_unresolved'
+            WHEN EXISTS (SELECT 1 FROM user_game_sources source
+              WHERE source.user_id = w.user_id AND source.provider = 'steam'
+                AND source.provider_app_id = ids.app_ids[1]
+                AND source.source_status IN ('owned', 'ignored')
+                AND source.last_synced_at >= a.linked_at) THEN 'owned'
+            ELSE 'eligible' END AS reason
+FROM user_wishlist_items w
+JOIN user_external_accounts a ON a.user_id = w.user_id AND a.provider = 'steam' AND a.disconnected_at IS NULL
+JOIN users u ON u.id = w.user_id AND u.is_guest = FALSE
+LEFT JOIN LATERAL (
+  SELECT bool_or(m.is_active AND m.account_id = a.id) AS is_active
+  FROM steam_wishlist_items m WHERE m.wishlist_item_id = w.id AND m.user_id = w.user_id
+) s ON TRUE
+LEFT JOIN games g ON g.id = w.game_id AND g.user_id = w.user_id
+LEFT JOIN LATERAL (
+  SELECT array_agg(DISTINCT app_id) AS app_ids FROM (
+    SELECT m.steam_app_id AS app_id FROM steam_wishlist_items m
+      WHERE m.wishlist_item_id = w.id AND m.user_id = w.user_id
+    UNION ALL
+    SELECT e.external_id FROM external_game_ids e
+      WHERE e.source = 'steam' AND e.catalog_game_id IN (w.catalog_game_id, g.catalog_game_id)
+  ) exact_ids WHERE app_id ~ '^[1-9][0-9]*$'
+) ids ON TRUE;

@@ -19,6 +19,8 @@ play next, and sharing a read-only public profile.
 - Link Steam, manually sync owned games, browse the synced Steam library,
   review import candidates, attach Steam apps to existing backlog games, and
   show private Steam ownership/playtime/last-played/achievement summary data.
+- Sync a private Steam wishlist with durable removal history without importing
+  wishlist-only apps into the backlog.
 
 ## Tech Stack
 
@@ -110,9 +112,11 @@ For schema changes:
 
 1. Add a migration under `backend/migrations/`.
 2. Update `backend/schema.sql`.
-3. Run `npm run db:migrate:local` against an existing local database, or
-   `npm run db:reset:local` for a disposable fresh install.
-4. Run `npm run check`.
+3. Exercise the migration runner against disposable localhost data. A contract
+   invoking `scripts/db-migrate.js` satisfies this; do not repeat it against saved
+   development data. Use `npm run db:reset:local` only for a disposable fresh install.
+4. Follow [the verification policy](docs/VERIFICATION.md): focused local coverage,
+   then full exact-candidate CI before release.
 
 Production migrations are applied by GitHub Actions on pushes to `main` when
 the `PROD_DATABASE_URL` repository secret is configured.
@@ -122,7 +126,9 @@ Discover shelves are stored in Postgres. In production, set
 automatically after startup and then once per day. Leave it false if you prefer
 manual seeding with `npm run catalog:seed`.
 
-Steam integration uses migrations `006`, `007`, and `008`. In production,
+Steam integration uses migrations `006` through `010`, plus `018`, `028`,
+`029`, `030`, and `031`.
+In production,
 configure `STEAM_WEB_API_KEY`, `STEAM_OPENID_REALM`,
 `STEAM_OPENID_RETURN_URL`, and the frontend return origin before enabling real
 Steam linking or achievement sync.

@@ -21,6 +21,7 @@ import { preloadRoute } from "../config/routeLoaders";
 import { preferredLandingPath } from "../utils/userPreferences";
 import { useConfirm, useToast } from "./ui";
 import { RouteLoading } from "./layout";
+import { NotificationBell } from '../features/notifications/Notifications';
 
 export default function AppShell() {
   const {
@@ -123,6 +124,8 @@ export default function AppShell() {
               Gaming Backlog
             </span>
           </NavLink>
+          <div className="flex shrink-0 items-center gap-1">
+          <NotificationBell compact />
           <button
             type="button"
             onClick={() => openMore(true)}
@@ -141,6 +144,7 @@ export default function AppShell() {
               <User2 className="h-5 w-5" aria-hidden="true" />
             )}
           </button>
+          </div>
         </div>
 
         <div className="min-h-[calc(100dvh-var(--mobile-header-h))] min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:min-h-screen lg:pb-0">
