@@ -2,6 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveGameHours } from "./hours.js";
 
+test("RAWG and local HLTB estimates have explicit labels", () => {
+  assert.equal(resolveGameHours({ displayHLTB: 12, estimateSource: 'rawg_playtime' }).sourceLabel, 'RAWG playtime fallback');
+  assert.equal(resolveGameHours({ displayHLTB: 12, estimateSource: 'hltb_local' }).sourceLabel, 'Local HLTB estimate');
+});
+
 test("resolveGameHours keeps auto Steam policy for finished-style statuses", () => {
   assert.equal(
     resolveGameHours({

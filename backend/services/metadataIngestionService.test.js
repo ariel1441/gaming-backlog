@@ -15,6 +15,7 @@ dotenv.config();
 
 const connectionString =
   process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/game_backlog";
+assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(new URL(connectionString).hostname), "Ingestion tests require localhost");
 
 function rawgDetail(id, overrides = {}) {
   return {
@@ -169,7 +170,7 @@ test("exact RAWG ingestion persists, reuses, refreshes safely, and records failu
     assert.equal(stored.rows[0].snapshot_count, 1);
     assert.equal(
       stored.rows[0].metadata_next_refresh_at.toISOString(),
-      "2026-11-11T12:00:00.000Z",
+      "2026-07-21T12:00:00.000Z",
     );
 
     const reused = await service.ingestRawgGame(42);

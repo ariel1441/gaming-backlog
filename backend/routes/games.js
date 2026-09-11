@@ -707,7 +707,7 @@ router.put(
       const isGuest = !!req.user?.is_guest;
       let catalogGameId = row.catalog_game_id || null;
 
-      if (newHLTB == null && !hoursProvided && nameChanged) {
+      if (newHLTB == null && !hoursProvided && nameChanged && toHourInt(row.how_long_to_beat) == null) {
         const pref = ["main", "plus", "comp"].includes(hltb_pref)
           ? hltb_pref
           : "main";

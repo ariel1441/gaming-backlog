@@ -443,6 +443,26 @@ test("PUT /api/games/:id rejects duplicate title excluding current row", async (
   );
 });
 
+test("rename with omitted hours preserves saved estimate even when local HLTB matches", async () => {
+  let savedHours;
+  await withServer(async (text, values) => {
+    const sql = String(text);
+    if (sql.includes('SELECT 1 FROM statuses')) return { rows: [{}] };
+    if (sql.includes('SELECT * FROM games')) return { rows: [{ id: 12, user_id: 7, name: 'Old title', status: 'playing', position: 1000, how_long_to_beat: 27 }] };
+    if (sql.includes('SELECT id, name FROM games')) return { rows: [{ id: 12, name: 'Old title' }] };
+    if (sql.includes('UPDATE games g')) {
+      savedHours = values[5];
+      return { rows: [{ id: 12, name: 'New title', how_long_to_beat: savedHours }] };
+    }
+    if (sql.includes('LEFT JOIN catalog_games')) return { rows: [{ id: 12, name: 'New title', how_long_to_beat: savedHours }] };
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const res = await request(baseUrl, '/api/games/12', { method: 'PUT', body: { name: 'New title', status: 'playing' } });
+    assert.equal(res.status, 200);
+    assert.equal(savedHours, 27);
+  }, undefined, { hltbLookup: { 'new title': { main: 99 } } });
+});
+
 test("PUT /api/games/:id normalizes blank resume notes and removes stale eligible-state membership atomically", async () => {
   let updateSql = "";
   let updateParams;

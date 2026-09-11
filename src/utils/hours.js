@@ -31,7 +31,10 @@ export function resolveGameHours(game = {}) {
         hours: estimateHours,
         label: `${estimateHours}h`,
       source: "estimate",
-      sourceLabel: locked ? "Locked estimate" : "Estimate",
+      sourceLabel: game.estimateSource === "rawg_playtime"
+        ? "RAWG playtime fallback"
+        : game.estimateSource === "hltb_local" ? "Local HLTB estimate"
+        : locked ? "Locked estimate" : "Estimate",
       isActual: false,
     }
     : null;
