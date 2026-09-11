@@ -5,6 +5,7 @@ import {
 } from "../utils/fetchRAWG.js";
 import { toHourInt } from "../utils/time.js";
 import { ingestRawgGameMetadata } from "./metadataIngestionService.js";
+import { CATALOG_REFRESH_MS } from "./metadataSchedule.js";
 
 export const SEARCH_CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 export const FAILED_RETRY_MS = 24 * 60 * 60 * 1000;
@@ -94,10 +95,6 @@ export function normalizeQueryKey(query) {
     .replace(/\s+/g, " ");
 }
 
-function daysMs(days) {
-  return days * 24 * 60 * 60 * 1000;
-}
-
 function parseDate(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -123,22 +120,8 @@ function collectionParams(collection) {
   return params;
 }
 
-function isFutureDate(value) {
-  const date = parseDate(value);
-  return date ? date.getTime() > Date.now() : false;
-}
-
-function isReleasedWithin(value, days) {
-  const date = parseDate(value);
-  if (!date) return false;
-  const age = Date.now() - date.getTime();
-  return age >= 0 && age <= daysMs(days);
-}
-
-export function metadataStaleMs(game) {
-  if (isFutureDate(game?.released_at)) return daysMs(7);
-  if (isReleasedWithin(game?.released_at, 90)) return daysMs(30);
-  return daysMs(180);
+export function metadataStaleMs() {
+  return CATALOG_REFRESH_MS;
 }
 
 function isFullMetadataFresh(game) {
@@ -154,6 +137,10 @@ function isFullMetadataFresh(game) {
 function canRetryFailure(game) {
   if (!game?.metadata_failed_at) return true;
   const failed = new Date(game.metadata_failed_at).getTime();
+  if (game.metadata_next_refresh_at) {
+    const retry = new Date(game.metadata_next_refresh_at).getTime();
+    return Number.isFinite(retry) && Date.now() >= retry;
+  }
   return Number.isFinite(failed) && Date.now() - failed >= FAILED_RETRY_MS;
 }
 
@@ -1558,6 +1545,7 @@ export function decorateGameWithCatalog(game) {
   return {
     how_long_to_beat: dbHours ?? rawgHours ?? null,
     displayHLTB: dbHours ?? rawgHours ?? null,
+    estimateSource: dbHours != null ? "saved" : rawgHours != null ? "rawg_playtime" : null,
     displayName: game.catalog_name || game.name,
     cover: game.catalog_cover_url || null,
     releaseDate: game.catalog_released_at || null,

@@ -54,11 +54,15 @@ function jsonStringArray(value) {
   return value.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
-function hltbHours(row, name, lookup) {
+export function resolveWishlistEstimate(row, name, lookup) {
   const stored = Number(row.game_hltb_hours);
-  if (Number.isFinite(stored) && stored > 0) return Math.round(stored);
+  if (Number.isFinite(stored) && stored > 0) return { hours: Math.round(stored), source: "saved" };
   const local = lookup?.[normalizeTitle(name)]?.main;
-  return Number.isFinite(Number(local)) && Number(local) > 0 ? Math.round(Number(local)) : null;
+  if (Number.isFinite(Number(local)) && Number(local) > 0) return { hours: Math.round(Number(local)), source: "hltb_local" };
+  const rawg = Number(row.catalog_playtime_hours);
+  return Number.isFinite(rawg) && rawg > 0
+    ? { hours: Math.round(rawg), source: "rawg_playtime" }
+    : { hours: null, source: null };
 }
 
 export function serializeWishlistPrice(row) {
@@ -87,7 +91,7 @@ function serializeWishlistItem(row, { hltbLookup } = {}) {
   const name = row.catalog_name || row.game_name || row.steam_name || row.display_name;
   const catalogGenres = jsonStringArray(row.catalog_genres_json);
   const genres = catalogGenres.length ? catalogGenres : jsonStringArray(row.tags_json);
-  const hours = hltbHours(row, name, hltbLookup);
+  const { hours, source } = resolveWishlistEstimate(row, name, hltbLookup);
   return {
     id: Number(row.id),
     steamPrice: serializeWishlistPrice(row),
@@ -99,6 +103,7 @@ function serializeWishlistItem(row, { hltbLookup } = {}) {
     genres,
     howLongToBeat: hours,
     displayHLTB: hours,
+    estimateSource: source,
     rating: row.catalog_rawg_rating == null ? null : Number(row.catalog_rawg_rating),
     metacritic: row.catalog_metacritic == null ? null : Number(row.catalog_metacritic),
     releaseDate: row.catalog_released_at || row.release_date || null,

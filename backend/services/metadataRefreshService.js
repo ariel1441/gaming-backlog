@@ -4,6 +4,7 @@ import { ingestRawgGameMetadata } from "./metadataIngestionService.js";
 import {
   nextCatalogRefreshAt,
   nextCatalogRefreshRetryAt,
+  CATALOG_REFRESH_DUE_SQL,
 } from "./metadataSchedule.js";
 
 export { nextCatalogRefreshAt, nextCatalogRefreshRetryAt };
@@ -46,18 +47,64 @@ function serializeJob(row) {
   };
 }
 
-const ELIGIBLE_SQL = `
-  catalog.metadata_retired_at IS NULL
-  AND EXISTS (
+function trackedCatalogSql(userParam = null) {
+  return `(
+  EXISTS (
     SELECT 1 FROM games linked_game
      WHERE linked_game.catalog_game_id = catalog.id
+       AND LOWER(TRIM(linked_game.status)) <> 'wishlist'
+       ${userParam ? `AND linked_game.user_id = ${userParam}` : ""}
   )
-  AND (
-    catalog.metadata_quality IS DISTINCT FROM 'full'
-    OR catalog.metadata_next_refresh_at IS NULL
-    OR catalog.metadata_next_refresh_at <= NOW()
+  OR EXISTS (
+    SELECT 1 FROM user_wishlist_items wishlist
+     WHERE wishlist.catalog_game_id = catalog.id
+       ${userParam ? `AND wishlist.user_id = ${userParam}` : ""}
+       AND (wishlist.local_intent_active OR EXISTS (
+         SELECT 1 FROM steam_wishlist_items membership
+         JOIN user_external_accounts account ON account.id = membership.account_id
+           AND account.user_id = wishlist.user_id AND account.provider = 'steam'
+           AND account.disconnected_at IS NULL
+         WHERE membership.wishlist_item_id = wishlist.id
+           AND membership.user_id = wishlist.user_id AND membership.is_active
+       ))
   )
+  )`;
+}
+
+const DUE_SQL = `(${CATALOG_REFRESH_DUE_SQL} IS NULL OR ${CATALOG_REFRESH_DUE_SQL} <= NOW())`;
+const ELIGIBLE_SQL = `
+  catalog.metadata_retired_at IS NULL
+  AND ${trackedCatalogSql()}
+  AND ${DUE_SQL}
 `;
+
+export function catalogRefreshEnabled(value = process.env.METADATA_REFRESH_ENABLED) {
+  return String(value ?? "false").toLowerCase() === "true";
+}
+
+export async function getCatalogRefreshStatus(userId, db = pool) {
+  const { rows } = await db.query(`
+    SELECT COUNT(*)::int AS tracked_count,
+           COUNT(*) FILTER (WHERE ${DUE_SQL})::int AS due_count,
+           COUNT(*) FILTER (WHERE catalog.metadata_failed_at IS NOT NULL)::int AS failed_count,
+           MAX(catalog.metadata_fetched_at) AS last_metadata_update_at
+      FROM catalog_games catalog
+     WHERE catalog.metadata_retired_at IS NULL
+       AND EXISTS (SELECT 1 FROM external_game_ids external
+         WHERE external.catalog_game_id = catalog.id AND external.source = 'rawg')
+       AND ${trackedCatalogSql("$1")}
+  `, [userId]);
+  const row = rows[0];
+  return {
+    enabled: catalogRefreshEnabled(),
+    providerConfigured: Boolean(process.env.RAWG_API_KEY),
+    intervalDays: 7,
+    trackedCount: Number(row.tracked_count || 0),
+    dueCount: Number(row.due_count || 0),
+    failedCount: Number(row.failed_count || 0),
+    lastMetadataUpdateAt: row.last_metadata_update_at || null,
+  };
+}
 
 function refreshFailureAttempt(catalogGame) {
   const failedAt = catalogGame?.metadata_failed_at
@@ -113,6 +160,10 @@ export async function enqueueCatalogRefresh(options = {}, db = pool) {
       maxItems,
       providerBudget,
     );
+    if (!totalCount) {
+      await client.query("COMMIT");
+      return null;
+    }
     const created = await client.query(
       `INSERT INTO metadata_jobs (
          job_type, status, parameters_json, cursor_json, total_count,
@@ -275,15 +326,22 @@ export async function processNextCatalogRefreshBatch({
       outcome = { refreshed: true };
     } catch (error) {
       const errorCode = String(error?.code || "catalog_refresh_failed");
+      const attemptedAt = now();
+      const retryAt = nextCatalogRefreshRetryAt(refreshFailureAttempt(game), attemptedAt);
+      const providerRetryMs = Number(error?.retryAfterMs);
+      if (Number.isFinite(providerRetryMs) && providerRetryMs > 0) {
+        retryAt.setTime(Math.max(retryAt.getTime(), attemptedAt.getTime() + providerRetryMs));
+      }
       await db.query(
         `UPDATE catalog_games
-            SET metadata_failed_at = NOW(), metadata_failure_reason = $2,
+            SET metadata_failed_at = $4, metadata_failure_reason = $2,
                 metadata_next_refresh_at = $3, updated_at = NOW()
           WHERE id = $1`,
         [
           game.id,
           errorCode,
-          nextCatalogRefreshRetryAt(refreshFailureAttempt(game), now()),
+          retryAt,
+          attemptedAt,
         ],
       );
       outcome = { failed: true, errorCode };
@@ -307,9 +365,7 @@ export async function processNextCatalogRefreshBatch({
 }
 
 export function startCatalogRefreshScheduler(options = {}) {
-  const enabled = String(
-    options.enabled ?? process.env.METADATA_REFRESH_ENABLED ?? "false",
-  ).toLowerCase() === "true";
+  const enabled = catalogRefreshEnabled(options.enabled);
   if (!enabled) return () => {};
 
   const intervalMs = positiveInt(

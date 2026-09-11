@@ -27,6 +27,11 @@ async function fulfillSmokeApi(route) {
       buckets: {},
     });
   if (path === "/api/games") return json([]);
+  if (path === "/api/metadata/repair-jobs/latest") return json({
+    job: null,
+    refresh: { enabled: false, providerConfigured: true, intervalDays: 7,
+      trackedCount: 12, dueCount: 3, failedCount: 1, lastMetadataUpdateAt: "2026-09-10T10:00:00.000Z" },
+  });
   if (path === "/api/games/statuses-list") return json([]);
   if (path === "/api/lists") return json([]);
   if (path === "/api/lists/1")
@@ -175,6 +180,10 @@ test("settings game metadata controls render responsively", async ({ page }) => 
     page.getByRole("button", { name: "Repair missing metadata" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Review matches" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Weekly metadata refresh" })).toBeVisible();
+  await expect(page.getByText("Automatic refresh is currently disabled on this server.")).toBeVisible();
+  await expect(page.getByText("3 due for refresh", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Most recent metadata update for your games:/)).toBeVisible();
 
   expect(runtimeErrors).toEqual([]);
   expect(
@@ -182,6 +191,24 @@ test("settings game metadata controls render responsively", async ({ page }) => 
       () => document.documentElement.scrollWidth <= window.innerWidth + 1,
     ),
   ).toBe(true);
+});
+
+test("settings game metadata explains enabled refresh without provider configuration", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "smoke-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === '/api/metadata/repair-jobs/latest') {
+      return route.fulfill({ json: { job: null, refresh: { enabled: true, providerConfigured: false,
+        trackedCount: 0, dueCount: 0, failedCount: 0, lastMetadataUpdateAt: null } } });
+    }
+    return fulfillSmokeApi(route);
+  });
+  await page.goto('/settings?section=metadata');
+  await expect(page.getByText('Refresh is enabled, but RAWG is not configured on this server.')).toBeVisible();
+  await expect(page.getByText(/No successful update recorded/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
 test("settings game metadata batch review stays open and advances", async ({

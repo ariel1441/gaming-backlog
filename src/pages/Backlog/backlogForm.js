@@ -146,6 +146,11 @@ export function buildEditGamePayload(draft, original = {}) {
     : Array.isArray(original.personal_genres)
       ? original.personal_genres
       : null;
+  // The read API includes a RAWG display fallback in how_long_to_beat.
+  // An unrelated edit must not persist that fallback as a saved estimate.
+  if (payload.how_long_to_beat === toIntOrNull(original.how_long_to_beat)) {
+    delete payload.how_long_to_beat;
+  }
   if (structuredGenres) {
     payload.personal_genres = structuredGenres;
     delete payload.my_genre;

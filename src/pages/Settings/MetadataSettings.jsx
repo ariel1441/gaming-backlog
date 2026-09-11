@@ -583,6 +583,39 @@ export default function MetadataSettings({ games, isGuest, refreshGames }) {
           </div>
         ) : (
           <div className="mt-5 space-y-4">
+            <div className="rounded-xl border border-surface-border bg-surface-bg/35 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-content-primary">Weekly metadata refresh</h3>
+                <Badge variant={status?.refresh?.enabled ? "success" : "default"}>
+                  {status?.refresh ? (status.refresh.enabled ? "Enabled" : "Disabled") : "Status unavailable"}
+                </Badge>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-content-muted">
+                RAWG metadata for your Backlog and active Wishlist games becomes due every seven days.
+                Refresh runs in small batches while the server is running, so queued games may take longer.
+                Saved estimates stay unchanged; local HLTB data is separate. RAWG playtime can fill a missing estimate.
+              </p>
+              {status?.refresh ? (
+                <>
+                  {!status.refresh.enabled ? (
+                    <p className="mt-2 text-sm text-content-muted">Automatic refresh is currently disabled on this server.</p>
+                  ) : !status.refresh.providerConfigured ? (
+                    <p className="mt-2 text-sm text-content-muted">Refresh is enabled, but RAWG is not configured on this server.</p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-content-muted">
+                    <span>{status.refresh.trackedCount} linked games</span>
+                    <span>{status.refresh.dueCount} due for refresh</span>
+                    <span>{status.refresh.failedCount} with a failed latest attempt</span>
+                  </div>
+                  <p className="mt-3 text-xs text-content-muted">
+                    Most recent metadata update for your games: {status.refresh.lastMetadataUpdateAt
+                      ? new Date(status.refresh.lastMetadataUpdateAt).toLocaleString()
+                      : "No successful update recorded"}.
+                    {" "}This includes updates from Discover and repair; it does not confirm an automatic run.
+                  </p>
+                </>
+              ) : null}
+            </div>
             {job ? (
               <div className="rounded-xl border border-surface-border bg-surface-bg/35 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">

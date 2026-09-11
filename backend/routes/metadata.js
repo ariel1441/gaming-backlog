@@ -2,6 +2,7 @@ import express from "express";
 import { verifyToken } from "../middleware/auth.js";
 import { badRequest } from "../utils/httpError.js";
 import { cacheClear } from "../utils/microCache.js";
+import { getCatalogRefreshStatus } from "../services/metadataRefreshService.js";
 import {
   decideMetadataCandidate as validateDecision,
   listMetadataCandidates as validateCandidateList,
@@ -37,7 +38,11 @@ router.get("/repair-jobs/latest", verifyToken, async (req, res, next) => {
   try {
     rejectGuest(req);
     res.setHeader("Cache-Control", "no-store");
-    res.json(await getLatestMetadataRepair(req.user.id));
+    const [repair, refresh] = await Promise.all([
+      getLatestMetadataRepair(req.user.id),
+      getCatalogRefreshStatus(req.user.id),
+    ]);
+    res.json({ ...repair, refresh });
   } catch (error) {
     next(error);
   }

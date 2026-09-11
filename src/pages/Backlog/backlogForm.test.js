@@ -12,6 +12,17 @@ import {
 
 const existingGames = [{ id: 1, name: "Elden Ring" }];
 
+test("editing notes does not save displayed RAWG fallback hours", () => {
+  const original = { id: 1, name: "New game", status: "playing", how_long_to_beat: 12, estimateSource: "rawg_playtime" };
+  const unchanged = buildEditGamePayload({ ...original, thoughts: "A note", how_long_to_beat: "12" }, original);
+  assert.equal(unchanged.ok, true);
+  assert.equal(Object.hasOwn(unchanged.payload, "how_long_to_beat"), false);
+  const manual = buildEditGamePayload({ ...original, how_long_to_beat: "27" }, original);
+  assert.equal(manual.payload.how_long_to_beat, 27);
+  const cleared = buildEditGamePayload({ ...original, how_long_to_beat: "" }, original);
+  assert.equal(cleared.payload.how_long_to_beat, null);
+});
+
 test("canonDate omits empty values and keeps YYYY-MM-DD dates", () => {
   assert.equal(canonDate(""), null);
   assert.equal(canonDate(null), null);
