@@ -6,8 +6,26 @@ import {
   updateActivityEvent,
 } from "../services/activityEventService.js";
 import { listActivity, updateActivity } from "../validators/activity.js";
+import { listInbox, updateInbox, hideOtherInbox } from '../validators/activity.js';
+import { activateActivityInbox, listActivityInbox, updateActivityInbox, hideOtherActivityUpdates } from '../services/activityInboxService.js';
 
 const router = express.Router();
+router.post('/inbox/hide-other', verifyToken, hideOtherInbox, async (req, res, next) => {
+  try { res.json(await hideOtherActivityUpdates(req.user.id, req.body.snapshot)); }
+  catch (error) { next(error); }
+});
+
+router.get('/inbox', verifyToken, listInbox, async (req, res, next) => {
+  try { res.setHeader('Cache-Control', 'no-store'); res.json(await listActivityInbox(req.user.id, req.query)); }
+  catch (error) { next(error); }
+});
+router.post('/inbox/activate', verifyToken, async (req, res, next) => {
+  try { res.json(await activateActivityInbox(req.user.id)); } catch (error) { next(error); }
+});
+router.patch('/inbox', verifyToken, updateInbox, async (req, res, next) => {
+  try { res.json(await updateActivityInbox(req.user.id, req.body.eventIds, req.body.action)); }
+  catch (error) { next(error); }
+});
 
 router.get("/", verifyToken, listActivity, async (req, res, next) => {
   try {

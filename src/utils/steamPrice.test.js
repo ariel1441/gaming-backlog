@@ -6,7 +6,7 @@ test('partial and cooldown feedback exposes counts and never claims all prices s
   const message = priceSyncMessage({ succeeded: 198, failed: 26, deferred: 206, reason: 'provider_cooldown', cooldownUntil: '2026-09-07T22:46:00Z' });
   assert.match(message, /198 prices refreshed, 26 failed, 206 still waiting/);
   assert.match(message, /cooldown until/);
-  assert.match(priceSyncMessage({ reason: 'request_budget', deferred: 20 }), /refresh again to continue/);
+  assert.match(priceSyncMessage({ reason: 'request_budget', deferred: 20 }), /remaining work stays due for a later run/);
   assert.equal(steamPriceDisplay({ monitoring: true, status: 'failed', currentMinor: null }).note, 'Refresh failed; no price saved yet');
 });
 import { composeBacklogWishlist } from '../pages/Wishlist/wishlistPresentation.js';

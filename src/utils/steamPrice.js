@@ -1,8 +1,27 @@
+export function currentSteamPrice(price, now = Date.now()) {
+  if (!price?.monitoring || price.stale || price.errorCode || !['available', 'free'].includes(price.status) ||
+      price.currency !== 'ILS' || !Number.isSafeInteger(price.currentMinor) || price.currentMinor < 0 ||
+      !price.observedAt || !Number.isFinite(Date.parse(price.observedAt)) || now - Date.parse(price.observedAt) > 36 * 60 * 60 * 1000) return null;
+  return price.currentMinor;
+}
+
+export function isSteamSale(price, now = Date.now()) {
+  return currentSteamPrice(price, now) != null && price.discountPercent > 0 && price.regularMinor > price.currentMinor;
+}
+
+export function relativeSavedTime(value, now = Date.now()) {
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return 'Not checked yet';
+  const days = Math.floor(Math.max(0, now - time) / 86_400_000);
+  return days === 0 ? 'Updated today' : days === 1 ? 'Updated yesterday' : `Updated ${days} days ago`;
+}
+
 export function steamPriceDisplay(price, now = Date.now()) {
   if (!price) return null;
   const format = amount => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'ILS' }).format(amount / 100);
   const hasPrice = Number.isSafeInteger(price.currentMinor) && price.currentMinor >= 0 && price.currency === 'ILS';
-  const historical = price.stale || !price.monitoring || price.status === 'not_checked' || price.status === 'failed';
+  const historical = price.stale || !price.monitoring || price.status === 'not_checked' || price.status === 'failed' ||
+    (price.observedAt && now - Date.parse(price.observedAt) > 36 * 60 * 60 * 1000);
   const labels = { unavailable: 'Unavailable in Israel', unreleased: 'Not yet available', not_checked: 'Price not checked', failed: 'Price refresh failed' };
   let label = labels[price.status] || 'Price unavailable';
   if (hasPrice && ['available', 'free', 'failed'].includes(price.status)) {
@@ -29,7 +48,7 @@ export function priceSyncMessage(summary = {}) {
   const counts = `${summary.succeeded || 0} prices refreshed, ${summary.failed || 0} failed, ${summary.deferred || 0} still waiting.` +
     (summary.pendingRetries > (summary.failed || 0) ? ` ${summary.pendingRetries} earlier failures await retry.` : '');
   if (summary.reason === 'provider_cooldown') return `${counts} Steam cooldown${summary.cooldownUntil ? ` until ${new Date(summary.cooldownUntil).toLocaleString()}` : ''}.`;
-  if (summary.reason === 'request_budget') return `${counts} Run limit reached; refresh again to continue.`;
+  if (summary.reason === 'request_budget') return `${counts} Run limit reached; remaining work stays due for a later run.`;
   if (summary.reason === 'nothing_due') return 'No prices are due for refresh. Saved prices are unchanged.';
   return counts;
 }

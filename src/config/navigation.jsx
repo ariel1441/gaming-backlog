@@ -13,6 +13,12 @@ import {
 
 export const primaryNavigationItems = [
   { to: "/", label: "Backlog", icon: LibraryBig, end: true },
+  {
+    to: "/wishlist",
+    label: "Wishlist",
+    icon: Heart,
+    savedAccountOnly: true,
+  },
   { to: "/next-up", label: "Play Next", icon: PlaySquare },
   { to: "/discover", label: "Discover", icon: Compass },
   { to: "/lists", label: "Lists", icon: List },
@@ -27,12 +33,6 @@ export const primaryNavigationItems = [
 ];
 
 export const libraryNavigationItems = [
-  {
-    to: "/wishlist",
-    label: "Wishlist",
-    icon: Heart,
-    savedAccountOnly: true,
-  },
   {
     to: "/steam/library",
     label: "Steam Library",
@@ -53,7 +53,7 @@ export const mobilePrimaryNavigationItems = primaryNavigationItems.filter(
 );
 
 export const mobileMoreNavigationItems = primaryNavigationItems.filter(
-  (item) => ["/next-up", "/reviews", "/insights"].includes(item.to),
+  (item) => ["/wishlist", "/activity", "/next-up", "/reviews", "/insights"].includes(item.to),
 );
 
 export function navigationItemMatchesPath(item, pathname) {

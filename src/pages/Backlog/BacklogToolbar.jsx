@@ -24,6 +24,7 @@ import {
 import { resolveGameHours } from "../../utils/hours";
 import { statusOption } from "../../utils/statusDisplay";
 import { backlogSortOptions } from "../../utils/userPreferences";
+import { NotificationBell } from '../../features/notifications/Notifications';
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import {
   NO_PERSONAL_GENRE_FILTER,
@@ -60,6 +61,7 @@ export default function BacklogToolbar({
   sort,
   filters,
   actions,
+  showNotifications = false,
   viewMode,
   setViewMode,
   resultCount,
@@ -68,6 +70,7 @@ export default function BacklogToolbar({
   onSelectGame,
   collection = "backlog",
   membershipControl = null,
+  collectionControl = null,
   sortOptions = backlogSortOptions,
 }) {
   const title = identity?.title || "Backlog";
@@ -143,6 +146,7 @@ export default function BacklogToolbar({
               </Button>
             ) : null}
             {identity?.action || null}
+            {showNotifications ? <div className="hidden lg:block"><NotificationBell compact /></div> : null}
           </div>
         </div>
 
@@ -180,6 +184,7 @@ export default function BacklogToolbar({
           <div className="flex flex-col gap-3 2xl:flex-row 2xl:flex-nowrap 2xl:items-center">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 2xl:flex-nowrap">
               {membershipControl}
+              {collectionControl}
               {collection !== "wishlist" ? <>
               <FilterDropdown
                 label="Status"

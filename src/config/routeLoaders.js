@@ -10,6 +10,7 @@ const routeLoaders = {
   "/steam/import": () => import("../pages/SteamImportPage"),
   "/steam/library": () => import("../pages/SteamLibraryPage"),
   "/wishlist": () => import("../pages/WishlistPage"),
+  "/activity": () => import("../pages/ActivityPage"),
   "/timeline": () => import("../pages/TimelinePage"),
   "/lists": () => import("../pages/Lists/ListsPage"),
   "/lists/:id": () => import("../pages/Lists/CustomListPage"),

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import SteamSyncSettings from '../../features/steam/SteamSyncSettings';
 import { Link } from "react-router-dom";
 import {
   Database,
@@ -14,14 +15,12 @@ import {
   Button,
   Field,
   Skeleton,
-  Switch,
   TextInput,
   useToast,
 } from "../../components/ui";
 import {
   getSteamAccount,
   startSteamLink,
-  updateSteamAccountSettings,
 } from "../../services/steamService";
 import { backlogCsv } from "../../utils/csv";
 export function DataSection({ games }) {
@@ -95,7 +94,6 @@ export function IntegrationsSection({ isGuest }) {
   const [loading, setLoading] = useState(!isGuest);
   const [error, setError] = useState("");
   const [linking, setLinking] = useState(false);
-  const [savingAutoSync, setSavingAutoSync] = useState(false);
 
   useEffect(() => {
     if (isGuest) {
@@ -138,28 +136,6 @@ export function IntegrationsSection({ isGuest }) {
     }
   };
 
-  const saveAutoSync = async (autoSyncEnabled) => {
-    const previous = Boolean(account?.autoSyncEnabled);
-    setAccount((current) =>
-      current ? { ...current, autoSyncEnabled } : current,
-    );
-    setSavingAutoSync(true);
-    try {
-      const payload = await updateSteamAccountSettings({ autoSyncEnabled });
-      setAccount(payload?.account || null);
-      toast.success(
-        autoSyncEnabled ? "Daily Steam sync enabled." : "Daily Steam sync disabled.",
-      );
-    } catch (error) {
-      setAccount((current) =>
-        current ? { ...current, autoSyncEnabled: previous } : current,
-      );
-      toast.error(error?.message || "Could not update daily Steam sync.");
-    } finally {
-      setSavingAutoSync(false);
-    }
-  };
-
   return (
     <section className="rounded-2xl border border-surface-border bg-surface-card p-5 shadow-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -172,7 +148,7 @@ export function IntegrationsSection({ isGuest }) {
             Integrations
           </h2>
           <p className="mt-1 text-sm leading-6 text-content-muted">
-            Steam linking and import stay in the dedicated Steam screens.
+            Manage Steam connection, scheduled updates and sync recovery.
           </p>
         </div>
         <Badge variant={account ? "success" : "default"}>
@@ -244,16 +220,7 @@ export function IntegrationsSection({ isGuest }) {
               ) : null}
             </div>
           </div>
-          {account ? (
-            <Switch
-              checked={Boolean(account.autoSyncEnabled)}
-              onChange={saveAutoSync}
-              disabled={savingAutoSync}
-              label="Daily Steam sync"
-              description="Once per day, refresh owned games, factual Steam activity, and wishlist membership. Backlog status changes still require your approval."
-              className="mt-4"
-            />
-          ) : null}
+          {account ? <SteamSyncSettings /> : null}
         </div>
       )}
 

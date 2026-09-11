@@ -1,4 +1,5 @@
 import { api } from "./apiClient";
+import { clearWishlistCache } from './wishlistCache';
 
 export function getSteamAccount(opts = {}) {
   return api.get("/api/steam/account", opts);
@@ -16,8 +17,14 @@ export function devLinkSteam(steamId, opts = {}) {
   return api.post("/api/steam/dev-link", { steamId }, opts);
 }
 
-export function disconnectSteam(opts = {}) {
-  return api.del("/api/steam/account", opts);
+export async function disconnectSteam(opts = {}) {
+  const payload = await api.del("/api/steam/account", opts);
+  clearWishlistCache();
+  return payload;
+}
+
+export function getSteamSyncHealth(opts = {}) {
+  return api.get('/api/steam/sync-health', opts);
 }
 
 export function startSteamLibrarySync(opts = {}) {

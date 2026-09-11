@@ -2,6 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { steamAssetUrl, steamCoverUrl } from "./steamAssets.js";
 
+test("wide wishlist artwork takes precedence over portrait capsules", () => {
+  assert.equal(steamCoverUrl({
+    asset_url_format: "steam/apps/10/${FILENAME}",
+    library_capsule: "portrait/library_capsule.jpg",
+    header: "landscape/header.jpg",
+  }), "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/10/landscape/header.jpg");
+});
+
 test("real Steam formats preserve the asset path, store CDN base and cache version", () => {
   assert.equal(
     steamAssetUrl(

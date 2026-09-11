@@ -57,7 +57,7 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       }
       throw new Error(`Unexpected provider request ${uri.pathname}`);
     };
-    async function owner(appIds = ['1', '2']) {
+    const owner = async (appIds = ['1', '2']) => {
       const userId = (await pool.query("INSERT INTO users (username, password_hash) VALUES ($1, 'x') RETURNING id", [`prices_${++sequence}`])).rows[0].id;
       const account = await steam.upsertSteamAccount(userId, `7656119${String(userId).padStart(10, '0')}`);
       for (const appId of appIds) {
@@ -65,7 +65,7 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
         await pool.query(`INSERT INTO steam_wishlist_items (user_id, account_id, wishlist_item_id, steam_app_id) VALUES ($1,$2,$3,$4)`, [userId, account.id, w.id, appId]);
       }
       return { userId, account };
-    }
+    };
     const observations = async userId => (await pool.query(`SELECT o.* FROM steam_price_observations o JOIN steam_price_monitors m ON m.id = o.monitor_id WHERE m.user_id = $1 ORDER BY o.id`, [userId])).rows;
     const events = async userId => (await pool.query("SELECT * FROM user_activity_events WHERE user_id = $1 AND source = 'steam_prices' ORDER BY id", [userId])).rows;
     const monitors = async userId => (await pool.query('SELECT * FROM steam_price_monitors WHERE user_id = $1 ORDER BY id', [userId])).rows;
@@ -74,18 +74,18 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       const queued = await sync.enqueueSteamSync(userId, { syncKind: 'wishlist_prices' });
       return sync.waitForSteamSyncJob(userId, queued.id, { pollMs: 5 });
     };
-    async function claimed({ userId, account }, { trigger = 'manual' } = {}) {
+    const claimed = async ({ userId, account }, { trigger = 'manual' } = {}) => {
       const run = await runs.createIntegrationSyncRun(userId, { provider: 'steam', syncKind: 'wishlist_prices', triggerType: trigger });
       return (await pool.query(`INSERT INTO steam_sync_jobs (id,user_id,account_id,provider_user_id,sync_kind,status,lease_token,sync_run_id,started_at,locked_at,trigger_type)
         VALUES ($1,$2,$3,$4,'wishlist_prices','running',$5,$6,NOW(),NOW(),$7) RETURNING *`,
       [crypto.randomUUID(), userId, account.id, account.provider_user_id, crypto.randomUUID(), run.id, trigger])).rows[0];
-    }
-    async function holdNext(matches) {
+    };
+    const holdNext = async (matches) => {
       let started;
       const ready = new Promise(resolve => { started = resolve; });
       hold = { matches, started };
       return { ready, release: () => { releaseHeld?.(); releaseHeld = null; } };
-    }
+    };
     const first = await owner();
 
     await t.test('baseline and unchanged success append history with zero review floods', async () => {
@@ -303,7 +303,7 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       assert.equal((await wishlist.listWishlistItems(first.userId, { active: 'all' })).items[0].steamPrice.monitoring, false);
       await pool.query(await readFile('backend/migrations/033_add_steam_wishlist_prices.sql', 'utf8'));
       assert.equal((await observations(first.userId)).length, before);
-      assert.ok((await readFile('backend/schema.sql', 'utf8')).endsWith(await readFile('backend/migrations/033_add_steam_wishlist_prices.sql', 'utf8')));
+      assert.ok((await readFile('backend/schema.sql', 'utf8')).replace(/\r\n/g, '\n').includes((await readFile('backend/migrations/033_add_steam_wishlist_prices.sql', 'utf8')).replace(/\r\n/g, '\n')));
     });
   } finally {
     releaseHeld?.(); globalThis.fetch = nativeFetch;

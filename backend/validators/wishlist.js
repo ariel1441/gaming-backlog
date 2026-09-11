@@ -2,6 +2,10 @@ import { celebrate, Joi, Segments } from "celebrate";
 
 const opts = { convert: true, abortEarly: false, stripUnknown: true };
 const itemId = Joi.number().integer().positive().required();
+export const retireWishlistIntention = celebrate({
+  [Segments.PARAMS]: Joi.object({ itemId }),
+  [Segments.BODY]: Joi.object({ gameId: Joi.number().integer().positive().required() }),
+}, opts);
 
 export const syncWishlistPrices = celebrate({
   [Segments.BODY]: Joi.object({}).default({}),

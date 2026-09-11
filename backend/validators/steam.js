@@ -130,6 +130,7 @@ export const steamSchemas = {
   }),
   linkCandidatesQuery: Joi.object({
     q: Joi.string().trim().max(120).allow("").default(""),
+    appId: Joi.string().pattern(/^[1-9]\d{0,9}$/).optional(),
     gameId: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().min(1).max(50).default(20),
   }),

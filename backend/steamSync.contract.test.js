@@ -430,18 +430,21 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     );
     await pool.query(
       `INSERT INTO user_game_sources
-         (user_id, game_id, provider, provider_app_id, relationship, source_status)
-       VALUES ($1, $2, 'steam', 'status-contract', 'owned', 'owned')`,
+         (user_id, game_id, provider, provider_app_id, relationship, source_status, last_synced_at)
+       VALUES ($1, $2, 'steam', 'status-contract', 'owned', 'owned', NOW())`,
       [userId, suggestionGame.rows[0].id],
     );
+    const suggestionRun = (await pool.query("SELECT sync_run_id FROM steam_sync_jobs WHERE user_id=$1 AND sync_run_id IS NOT NULL ORDER BY created_at DESC LIMIT 1", [userId])).rows[0].sync_run_id;
     const suggestionEvent = await activity.createOpenActivityEvent({
       userId,
       source: "steam_library",
       eventType: "steam_status_suggestion",
       gameId: suggestionGame.rows[0].id,
       externalId: "status-contract",
+      syncRunId: suggestionRun,
       dedupeKey: "status-suggestion:status-contract:plan to play",
       payload: {
+        currentStatus: "plan to play",
         steamAppId: "status-contract",
         gameId: suggestionGame.rows[0].id,
       },
