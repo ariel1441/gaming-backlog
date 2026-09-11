@@ -722,6 +722,31 @@ test("derived backlog views cannot mutate canonical manual order", async ({
   ).toBeVisible();
 });
 
+test("editing a RAWG fallback game keeps its estimate automatic", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('token', 'demo-token');
+    window.localStorage.setItem('seen_onboarding_v1', '1');
+  });
+  const fallbackGame = { ...games[0], estimateSource: 'rawg_playtime', displayHLTB: 70 };
+  await page.route(`${API_BASE}/api/games`, route => route.fulfill({ json: [fallbackGame] }));
+  let update;
+  await page.route(`${API_BASE}/api/games/1`, route => {
+    update = route.request().postDataJSON();
+    return route.fulfill({ json: { ...fallbackGame, ...update } });
+  });
+  await page.goto('/');
+  const card = page.locator('article').filter({ has: page.getByRole('heading', { name: "Baldur's Gate 3" }) });
+  await expect(card.getByTitle('RAWG playtime fallback', { exact: true })).toBeVisible();
+  await card.getByLabel("Actions for Baldur's Gate 3").click();
+  await page.getByRole('menuitem', { name: 'Edit game' }).click();
+  await page.getByLabel('My score').fill('8');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Game updated.')).toBeVisible();
+  expect(update.my_score).toBe(8);
+  expect(Object.hasOwn(update, 'how_long_to_beat')).toBe(false);
+  await expect(page.getByRole('dialog').getByText('RAWG playtime fallback')).toBeVisible();
+});
+
 test("updates favorite games from public profile settings", async ({
   page,
 }) => {

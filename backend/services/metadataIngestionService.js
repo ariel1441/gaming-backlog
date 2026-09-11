@@ -228,6 +228,11 @@ async function markFailure(dbPool, catalogGameId, error) {
     UPDATE catalog_games
        SET metadata_failed_at = NOW(),
            metadata_failure_reason = $2,
+           metadata_next_refresh_at = CASE
+             WHEN metadata_failed_at IS NOT NULL THEN
+               GREATEST(metadata_next_refresh_at, NOW() + INTERVAL '24 hours')
+             ELSE NOW() + INTERVAL '24 hours'
+           END,
            updated_at = NOW()
      WHERE id = $1
     `,

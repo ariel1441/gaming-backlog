@@ -232,6 +232,7 @@ export default function SettingsPage() {
               {activeSection === "data" ? <DataSection games={games} /> : null}
               {activeSection === "metadata" ? (
                 <MetadataSettings
+                  key={user?.id || "guest"}
                   games={games}
                   isGuest={isGuest}
                   refreshGames={() => refresh({ silent: true })}

@@ -197,6 +197,23 @@ test("GET /api/catalog/:id hydrates partial metadata through the ingestion servi
   );
 });
 
+test("Discover detail and manual refresh both respect a saved future retry", async () => {
+  let calls = 0;
+  await withServer(async () => ({ rows: [{ id: 501, name: 'Retry game',
+    metadata_quality: 'search_result', metadata_failed_at: new Date(Date.now() - 48 * 3600_000),
+    metadata_next_refresh_at: new Date(Date.now() + 24 * 3600_000) }] }),
+  async () => { throw new Error('No writes expected'); },
+  { ingestRawgGameMetadata: async () => { calls++; throw new Error('Provider must not be called'); } },
+  async baseUrl => {
+    for (const [path, method] of [['/api/catalog/501', 'GET'], ['/api/catalog/501/refresh', 'POST']]) {
+      const response = await fetch(`${baseUrl}${path}`, { method, headers: { Authorization: `Bearer ${makeToken()}` } });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).cacheStatus, 'stale');
+    }
+    assert.equal(calls, 0);
+  });
+});
+
 test("POST /api/catalog/:id/refresh forces snapshot-aware ingestion", async () => {
   const ingestionCalls = [];
   let refreshed = false;

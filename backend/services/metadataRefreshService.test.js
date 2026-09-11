@@ -10,11 +10,13 @@ import {
   nextCatalogRefreshRetryAt,
   processNextCatalogRefreshBatch,
   startCatalogRefreshScheduler,
+  getCatalogRefreshStatus,
 } from "./metadataRefreshService.js";
 
 dotenv.config();
 const connectionString =
   process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/game_backlog";
+assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(new URL(connectionString).hostname), "Refresh tests require localhost");
 
 async function withRefreshSchema(work) {
   const admin = new pg.Client({ connectionString });
@@ -75,9 +77,9 @@ async function seedCatalog(db) {
 test("refresh freshness and retry policies use bounded intervals", () => {
   const now = new Date("2026-07-14T00:00:00.000Z");
   assert.equal(nextCatalogRefreshAt({ released_at: "2027-01-01" }, now).toISOString(), "2026-07-21T00:00:00.000Z");
-  assert.equal(nextCatalogRefreshAt({ released_at: "2026-06-01" }, now).toISOString(), "2026-08-04T00:00:00.000Z");
-  assert.equal(nextCatalogRefreshAt({ released_at: "2010-01-01" }, now).toISOString(), "2026-11-11T00:00:00.000Z");
-  assert.equal(nextCatalogRefreshAt({}, now).toISOString(), "2026-08-13T00:00:00.000Z");
+  assert.equal(nextCatalogRefreshAt({ released_at: "2026-06-01" }, now).toISOString(), "2026-07-21T00:00:00.000Z");
+  assert.equal(nextCatalogRefreshAt({ released_at: "2010-01-01" }, now).toISOString(), "2026-07-21T00:00:00.000Z");
+  assert.equal(nextCatalogRefreshAt({}, now).toISOString(), "2026-07-21T00:00:00.000Z");
   assert.equal(nextCatalogRefreshRetryAt(1, now).toISOString(), "2026-07-14T06:00:00.000Z");
   assert.equal(nextCatalogRefreshRetryAt(99, now).toISOString(), "2026-07-21T00:00:00.000Z");
 });
@@ -147,4 +149,82 @@ test("catalog refresh scheduler is inert unless explicitly enabled", () => {
   const stop = startCatalogRefreshScheduler({ enabled: false });
   assert.equal(typeof stop, "function");
   stop();
+});
+
+test("weekly eligibility includes active Wishlist, adopts legacy due dates and respects incomplete retries", async () => {
+  await withRefreshSchema(async (db) => {
+    await seedCatalog(db);
+    await db.query(`
+      INSERT INTO users (id, username, password_hash) VALUES (2, 'second-owner', 'not-real');
+      UPDATE catalog_games SET metadata_next_refresh_at = NOW() + INTERVAL '120 days' WHERE id = 10;
+      UPDATE catalog_games SET metadata_quality = 'search_result', metadata_failed_at = NOW(),
+        metadata_next_refresh_at = NOW() + INTERVAL '6 hours' WHERE id = 11;
+      INSERT INTO catalog_games (id, name, metadata_quality, metadata_fetched_at) VALUES
+        (13, 'Active local Wishlist', 'full', NOW() - INTERVAL '8 days'),
+        (14, 'Removed Wishlist', 'search_result', NULL),
+        (15, 'Unreferenced', 'search_result', NULL),
+        (16, 'Active Steam Wishlist', 'full', NOW() - INTERVAL '8 days'),
+        (17, 'Other owner only', 'search_result', NULL);
+      INSERT INTO external_game_ids (catalog_game_id, source, external_id) VALUES
+        (13, 'rawg', '103'), (14, 'rawg', '104'), (15, 'rawg', '105'),
+        (16, 'rawg', '106'), (17, 'rawg', '107');
+      INSERT INTO user_wishlist_items (id, user_id, catalog_game_id, display_name, local_intent_active) VALUES
+        (30, 1, 13, 'Active local Wishlist', TRUE),
+        (31, 1, 14, 'Removed Wishlist', FALSE),
+        (32, 1, 16, 'Active Steam Wishlist', FALSE),
+        (33, 2, 17, 'Other owner only', TRUE);
+      INSERT INTO user_external_accounts (id, user_id, provider, provider_user_id)
+        VALUES (40, 1, 'steam', '76561198000000001');
+      INSERT INTO steam_wishlist_items (user_id, account_id, wishlist_item_id, steam_app_id)
+        VALUES (1, 40, 32, '106');
+    `);
+    const status = await getCatalogRefreshStatus(1, db);
+    assert.equal(status.trackedCount, 5);
+    assert.equal(status.dueCount, 3);
+    assert.equal(status.failedCount, 1);
+    const other = await getCatalogRefreshStatus(2, db);
+    assert.equal(other.trackedCount, 1);
+    assert.equal(other.dueCount, 1);
+    assert.equal(other.lastMetadataUpdateAt, null);
+    assert.equal((await getCatalogRefreshStatus(999, db)).trackedCount, 0);
+
+    const job = await enqueueCatalogRefresh({ maxItems: 25, providerBudget: 25 }, db);
+    assert.equal(job.totalCount, 4);
+    const calls = [];
+    const ingest = async (id) => {
+      calls.push(Number(id));
+      await db.query("UPDATE catalog_games SET metadata_fetched_at = NOW() WHERE id = $1", [Number(id) - 90]);
+      return {};
+    };
+    await processNextCatalogRefreshBatch({ db, batchSize: 10, ingestRawgGameMetadataFn: ingest });
+    assert.deepEqual(calls, [100, 103, 106, 107]);
+    // A completed pass does not immediately requeue sparse successful responses or failures.
+    assert.equal(await enqueueCatalogRefresh({}, db), null);
+    await db.query("UPDATE catalog_games SET metadata_next_refresh_at = NOW() - INTERVAL '1 minute' WHERE id = 11");
+    assert.equal((await enqueueCatalogRefresh({}, db)).totalCount, 1);
+  });
+});
+
+test("failed incomplete metadata waits for Retry-After across jobs and preserves saved hours", async () => {
+  await withRefreshSchema(async (db) => {
+    await seedCatalog(db);
+    await db.query(`UPDATE catalog_games SET metadata_quality = 'search_result' WHERE id = 10;
+      UPDATE games SET how_long_to_beat = 27 WHERE id = 20;`);
+    const now = new Date();
+    await enqueueCatalogRefresh({ maxItems: 1, providerBudget: 1 }, db);
+    await processNextCatalogRefreshBatch({ db, now: () => now,
+      ingestRawgGameMetadataFn: async () => {
+        throw Object.assign(new Error('rate limited'), { code: 'rawg_rate_limited', retryAfterMs: 48 * 3600_000 });
+      },
+    });
+    const { rows } = await db.query(`SELECT metadata_next_refresh_at, metadata_failed_at FROM catalog_games WHERE id = 10`);
+    assert.equal(rows[0].metadata_next_refresh_at.getTime(), now.getTime() + 48 * 3600_000);
+    assert.equal(rows[0].metadata_failed_at.getTime(), now.getTime());
+    const next = await enqueueCatalogRefresh({}, db);
+    assert.equal(next.totalCount, 1);
+    const calls = [];
+    await processNextCatalogRefreshBatch({ db, ingestRawgGameMetadataFn: async (id) => { calls.push(Number(id)); return {}; } });
+    assert.deepEqual(calls, [101]);
+    assert.equal((await db.query('SELECT how_long_to_beat FROM games WHERE id = 20')).rows[0].how_long_to_beat, 27);
+  });
 });
