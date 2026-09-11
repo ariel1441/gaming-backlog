@@ -24,10 +24,16 @@ description: Use for migrations, schema changes, production-derived data, local 
 
 ## Verification
 
+Follow [the shared verification policy](../../VERIFICATION.md); the notes below
+identify task-specific coverage, not additional automatic test runs.
+
 For schema changes:
 
-1. Apply `npm run db:migrate:local` once at the end against localhost.
-2. Run one focused schema/service test when warranted.
+1. Exercise the migration runner once at the final checkpoint against disposable
+   localhost data. A contract that invokes `scripts/db-migrate.js` satisfies this;
+   do not repeat it against the ordinary development DB just to run the npm alias.
+2. Cover upgrade compatibility, idempotency and data preservation where relevant.
+   Reuse that contract's coverage; add focused checks only for uncovered risks.
 3. Rely on CI for the full suite unless the task explicitly requires a local
    full gate.
 

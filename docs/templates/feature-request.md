@@ -31,5 +31,9 @@ Should this match live style, local UI refresh, or a new direction?
 
 ## Checks
 
-- `npm run check`
+- Follow [the verification policy](../VERIFICATION.md).
+- Regression/risk to verify:
+- Focused command(s), selected for that risk:
+- Existing passing evidence and tested revision:
+- Full gate: exact-candidate CI; local full suite only when required by the policy.
 - Manual flow tested:

@@ -41,6 +41,9 @@ Read:
 
 ## Verification
 
+Follow [the shared verification policy](../../VERIFICATION.md); the notes below
+identify task-specific coverage, not additional automatic test runs.
+
 Follow the CI-first verification policy in `AGENTS.md`. For Steam bugs, cover
 the exact import/link/sync action that failed and run the narrowest relevant
 test once at the end. Do not automatically combine focused tests, lint, build,

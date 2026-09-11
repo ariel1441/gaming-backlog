@@ -42,7 +42,11 @@ errors. Preserve `{ error: { code, message, requestId } }`.
 
 ## Verification
 
-Follow the CI-first verification policy in `AGENTS.md`. Finish the coherent API
-change before running at most one focused backend test command when warranted.
+Follow [the shared verification policy](../../VERIFICATION.md); the notes below
+identify task-specific coverage, not additional automatic test runs.
+
+Finish the coherent API change before running warranted focused backend checks.
+Group related tests in one command where practical; distinct risks may require
+more than one command under the shared verification policy.
 Do not default to `npm run check`, and never rerun a passing suite without a
 relevant code change.

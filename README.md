@@ -112,9 +112,11 @@ For schema changes:
 
 1. Add a migration under `backend/migrations/`.
 2. Update `backend/schema.sql`.
-3. Run `npm run db:migrate:local` against an existing local database, or
-   `npm run db:reset:local` for a disposable fresh install.
-4. Run `npm run check`.
+3. Exercise the migration runner against disposable localhost data. A contract
+   invoking `scripts/db-migrate.js` satisfies this; do not repeat it against saved
+   development data. Use `npm run db:reset:local` only for a disposable fresh install.
+4. Follow [the verification policy](docs/VERIFICATION.md): focused local coverage,
+   then full exact-candidate CI before release.
 
 Production migrations are applied by GitHub Actions on pushes to `main` when
 the `PROD_DATABASE_URL` repository secret is configured.
