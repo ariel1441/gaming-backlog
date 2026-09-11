@@ -177,7 +177,7 @@ port.
 3. Run the app locally.
 4. Make changes.
 5. Test the changed flow locally.
-6. Run `npm run check` before pushing.
+6. Run the focused checks selected by [the verification policy](docs/VERIFICATION.md).
 7. Commit in small chunks.
 8. Open a PR into `Dev`.
 9. Merge `Dev` into `main` only when ready to deploy.
@@ -189,7 +189,7 @@ git switch Dev
 git pull
 git switch -c feature/some-small-change
 npm run dev
-npm run check
+# After the coherent change, run its selected focused check; use PR CI for the full gate.
 ```
 
 ## CI/CD
@@ -277,9 +277,10 @@ Use this order for schema work:
 
 1. Add a SQL file under `backend/migrations/`.
 2. Update `backend/schema.sql` so fresh installs match the latest shape.
-3. Test locally with `npm run db:migrate:local` for existing DBs, or
-   `npm run db:reset:local` for fresh disposable DBs.
-4. Run `npm run check`.
+3. Exercise the migration runner against disposable localhost data. A contract
+   invoking `scripts/db-migrate.js` satisfies this; do not repeat it against saved
+   development data. Use `npm run db:reset:local` only for a disposable fresh install.
+4. Run warranted focused schema/service coverage; use exact-candidate CI for the full gate.
 5. Merge through `Dev`.
 6. Merge to `main` when ready; GitHub Actions applies production migrations if
    `PROD_DATABASE_URL` is configured.
@@ -358,8 +359,8 @@ For each new feature or bug fix:
 3. Implement backend changes.
 4. Implement frontend changes.
 5. Test the full user flow locally.
-6. Run `npm run check`.
-7. Push and verify the deploy after merge.
+6. Follow [the verification policy](docs/VERIFICATION.md); avoid duplicating passing checks.
+7. When authorized, open a PR for exact-candidate CI; deploy/verify only as a separate release action.
 
 Good examples of feature branches:
 
@@ -372,12 +373,14 @@ Good examples of feature branches:
 - Keep each branch focused on one feature or bug.
 - Write down the exact user flow to test before editing.
 - Ask AI tools for implementation plus tests/checks, not only code snippets.
-- Before merging, ask for a review against the diff and run `npm run check`.
+- Before merging, review the diff and require full CI for the exact candidate.
 - Never paste live secrets into chat; use redacted env summaries instead.
 
 ## Safety checks
 
-Run the fast validation suite before committing:
+Follow [the verification policy](docs/VERIFICATION.md). The following are full
+local gates, not default pre-commit commands. Use them only when explicitly required
+or equivalent exact-candidate CI is unavailable:
 
 ```bash
 npm run check
@@ -387,8 +390,8 @@ This runs ESLint, the Node test suite, and the production build. ESLint includes
 undefined-variable checks, so missing component imports fail before reaching the
 browser.
 
-For route-level browser smoke coverage, install Playwright's Chromium build once
-and run the full check:
+For a required full local gate including browser coverage, install Chromium once
+if missing and use `check:full` instead of separately running both gates:
 
 ```bash
 npx playwright install chromium
