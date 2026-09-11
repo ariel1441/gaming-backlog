@@ -404,10 +404,6 @@ test(
         server ? server.close(resolve) : resolve(),
       );
       await pool?.end();
-      await admin.query(
-        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
-        [database],
-      );
       await admin.query(`DROP DATABASE ${database}`);
       await admin.end();
     }
