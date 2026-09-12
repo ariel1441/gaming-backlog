@@ -5,6 +5,24 @@ Read linked details only for the active task, not as a startup checklist.
 
 ## Current checkpoint
 
+Planning update (2026-09-11): recorded `origin/Dev` is `d624b4a`, merging the
+Steam branch through `716cb5b`. Working branch remains
+`fix/steam-candidate-account-isolation`; local `Dev` is older. These are recorded
+remote-tracking refs, not fresh remote/CI verification. Main promotion is on hold
+at the user's request because of Railway free-tier limitations.
+
+Current local worktree: Insights 2.0 v1 is implemented but remains uncommitted.
+It is a private Backlog/library-data view with selected-year dates, current status,
+genres, ratings, Wishlist and estimate coverage; it intentionally has no ETA or
+activity-derived analytics. The next product dependencies are the project-wide
+status/genre grouping decision, then verified daily Steam observation collection.
+See [NEXT_TASKS.md](NEXT_TASKS.md), [planning/gaming-activity.md](planning/gaming-activity.md)
+and [AUTOMATION.md](AUTOMATION.md).
+
+The preparation bullets below describe the earlier local checkpoint. Their
+unpublished/pending wording is historical, not the current integration state.
+
+
 - Branch: `fix/steam-candidate-account-isolation`; runtime candidate `6dd5338`,
   following isolation commit `9ed7fa1`. Local preparation also includes a subsequent
   documentation commit. Recheck Git before acting; no push or deployment occurred.

@@ -1,8 +1,23 @@
 # Remaining Roadmap
 
-Last updated: 2026-08-08
+Planning reconciliation: 2026-09-11. Detailed candidate text dates to 2026-08-08.
 
-This file contains only open work. Completed milestones belong in
+Current priorities are in [NEXT_TASKS.md](NEXT_TASKS.md): understand automation,
+then scope Insights and Gaming Activity. Main promotion is deliberately on hold.
+Personal genre management, Backlog table view, Steam daily sync foundation,
+Wishlist sync, Steam prices and the notification inbox are implemented in recorded
+Dev. Their older sections below are reference requirements, not missing-feature
+checklists. Assess the broader stable-status identity refactor and shared-table
+extras separately; genres/table completion does not establish their completion.
+
+Since that reconciliation, Insights 2.0 v1 has been implemented in the local Dev
+worktree using existing private library data. Its current scope is deliberately
+bounded: selected-year intentional dates, current status, genres, ratings, Wishlist
+and estimate coverage. It removes ETA and does not claim activity analytics. The
+next Insights expansion depends on the stable status-grouping decision and real
+Gaming Activity observations; see [planning/gaming-activity.md](planning/gaming-activity.md).
+
+This file contains broader candidates and older reference requirements. Completed milestones belong in
 [`DONE.md`](DONE.md), current behavior belongs in
 [`SYSTEM_CONTEXT.md`](SYSTEM_CONTEXT.md), and the immediate queue belongs in
 [`NEXT_TASKS.md`](NEXT_TASKS.md).
@@ -13,7 +28,7 @@ remains.
 
 ## Current Direction
 
-The selected product sequence is:
+The previous product sequence (superseded by NEXT_TASKS.md) was:
 
 1. Close out current production verification.
 2. Personal Genre And Status Model V1.
@@ -122,7 +137,8 @@ starting the full Library Control Center expansion.
 
 ### Insights V2 — medium/large
 
-Implement after genre and status identities are stable:
+The following are later candidates after the implemented Insights 2.0 v1. Prioritize
+the stable status/genre identities and real activity observations first:
 
 - Add year versus all-time controls.
 - Add score distribution and hours/completions by personal genre.
@@ -130,7 +146,8 @@ Implement after genre and status identities are stable:
 - Make missing-hours and other missing-data resolution more actionable.
 - Expand chart-to-backlog click-throughs.
 - Add platform/source analytics after those fields are durable.
-- Improve ETA only when pace and history data are reliable enough.
+- Do not reintroduce ETA without an explicitly selected, trustworthy pace/history
+  model; it is not part of the current Insights direction.
 - Consider arbitrary ranges and comparisons after the initial controls prove
   useful.
 

@@ -29,6 +29,19 @@ The account opt-in is not itself a scheduler.
 - Achievement-count deltas and current totals when Steam returned them.
 - Clear interval labels for missed checks.
 
+## Insights follow-up
+
+Insights 2.0 v1 intentionally uses existing private Backlog/library data only.
+It does not treat Steam's current cumulative playtime as a historic activity
+ledger, and it does not include notifications or ETA predictions.
+
+Add the activity-driven Insights slice only after the production daily schedule is
+configured and successful observations have accumulated. A first useful slice is
+daily/weekly playtime, active-day count, per-game deltas, and achievement deltas.
+Do not present a last-seven-days view until at least seven consecutive successful
+observations exist; use a longer continuous period before trends, streaks,
+most-played comparisons, or recap claims. Show missed intervals as gaps.
+
 ## Later improvements
 
 - Weekly/monthly recaps, streaks, calendar heatmaps, and most-played summaries.
