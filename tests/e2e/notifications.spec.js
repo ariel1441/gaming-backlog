@@ -447,11 +447,7 @@ for (const [label, viewport] of [
     await expect(
       page.getByRole("button", { name: "Refresh Library", exact: true }),
     ).toBeVisible();
-    await expect(bell).toBeVisible();
-    await bell.click();
-    await expect(panel).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(bell).toBeFocused();
+    await expect(page.getByRole("button", { name: /^Notifications/ })).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath(`steam-settings-${label}.png`),
       fullPage: true,
