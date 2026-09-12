@@ -25,14 +25,14 @@ export function steamPriceDisplay(price, now = Date.now()) {
   const labels = { unavailable: 'Unavailable in Israel', unreleased: 'Not yet available', not_checked: 'Price not checked', failed: 'Price refresh failed' };
   let label = labels[price.status] || 'Price unavailable';
   if (hasPrice && ['available', 'free', 'failed'].includes(price.status)) {
-    label = `${historical ? 'Last known: ' : ''}${price.availability === 'free' ? 'Free' : format(price.currentMinor)}`;
+    label = price.availability === 'free' ? 'Free' : format(price.currentMinor);
   }
   const observed = price.observedAt ? new Date(price.observedAt) : null;
   const validDate = observed && Number.isFinite(observed.getTime());
   const stale = historical || (validDate && now - observed.getTime() > 36 * 60 * 60 * 1000);
   return { label, stale, regular: hasPrice && price.regularMinor > price.currentMinor && price.discountPercent > 0 ? format(price.regularMinor) : null,
     discount: hasPrice && price.discountPercent > 0 ? `${price.discountPercent}% off` : null,
-    freshness: validDate ? `Observed ${observed.toLocaleString()}` : 'No successful price observation',
+    freshness: validDate ? relativeSavedTime(price.observedAt, now) : 'No successful price observation',
     note: price.monitoringReason === 'owned' ? 'Owned · monitoring stopped' : price.monitoringReason === 'identity_unresolved' ? 'Steam identity needs verification'
       : !price.monitoring ? 'Monitoring paused' : price.errorCode === 'steam_price_offer_uncertain' ? 'Standard offer needs verification'
       : price.errorCode === 'steam_price_package_mismatch' ? 'Package contents need verification'

@@ -107,6 +107,7 @@ export default function CustomListPage() {
   const [smartSaveStatus, setSmartSaveStatus] = useState("idle");
   const [viewMode, setViewMode] = useState(() => {
     if (typeof window === "undefined") return "posters";
+    if (window.matchMedia("(max-width: 639px)").matches) return "posters";
     return window.localStorage.getItem(listViewStorageKey) === "rows"
       ? "rows"
       : "posters";

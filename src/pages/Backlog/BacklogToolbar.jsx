@@ -17,6 +17,7 @@ import {
 import {
   Button,
   IconButton,
+  PopoverPanel,
   SelectMenu,
   StatusBadge,
   TextInput,
@@ -54,6 +55,23 @@ const sourceOptions = [
     label: "Achievements unavailable",
   },
 ];
+
+function MoreFilters({ filters }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const active = Number(!!filters.dateFilter) + Number(filters.sourceFilter && filters.sourceFilter !== "all");
+  useDismissibleLayer({ open, layerRef: ref, onDismiss: () => setOpen(false) });
+  return <div ref={ref} className="relative max-sm:static">
+    <Button type="button" variant={active ? "filterActive" : "secondary"} onClick={() => setOpen((value) => !value)} className="h-10 shrink-0 whitespace-nowrap" aria-expanded={open}>
+      More filters{active ? <span className="rounded-full bg-content-on-primary/18 px-2 py-0.5 text-xs font-semibold text-content-on-primary">{active}</span> : null}
+    </Button>
+    {open ? <PopoverPanel padding="lg" className="absolute left-2 right-2 top-[calc(100%+0.5rem)] z-50 space-y-3 sm:left-0 sm:right-auto sm:w-72">
+      <div><div className="text-sm font-semibold text-content-primary">More filters</div><p className="mt-1 text-xs text-content-muted">Less-used library controls.</p></div>
+      <DateDropdown dateFilter={filters.dateFilter} setDateFilter={filters.setDateFilter} />
+      <FilterDropdown label="Steam details" options={sourceOptions.filter((option) => option.value !== "all")} selected={filters.sourceFilter && filters.sourceFilter !== "all" ? [filters.sourceFilter] : []} onToggle={(value) => filters.setSourceFilter(filters.sourceFilter === value ? "all" : value)} onClear={() => filters.setSourceFilter("all")} />
+    </PopoverPanel> : null}
+  </div>;
+}
 
 export default function BacklogToolbar({
   identity,
@@ -211,10 +229,10 @@ export default function BacklogToolbar({
                 setHoursRange={filters.setHoursRange}
               />
               <FilterDropdown
-                label="Genres & tags"
+                label="RAWG genres"
                 options={[
                   ...filters.allGenres,
-                  { value: NO_RAWG_GENRE_FILTER, label: "No genre or tag" },
+                  { value: NO_RAWG_GENRE_FILTER, label: "No RAWG genre" },
                 ]}
                 selected={filters.selectedGenres}
                 onToggle={filters.toggleGenre}
@@ -222,29 +240,7 @@ export default function BacklogToolbar({
                 searchable
               />
               {collection !== "wishlist" ? <>
-              <FilterDropdown
-                label="Sources"
-                options={sourceOptions.filter(
-                  (option) => option.value !== "all",
-                )}
-                selected={
-                  filters.sourceFilter && filters.sourceFilter !== "all"
-                    ? [filters.sourceFilter]
-                    : []
-                }
-                onToggle={(value) =>
-                  filters.setSourceFilter(
-                    filters.sourceFilter === value ? "all" : value,
-                  )
-                }
-                onClear={() => filters.setSourceFilter("all")}
-              />
-              <div>
-                <DateDropdown
-                  dateFilter={filters.dateFilter}
-                  setDateFilter={filters.setDateFilter}
-                />
-              </div>
+              <MoreFilters filters={filters} />
               <div>
                 <Button
                   type="button"

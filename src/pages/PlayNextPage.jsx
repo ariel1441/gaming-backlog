@@ -207,9 +207,7 @@ function AlsoPlayingCard({ game, onNote, onOpen }) {
             <div className="mt-1.5">
               <StatusBadge status={game.status} />
             </div>
-            <p className="mt-2 line-clamp-2 whitespace-pre-line break-words text-sm text-content-muted">
-              {note || "No Next time note yet."}
-            </p>
+            {note ? <p className="mt-2 line-clamp-2 whitespace-pre-line break-words text-sm text-content-muted">{note}</p> : null}
           </div>
         </button>
         <Button

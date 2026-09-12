@@ -75,7 +75,7 @@ test("price and discount sort unknown/stale last in both directions; sale exclud
     buildDisplayGames({ games, onSaleOnly: true, searchQuery: "Unknown" }),
     [],
   );
-  assert.match(steamPriceDisplay(games[5].steamPrice).label, /Last known/);
+    assert.doesNotMatch(steamPriceDisplay(games[5].steamPrice).label, /Last known/);
 });
 test("saved cache fences late responses on logout and account replacement", () => {
   clearWishlistCache();

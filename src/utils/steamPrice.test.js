@@ -19,7 +19,8 @@ test('prices distinguish zero, unknown, failed, stale, owned and unavailable', (
   assert.equal(steamPriceDisplay({ ...price, currency: 'USD' }).label, 'Price unavailable');
   assert.equal(steamPriceDisplay({ ...price, currentMinor: null, status: 'not_checked' }).label, 'Price not checked');
   assert.match(steamPriceDisplay({ ...price, currentMinor: 0, availability: 'free', status: 'free' }).label, /Free/);
-  assert.match(steamPriceDisplay({ ...price, status: 'failed' }).label, /Last known/);
+  assert.doesNotMatch(steamPriceDisplay({ ...price, status: 'failed' }).label, /Last known/);
+  assert.match(steamPriceDisplay({ ...price, status: 'failed' }).note, /saved price retained/);
   assert.match(steamPriceDisplay({ ...price, monitoring: false, monitoringReason: 'owned' }).note, /Owned/);
   assert.equal(steamPriceDisplay({ ...price, currentMinor: null, status: 'unavailable' }).label, 'Unavailable in Israel');
   assert.equal(steamPriceDisplay(price, Date.parse(price.observedAt) + 2 * 86400000).stale, true);

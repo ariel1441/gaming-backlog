@@ -47,7 +47,6 @@ import { hoursValueForList } from "../../utils/hours";
 import { personalGenreNames } from "../../utils/gameList";
 import { statusDisplayLabel } from "../../utils/statusDisplay";
 import { formatUpdatedDate } from "./ListPreview";
-import { GAME_ROW_COVER_SIZE } from "../../components/gameRowCoverStyles";
 function moveItem(array, fromIndex, toIndex) {
   const next = [...array];
   const [item] = next.splice(fromIndex, 1);
@@ -519,11 +518,13 @@ function RankedRow({
       <GameCover
         src={cover}
         name={title}
+        artwork
         className="pointer-events-none absolute inset-0 h-full w-full"
-        imageClassName="opacity-[0.08] blur-sm"
-        fallbackClassName="opacity-[0.08]"
+        imageClassName="absolute inset-0 opacity-35"
+        fallbackClassName="opacity-35"
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/75" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface-card/70 via-transparent to-transparent" />
       {dragHandle}
       <div className="relative z-10 flex w-12 shrink-0 items-center justify-center text-xl font-semibold text-content-primary sm:w-14">
         {index + 1}.
@@ -536,7 +537,8 @@ function RankedRow({
         <GameCover
           src={cover}
           name={title}
-          className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl ring-1 ring-surface-border`}
+          artwork
+          className="h-28 w-20 shrink-0 rounded-xl ring-1 ring-surface-border sm:h-36 sm:w-80"
         />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -552,7 +554,7 @@ function RankedRow({
               </span>
             ) : null}
           </div>
-          <div className="mt-2 flex min-w-0 flex-wrap gap-2">
+          <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 sm:gap-2">
             <MetaPill icon={Star}>{scoreLabel(game)}</MetaPill>
             <MetaPill icon={Clock3}>{hoursLabel(game)}</MetaPill>
             <MetaPill icon={Tag}>{statusDisplayLabel(game.status)}</MetaPill>

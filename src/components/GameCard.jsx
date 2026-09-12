@@ -20,7 +20,7 @@ import { resolveGameHours } from "../utils/hours";
 import { formatAchievementSummary } from "../utils/steamAchievements";
 import {
   ActionMenu,
-  Chip,
+  AdaptiveChipList,
   GameCover,
   StatusBadge,
   useToast,
@@ -51,6 +51,8 @@ function daysSince(value) {
   if (Number.isNaN(date.getTime())) return null;
   return (Date.now() - date.getTime()) / (24 * 60 * 60 * 1000);
 }
+
+export const MIN_PLANNED_STEAM_ACTIVITY_HOURS = 1;
 
 function statusIsAlreadyActiveOrDone(status, statusGroupOf) {
   return ["playing", "done"].includes(statusGroupOf(status));
@@ -224,13 +226,17 @@ export default function GameCard({
       tone: game.metacritic ? "default" : "muted",
     },
   ];
+  const isActiveOrDone = statusIsAlreadyActiveOrDone(game.status, statusGroupOf);
+  const steamHours = Number(hours.secondarySteamHours);
+  const showSteamContext = isActiveOrDone || (Number.isFinite(steamHours) && steamHours >= MIN_PLANNED_STEAM_ACTIVITY_HOURS);
   const steamPlaytime =
+    showSteamContext &&
     game.steamOwned && hours.source !== "steam"
       ? hours.secondarySteamHours
         ? `Steam ${hours.secondarySteamHours}h`
-        : "Owned on Steam"
+        : null
       : null;
-  const steamLastPlayed = game.steamOwned
+  const steamLastPlayed = showSteamContext && game.steamOwned
     ? fmtShortDate(game.steamLastPlayedAt)
     : null;
   const steamActivityDays = daysSince(game.steamFirstPlayObservedAt);
@@ -250,7 +256,7 @@ export default function GameCard({
     ? formatAchievementSummary(game.steamAchievements)
     : null;
   const achievementStat =
-    achievements?.isMeaningful && Number(achievements.percent) > 0
+    hours.hours && achievements?.isMeaningful && Number(achievements.percent) > 0
       ? {
           icon: Trophy,
           label: "Achievements",
@@ -260,9 +266,6 @@ export default function GameCard({
       : null;
   const isCompact = variant === "compact";
   const isList = variant === "list";
-  const genreLimit = isCompact ? 2 : 3;
-  const visibleMyGenres = isList ? myGenres : myGenres.slice(0, genreLimit);
-  const hiddenMyGenres = Math.max(0, myGenres.length - visibleMyGenres.length);
   const imageHeight = isCompact ? "h-44" : "h-64";
   const titleClass = isCompact
     ? "line-clamp-2 max-w-full text-base font-semibold leading-tight text-media-text"
@@ -442,20 +445,7 @@ export default function GameCard({
               </div>
 
               <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
-              {visibleMyGenres.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {visibleMyGenres.map((genre) => (
-                    <Chip key={genre} variant="personalGenre" title={genre} className="truncate">
-                      {genre}
-                    </Chip>
-                  ))}
-                  {hiddenMyGenres ? (
-                    <span className="rounded-full border border-surface-border bg-surface-elevated/60 px-2.5 py-1 text-xs font-medium text-content-muted">
-                      +{hiddenMyGenres}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
+              {myGenres.length ? <AdaptiveChipList items={myGenres} className="gap-2" /> : null}
             </div>
           </div>
         </div>
@@ -599,29 +589,7 @@ export default function GameCard({
           </div>
         )}
 
-        {visibleMyGenres.length ? (
-          <div
-            className={`mt-auto flex items-start gap-2 border-t border-surface-border/70 pt-4 ${
-              isCompact ? "flex-nowrap overflow-hidden" : "flex-wrap"
-            }`}
-          >
-            {visibleMyGenres.map((genre) => (
-              <Chip
-                key={genre}
-                variant="personalGenre"
-                title={genre}
-                className="shrink-0 truncate px-3"
-              >
-                {genre}
-              </Chip>
-            ))}
-            {hiddenMyGenres ? (
-              <span className="shrink-0 rounded-full border border-surface-border bg-surface-elevated/60 px-2.5 py-1 text-xs font-medium text-content-muted">
-                +{hiddenMyGenres}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
+        {myGenres.length ? <AdaptiveChipList items={myGenres} className="mt-auto border-t border-surface-border/70 pt-4" chipClassName="px-3" /> : null}
         {footer ? (
           <div className="relative z-20 mt-auto border-t border-surface-border/70 pt-4">
             {footer}
