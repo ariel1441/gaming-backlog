@@ -10,6 +10,7 @@ import {
   Cell,
 } from "recharts";
 import Segmented from "./Segmented";
+import EllipsisTick from "./EllipsisTick";
 import { fmtInt } from "../../utils/format";
 
 /**
@@ -28,6 +29,7 @@ import { fmtInt } from "../../utils/format";
 export default function GenresChart({
   data,
   accessor,
+  scopeDescription,
   isSmall,
   axisTick,
   gridStroke,
@@ -45,9 +47,12 @@ export default function GenresChart({
   return (
     <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="font-semibold text-content-primary">
-          Genres ({genreType === "my" ? "My genres" : "RAWG genres"})
-        </h2>
+        <div>
+          <h2 className="font-semibold text-content-primary">
+            Genres ({genreType === "my" ? "My genres" : "RAWG genres"})
+          </h2>
+          {scopeDescription ? <p className="mt-1 text-sm text-content-muted">{scopeDescription}</p> : null}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Segmented
             value={genreType}
@@ -86,27 +91,20 @@ export default function GenresChart({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <div
-            className="h-[22rem] w-full"
-            style={{
-              minWidth: isSmall ? Math.max(data.length * 64, 720) : undefined,
-            }}
-          >
+          <div className="h-72 w-full" style={{ minWidth: isSmall ? Math.max(data.length * 58, 560) : undefined }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={data}
-                margin={{ top: 8, right: 8, left: 0, bottom: 32 }}
+                margin={{ top: 8, right: 8, left: 0, bottom: 44 }}
               >
-                <CartesianGrid stroke={gridStroke()} vertical={false} />
+                <CartesianGrid stroke={gridStroke()} horizontal />
                 <XAxis
                   dataKey="key"
-                  angle={-25}
-                  textAnchor="end"
                   interval={0}
-                  height={60}
-                  tick={{ fontSize: 12, fill: axisTick() }}
+                  height={58}
+                  tick={<EllipsisTick maxChars={14} color={axisTick()} />}
                 />
-                <YAxis tick={{ fontSize: 12, fill: axisTick() }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: axisTick() }} />
                 <RTooltip
                   cursor={{ fill: "transparent" }}
                   wrapperStyle={{ outline: "none" }}

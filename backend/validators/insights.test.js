@@ -3,15 +3,15 @@ import test from "node:test";
 import { insightsQuerySchema } from "./insights.js";
 import { listSchemas } from "./lists.js";
 
-test("insights query accepts only bounded integers and explicit booleans", () => {
+test("insights query accepts an optional bounded calendar year", () => {
   assert.deepEqual(
-    insightsQuerySchema.validate({ weekly_hours: "20", include_missing_names: "true" }).value,
-    { weekly_hours: 20, include_missing_names: true },
+    insightsQuerySchema.validate({ year: "2026" }).value,
+    { year: 2026 },
   );
   for (const query of [
-    { weekly_hours: "10junk" },
-    { weekly_hours: 201 },
-    { include_missing_names: "yes" },
+    { year: "2026junk" },
+    { year: 1999 },
+    { year: 2101 },
     { surprise: "field" },
   ]) {
     assert.ok(insightsQuerySchema.validate(query).error);

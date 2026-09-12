@@ -353,6 +353,7 @@ export function applyGameFilters(
     hoursBounds = null,
     dateFilter = null,
     sourceFilter = "all",
+    missingEstimatesOnly = false,
     onSaleOnly = false,
     now = new Date(),
   } = {},
@@ -413,6 +414,8 @@ export function applyGameFilters(
       if (hours < hoursRange.min || hours > hoursRange.max) return false;
     }
 
+    if (missingEstimatesOnly && Number(hoursValueForList(game)) > 0) return false;
+
     if (!matchesDateFilter(game, dateFilter, now)) return false;
     if (!matchesSourceFilter(game, sourceFilter, now)) return false;
 
@@ -429,7 +432,8 @@ export function buildDisplayGames({
   hoursRange = null,
   hoursBounds = null,
   dateFilter = null,
-  sourceFilter = "all",
+    sourceFilter = "all",
+    missingEstimatesOnly = false,
   onSaleOnly = false,
   sortKey = "",
   isReversed = false,
@@ -442,6 +446,7 @@ export function buildDisplayGames({
     hoursBounds,
     dateFilter,
     sourceFilter,
+    missingEstimatesOnly,
     onSaleOnly,
   });
 
