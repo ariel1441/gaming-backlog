@@ -365,30 +365,45 @@ for (const [label, viewport] of [
     });
     await page.goto("/activity");
     await expect(
-      page.getByRole("heading", { name: "Wishlist price updates" }),
+      page.getByRole("heading", { name: "Gaming activity", exact: true }),
     ).toBeVisible();
-    await expect(page.locator("article")).toHaveCount(1);
-    await expect(page.getByText(/Price dropped · Sale observed/)).toBeVisible();
-    await page.getByRole("button", { name: "Mark read", exact: true }).click();
-    await page.reload();
-    await expect(page.locator("article")).toHaveCount(1);
     await expect(
-      page.getByRole("button", { name: "Mark read", exact: true }),
+      page.getByText("Play history starts with your next sync", { exact: true }),
+    ).toBeVisible();
+    const notificationBell = page.getByRole("button", {
+      name: /^Notifications/,
+    });
+    await notificationBell.click();
+    const notifications = page.getByRole("dialog", {
+      name: "Notifications",
+      exact: true,
+    });
+    await expect(notifications).toBeVisible();
+    await notifications
+      .locator("summary")
+      .filter({ hasText: "Wishlist price drops" })
+      .click();
+    await expect(notifications.getByText(/Price dropped · Sale observed/)).toBeVisible();
+    await notifications.getByRole("button", { name: "Mark read", exact: true }).click();
+    await expect(
+      notifications.getByRole("button", { name: "Mark read", exact: true }),
     ).toHaveCount(0);
     await page.screenshot({
-      path: testInfo.outputPath(`activity-${label}.png`),
+      path: testInfo.outputPath(`notifications-${label}.png`),
       fullPage: true,
     });
-    await page.getByRole("link", { name: "View game", exact: true }).click();
+    await notifications.getByRole("link", { name: "View details", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");
     await page.goto("/activity");
-    await page
-      .getByRole("button", { name: "Hide update", exact: true })
+    await notificationBell.click();
+    await notifications
+      .locator("summary")
+      .filter({ hasText: "Wishlist price drops" })
       .click();
-    await page.reload();
+    await notifications.getByRole("button", { name: "Hide update", exact: true }).click();
     await expect(
-      page.getByText("No updates yet", { exact: true }),
+      notifications.getByText("Update hidden.", { exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(

@@ -534,7 +534,7 @@ test("insights preserves all bookmarked query parameters", async ({ page }) => {
   expect(params.get("genreStatus")).toBe("done");
 });
 
-test("links from insights active stats back to filtered backlog", async ({
+test("links from insights playing stats back to filtered backlog", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -544,9 +544,13 @@ test("links from insights active stats back to filtered backlog", async ({
   await page.goto("/insights", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: /Insights/i })).toBeVisible();
-  await page.getByRole("button", { name: /Currently active/i }).click();
+  await page
+    .locator("main section")
+    .first()
+    .getByRole("button", { name: /^Playing/ })
+    .click();
 
-  await expect(page).toHaveURL(/active=unfinished/);
+  await expect(page).toHaveURL(/group=playing/);
   await expect(page.getByText("Baldur's Gate 3")).toBeVisible();
   await expect(page.getByText("Clair Obscur: Expedition 33")).toHaveCount(0);
 });
