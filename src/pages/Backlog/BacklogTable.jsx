@@ -31,7 +31,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import {
   ActionMenu,
-  Chip,
+  AdaptiveChipList,
   DataTableFrame,
   DataTableSortButton,
   GameCover,
@@ -251,8 +251,6 @@ function BacklogTableRow({
     isDragging,
   } = useSortable({ id: String(game.id), disabled: !reorderEnabled });
   const genres = collection === "wishlist" || game.entryKind === "wishlist" ? splitCsv(game.genres) : personalGenreNames(game);
-  const visibleGenres = genres.slice(0, 3);
-  const hiddenGenreCount = Math.max(0, genres.length - visibleGenres.length);
   const hours = estimateHours(game);
 
   return (
@@ -321,22 +319,7 @@ function BacklogTableRow({
       </td>
       <td className="min-w-[210px] max-w-[250px] px-3 py-3">
         {genres.length ? (
-          <div className="flex flex-wrap gap-1.5" title={genres.join(", ")}>
-            {visibleGenres.map((genre) => (
-              <Chip
-                key={genre}
-                variant="personalGenre"
-                className="max-w-[120px] truncate px-2 py-0.5"
-              >
-                {genre}
-              </Chip>
-            ))}
-            {hiddenGenreCount ? (
-              <span className="inline-flex items-center rounded-full border border-surface-border bg-surface-elevated px-2 py-0.5 text-xs text-content-muted">
-                +{hiddenGenreCount}
-              </span>
-            ) : null}
-          </div>
+          <AdaptiveChipList items={genres} maxLines={2} chipClassName="max-w-[120px] px-2 py-0.5" />
         ) : (
           <span className="text-content-muted">—</span>
         )}

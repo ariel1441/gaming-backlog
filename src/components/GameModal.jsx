@@ -202,7 +202,7 @@ function GenreDetailRow({ label, value, icon: Icon, variant }) {
 const viewTabs = [
   { value: "overview", label: "Overview", icon: Layers3 },
   { value: "achievements", label: "Achievements", icon: Trophy },
-  { value: "notes", label: "Notes", icon: Sparkles },
+  { value: "notes", label: "Your thoughts", icon: Sparkles },
   { value: "activity", label: "Activity", icon: CalendarDays },
 ];
 
@@ -595,7 +595,7 @@ export default function GameModal({
             title="Close"
           />
 
-          <div className="relative h-[320px] shrink-0 overflow-hidden sm:h-[400px]">
+          <div className="relative z-20 h-60 shrink-0 overflow-visible sm:h-[400px]">
             <GameCover
               src={cover}
               fallbackSources={isEditMode ? undefined : game.coverFallbacks}
@@ -666,7 +666,7 @@ export default function GameModal({
                       placeholder="Select status"
                       disabled={isSubmitting}
                       aria-label="Status"
-                      className="w-full max-w-64"
+                      className="relative z-50 w-full max-w-64"
                       buttonClassName="border-media-border/20 bg-media-overlay/35 text-media-text backdrop-blur"
                     />
                   ) : (
@@ -946,12 +946,12 @@ export default function GameModal({
             ) : null}
 
             {activeTab === "notes" ? (
-              <div className="max-w-3xl space-y-7">
-                <section className="rounded-panel border border-primary/25 bg-primary/8 p-4">
+              <div className="flex max-w-3xl flex-col gap-7">
+                {isEditMode || resumeNote ? <section className="order-2 rounded-panel border border-primary/25 bg-primary/8 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold text-content-primary">
-                        Next time
+                        Next time note
                       </h3>
                       <p className="mt-1 text-xs leading-5 text-content-muted">
                         Where were you, and what do you want to do next? Private,
@@ -980,9 +980,9 @@ export default function GameModal({
                           updateDraft({ resume_note: event.target.value })
                         }
                         maxLength={1000}
-                        rows={6}
+                        rows={3}
                         disabled={isSubmitting}
-                        className="mt-3 min-h-36 whitespace-pre-wrap"
+                        className="mt-3 min-h-24 whitespace-pre-wrap"
                         placeholder="Add the smallest useful reminder for your next session..."
                       />
                       <div className="mt-2 text-right text-xs text-content-muted">
@@ -993,13 +993,9 @@ export default function GameModal({
                     <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-content-secondary">
                       {resumeNote}
                     </p>
-                  ) : (
-                    <p className="mt-3 text-sm text-content-muted">
-                      No Next time note yet.
-                    </p>
-                  )}
-                </section>
-                {!hidePrivateFields ? <section>
+                  ) : null}
+                </section> : null}
+                {!hidePrivateFields ? <section className="order-1">
                   <h3 className="text-sm font-semibold text-content-primary">
                     Your thoughts
                   </h3>
@@ -1011,9 +1007,9 @@ export default function GameModal({
                       onChange={(event) =>
                         updateDraft({ thoughts: event.target.value })
                       }
-                      rows={12}
+                      rows={6}
                       disabled={isSubmitting}
-                      className="mt-3 min-h-64 text-base leading-7"
+                      className="mt-3 min-h-36 text-base leading-7"
                       placeholder="Add your thoughts, review, or notes..."
                     />
                   ) : thoughts ? (

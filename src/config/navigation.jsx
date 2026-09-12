@@ -51,11 +51,11 @@ export const libraryNavigationItems = [
 
 export const mobilePrimaryNavigationItems = primaryNavigationItems.filter(
   (item) =>
-    ["/", "/discover", "/lists", "/timeline"].includes(item.to),
+    ["/", "/wishlist", "/lists", "/timeline"].includes(item.to),
 );
 
 export const mobileMoreNavigationItems = primaryNavigationItems.filter(
-  (item) => ["/wishlist", "/activity", "/next-up", "/reviews", "/insights"].includes(item.to),
+  (item) => ["/discover", "/activity", "/next-up", "/reviews", "/insights"].includes(item.to),
 );
 
 export function navigationItemMatchesPath(item, pathname) {

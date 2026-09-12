@@ -1,5 +1,6 @@
 export { default as Badge } from "./Badge";
 export { default as ActionMenu } from "./ActionMenu";
+export { default as AdaptiveChipList } from "./AdaptiveChipList";
 export { default as Button } from "./Button";
 export { default as Checkbox } from "./Checkbox";
 export { default as Chip } from "./Chip";
