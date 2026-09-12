@@ -21,7 +21,6 @@ import { preloadRoute } from "../config/routeLoaders";
 import { preferredLandingPath } from "../utils/userPreferences";
 import { useConfirm, useToast } from "./ui";
 import { RouteLoading } from "./layout";
-import { NotificationBell } from '../features/notifications/Notifications';
 
 export default function AppShell() {
   const {
@@ -125,7 +124,6 @@ export default function AppShell() {
             </span>
           </NavLink>
           <div className="flex shrink-0 items-center gap-1">
-          <NotificationBell compact />
           <button
             type="button"
             onClick={() => openMore(true)}

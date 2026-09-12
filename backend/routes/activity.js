@@ -5,9 +5,10 @@ import {
   listActivityEvents,
   updateActivityEvent,
 } from "../services/activityEventService.js";
-import { listActivity, updateActivity } from "../validators/activity.js";
+import { listActivity, listPlayHistory, updateActivity } from "../validators/activity.js";
 import { listInbox, updateInbox, hideOtherInbox } from '../validators/activity.js';
 import { activateActivityInbox, listActivityInbox, updateActivityInbox, hideOtherActivityUpdates } from '../services/activityInboxService.js';
+import { listSteamActivityHistory } from "../services/steamActivityService.js";
 
 const router = express.Router();
 router.post('/inbox/hide-other', verifyToken, hideOtherInbox, async (req, res, next) => {
@@ -21,6 +22,15 @@ router.get('/inbox', verifyToken, listInbox, async (req, res, next) => {
 });
 router.post('/inbox/activate', verifyToken, async (req, res, next) => {
   try { res.json(await activateActivityInbox(req.user.id)); } catch (error) { next(error); }
+});
+
+router.get('/play-history', verifyToken, listPlayHistory, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await listSteamActivityHistory(req.user.id, req.query));
+  } catch (error) {
+    next(error);
+  }
 });
 router.patch('/inbox', verifyToken, updateInbox, async (req, res, next) => {
   try { res.json(await updateActivityInbox(req.user.id, req.body.eventIds, req.body.action)); }

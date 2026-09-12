@@ -1,4 +1,5 @@
 import {
+  Activity,
   BarChart3,
   Clock3,
   Compass,
@@ -23,6 +24,7 @@ export const primaryNavigationItems = [
   { to: "/discover", label: "Discover", icon: Compass },
   { to: "/lists", label: "Lists", icon: List },
   { to: "/timeline", label: "Timeline", icon: Clock3, authOnly: true },
+  { to: "/activity", label: "Gaming activity", icon: Activity, savedAccountOnly: true },
   {
     to: "/reviews",
     label: "Reviews",
