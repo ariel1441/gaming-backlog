@@ -20,6 +20,7 @@ import {
 } from "../config/navigation";
 import { preloadRoute } from "../config/routeLoaders";
 import { useSteamExperience } from '../features/steam/SteamExperienceContext';
+import { NotificationBell } from '../features/notifications/Notifications';
 
 const COLLAPSED_STORAGE_KEY = "gaming_backlog_sidebar_collapsed_v1";
 const NARROW_DESKTOP_QUERY = "(max-width: 1279px)";
@@ -255,6 +256,9 @@ export default function Sidebar() {
             "min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-4",
           ].join(" ")}
         >
+          {!['/', '/wishlist'].includes(pathname.replace(/\/$/, '') || '/') ? (
+            <div className="mb-3"><NotificationBell collapsed={collapsed} /></div>
+          ) : null}
           <div className="space-y-1">
             {allowedPrimary.map((item) => (
               <NavigationItem key={item.to} item={item} collapsed={collapsed} />
