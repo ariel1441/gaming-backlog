@@ -6,10 +6,10 @@ import jwt from "jsonwebtoken";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret";
 
 const { pool } = await import("../db.js");
-const { default: insightsRouter } = await import("./insights.js");
+const { default: insightsRouter, buildInsightsPayload } = await import("./insights.js");
 const { default: errorHandler } = await import("../middleware/errorHandler.js");
 
-test("Insights ignores process-local RAWG playtime metadata", async () => {
+test("Insights returns private coverage and ignores process-local RAWG cache", async () => {
   const originalQuery = pool.query;
   pool.query = async () => ({
     rows: [
@@ -22,6 +22,11 @@ test("Insights ignores process-local RAWG playtime metadata", async () => {
         hours_preferred_source: "auto",
         catalog_rawg_playtime_hours: null,
         steam_playtime_minutes: null,
+        my_score: 8,
+        started_at: "2026-01-01",
+        finished_at: null,
+        personal_genres: [{ name: "Roguelike" }],
+        rawg_genres: [{ name: "Action" }],
       },
     ],
   });
@@ -43,16 +48,28 @@ test("Insights ignores process-local RAWG playtime metadata", async () => {
       process.env.JWT_SECRET,
     );
     const response = await fetch(
-      `http://127.0.0.1:${server.address().port}/api/insights?weekly_hours=10&include_missing_names=true`,
+      `http://127.0.0.1:${server.address().port}/api/insights?year=2026`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(body.meta.sources.rawg, 0);
-    assert.equal(body.meta.missing_stats_count, 1);
-    assert.deepEqual(body.meta.missing_names, ["Ephemeral Cache Game"]);
+    assert.equal(body.totals.games, 1);
+    assert.equal(body.totals.missingEstimates, 1);
+    assert.equal(body.coverage.sources.rawg, 0);
+    assert.equal(body.games[0].hours, null);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     pool.query = originalQuery;
   }
+});
+
+test("Insights payload keeps total games separate from estimate coverage", () => {
+  const payload = buildInsightsPayload([
+    { id: 1, name: "Estimated", status: "playing", rank: 1, how_long_to_beat: 12, my_score: 8.5, personal_genres: [], rawg_genres: [] },
+    { id: 2, name: "Missing", status: "plan to play", rank: 2, how_long_to_beat: null, personal_genres: [], rawg_genres: [] },
+  ], { locals: { hltb: {} } });
+  assert.equal(payload.totals.games, 2);
+  assert.equal(payload.totals.estimatedGames, 1);
+  assert.equal(payload.totals.missingEstimates, 1);
+  assert.equal(payload.focused.scores.find((item) => item.score === 8.5)?.count, 1);
 });

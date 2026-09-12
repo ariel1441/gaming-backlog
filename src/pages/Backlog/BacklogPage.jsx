@@ -97,6 +97,8 @@ export default function BacklogPage() {
     setDateFilter,
     sourceFilter,
     setSourceFilter,
+    missingEstimatesOnly,
+    setMissingEstimatesOnly,
     sortKey,
     setSortKey,
     isReversed,
@@ -154,6 +156,7 @@ export default function BacklogPage() {
     setSelectedGenres,
     setSelectedMyGenres,
     setDateFilter,
+    setMissingEstimatesOnly,
   });
 
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
@@ -339,6 +342,7 @@ export default function BacklogPage() {
         hoursBounds,
         dateFilter,
         sourceFilter,
+        missingEstimatesOnly,
         sortKey,
         isReversed,
       });

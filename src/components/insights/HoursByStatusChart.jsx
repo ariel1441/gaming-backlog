@@ -29,11 +29,13 @@ export default function HoursByStatusChart({
   tooltipColors,
   colorAt,
   onBarClick,
+  title = "Hours by status",
+  valueLabel = "h",
 }) {
   if (!data?.length) {
     return (
       <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
-        <h2 className="font-semibold text-content-primary">Hours by status</h2>
+        <h2 className="font-semibold text-content-primary">{title}</h2>
         <div className="text-sm text-content-muted">No data.</div>
       </section>
     );
@@ -45,7 +47,7 @@ export default function HoursByStatusChart({
   return (
     <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="font-semibold text-content-primary">Hours by status</h2>
+        <h2 className="font-semibold text-content-primary">{title}</h2>
       </div>
 
       {isPhone ? (
@@ -93,11 +95,11 @@ export default function HoursByStatusChart({
                   itemStyle={{ color: tooltipColors().text }}
                   labelFormatter={() => ""}
                   formatter={(value, _name, { payload }) => [
-                    `${fmtInt(value)} h`,
+                    `${fmtInt(value)} ${valueLabel}`,
                     `${payload.name} (${fmtInt(payload.count)} games)`,
                   ]}
                 />
-                <Bar dataKey="value" barSize={22} radius={[6, 6, 0, 0]}>
+                <Bar dataKey="value" barSize={32} radius={[6, 6, 0, 0]}>
                   {data.map((row, i) => (
                     <Cell
                       key={i}
@@ -148,11 +150,11 @@ export default function HoursByStatusChart({
                 itemStyle={{ color: tooltipColors().text }}
                 labelFormatter={() => ""}
                 formatter={(value, _name, { payload }) => [
-                  `${fmtInt(value)} h`,
+                    `${fmtInt(value)} ${valueLabel}`,
                   `${payload.name} (${fmtInt(payload.count)} games)`,
                 ]}
               />
-              <Bar dataKey="value" barSize={28} radius={[6, 6, 0, 0]}>
+              <Bar dataKey="value" barSize={44} radius={[6, 6, 0, 0]}>
                 {data.map((row, i) => (
                   <Cell
                     key={i}

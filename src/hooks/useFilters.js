@@ -16,6 +16,7 @@ export function useFilters(games, opts = {}) {
   const [selectedMyGenres, setSelectedMyGenres] = useState([]);
   const [dateFilter, setDateFilter] = useState(null);
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [missingEstimatesOnly, setMissingEstimatesOnly] = useState(false);
   const [sortKey, setSortKey] = useState(opts.initialSortKey || "");
   const [isReversed, setIsReversed] = useState(!!opts.initialReverse);
 
@@ -108,6 +109,7 @@ export function useFilters(games, opts = {}) {
     setSelectedMyGenres([]);
     setDateFilter(null);
     setSourceFilter("all");
+    setMissingEstimatesOnly(false);
     setSearchQuery("");
     if (hoursBounds.max > hoursBounds.min) setHoursRange(hoursBounds);
   }, [hoursBounds]);
@@ -126,6 +128,8 @@ export function useFilters(games, opts = {}) {
     setDateFilter,
     sourceFilter,
     setSourceFilter,
+    missingEstimatesOnly,
+    setMissingEstimatesOnly,
     sortKey,
     setSortKey,
     isReversed,

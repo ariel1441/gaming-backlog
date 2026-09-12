@@ -26,6 +26,7 @@ import {
 } from "./steamWishlistService.js";
 import { processSteamPriceJob, failSteamPriceJob } from './steamPriceSyncService.js';
 import { recordSteamActivityObservations } from "./steamActivityService.js";
+import { cacheClear } from "../utils/microCache.js";
 
 const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 const SYNC_AUTO_MATCH_LIMIT = 150;
@@ -777,6 +778,7 @@ async function completePrivateSyncJob(job, account) {
       [job.id, JSON.stringify(result)],
     );
   });
+  cacheClear(job.user_id);
 }
 
 async function initializeSteamSyncJob(job) {

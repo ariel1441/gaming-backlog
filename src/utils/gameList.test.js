@@ -334,6 +334,16 @@ test("applyGameFilters supports date filters", () => {
   );
 });
 
+test("applyGameFilters can show games missing an estimate", () => {
+  assert.deepEqual(
+    applyGameFilters([
+      { id: 1, name: "Estimated", how_long_to_beat: 12 },
+      { id: 2, name: "Missing", how_long_to_beat: null },
+    ], { missingEstimatesOnly: true }).map((game) => game.name),
+    ["Missing"],
+  );
+});
+
 test("matchesDateFilter supports active unfinished aging", () => {
   assert.equal(
     matchesDateFilter(

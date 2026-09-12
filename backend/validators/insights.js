@@ -1,8 +1,7 @@
 import { celebrate, Joi, Segments } from "celebrate";
 
 export const insightsQuerySchema = Joi.object({
-  weekly_hours: Joi.number().integer().min(0).max(200).default(0),
-  include_missing_names: Joi.boolean().default(false),
+  year: Joi.number().integer().min(2000).max(2100).optional(),
 }).unknown(false);
 
 export const insightsQuery = celebrate(

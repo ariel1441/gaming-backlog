@@ -7,6 +7,7 @@ export default function useApplyFiltersFromQuery({
   setSelectedGenres,
   setSelectedMyGenres,
   setDateFilter,
+  setMissingEstimatesOnly,
 }) {
   const [sp] = useSearchParams();
   const { rawStatusesForGroup, toGroup } = useStatusGroups();
@@ -19,6 +20,7 @@ export default function useApplyFiltersFromQuery({
     const dateType = sp.get("dateType");
     const year = sp.get("year");
     const active = sp.get("active");
+    const missing = sp.get("missing");
 
     if (group) {
       const g = toGroup(group); // normalize "playing"/"Playing"/etc
@@ -46,6 +48,7 @@ export default function useApplyFiltersFromQuery({
         setDateFilter({ type: "activeOlderThanMonths", months: 6 });
       }
     }
+    if (setMissingEstimatesOnly) setMissingEstimatesOnly(missing === "estimates");
   }, [
     sp,
     rawStatusesForGroup,
@@ -54,5 +57,6 @@ export default function useApplyFiltersFromQuery({
     setSelectedGenres,
     setSelectedMyGenres,
     setDateFilter,
+    setMissingEstimatesOnly,
   ]);
 }
