@@ -370,6 +370,8 @@ for (const [label, viewport] of [
     await expect(
       page.getByText("Play history starts with your next sync", { exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Notifications/ })).toHaveCount(0);
+    await page.goto("/wishlist");
     const notificationBell = page.getByRole("button", {
       name: /^Notifications/,
     });
@@ -395,7 +397,7 @@ for (const [label, viewport] of [
     await notifications.getByRole("link", { name: "View details", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.goto("/activity");
+    await page.goto("/wishlist");
     await notificationBell.click();
     await notifications
       .locator("summary")

@@ -164,7 +164,7 @@ export default function BacklogToolbar({
               </Button>
             ) : null}
             {identity?.action || null}
-            {showNotifications ? <div className="hidden lg:block"><NotificationBell compact /></div> : null}
+            {showNotifications ? <div><NotificationBell compact /></div> : null}
           </div>
         </div>
 
