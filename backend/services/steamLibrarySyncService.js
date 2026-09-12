@@ -25,6 +25,7 @@ import {
   processSteamWishlistJob,
 } from "./steamWishlistService.js";
 import { processSteamPriceJob, failSteamPriceJob } from './steamPriceSyncService.js';
+import { recordSteamActivityObservations } from "./steamActivityService.js";
 
 const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 const SYNC_AUTO_MATCH_LIMIT = 150;
@@ -961,6 +962,10 @@ async function finalizeSteamSyncJob(job) {
       ],
     );
     if (!accountRows[0]) throw badRequest("Linked Steam account no longer exists.");
+    const activityObservations = await recordSteamActivityObservations(
+      { userId: job.user_id, syncRunId: job.sync_run_id },
+      client,
+    );
     const eventCount = await client.query(
       "SELECT COUNT(*)::int AS total FROM user_activity_events WHERE sync_run_id = $1",
       [job.sync_run_id],
@@ -980,6 +985,9 @@ async function finalizeSteamSyncJob(job) {
       achievementUnavailable: achievements?.unavailable || 0,
       achievementSkipped: achievements?.skipped || 0,
       reviewItemsCreated,
+      activityObservations: activityObservations.recorded,
+      activityBaselines: activityObservations.baselines,
+      activityObservationChanges: activityObservations.activityChanged,
       librarySnapshotSucceeded: true,
       baseline: !payload.hasPreviousSync,
     };

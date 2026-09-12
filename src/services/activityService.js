@@ -21,6 +21,12 @@ export function listActivityEvents(params = {}, opts = {}) {
   return api.get(`/api/activity${suffix}`, opts);
 }
 
+export function listSteamPlayHistory(params = {}, opts = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value != null));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return api.get(`/api/activity/play-history${suffix}`, opts);
+}
+
 export function updateActivityEvent(id, action, opts = {}) {
   return api.patch(`/api/activity/${id}`, { action }, opts);
 }

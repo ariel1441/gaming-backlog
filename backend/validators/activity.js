@@ -27,6 +27,15 @@ export const listActivity = celebrate(
   opts,
 );
 
+export const listPlayHistory = celebrate(
+  {
+    [Segments.QUERY]: Joi.object({
+      days: Joi.number().integer().min(7).max(180).default(35),
+    }),
+  },
+  opts,
+);
+
 export const updateActivity = celebrate(
   {
     [Segments.PARAMS]: Joi.object({
