@@ -16,6 +16,7 @@ export function useFilters(games, opts = {}) {
   const [selectedMyGenres, setSelectedMyGenres] = useState([]);
   const [dateFilter, setDateFilter] = useState(null);
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [rawgStatus, setRawgStatus] = useState("all");
   const [missingEstimatesOnly, setMissingEstimatesOnly] = useState(false);
   const [sortKey, setSortKey] = useState(opts.initialSortKey || "");
   const [isReversed, setIsReversed] = useState(!!opts.initialReverse);
@@ -37,6 +38,9 @@ export function useFilters(games, opts = {}) {
     setSelectedMyGenres((prev) =>
       prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre],
     );
+  }, []);
+  const toggleRawgStatus = useCallback((status) => {
+    setRawgStatus((current) => current === status ? "all" : status);
   }, []);
 
   // ----- option lists -----
@@ -109,6 +113,7 @@ export function useFilters(games, opts = {}) {
     setSelectedMyGenres([]);
     setDateFilter(null);
     setSourceFilter("all");
+    setRawgStatus("all");
     setMissingEstimatesOnly(false);
     setSearchQuery("");
     if (hoursBounds.max > hoursBounds.min) setHoursRange(hoursBounds);
@@ -128,6 +133,8 @@ export function useFilters(games, opts = {}) {
     setDateFilter,
     sourceFilter,
     setSourceFilter,
+    rawgStatus,
+    setRawgStatus,
     missingEstimatesOnly,
     setMissingEstimatesOnly,
     sortKey,
@@ -139,6 +146,7 @@ export function useFilters(games, opts = {}) {
     toggleStatus,
     toggleGenre,
     toggleMyGenre,
+    toggleRawgStatus,
     clearFilters,
 
     // derived option lists

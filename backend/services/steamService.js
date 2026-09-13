@@ -3570,10 +3570,18 @@ export async function importSteamCandidates(userId, candidateIds = []) {
       );
       const importStatus = validStatus.rows[0]?.status || "plan to play";
       const position = await nextPosition(client, userId, importStatus);
+      const observedStart =
+        statusGroupOf(importStatus) === "playing" && row.last_played_at
+          ? new Date(row.last_played_at)
+          : null;
+      const startedAt =
+        observedStart && Number.isFinite(observedStart.getTime())
+          ? observedStart.toISOString().slice(0, 10)
+          : null;
       const inserted = await client.query(
         `
-        INSERT INTO games (user_id, catalog_game_id, name, status, position)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO games (user_id, catalog_game_id, name, status, position, started_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
         `,
         [
@@ -3582,6 +3590,7 @@ export async function importSteamCandidates(userId, candidateIds = []) {
           catalog.rows[0].name || row.steam_name,
           importStatus,
           position,
+          startedAt,
         ]
       );
       const gameId = inserted.rows[0].id;

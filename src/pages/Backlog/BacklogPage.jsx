@@ -97,6 +97,9 @@ export default function BacklogPage() {
     setDateFilter,
     sourceFilter,
     setSourceFilter,
+    rawgStatus,
+    toggleRawgStatus,
+    setRawgStatus,
     missingEstimatesOnly,
     setMissingEstimatesOnly,
     sortKey,
@@ -344,6 +347,7 @@ export default function BacklogPage() {
         hoursBounds,
         dateFilter,
         sourceFilter,
+        rawgStatus,
         missingEstimatesOnly,
         sortKey,
         isReversed,
@@ -361,6 +365,7 @@ export default function BacklogPage() {
     selectedMyGenres.length +
     (dateFilter ? 1 : 0) +
     (sourceFilter !== "all" ? 1 : 0) +
+    (rawgStatus !== "all" ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveFilters = Boolean(
     searchQuery ||
@@ -369,6 +374,7 @@ export default function BacklogPage() {
       selectedMyGenres.length ||
       dateFilter ||
       sourceFilter !== "all" ||
+      rawgStatus !== "all" ||
       hasHoursFilter,
   );
   const manualReorder = getManualReorderAvailability({
@@ -434,6 +440,9 @@ export default function BacklogPage() {
                 setDateFilter,
                 sourceFilter,
                 setSourceFilter,
+                rawgStatus,
+                toggleRawgStatus,
+                setRawgStatus,
                 setSelectedStatuses,
                 setSelectedGenres,
                 setSelectedMyGenres,

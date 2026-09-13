@@ -5,6 +5,7 @@ import { currentSteamPrice, isSteamSale } from "./steamPrice.js";
 import {
   NO_PERSONAL_GENRE_FILTER,
   NO_RAWG_GENRE_FILTER,
+  rawgMetadataState,
 } from "./filterOptions.js";
 
 const normalize = (value = "") => String(value).toLowerCase().trim();
@@ -353,6 +354,7 @@ export function applyGameFilters(
     hoursBounds = null,
     dateFilter = null,
     sourceFilter = "all",
+    rawgStatus = "all",
     missingEstimatesOnly = false,
     onSaleOnly = false,
     now = new Date(),
@@ -418,6 +420,7 @@ export function applyGameFilters(
 
     if (!matchesDateFilter(game, dateFilter, now)) return false;
     if (!matchesSourceFilter(game, sourceFilter, now)) return false;
+    if (rawgStatus !== "all" && rawgMetadataState(game) !== rawgStatus) return false;
 
     return true;
   });
@@ -433,7 +436,8 @@ export function buildDisplayGames({
   hoursBounds = null,
   dateFilter = null,
     sourceFilter = "all",
-    missingEstimatesOnly = false,
+  rawgStatus = "all",
+  missingEstimatesOnly = false,
   onSaleOnly = false,
   sortKey = "",
   isReversed = false,
@@ -446,6 +450,7 @@ export function buildDisplayGames({
     hoursBounds,
     dateFilter,
     sourceFilter,
+    rawgStatus,
     missingEstimatesOnly,
     onSaleOnly,
   });

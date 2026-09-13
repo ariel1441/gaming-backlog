@@ -1,13 +1,21 @@
 import React from "react";
 import { GameCover } from "./ui";
 
-export default function GameSearchResult({ result, selected, onSelect }) {
+export default function GameSearchResult({
+  result,
+  selected,
+  onSelect,
+  disabled = false,
+  busy = false,
+}) {
   return (
     <button
       type="button"
       onClick={() => onSelect(result)}
+      disabled={disabled}
+      aria-pressed={selected}
       className={[
-        "flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition-colors",
+        "flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition-colors disabled:cursor-wait disabled:opacity-70",
         selected
           ? "border-primary/55 bg-surface-selected shadow-sm ring-1 ring-inset ring-primary/20"
           : "border-surface-border/70 bg-surface-bg/35 hover:border-primary/35 hover:bg-surface-selected/55",
@@ -31,6 +39,7 @@ export default function GameSearchResult({ result, selected, onSelect }) {
           {result.metacritic ? <span>MC {result.metacritic}</span> : null}
         </div>
       </div>
+      {busy ? <span className="shrink-0 text-xs text-content-muted">Saving...</span> : null}
     </button>
   );
 }

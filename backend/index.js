@@ -21,6 +21,7 @@ import wishlistRouter from "./routes/wishlist.js";
 import { startCatalogCollectionScheduler } from "./services/catalogService.js";
 import { startMetadataRepairScheduler } from "./services/metadataRepairService.js";
 import { startCatalogRefreshScheduler } from "./services/metadataRefreshService.js";
+import { startWishlistMetadataScheduler } from "./services/wishlistMetadataService.js";
 import { startSteamSyncJobScheduler } from "./services/steamLibrarySyncService.js";
 import errorHandler from "./middleware/errorHandler.js";
 import demoRouter from "./routes/demo.js";
@@ -35,6 +36,7 @@ const stopCatalogCollectionScheduler = startCatalogCollectionScheduler();
 const stopSteamSyncJobScheduler = startSteamSyncJobScheduler();
 const stopMetadataRepairScheduler = startMetadataRepairScheduler();
 const stopCatalogRefreshScheduler = startCatalogRefreshScheduler();
+const stopWishlistMetadataScheduler = startWishlistMetadataScheduler();
 
 // Liveness probe for platform health checks
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -86,6 +88,7 @@ async function shutdown(exitCode = 0) {
   stopSteamSyncJobScheduler?.();
   stopMetadataRepairScheduler?.();
   stopCatalogRefreshScheduler?.();
+  stopWishlistMetadataScheduler?.();
 
   if (guestCleanupInterval) {
     clearInterval(guestCleanupInterval);

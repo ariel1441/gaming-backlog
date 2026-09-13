@@ -3,7 +3,7 @@ import { pool } from "../db.js";
 import { searchCatalog } from "./catalogService.js";
 import { ingestRawgGameMetadata } from "./metadataIngestionService.js";
 import { isSameGameTitle } from "../utils/gameTitle.js";
-import { notFound } from "../utils/httpError.js";
+import { conflict, notFound } from "../utils/httpError.js";
 
 const DEFAULT_BATCH_SIZE = 2;
 const MAX_BATCH_SIZE = 10;
@@ -14,6 +14,7 @@ const RECENT_REFRESH_MS = 30 * 24 * 60 * 60 * 1000;
 const MATURE_REFRESH_MS = 120 * 24 * 60 * 60 * 1000;
 const MAX_CANDIDATES = 8;
 const METADATA_JOB_TYPE = "wishlist_metadata";
+const DEFAULT_SCHEDULER_INTERVAL_MS = 5_000;
 
 function positiveInt(value, fallback, max) {
   const parsed = Number(value);
@@ -110,6 +111,24 @@ function serializeMetadataRun(row) {
 }
 
 async function startMetadataRun(db, userId, maxItems, trigger = "manual") {
+  await db.query(
+    `UPDATE metadata_jobs
+        SET status = 'failed', completed_at = NOW(),
+            last_error_code = 'stale_metadata_run',
+            last_error_message = 'The metadata run lease expired.', updated_at = NOW()
+      WHERE job_type = $1 AND scope_user_id = $2 AND status = 'running'
+        AND started_at < NOW() - INTERVAL '10 minutes'`,
+    [METADATA_JOB_TYPE, userId],
+  );
+  const active = await db.query(
+    `SELECT id FROM metadata_jobs
+      WHERE job_type = $1 AND scope_user_id = $2 AND status = 'running'
+      ORDER BY id DESC LIMIT 1`,
+    [METADATA_JOB_TYPE, userId],
+  );
+  if (active.rows[0]) {
+    throw conflict("Wishlist metadata refresh is already running.");
+  }
   const { rows } = await db.query(
     `INSERT INTO metadata_jobs (
        job_type, scope_user_id, requested_by_user_id, status,
@@ -624,15 +643,19 @@ export async function refreshWishlistMetadataItem(userId, wishlistItemId, option
   const run = await startMetadataRun(db, userId, 1, "item");
   try {
     await ensureWishlistMetadataWorkForUser(userId, db);
-    await db.query(
+    const reset = await db.query(
       `UPDATE wishlist_metadata_work
           SET status = 'queued', identity_state = 'unresolved', identity_reason = NULL,
               candidates_json = '[]'::jsonb, next_attempt_at = NOW(), completed_at = NULL,
               last_error_code = NULL, last_error_message = NULL,
               worker_id = NULL, lease_expires_at = NULL, updated_at = NOW()
-        WHERE wishlist_item_id = $1 AND user_id = $2`,
+        WHERE wishlist_item_id = $1 AND user_id = $2
+          AND (status <> 'running' OR lease_expires_at IS NULL OR lease_expires_at < NOW())`,
       [itemId, userId],
     );
+    if (!reset.rowCount) {
+      throw conflict("This Wishlist item is already being matched. Try again shortly.");
+    }
     const drain = await drainWishlistMetadataQueue({
       ...options,
       db,
@@ -647,4 +670,141 @@ export async function refreshWishlistMetadataItem(userId, wishlistItemId, option
     await finishMetadataRun(db, run?.id, "failed", error);
     throw error;
   }
+}
+
+export async function selectWishlistRawgMatch(
+  userId,
+  wishlistItemId,
+  rawgId,
+  options = {},
+) {
+  const itemId = Number(wishlistItemId);
+  const selectedRawgId = Number(rawgId);
+  if (!Number.isInteger(itemId) || itemId <= 0) throw notFound("Wishlist item not found.");
+  if (!Number.isInteger(selectedRawgId) || selectedRawgId <= 0) {
+    throw new TypeError("A valid RAWG identity is required.");
+  }
+
+  const db = options.db || pool;
+  const ingest = options.ingestRawgGameMetadata || ingestRawgGameMetadata;
+  const ingested = await ingest(selectedRawgId, { force: false });
+  const catalogGame = ingested?.catalogGame;
+  const catalogId = Number(catalogGame?.id);
+  if (!Number.isInteger(catalogId) || catalogId <= 0) {
+    throw conflict("RAWG metadata did not return a catalog identity.");
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const item = await client.query(
+      `SELECT id FROM user_wishlist_items
+        WHERE id = $1 AND user_id = $2
+        FOR UPDATE`,
+      [itemId, userId],
+    );
+    if (!item.rows[0]) throw notFound("Wishlist item not found.");
+
+    const duplicate = await client.query(
+      `SELECT id FROM user_wishlist_items
+        WHERE user_id = $1 AND catalog_game_id = $2 AND id <> $3
+        LIMIT 1`,
+      [userId, catalogId, itemId],
+    );
+    if (duplicate.rows[0]) {
+      throw conflict("A different Wishlist item already uses this RAWG identity.");
+    }
+
+    const catalog = await loadCatalog(catalogId, client);
+    const complete = wishlistCatalogMetadataComplete(catalog || catalogGame);
+    const now = new Date();
+    await client.query(
+      `UPDATE user_wishlist_items
+          SET catalog_game_id = $3, updated_at = NOW()
+        WHERE id = $1 AND user_id = $2`,
+      [itemId, userId, catalogId],
+    );
+    await client.query(
+      `INSERT INTO wishlist_metadata_work (
+         wishlist_item_id, user_id, status, identity_state, identity_reason,
+         candidates_json, metadata_due_reason, next_attempt_at, completed_at,
+         last_error_code, last_error_message, worker_id, lease_expires_at, updated_at
+       ) VALUES ($1, $2, $3, 'exact', 'manual_rawg_selection', '[]'::jsonb,
+         $4, $5, $6, NULL, NULL, NULL, NULL, NOW())
+       ON CONFLICT (wishlist_item_id) DO UPDATE SET
+         status = EXCLUDED.status,
+         identity_state = EXCLUDED.identity_state,
+         identity_reason = EXCLUDED.identity_reason,
+         candidates_json = EXCLUDED.candidates_json,
+         metadata_due_reason = EXCLUDED.metadata_due_reason,
+         next_attempt_at = EXCLUDED.next_attempt_at,
+         completed_at = EXCLUDED.completed_at,
+         last_error_code = NULL,
+         last_error_message = NULL,
+         worker_id = NULL,
+         lease_expires_at = NULL,
+         updated_at = NOW()`,
+      [
+        itemId,
+        userId,
+        complete ? "completed" : "unmatched",
+        complete ? "catalog_refresh" : "metadata_retry",
+        nextWishlistMetadataAttempt({
+          releasedAt: catalog?.released_at || catalogGame?.released_at,
+          metadataComplete: complete,
+          attemptCount: 0,
+          now,
+        }),
+        complete ? now : null,
+      ],
+    );
+    await client.query(
+      `INSERT INTO wishlist_metadata_attempts (
+         metadata_job_id, user_id, wishlist_item_id, status, identity_state,
+         issue, candidate_count
+       ) VALUES (NULL, $1, $2, $3, 'exact', 'manual_rawg_selection', 1)`,
+      [userId, itemId, complete ? "completed" : "unmatched"],
+    );
+    await client.query("COMMIT");
+    return {
+      wishlistItemId: itemId,
+      catalogGameId: catalogId,
+      rawgId: selectedRawgId,
+      metadataComplete: complete,
+    };
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export function startWishlistMetadataScheduler(options = {}) {
+  const intervalMs = positiveInt(
+    options.intervalMs ?? process.env.WISHLIST_METADATA_INTERVAL_MS,
+    DEFAULT_SCHEDULER_INTERVAL_MS,
+    60_000,
+  );
+  const batchSize = positiveInt(
+    options.batchSize ?? process.env.WISHLIST_METADATA_BATCH_SIZE,
+    DEFAULT_BATCH_SIZE,
+    MAX_BATCH_SIZE,
+  );
+  let running = false;
+  const run = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await drainWishlistMetadataQueue({ maxItems: batchSize });
+    } catch (error) {
+      console.error("Wishlist metadata worker failed:", error?.code || error?.message);
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(run, intervalMs);
+  timer.unref?.();
+  void run();
+  return () => clearInterval(timer);
 }

@@ -7,8 +7,8 @@ import {
   moveWishlistItemToBacklog,
   retireOwnedWishlistIntention,
 } from "../services/steamWishlistService.js";
-import { listWishlistMetadataRuns, refreshWishlistMetadata, refreshWishlistMetadataItem } from "../services/wishlistMetadataService.js";
-import { listWishlist, wishlistItemAction, wishlistMetadataItem, syncWishlistPrices, retireWishlistIntention } from "../validators/wishlist.js";
+import { listWishlistMetadataRuns, refreshWishlistMetadata, refreshWishlistMetadataItem, selectWishlistRawgMatch } from "../services/wishlistMetadataService.js";
+import { listWishlist, wishlistItemAction, wishlistMetadataItem, wishlistMetadataMatch, syncWishlistPrices, retireWishlistIntention } from "../validators/wishlist.js";
 
 const router = express.Router();
 router.post('/:itemId/retire-intention', verifyToken, retireWishlistIntention, async (req, res, next) => {
@@ -74,6 +74,19 @@ router.post("/:itemId/metadata/refresh", verifyToken, wishlistMetadataItem, asyn
   try {
     await assertSavedAccountUser(req.user.id);
     const result = await refreshWishlistMetadataItem(req.user.id, req.params.itemId);
+    res.setHeader("Cache-Control", "no-store");
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.post("/:itemId/metadata/match", verifyToken, wishlistMetadataMatch, async (req, res, next) => {
+  try {
+    await assertSavedAccountUser(req.user.id);
+    const result = await selectWishlistRawgMatch(
+      req.user.id,
+      req.params.itemId,
+      req.body.rawg_id,
+    );
     res.setHeader("Cache-Control", "no-store");
     res.json(result);
   } catch (error) { next(error); }

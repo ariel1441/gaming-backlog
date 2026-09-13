@@ -104,9 +104,10 @@ games each hour: a continuously running single process normally handles at most
 two games per hourly tick.
 
 Eligibility: non-retired catalog entry, RAWG identity, referenced by at least one
-Backlog game, and incomplete metadata or missing/due refresh time. Wishlist-only
-entries do not qualify through this query. Shared catalog entries are refreshed
-once for the catalog rather than separately for each user's copy.
+Backlog game or active/local Wishlist membership, and incomplete metadata or
+missing/due refresh time. Shared catalog entries are refreshed once for the
+catalog rather than separately for each user's copy. Wishlist item identity
+matching is handled by the separate durable Wishlist queue below.
 
 Refresh forces RAWG ingestion for fields such as artwork, description, release
 date, provider ratings, provider genres, stores and tags. Personal genres, scores,
@@ -149,14 +150,16 @@ field do not establish that a value actually came from HLTB. See
 [catalog decoration](../backend/services/catalogService.js) and
 [hours display](../src/utils/hours.js). There is no new estimate model implied here.
 
-## Wishlist metadata: explicit bounded work
+## Wishlist metadata: automatic and explicit bounded work
 
 Steam Wishlist membership reconciliation only enqueues item-scoped metadata work;
-it does not call RAWG or change price observations. Use the Wishlist diagnostics'
-**Refresh metadata** action to drain at most two due items at a time, or the
-explicit **Refresh all queued** action to drain the current queue in bounded
-batches of ten while the page remains open. Existing Steam name, cover, release
-and tag fallbacks remain usable while work is pending.
+it does not call RAWG or change price observations. The backend Wishlist metadata
+worker checks every five seconds and processes up to two due items per tick, so
+queued work continues after the browser closes. Use the Wishlist diagnostics'
+**Refresh metadata** action to request an immediate bounded pass, or the explicit
+**Refresh all queued** action to process additional batches of ten while the page
+is open. Existing Steam name, cover, release and tag fallbacks remain usable while
+work is pending.
 
 Only an exact Steam/catalog identity or one normalized-title RAWG match is linked
 automatically. No match remains unresolved, while multiple exact matches remain
@@ -165,7 +168,8 @@ retries after three days and then weekly; complete recent catalog records are du
 monthly and mature records every four months. Provider failures retain the same
 item in the durable queue with a bounded retry time. This queue is separate from
 `METADATA_REFRESH_ENABLED`, which remains off by default and is not required for
-Wishlist hydration.
+Wishlist hydration. Worker controls are `WISHLIST_METADATA_INTERVAL_MS` and
+`WISHLIST_METADATA_BATCH_SIZE`.
 
 Refresh runs are also recorded in the general `metadata_jobs` history, with
 item-level outcomes in `wishlist_metadata_attempts`. The authenticated

@@ -135,8 +135,12 @@ function serializeWishlistItem(row, { hltbLookup } = {}) {
     lastSeenAt: row.last_seen_at || null,
     gameId: row.game_id == null ? null : Number(row.game_id),
     catalogGameId: row.catalog_game_id == null ? null : Number(row.catalog_game_id),
-    metadataComplete: Boolean(name) && !/^Steam App \d+$/i.test(String(name).trim()) &&
-      Boolean([row.catalog_cover_url, row.game_cover, row.cover_url, row.steam_icon_url].some(absoluteImageUrl)) && genres.length > 0,
+    rawgId: row.catalog_rawg_id == null ? null : Number(row.catalog_rawg_id),
+    rawg_id: row.catalog_rawg_id == null ? null : Number(row.catalog_rawg_id),
+    metadataQuality: row.catalog_metadata_quality || null,
+    metadataComplete: Boolean(row.catalog_rawg_id) &&
+      row.catalog_metadata_quality === "full" &&
+      Boolean(row.catalog_cover_url) && genres.length > 0,
     steamStoreUrl: row.steam_app_id || row.price_app_id ? `https://store.steampowered.com/app/${row.steam_app_id || row.price_app_id}?cc=il` : null,
   };
 }
@@ -185,6 +189,8 @@ export async function listWishlistItems(userId, options = {}) {
             catalog.metacritic AS catalog_metacritic,
             catalog.rawg_playtime_hours AS catalog_playtime_hours,
             catalog.genres_json AS catalog_genres_json,
+            catalog.metadata_quality AS catalog_metadata_quality,
+            rawg.external_id::int AS catalog_rawg_id,
             game.how_long_to_beat AS game_hltb_hours,
             candidate.steam_name, candidate.steam_icon_url,
             to_jsonb(metadata_work) AS metadata_work,
@@ -200,6 +206,8 @@ export async function listWishlistItems(userId, options = {}) {
        ) steam ON TRUE
        LEFT JOIN games game ON game.id = wishlist.game_id AND game.user_id = wishlist.user_id
        LEFT JOIN catalog_games catalog ON catalog.id = wishlist.catalog_game_id
+       LEFT JOIN external_game_ids rawg
+         ON rawg.catalog_game_id = catalog.id AND rawg.source = 'rawg'
        LEFT JOIN steam_price_targets target ON target.wishlist_item_id = wishlist.id AND target.user_id = wishlist.user_id
        LEFT JOIN LATERAL (
          SELECT jsonb_build_object('epoch', m.epoch, 'lastError', m.last_error,

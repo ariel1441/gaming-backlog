@@ -1263,11 +1263,17 @@ LEFT JOIN LATERAL (
 LEFT JOIN games g ON g.id = w.game_id AND g.user_id = w.user_id
 LEFT JOIN LATERAL (
   SELECT array_agg(DISTINCT app_id) AS app_ids FROM (
+    -- An active membership is authoritative. RAWG catalog Steam IDs must not
+    -- change price tracking for a currently active Wishlist item.
     SELECT m.steam_app_id AS app_id FROM steam_wishlist_items m
       WHERE m.wishlist_item_id = w.id AND m.user_id = w.user_id
+        AND ((COALESCE(s.is_active, FALSE) AND m.account_id = a.id AND m.is_active)
+          OR NOT COALESCE(s.is_active, FALSE))
     UNION ALL
     SELECT e.external_id FROM external_game_ids e
-      WHERE e.source = 'steam' AND e.catalog_game_id IN (w.catalog_game_id, g.catalog_game_id)
+      WHERE e.source = 'steam'
+        AND e.catalog_game_id IN (w.catalog_game_id, g.catalog_game_id)
+        AND NOT COALESCE(s.is_active, FALSE)
   ) exact_ids WHERE app_id ~ '^[1-9][0-9]*$'
 ) ids ON TRUE;
 

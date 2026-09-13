@@ -10,6 +10,7 @@ import {
   nextWishlistMetadataAttempt,
   processNextWishlistMetadataBatch,
   refreshWishlistMetadataItem,
+  selectWishlistRawgMatch,
 } from "./wishlistMetadataService.js";
 
 dotenv.config();
@@ -171,5 +172,45 @@ test("ambiguous title matches stay in review and preserve the Steam fallback", a
     assert.equal(work.next_attempt_at, null);
     const status = await getWishlistMetadataStatus(1, db);
     assert.equal(status.review, 1);
+  });
+});
+
+test("manual Wishlist RAWG selection links only the owned Wishlist item", async () => {
+  await withMetadataSchema(async (db) => {
+    await seed(db);
+    await db.query(`
+      INSERT INTO catalog_games (
+        id, name, canonical_title, cover_url, metadata_quality, genres_json,
+        metadata_source, metadata_fetched_at
+      ) VALUES (30, 'Ambiguous Game', 'Ambiguous Game', 'https://img.example/ambiguous.jpg', 'full', '["Action"]', 'rawg', NOW());
+      INSERT INTO external_game_ids (catalog_game_id, source, external_id, slug)
+      VALUES (30, 'rawg', '301', 'ambiguous-game');
+    `);
+
+    const result = await selectWishlistRawgMatch(1, 21, 301, {
+      db,
+      ingestRawgGameMetadata: async (rawgId) => {
+        assert.equal(rawgId, 301);
+        return { catalogGame: { id: 30 } };
+      },
+    });
+    assert.deepEqual(result, {
+      wishlistItemId: 21,
+      catalogGameId: 30,
+      rawgId: 301,
+      metadataComplete: true,
+    });
+    assert.equal(
+      (await db.query("SELECT catalog_game_id FROM user_wishlist_items WHERE id = 21")).rows[0].catalog_game_id,
+      30,
+    );
+    assert.equal(
+      (await db.query("SELECT status, identity_reason FROM wishlist_metadata_work WHERE wishlist_item_id = 21")).rows[0].status,
+      "completed",
+    );
+    assert.equal(
+      (await db.query("SELECT issue FROM wishlist_metadata_attempts WHERE wishlist_item_id = 21 ORDER BY id DESC LIMIT 1")).rows[0].issue,
+      "manual_rawg_selection",
+    );
   });
 });

@@ -326,16 +326,16 @@ export default function NotificationActions({
                 disabled={busy}
                 onClick={() =>
                   perform(async () => {
-                    await applySteamStatusSuggestion(
+                    const result = await applySteamStatusSuggestion(
                       gameId,
                       buildSteamStatusSuggestionPayload({
                         ...event.payload,
                         activityEventId: event.id,
-                      }),
+                      }, { setStartedAt: !game?.started_at }),
                     );
-                    return finishDecision(
-                      "Moved to Playing. Dates kept unchanged.",
-                    );
+                    return finishDecision(result?.game?.startedAt
+                      ? `Moved to Playing. Started date set to ${result.game.startedAt}.`
+                      : "Moved to Playing. Existing dates were kept.");
                   })
                 }
               >
