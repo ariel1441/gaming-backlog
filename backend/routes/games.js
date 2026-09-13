@@ -5,6 +5,7 @@ import { verifyToken } from "../middleware/auth.js";
 import {
   favoriteGames,
   finishGame,
+  gameSearch,
   gameIdParam,
   upsertGame,
   reorderGame,
@@ -200,19 +201,18 @@ router.get("/", verifyToken, async (req, res, next) => {
 });
 
 // Search RAWG so users can choose the exact external game identity before add.
-router.get("/search", verifyToken, async (req, res, next) => {
+router.get("/search", verifyToken, gameSearch, async (req, res, next) => {
   try {
-    const q = String(req.query.q || "").trim();
-    if (q.length < 3) {
-      return next(badRequest("Search query must be at least 3 characters."));
-    }
+    const q = req.query.q;
 
     if (req.user?.is_guest) {
       res.setHeader("Cache-Control", "no-store");
       return res.json({ results: [] });
     }
 
-    const catalogPayload = await searchCatalog(q, req.user);
+    const catalogPayload = await searchCatalog(q, req.user, {
+      wishlistItemId: req.query.wishlist_item_id,
+    });
     const results = (catalogPayload.results || []).map((game) => ({
       catalog_game_id: game.id,
       rawg_id: game.rawg_id ?? game.rawgId ?? null,
@@ -222,6 +222,7 @@ router.get("/search", verifyToken, async (req, res, next) => {
       cover: game.cover,
       rating: game.rating,
       metacritic: game.metacritic,
+      alreadyInWishlist: Boolean(game.alreadyInWishlist),
     }));
     res.setHeader("Cache-Control", "no-store");
     res.json({ results, cacheStatus: catalogPayload.cacheStatus });

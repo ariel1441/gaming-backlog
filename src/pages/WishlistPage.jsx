@@ -34,6 +34,7 @@ import WishlistCardFooter from "./Wishlist/WishlistCardFooter";
 import useWishlist from "./Wishlist/useWishlist";
 import {
   wishlistItemsToGames,
+  wishlistMetadataBatchMessage,
   wishlistSortOptions,
 } from "./Wishlist/wishlistPresentation";
 
@@ -197,11 +198,11 @@ export default function WishlistPage() {
     setMetadataRefreshing(true);
     try {
       const result = await refreshWishlistMetadata();
-      if (result.drain?.processed) {
-        toast.success(`Metadata checked for ${result.drain.processed} Wishlist item${result.drain.processed === 1 ? "" : "s"}. ${result.pending || 0} still queued.`);
-      } else {
-        toast.success(`No due metadata items were processed. ${result.pending || 0} remain queued or awaiting retry.`);
-      }
+      toast.success(wishlistMetadataBatchMessage({
+        processed: result.drain?.processed,
+        pending: result.pending,
+        results: result.drain?.results,
+      }));
       await state.refresh();
     } catch (error) {
       toast.error(error.message || "Wishlist metadata refresh failed.");
@@ -214,17 +215,17 @@ export default function WishlistPage() {
     setMetadataBulkRefreshing(true);
     let processed = 0;
     let pending = Number(state.metadata?.pending || 0);
+    const results = [];
     try {
       while (pending > 0 || processed === 0) {
         const result = await refreshWishlistMetadata({ maxItems: 10 });
         const batch = Number(result.drain?.processed || 0);
         processed += batch;
+        results.push(...(result.drain?.results || []));
         pending = Number(result.pending || 0);
         if (!batch) break;
       }
-      toast.success(
-        `Metadata checked for ${processed} Wishlist item${processed === 1 ? "" : "s"}. ${pending} remain queued for a later retry.`,
-      );
+      toast.success(wishlistMetadataBatchMessage({ processed, pending, results }));
       await state.refresh();
     } catch (error) {
       toast.error(error.message || "Wishlist metadata refresh failed.");

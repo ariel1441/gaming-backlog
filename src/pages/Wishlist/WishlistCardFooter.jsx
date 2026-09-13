@@ -4,6 +4,16 @@ import { Link } from "react-router-dom";
 import { Button, SelectMenu, TextInput } from "../../components/ui";
 import GameSearchResult from "../../components/GameSearchResult";
 import { searchGames } from "../../services/gameService";
+import { rawgMetadataState, rawgMetadataStateLabel } from "../../utils/filterOptions";
+import { isWishlistRawgMatchUnavailable } from "./wishlistPresentation";
+
+const metadataStateClasses = {
+  linked: "border-state-success/30 bg-state-success/10 text-state-success",
+  missing: "border-content-muted/30 bg-content-muted/10 text-content-muted",
+  review: "border-state-warning/35 bg-state-warning/10 text-state-warning",
+  incomplete: "border-state-warning/35 bg-state-warning/10 text-state-warning",
+  failed: "border-state-error/35 bg-state-error/10 text-state-error",
+};
 
 function formatDate(value) {
   if (!value) return "Date unknown";
@@ -23,6 +33,8 @@ export default function WishlistCardFooter({
   metadataRefreshing = false,
   onMatchRawg,
 }) {
+  const metadataState = rawgMetadataState(game);
+  const metadataLabel = rawgMetadataStateLabel(metadataState);
   const [matchOpen, setMatchOpen] = React.useState(false);
   const [matchQuery, setMatchQuery] = React.useState(game.name || "");
   const [matchResults, setMatchResults] = React.useState([]);
@@ -42,7 +54,7 @@ export default function WishlistCardFooter({
     const timer = window.setTimeout(() => {
       setMatchLoading(true);
       setMatchError("");
-      searchGames(query, { signal: controller.signal })
+      searchGames(query, { signal: controller.signal, wishlistItemId: game.wishlistItemId })
         .then((payload) => setMatchResults(Array.isArray(payload?.results) ? payload.results : []))
         .catch((error) => {
           if (error?.name !== "AbortError") setMatchError("Could not search RAWG right now.");
@@ -55,11 +67,11 @@ export default function WishlistCardFooter({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [matchOpen, matchQuery]);
+  }, [game.wishlistItemId, matchOpen, matchQuery]);
 
   const chooseMatch = async (result) => {
     const rawgId = Number(result?.rawg_id);
-    if (!Number.isInteger(rawgId) || !onMatchRawg) return;
+    if (!Number.isInteger(rawgId) || !onMatchRawg || isWishlistRawgMatchUnavailable(result, game)) return;
     setMatchingRawgId(rawgId);
     try {
       await onMatchRawg(game, rawgId);
@@ -81,6 +93,14 @@ export default function WishlistCardFooter({
         <span className="inline-flex items-center gap-1.5">
           <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
           Added {formatDate(game.dateAdded)}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 font-semibold ${metadataStateClasses[metadataState] || metadataStateClasses.missing}`}
+          aria-label={`RAWG metadata status: ${metadataLabel}`}
+        >
+          RAWG: {metadataLabel}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -193,6 +213,7 @@ export default function WishlistCardFooter({
                 onSelect={chooseMatch}
                 disabled={matchingRawgId != null}
                 busy={matchingRawgId === Number(result.rawg_id)}
+                disabledReason={isWishlistRawgMatchUnavailable(result, game) ? "Already matched" : ""}
               />
             ))}
             {matchLoading ? <p className="text-xs text-content-muted">Searching...</p> : null}

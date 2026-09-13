@@ -7,15 +7,17 @@ export default function GameSearchResult({
   onSelect,
   disabled = false,
   busy = false,
+  disabledReason = "",
 }) {
+  const isDisabled = disabled || Boolean(disabledReason);
   return (
     <button
       type="button"
       onClick={() => onSelect(result)}
-      disabled={disabled}
+      disabled={isDisabled}
       aria-pressed={selected}
       className={[
-        "flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition-colors disabled:cursor-wait disabled:opacity-70",
+        "flex w-full min-w-0 items-center gap-3 rounded-xl border p-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
         selected
           ? "border-primary/55 bg-surface-selected shadow-sm ring-1 ring-inset ring-primary/20"
           : "border-surface-border/70 bg-surface-bg/35 hover:border-primary/35 hover:bg-surface-selected/55",
@@ -39,7 +41,7 @@ export default function GameSearchResult({
           {result.metacritic ? <span>MC {result.metacritic}</span> : null}
         </div>
       </div>
-      {busy ? <span className="shrink-0 text-xs text-content-muted">Saving...</span> : null}
+      {busy ? <span className="shrink-0 text-xs text-content-muted">Saving...</span> : disabledReason ? <span className="shrink-0 text-right text-xs text-content-muted">{disabledReason}</span> : null}
     </button>
   );
 }

@@ -28,6 +28,42 @@ export function wishlistItemsToGames(items = []) {
   return (Array.isArray(items) ? items : []).map(wishlistItemToGame);
 }
 
+export function isWishlistRawgMatchUnavailable(result, game = {}) {
+  if (!result?.alreadyInWishlist && !result?.already_in_wishlist) return false;
+  const candidateRawgId = Number(result.rawg_id ?? result.rawgId);
+  const currentRawgId = Number(game.rawg_id ?? game.rawgId);
+  return !Number.isInteger(currentRawgId) || candidateRawgId !== currentRawgId;
+}
+
+export function summarizeWishlistMetadataResults(results = []) {
+  const counts = { completed: 0, review: 0, unmatched: 0, failed: 0 };
+  for (const result of Array.isArray(results) ? results : []) {
+    if (Object.prototype.hasOwnProperty.call(counts, result?.status)) {
+      counts[result.status] += 1;
+    }
+  }
+  return counts;
+}
+
+export function wishlistMetadataBatchMessage({ processed = 0, pending = 0, results = [] } = {}) {
+  const total = Number(processed) || 0;
+  if (!total) {
+    return `No due metadata items were processed. ${Number(pending) || 0} remain queued or awaiting retry.`;
+  }
+
+  const counts = summarizeWishlistMetadataResults(results);
+  const details = [
+    [counts.completed, "linked"],
+    [counts.review, "need review"],
+    [counts.unmatched, "need a match"],
+    [counts.failed, "failed/retry scheduled"],
+  ]
+    .filter(([count]) => count > 0)
+    .map(([count, label]) => `${count} ${label}`);
+  const detailText = details.length ? `: ${details.join(", ")}` : "";
+  return `Metadata checked for ${total} Wishlist item${total === 1 ? "" : "s"}${detailText}. ${Number(pending) || 0} remain pending or awaiting retry.`;
+}
+
 // Only the presentation collection contains projections. GamesProvider continues
 // to own ordinary games and all lifecycle mutations.
 export function composeBacklogWishlist(games = [], items = []) {

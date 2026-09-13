@@ -4,6 +4,8 @@ import { absoluteImageUrl } from "../utils/steamAssets.js";
 import { lockSteamSyncJob } from "./steamSyncLease.js";
 import { badRequest, forbidden, notFound } from "../utils/httpError.js";
 import { normalizeTitle } from "../utils/hltb.js";
+import { statusGroupOf } from "../utils/status.js";
+import { steamPlayDate } from "../utils/steamPlayDate.js";
 import { createOpenActivityEvent } from "./activityEventService.js";
 import {
   finishIntegrationSyncRun,
@@ -540,13 +542,29 @@ export async function failSteamWishlistJob(job, error) {
 
 export async function moveWishlistItemToBacklog(userId, wishlistItemId, status) {
   return withTransaction(async (client) => {
+    // Sync persistence also locks the account before the Wishlist item.
+    const account = await client.query(`SELECT id, linked_at FROM user_external_accounts
+      WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE`, [userId]);
     const item = await client.query("SELECT * FROM user_wishlist_items WHERE id = $1 AND user_id = $2 FOR UPDATE", [wishlistItemId, userId]);
     if (!item.rows[0]) throw notFound("Wishlist item not found.");
     const valid = await client.query("SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist'", [status]);
     if (!valid.rows[0]) throw badRequest("Choose a backlog lifecycle status.");
+    let startedAt = null;
+    if (account.rows[0] && statusGroupOf(status) === "playing") {
+      const evidence = await client.query(`SELECT source.first_play_observed_at
+        FROM user_game_sources source
+        WHERE source.user_id = $1 AND source.provider = 'steam'
+          AND source.source_status = 'owned' AND source.last_synced_at >= $4
+          AND (source.game_id = $3 OR EXISTS (
+            SELECT 1 FROM steam_wishlist_items membership
+            WHERE membership.user_id = $1 AND membership.wishlist_item_id = $2
+              AND membership.account_id = $5 AND membership.steam_app_id = source.provider_app_id
+          ))`, [userId, wishlistItemId, item.rows[0].game_id, account.rows[0].linked_at, account.rows[0].id]);
+      if (evidence.rows.length === 1) startedAt = steamPlayDate(evidence.rows[0].first_play_observed_at);
+    }
     let gameId = item.rows[0].game_id;
     if (gameId) {
-      await client.query("UPDATE games SET status = $3 WHERE id = $1 AND user_id = $2 AND LOWER(TRIM(status)) = 'wishlist'", [gameId, userId, status]);
+      await client.query("UPDATE games SET status = $3, started_at = COALESCE(started_at, $4::date) WHERE id = $1 AND user_id = $2 AND LOWER(TRIM(status)) = 'wishlist'", [gameId, userId, status, startedAt]);
     } else {
       const duplicate = await client.query(
         `SELECT id FROM games WHERE user_id = $1 AND (
@@ -558,9 +576,9 @@ export async function moveWishlistItemToBacklog(userId, wishlistItemId, status) 
       if (duplicate.rows[0]) gameId = duplicate.rows[0].id;
       else {
         const created = await client.query(
-          `INSERT INTO games (user_id, catalog_game_id, name, status, cover, position)
-           VALUES ($1, $2, $3, $4, $5, COALESCE((SELECT MAX(position) + 1 FROM games WHERE user_id = $1 AND status = $4), 0)) RETURNING id`,
-          [userId, item.rows[0].catalog_game_id, item.rows[0].display_name, status, item.rows[0].cover_url],
+          `INSERT INTO games (user_id, catalog_game_id, name, status, cover, position, started_at)
+           VALUES ($1, $2, $3, $4, $5, COALESCE((SELECT MAX(position) + 1 FROM games WHERE user_id = $1 AND status = $4), 0), $6) RETURNING id`,
+          [userId, item.rows[0].catalog_game_id, item.rows[0].display_name, status, item.rows[0].cover_url, startedAt],
         );
         gameId = created.rows[0].id;
       }

@@ -7,6 +7,7 @@ import { absoluteImageUrl, steamCoverUrl } from "../utils/steamAssets.js";
 import { normalizeGameTitle } from "../utils/gameTitle.js";
 import { badRequest, conflict, serviceUnavailable } from "../utils/httpError.js";
 import { normStatus, statusGroupOf } from "../utils/status.js";
+import { steamPlayDate } from "../utils/steamPlayDate.js";
 import {
   fetchProviderResponse,
   ProviderRequestError,
@@ -2272,14 +2273,8 @@ export async function applySteamStatusSuggestion(
     throw badRequest("Only playing status suggestions are supported right now.");
   }
 
-  const suggestedDate = startedAt ? new Date(startedAt) : null;
-  const dateValue =
-    suggestedDate && Number.isFinite(suggestedDate.getTime())
-      ? suggestedDate.toISOString().slice(0, 10)
-      : null;
-  const shouldSetStartedAt = Boolean(setStartedAt && dateValue);
-
   return withTransaction(async (client) => {
+  let dateValue = steamPlayDate(startedAt);
   await assertSteamUser(userId, client);
   const account = (await client.query(`SELECT id, linked_at FROM user_external_accounts
     WHERE user_id = $1 AND provider = 'steam' AND disconnected_at IS NULL FOR UPDATE`, [userId])).rows[0];
@@ -2287,7 +2282,7 @@ export async function applySteamStatusSuggestion(
   const game = (await client.query("SELECT status FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE", [gameId, userId])).rows[0];
   if (!game) throw badRequest("Steam-linked backlog game not found.");
   if (activityEventId != null) {
-    const event = await client.query(`SELECT e.id FROM user_activity_events e
+    const event = await client.query(`SELECT e.id, e.payload_json FROM user_activity_events e
       JOIN steam_sync_jobs j ON j.sync_run_id = e.sync_run_id AND j.user_id = e.user_id
       JOIN user_game_sources s ON s.user_id = e.user_id AND s.provider = 'steam'
         AND s.provider_app_id = e.external_id AND s.game_id = e.game_id
@@ -2297,7 +2292,11 @@ export async function applySteamStatusSuggestion(
         AND e.payload_json->>'currentStatus' = $6
       FOR UPDATE OF e`, [activityEventId, userId, gameId, account.id, account.linked_at, game.status]);
     if (!event.rows[0]) throw conflict("This suggestion is no longer current. Refresh to see your saved game.");
+    // A delayed approval must use the saved decision evidence, not a client
+    // timestamp or a later session. Missing historic first-play evidence stays unknown.
+    dateValue = steamPlayDate(event.rows[0].payload_json?.firstPlayObservedAt);
   }
+  const shouldSetStartedAt = Boolean(setStartedAt && dateValue);
   if (statusGroupOf(normStatus(game.status)) === 'done')
     throw conflict("This game is already completed. Use its Backlog editor to change its status.");
   const { rows } = await client.query(
@@ -3503,12 +3502,17 @@ export async function importSteamCandidates(userId, candidateIds = []) {
     await lockCurrentSteamCandidates(client, userId, ids);
     const { rows } = await client.query(
       `
-      SELECT *
-      FROM steam_import_candidates
-      WHERE user_id = $1
-        AND id = ANY($2::int[])
-        AND import_status IN ('pending', 'accepted')
-      FOR UPDATE
+      SELECT candidate.*, source.first_play_observed_at AS source_first_play_observed_at
+      FROM steam_import_candidates candidate
+      LEFT JOIN user_game_sources source
+        ON source.user_id = candidate.user_id
+       AND source.provider = 'steam'
+       AND source.provider_app_id = candidate.steam_app_id
+       AND source.source_status = 'owned'
+      WHERE candidate.user_id = $1
+        AND candidate.id = ANY($2::int[])
+        AND candidate.import_status IN ('pending', 'accepted')
+      FOR UPDATE OF candidate
       `,
       [userId, ids]
     );
@@ -3570,13 +3574,9 @@ export async function importSteamCandidates(userId, candidateIds = []) {
       );
       const importStatus = validStatus.rows[0]?.status || "plan to play";
       const position = await nextPosition(client, userId, importStatus);
-      const observedStart =
-        statusGroupOf(importStatus) === "playing" && row.last_played_at
-          ? new Date(row.last_played_at)
-          : null;
       const startedAt =
-        observedStart && Number.isFinite(observedStart.getTime())
-          ? observedStart.toISOString().slice(0, 10)
+        statusGroupOf(importStatus) === "playing"
+          ? steamPlayDate(row.source_first_play_observed_at)
           : null;
       const inserted = await client.query(
         `

@@ -1,7 +1,7 @@
 import { personalGenreNames, sortGames, splitCsv } from "./gameList.js";
 import { parseGameDate } from "./gameDateInsights.js";
 
-const REVIEW_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+const REVIEW_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
   month: "short",
   day: "numeric",

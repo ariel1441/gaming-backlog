@@ -43,7 +43,7 @@ test("stored Steam reviews build a stable playing-status payload", () => {
   );
   assert.deepEqual(
     buildSteamStatusSuggestionPayload(
-      { lastPlayedAt: "2026-07-12T10:30:00.000Z" },
+      { firstPlayObservedAt: "2026-07-12T10:30:00.000Z", lastPlayedAt: "2026-07-15T10:30:00.000Z" },
       { setStartedAt: true },
     ),
     {
@@ -59,6 +59,14 @@ test("stored Steam reviews build a stable playing-status payload", () => {
     ),
     { status: "playing", setStartedAt: false },
   );
+});
+
+test("later play alone never becomes first-play evidence", () => {
+  assert.deepEqual(buildSteamStatusSuggestionPayload({
+    activityEventId: 9, lastPlayedAt: "2026-09-14T12:00:00Z",
+  }, { setStartedAt: true }), {
+    status: "playing", setStartedAt: false, activityEventId: 9,
+  });
 });
 
 test("stored Steam reviews normalize array shape and recompute totals", () => {

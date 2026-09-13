@@ -204,6 +204,16 @@ export const gameSchemas = {
 
 export const gameIdParam = celebrate(idParamSchema, opts);
 
+export const gameSearch = celebrate(
+  {
+    [Segments.QUERY]: Joi.object({
+      q: Joi.string().trim().min(3).max(120).required(),
+      wishlist_item_id: Joi.number().integer().positive().optional(),
+    }),
+  },
+  opts,
+);
+
 export const reorderGame = celebrate(
   {
     ...idParamSchema,

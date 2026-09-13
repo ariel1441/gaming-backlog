@@ -443,6 +443,51 @@ test("PUT /api/games/:id rejects duplicate title excluding current row", async (
   );
 });
 
+test("GET /api/games/search marks Wishlist RAWG duplicates and excludes the current item", async () => {
+  let catalogRowsSql = "";
+  let catalogRowsValues = null;
+  await withServer(async (text, values) => {
+    const sql = String(text);
+    if (sql.includes("FROM catalog_search_cache")) {
+      return {
+        rows: [{
+          result_catalog_game_ids_json: [12],
+          expires_at: new Date(Date.now() + 60_000),
+        }],
+      };
+    }
+    if (sql.includes("SELECT cg.*")) {
+      catalogRowsSql = sql;
+      catalogRowsValues = values;
+      return {
+        rows: [{
+          id: 12,
+          name: "Portal",
+          rawg_external_id: "101",
+          rawg_external_slug: "portal",
+          cover_url: "https://img.example/portal.jpg",
+          already_in_backlog: false,
+          already_in_wishlist: true,
+          genres_json: [],
+          stores_json: [],
+          tags_json: [],
+          metadata_quality: "search_result",
+        }],
+      };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const res = await request(baseUrl, "/api/games/search?q=portal&wishlist_item_id=20", {
+      authPayload: { is_guest: false },
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.results[0].alreadyInWishlist, true);
+    assert.match(catalogRowsSql, /user_wishlist_items/);
+    assert.match(catalogRowsSql, /\$3::int IS NULL OR wishlist\.id <> \$3/);
+    assert.equal(catalogRowsValues[2], 20);
+  });
+});
+
 test("POST /api/games/:id/metadata/refresh refreshes the owned RAWG identity", async () => {
   const ingestionCalls = [];
 

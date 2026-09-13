@@ -295,8 +295,8 @@ async function claimWork(db, workerId, userId = null, wishlistItemId = null) {
       `SELECT * FROM wishlist_metadata_work
         WHERE ($1::int IS NULL OR user_id = $1)
           AND ($2::bigint IS NULL OR wishlist_item_id = $2)
-          AND status IN ('queued', 'completed', 'failed', 'unmatched')
-          AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+          AND status IN ('queued', 'running', 'completed', 'failed', 'unmatched')
+          AND (status = 'running' OR next_attempt_at IS NULL OR next_attempt_at <= NOW())
           AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
         ORDER BY next_attempt_at NULLS FIRST, updated_at, wishlist_item_id
         FOR UPDATE SKIP LOCKED LIMIT 1`,
@@ -346,8 +346,10 @@ async function loadWork(work, db) {
        LEFT JOIN catalog_games catalog ON catalog.id = wishlist.catalog_game_id
        LEFT JOIN external_game_ids rawg
          ON rawg.catalog_game_id = catalog.id AND rawg.source = 'rawg'
-      WHERE work.wishlist_item_id = $1 AND work.user_id = $2`,
-    [work.wishlist_item_id, work.user_id],
+      WHERE work.wishlist_item_id = $1 AND work.user_id = $2
+        AND work.status = 'running' AND work.worker_id = $3 AND work.attempt_count = $4
+        AND work.lease_expires_at > NOW()`,
+    [work.wishlist_item_id, work.user_id, work.worker_id, work.attempt_count],
   );
   return rows[0] || null;
 }
@@ -356,6 +358,8 @@ async function loadCatalog(catalogGameId, db) {
   const { rows } = await db.query(
     `SELECT catalog.id AS catalog_game_id, catalog.cover_url,
             catalog.released_at, catalog.metadata_quality, catalog.genres_json,
+            catalog.metadata_fetched_at, catalog.metadata_failed_at,
+            catalog.metadata_next_refresh_at, catalog.metadata_failure_reason,
             rawg.external_id AS rawg_id
        FROM catalog_games catalog
        LEFT JOIN external_game_ids rawg
@@ -425,7 +429,56 @@ async function linkCatalog(work, catalogGameId, db) {
   }
 }
 
-async function updateWork(work, values, db) {
+function leaseLost() {
+  return Object.assign(new Error("Wishlist metadata work is no longer current."), { code: "wishlist_metadata_lease_lost" });
+}
+
+function startWorkHeartbeat(work, db) {
+  let updating = false;
+  const timer = setInterval(async () => {
+    if (updating) return;
+    updating = true;
+    try {
+      await db.query(`UPDATE wishlist_metadata_work
+        SET lease_expires_at = NOW() + ($5::int * INTERVAL '1 millisecond')
+        WHERE wishlist_item_id = $1 AND user_id = $2 AND worker_id = $3
+          AND attempt_count = $4 AND status = 'running' AND lease_expires_at > NOW()`,
+      [work.wishlist_item_id, work.user_id, work.worker_id, work.attempt_count, LEASE_MS]);
+    } catch { /* A failed renewal cannot authorize a late completion. */ }
+    finally { updating = false; }
+  }, Math.floor(LEASE_MS / 3));
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
+// Manual matching locks the item before its work row too. Never hold these
+// locks across provider requests. The attempt counter fences reused worker IDs.
+async function updateWork(work, values, db, catalogGameId = null) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const item = await client.query(`SELECT catalog_game_id FROM user_wishlist_items
+      WHERE id = $1 AND user_id = $2 FOR UPDATE`, [work.wishlist_item_id, work.user_id]);
+    const current = await client.query(`SELECT wishlist_item_id FROM wishlist_metadata_work
+      WHERE wishlist_item_id = $1 AND user_id = $2 AND worker_id = $3
+        AND attempt_count = $4 AND status = 'running' AND lease_expires_at > NOW()
+      FOR UPDATE`, [work.wishlist_item_id, work.user_id, work.worker_id, work.attempt_count]);
+    if (!item.rows[0] || !current.rows[0] ||
+        (Object.hasOwn(work, "catalog_game_id") && item.rows[0].catalog_game_id !== work.catalog_game_id)) {
+      throw leaseLost();
+    }
+    if (catalogGameId != null) await linkCatalog(work, catalogGameId, client);
+    await saveWork(work, values, client);
+    await client.query("COMMIT");
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function saveWork(work, values, db) {
   await db.query(
     `UPDATE wishlist_metadata_work
         SET status = $2, identity_state = $3, identity_reason = $4,
@@ -446,7 +499,9 @@ async function updateWork(work, values, db) {
 async function processWork(work, dependencies) {
   const db = dependencies.db;
   const row = await loadWork(work, db);
-  if (!row) return { status: "unmatched", reason: "wishlist_item_missing" };
+  if (!row) throw leaseLost();
+  work.catalog_game_id = row.catalog_game_id;
+  work.identity_state = row.rawg_id ? "exact" : row.identity_state;
   const now = dependencies.now();
   const title = row.catalog_name || row.display_name;
   let catalogId = await exactCatalogForSteam(row, db);
@@ -516,15 +571,27 @@ async function processWork(work, dependencies) {
   if (!catalog || Number(catalog.catalog_game_id) !== Number(catalogId)) {
     catalog = await loadCatalog(catalogId, db);
   }
-  if (!catalog || Number(catalog.catalog_game_id) !== Number(catalogId)) {
-    const result = await dependencies.ingestRawgGameMetadata(rawgId, { force: false });
-    catalog = result.catalogGame;
-  } else if (!wishlistCatalogMetadataComplete(catalog)) {
-    await dependencies.ingestRawgGameMetadata(rawgId, { force: false });
+  const providerRetryAt = catalog?.metadata_failed_at && validDate(catalog.metadata_next_refresh_at);
+  if (providerRetryAt && providerRetryAt > now) {
+    await updateWork(row, {
+      status: "failed", identityState: "exact", reason: "provider_backoff",
+      dueReason: "retry_backoff", nextAttemptAt: providerRetryAt,
+      errorCode: catalog.metadata_failure_reason || "rawg_retry_pending",
+    }, db, catalogId);
+    return { status: "failed", identityState: "exact", issue: "provider_backoff" };
+  }
+  const fetchedAt = validDate(catalog?.metadata_fetched_at);
+  const cachedUntil = fetchedAt ? nextWishlistMetadataAttempt({
+    releasedAt: catalog.released_at, metadataComplete: wishlistCatalogMetadataComplete(catalog),
+    attemptCount: Math.max(0, row.attempt_count - 1), now: fetchedAt,
+  }) : null;
+  const refresh = row.metadata_due_reason === "manual_refresh" || Boolean(catalog?.metadata_failed_at) || !cachedUntil || cachedUntil <= now;
+  if (refresh) {
+    // Full-but-incomplete and stale snapshots must not be reused by ingestion.
+    await dependencies.ingestRawgGameMetadata(rawgId, { force: true });
     catalog = await loadCatalog(catalogId, db);
   }
 
-  await linkCatalog(row, catalogId, db);
   const complete = wishlistCatalogMetadataComplete(catalog);
   await updateWork(row, {
     status: complete ? "completed" : "unmatched",
@@ -535,10 +602,10 @@ async function processWork(work, dependencies) {
       releasedAt: catalog?.released_at || row.release_date,
       metadataComplete: complete,
       attemptCount: row.attempt_count,
-      now,
+      now: refresh ? now : fetchedAt || now,
     }),
     completedAt: complete ? now : null,
-  }, db);
+  }, db, catalogId);
   return {
     status: complete ? "completed" : "unmatched",
     identityState: "exact",
@@ -558,6 +625,7 @@ export async function processNextWishlistMetadataBatch({
 } = {}) {
   const work = await claimWork(db, workerId, userId, wishlistItemId);
   if (!work) return null;
+  const stopHeartbeat = startWorkHeartbeat(work, db);
   const dependencies = {
     db,
     now,
@@ -568,28 +636,36 @@ export async function processNextWishlistMetadataBatch({
     const outcome = await processWork(work, dependencies);
     return { processed: 1, wishlistItemId: Number(work.wishlist_item_id), ...outcome };
   } catch (error) {
+    const skipped = { processed: 0, wishlistItemId: Number(work.wishlist_item_id), status: "skipped", reason: "lease_lost" };
+    if (error?.code === "wishlist_metadata_lease_lost") return skipped;
     const retryAt = nextWishlistMetadataAttempt({
       releasedAt: work.release_date,
       attemptCount: work.attempt_count,
       now: now(),
     });
-    await updateWork(work, {
+    const identityState = work.identity_state || "unresolved";
+    try { await updateWork(work, {
       status: "failed",
-      identityState: "unresolved",
+      identityState,
       reason: "provider_or_persistence_failure",
       dueReason: "retry_backoff",
-      nextAttemptAt: retryAt,
+      nextAttemptAt: new Date(Math.max(retryAt.getTime(), now().getTime() + (Number(error?.retryAfterMs) || 0))),
       errorCode: String(error?.code || "wishlist_metadata_failed"),
       errorMessage: String(error?.message || "Wishlist metadata refresh failed."),
-    }, db);
+    }, db); } catch (writeError) {
+      if (writeError?.code === "wishlist_metadata_lease_lost") return skipped;
+      throw writeError;
+    }
     return {
       processed: 1,
       wishlistItemId: Number(work.wishlist_item_id),
       status: "failed",
-      identityState: "unresolved",
+      identityState,
       errorCode: String(error?.code || "wishlist_metadata_failed"),
       errorMessage: String(error?.message || "Wishlist metadata refresh failed."),
     };
+  } finally {
+    stopHeartbeat();
   }
 }
 
@@ -605,6 +681,7 @@ export async function drainWishlistMetadataQueue({
   for (let index = 0; index < limit; index += 1) {
     const result = await processNextWishlistMetadataBatch({ db, userId, ...options });
     if (!result) break;
+    if (!result.processed) continue;
     results.push(result);
     await recordMetadataAttempt(db, runId, userId, result);
   }
@@ -645,15 +722,22 @@ export async function refreshWishlistMetadataItem(userId, wishlistItemId, option
     await ensureWishlistMetadataWorkForUser(userId, db);
     const reset = await db.query(
       `UPDATE wishlist_metadata_work
-          SET status = 'queued', identity_state = 'unresolved', identity_reason = NULL,
+          SET status = 'queued', metadata_due_reason = 'manual_refresh',
               candidates_json = '[]'::jsonb, next_attempt_at = NOW(), completed_at = NULL,
               last_error_code = NULL, last_error_message = NULL,
               worker_id = NULL, lease_expires_at = NULL, updated_at = NOW()
         WHERE wishlist_item_id = $1 AND user_id = $2
+          AND (last_error_code IS NULL OR next_attempt_at IS NULL OR next_attempt_at <= NOW())
           AND (status <> 'running' OR lease_expires_at IS NULL OR lease_expires_at < NOW())`,
       [itemId, userId],
     );
     if (!reset.rowCount) {
+      const pending = await db.query(`SELECT last_error_code, next_attempt_at FROM wishlist_metadata_work
+        WHERE wishlist_item_id = $1 AND user_id = $2`, [itemId, userId]);
+      const retryAt = validDate(pending.rows[0]?.next_attempt_at);
+      if (pending.rows[0]?.last_error_code && retryAt && retryAt > new Date()) {
+        throw conflict(`Metadata retry is scheduled for ${retryAt.toISOString()}. Please wait before refreshing.`);
+      }
       throw conflict("This Wishlist item is already being matched. Try again shortly.");
     }
     const drain = await drainWishlistMetadataQueue({
@@ -686,6 +770,8 @@ export async function selectWishlistRawgMatch(
   }
 
   const db = options.db || pool;
+  const owned = await db.query("SELECT id FROM user_wishlist_items WHERE id = $1 AND user_id = $2", [itemId, userId]);
+  if (!owned.rows[0]) throw notFound("Wishlist item not found.");
   const ingest = options.ingestRawgGameMetadata || ingestRawgGameMetadata;
   const ingested = await ingest(selectedRawgId, { force: false });
   const catalogGame = ingested?.catalogGame;

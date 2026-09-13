@@ -14,7 +14,13 @@ export function createGame(payload, opts = {}) {
 
 export function searchGames(query, opts = {}) {
   const q = encodeURIComponent(String(query || "").trim());
-  return api.get(`/api/games/search?q=${q}`, opts);
+  const wishlistItemId = Number(opts.wishlistItemId);
+  const wishlistQuery = Number.isInteger(wishlistItemId) && wishlistItemId > 0
+    ? `&wishlist_item_id=${wishlistItemId}`
+    : "";
+  const requestOpts = { ...opts };
+  delete requestOpts.wishlistItemId;
+  return api.get(`/api/games/search?q=${q}${wishlistQuery}`, requestOpts);
 }
 
 // Update a game

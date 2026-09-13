@@ -68,7 +68,7 @@ test('release review regressions use an isolated database and no providers', { t
 
     await t.test('multiple Steam identities produce one item and one unresolved price target across pages', async () => {
       const itemId = (await pool.query("INSERT INTO user_wishlist_items(user_id,display_name,local_intent_active) VALUES($1,'Two editions',TRUE) RETURNING id", [userId])).rows[0].id;
-      await pool.query("INSERT INTO steam_wishlist_items(user_id,account_id,wishlist_item_id,steam_app_id,provider_order,is_active) VALUES($1,$2,$3,'20',0,FALSE),($1,$2,$3,'21',1,TRUE)", [userId, account.id, itemId]);
+      await pool.query("INSERT INTO steam_wishlist_items(user_id,account_id,wishlist_item_id,steam_app_id,provider_order,is_active) VALUES($1,$2,$3,'20',0,TRUE),($1,$2,$3,'21',1,TRUE)", [userId, account.id, itemId]);
       await pool.query("INSERT INTO user_wishlist_items(user_id,display_name,local_intent_active) VALUES($1,'Local only',TRUE)", [userId]);
       const page = await wishlist.listWishlistItems(userId, { limit: 1 });
       const next = await wishlist.listWishlistItems(userId, { limit: 1, offset: 1 });
@@ -76,13 +76,16 @@ test('release review regressions use an isolated database and no providers', { t
       assert.equal(next.total, 2);
       assert.notEqual(page.items[0].id, next.items[0].id);
       const multi = [...page.items, ...next.items].find(item => item.id === Number(itemId));
-      assert.equal(multi.steamAppId, '21');
+      assert.equal(multi.steamAppId, '20');
       assert.equal(multi.steamActive, true);
       const targets = (await pool.query('SELECT reason FROM steam_price_targets WHERE wishlist_item_id=$1', [itemId])).rows;
       assert.deepEqual(targets, [{ reason: 'identity_unresolved' }]);
-      const migration = await readFile('backend/migrations/035_deduplicate_steam_price_targets.sql', 'utf8');
-      await pool.query(migration);
-      assert.ok((await readFile('backend/schema.sql', 'utf8')).replace(/\r\n/g, '\n').endsWith(migration.replace(/\r\n/g, '\n')));
+      const schema = (await readFile('backend/schema.sql', 'utf8')).replace(/\r\n/g, '\n');
+      const viewStart = schema.lastIndexOf('-- One target per local Wishlist item.');
+      const viewEnd = schema.indexOf('-- Durable, item-scoped Wishlist metadata work', viewStart);
+      const priceView = schema.slice(viewStart, viewEnd);
+      assert.match(priceView, /Steam Wishlist membership is the price identity/);
+      assert.doesNotMatch(priceView, /external_game_ids/);
     });
 
     await t.test('exact app lookup finds a linked candidate beyond fifty substring matches', async () => {

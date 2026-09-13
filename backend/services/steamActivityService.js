@@ -23,8 +23,14 @@ export async function recordSteamActivityObservations(
         source.playtime_minutes_forever, source.achievements_unlocked,
         source.achievements_total, game.name AS game_name, game.cover AS game_cover,
         catalog.name AS catalog_name, catalog.cover_url AS catalog_cover,
-        candidate.steam_name, candidate.steam_icon_url
+        candidate.steam_name, candidate.steam_icon_url,
+        current_job.account_id, current_job.provider_user_id, account.linked_at
       FROM user_game_sources source
+      JOIN steam_sync_jobs current_job ON current_job.sync_run_id = $2
+        AND current_job.user_id = source.user_id
+      JOIN user_external_accounts account ON account.id = current_job.account_id
+        AND account.user_id = source.user_id AND account.disconnected_at IS NULL
+        AND account.provider_user_id = current_job.provider_user_id
       LEFT JOIN games game ON game.id = source.game_id AND game.user_id = source.user_id
       LEFT JOIN catalog_games catalog ON catalog.id = source.catalog_game_id
       LEFT JOIN LATERAL (
@@ -54,10 +60,17 @@ export async function recordSteamActivityObservations(
         previous.observed_at, NOW(), previous.id IS NULL
       FROM sources s
       LEFT JOIN LATERAL (
-        SELECT id, observed_at, playtime_minutes_forever, achievements_unlocked
-        FROM steam_activity_observations
-        WHERE user_id = s.user_id AND steam_app_id = s.steam_app_id
-        ORDER BY observed_at DESC, id DESC LIMIT 1
+        SELECT observation.id, observation.observed_at,
+          observation.playtime_minutes_forever, observation.achievements_unlocked
+        FROM steam_activity_observations observation
+        JOIN steam_sync_jobs previous_job ON previous_job.sync_run_id = observation.sync_run_id
+          AND previous_job.user_id = observation.user_id
+        WHERE observation.user_id = s.user_id AND observation.steam_app_id = s.steam_app_id
+          AND previous_job.account_id = s.account_id
+          AND previous_job.provider_user_id = s.provider_user_id
+          AND observation.observed_at >= s.linked_at
+          AND observation.sync_run_id <> $2
+        ORDER BY observation.observed_at DESC, observation.id DESC LIMIT 1
       ) previous ON TRUE
       ON CONFLICT (sync_run_id, steam_app_id) DO NOTHING
       RETURNING *

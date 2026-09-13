@@ -334,7 +334,7 @@ export default function NotificationActions({
                       }, { setStartedAt: !game?.started_at }),
                     );
                     return finishDecision(result?.game?.startedAt
-                      ? `Moved to Playing. Started date set to ${result.game.startedAt}.`
+                      ? `Moved to Playing. Started date: ${result.game.startedAt}.`
                       : "Moved to Playing. Existing dates were kept.");
                   })
                 }

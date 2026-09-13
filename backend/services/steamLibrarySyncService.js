@@ -448,7 +448,7 @@ async function persistWorkItem(job, item, prepared) {
       reason: "Existing Steam source.",
     };
     const firstObservedAt = firstPlayJustSet
-      ? item.app.lastPlayedAt || new Date()
+      ? item.app.lastPlayedAt || job.payload_json.snapshotObservedAt || job.started_at || new Date()
       : activeBefore?.first_play_observed_at || null;
     const beforeCandidate = item.isNew
       ? await client.query(
@@ -838,6 +838,7 @@ async function initializeSteamSyncJob(job) {
   }
   const diff = diffSteamLibrarySnapshot(games, existingSources);
   const payload = {
+    snapshotObservedAt: nowIso(),
     games: diff.workItems,
     unchangedAppIds: diff.unchangedAppIds,
     itemsSeen: diff.itemsSeen,
@@ -884,7 +885,11 @@ async function finalizeSteamSyncJob(job) {
       {
         limit: SYNC_AUTO_MATCH_LIMIT,
         useCatalogSearch: true,
-        candidateIds: progress.newCandidateIds || [],
+        // Candidate rows are the durable follow-up queue. Process current
+        // pending work on every library finalization so a large discovery is
+        // drained across bounded runs; matched/user-selected rows are already
+        // excluded by autoMatchSteamCandidates.
+        candidateIds: null,
         writeGuard: async (work) => (await withActiveJobLease(job, work)).value,
       },
     );
