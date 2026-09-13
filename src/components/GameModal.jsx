@@ -215,6 +215,8 @@ export default function GameModal({
   onSubmitEdit,
   onCancelEdit,
   onGameUpdated,
+  onRefreshMetadata,
+  metadataRefreshing = false,
   startInEditMode = false,
   isSubmitting = false,
   formError = null,
@@ -1220,7 +1222,7 @@ export default function GameModal({
                 </Button>
               </div>
             </div>
-          ) : onEdit || onRefresh || canEdit ? (
+          ) : onEdit || onRefresh || canEdit || onRefreshMetadata ? (
             <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:flex-row sm:items-center sm:px-7">
               <div>
                 {onRefresh ? (
@@ -1230,8 +1232,22 @@ export default function GameModal({
                   </Button>
                 ) : null}
               </div>
-              {canEdit ? (
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                {onRefreshMetadata ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={onRefreshMetadata}
+                    disabled={metadataRefreshing}
+                    aria-busy={metadataRefreshing}
+                    className="w-full sm:w-auto"
+                  >
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                    {metadataRefreshing ? "Refreshing..." : "Refresh metadata"}
+                  </Button>
+                ) : null}
+                {canEdit ? (
+                  <>
                   <Button
                     type="button"
                     variant="secondary"
@@ -1285,8 +1301,9 @@ export default function GameModal({
                       ) : null}
                     </div>
                   ) : null}
-                </div>
-              ) : null}
+                  </>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>

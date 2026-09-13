@@ -2,6 +2,9 @@ import { api } from "./apiClient";
 export function hideOtherActivityUpdates(snapshot, opts = {}) {
   return api.post('/api/activity/inbox/hide-other', { snapshot }, opts);
 }
+export function clearActivityUpdates(snapshot, opts = {}) {
+  return api.post('/api/activity/inbox/clear-updates', { snapshot }, opts);
+}
 
 export function activateActivityInbox(opts = {}) { return api.post('/api/activity/inbox/activate', {}, opts); }
 export function listActivityInbox(params = {}, opts = {}) {

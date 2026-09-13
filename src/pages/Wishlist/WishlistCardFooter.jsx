@@ -1,4 +1,4 @@
-import { CalendarDays, ExternalLink, Heart, ListPlus } from "lucide-react";
+import { CalendarDays, ExternalLink, Heart, ListPlus, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button, SelectMenu } from "../../components/ui";
 
@@ -16,6 +16,8 @@ export default function WishlistCardFooter({
   onMoveStatusChange,
   moving = false,
   preview = false,
+  onRefreshMetadata,
+  metadataRefreshing = false,
 }) {
   return (
     <div className="space-y-3">
@@ -30,6 +32,18 @@ export default function WishlistCardFooter({
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {onRefreshMetadata ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={onRefreshMetadata}
+            disabled={metadataRefreshing}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            {metadataRefreshing ? "Refreshing..." : "Refresh metadata"}
+          </Button>
+        ) : null}
         {game.steamStoreUrl ? (
           <Button
             as="a"

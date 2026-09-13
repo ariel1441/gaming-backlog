@@ -28,3 +28,7 @@ export const wishlistItemAction = celebrate({
     status: Joi.string().trim().max(80).required(),
   }),
 }, opts);
+
+export const wishlistMetadataItem = celebrate({
+  [Segments.PARAMS]: Joi.object({ itemId }),
+}, opts);

@@ -20,14 +20,27 @@ const scope = `FROM user_activity_events e
       s.removed_at
     FROM user_wishlist_items w
     LEFT JOIN steam_wishlist_items s ON s.wishlist_item_id = w.id AND s.user_id = w.user_id AND s.account_id = account.id
-    WHERE w.user_id = e.user_id AND (w.id = e.wishlist_item_id OR s.steam_app_id = e.external_id OR EXISTS (
-      SELECT 1 FROM steam_price_targets t WHERE t.user_id = e.user_id AND t.account_id = account.id
-        AND t.wishlist_item_id = w.id AND t.steam_app_id = e.external_id
-    ))
+     WHERE w.user_id = e.user_id AND (w.id = e.wishlist_item_id OR (
+       e.wishlist_item_id IS NULL AND (s.steam_app_id = e.external_id OR EXISTS (
+         SELECT 1 FROM steam_price_targets t WHERE t.user_id = e.user_id AND t.account_id = account.id
+           AND t.wishlist_item_id = w.id AND t.steam_app_id = e.external_id
+       ))
+     ))
     ORDER BY w.local_intent_active DESC, w.id LIMIT 1
   ) related_wishlist ON TRUE
   WHERE e.user_id = $1 AND e.state <> 'dismissed' AND e.source IN ('steam_library', 'steam_wishlist', 'steam_prices')`;
 const attention = `(e.source = 'steam_library' AND e.event_kind = 'decision' AND e.state = 'open')`;
+const attentionScope = `FROM user_activity_events e
+  JOIN steam_sync_jobs job ON job.sync_run_id = e.sync_run_id AND job.user_id = e.user_id
+  JOIN user_external_accounts account ON account.id = job.account_id AND account.user_id = e.user_id
+    AND account.provider = 'steam' AND account.disconnected_at IS NULL AND account.provider_user_id = job.provider_user_id
+  WHERE e.user_id = $1 AND e.state <> 'dismissed' AND e.source IN ('steam_library', 'steam_wishlist', 'steam_prices')`;
+const updateCountScope = `FROM user_activity_events e
+  JOIN steam_sync_jobs job ON job.sync_run_id = e.sync_run_id AND job.user_id = e.user_id
+  JOIN user_external_accounts account ON account.id = job.account_id AND account.user_id = e.user_id
+    AND account.provider = 'steam' AND account.disconnected_at IS NULL AND account.provider_user_id = job.provider_user_id
+  LEFT JOIN user_activity_receipts receipt ON receipt.user_id = e.user_id AND receipt.event_id = e.id
+  WHERE e.user_id = $1 AND e.state <> 'dismissed' AND e.source IN ('steam_library', 'steam_wishlist', 'steam_prices')`;
 // Ownership and Wishlist removal can arrive in either order, in separate runs.
 // Keep the acquisition decision as the single delivery, even after it is dismissed.
 // Facts remain intact. Old connections must never suppress current notifications.
@@ -42,6 +55,27 @@ const pairedRemoval = `(owned.id IS NOT NULL AND e.source = 'steam_wishlist'
   ))`;
 const visibleUpdate = `NOT ${attention} AND receipt.dismissed_at IS NULL
   AND NOT (e.source = 'steam_prices' AND owned.id IS NOT NULL) AND NOT ${pairedRemoval}`;
+const currentOwned = `EXISTS (
+  SELECT 1 FROM user_game_sources owned
+  WHERE owned.user_id = e.user_id AND owned.provider = 'steam'
+    AND owned.provider_app_id = e.external_id AND owned.source_status IN ('owned', 'ignored')
+    AND owned.last_synced_at >= account.linked_at
+)`;
+const pairedRemovalFast = `EXISTS (
+  SELECT 1 FROM user_activity_events acquisition
+  JOIN steam_sync_jobs acquisition_job ON acquisition_job.sync_run_id = acquisition.sync_run_id
+    AND acquisition_job.user_id = acquisition.user_id
+  WHERE acquisition.user_id = e.user_id AND acquisition.external_id = e.external_id
+    AND acquisition.source = 'steam_library' AND acquisition.event_kind = 'decision'
+    AND acquisition.event_type IN ('steam_new_game', 'steam_started_playing', 'steam_status_suggestion')
+    AND acquisition_job.account_id = account.id
+    AND acquisition_job.provider_user_id = account.provider_user_id
+)`;
+const visibleUpdateFast = `NOT ${attention} AND receipt.dismissed_at IS NULL
+  AND NOT (e.source = 'steam_prices' AND ${currentOwned})
+  AND NOT (e.source = 'steam_wishlist'
+    AND e.event_type IN ('wishlist_removed', 'wishlist_likely_purchased')
+    AND ${currentOwned} AND ${pairedRemovalFast})`;
 // Price transitions retain their exact group key. Other domains use game + run.
 const groupKey = `CASE WHEN e.event_type = 'wishlist_priority_changed'
   THEN 'wishlist-order:' || account.id::text || ':' || e.sync_run_id::text
@@ -79,13 +113,30 @@ export async function listActivityInbox(
       ).rows[0].id;
     const counts = (
       await client.query(
-        `SELECT COUNT(*) FILTER (WHERE ${attention})::int AS attention,
-      COUNT(DISTINCT (${groupKey})) FILTER (WHERE ${attention})::int AS "pendingDecisions",
-      COUNT(*) FILTER (WHERE ${visibleUpdate})::int AS updates
-      ${scope}`,
+        section === "attention"
+          ? `SELECT COUNT(*) FILTER (WHERE ${attention})::int AS attention,
+        COUNT(DISTINCT (${groupKey})) FILTER (WHERE ${attention})::int AS "pendingDecisions",
+        NULL::int AS updates
+        ${attentionScope}`
+          : `SELECT NULL::int AS attention,
+        NULL::int AS "pendingDecisions",
+        COUNT(*) FILTER (WHERE ${visibleUpdateFast})::int AS updates
+        ${updateCountScope}`,
         [userId],
       )
     ).rows[0];
+    if (section !== "attention") {
+      const attentionCounts = (
+        await client.query(
+          `SELECT COUNT(*) FILTER (WHERE ${attention})::int AS attention,
+          COUNT(DISTINCT (${groupKey})) FILTER (WHERE ${attention})::int AS "pendingDecisions"
+          ${attentionScope}`,
+          [userId],
+        )
+      ).rows[0];
+      counts.attention = attentionCounts.attention;
+      counts.pendingDecisions = attentionCounts.pendingDecisions;
+    }
     const filter = section === "attention" ? attention : visibleUpdate;
     const { rows: grouped } = await client.query(
       `WITH candidates AS (
@@ -160,6 +211,21 @@ export async function hideOtherActivityUpdates(userId, snapshot) {
   ) INSERT INTO user_activity_receipts(user_id, event_id, dismissed_at)
     SELECT $1, c.id, NOW() FROM candidates c JOIN eligible_groups g USING (inbox_group)
     ON CONFLICT (user_id, event_id) DO UPDATE SET dismissed_at = COALESCE(user_activity_receipts.dismissed_at, EXCLUDED.dismissed_at)`,
+    [userId, snapshot],
+  );
+  return { updated: result.rowCount };
+}
+
+export async function clearActivityUpdates(userId, snapshot) {
+  await assertSavedAccountUser(userId);
+  if (!/^\d{1,18}$/.test(String(snapshot)))
+    throw badRequest("Invalid notification snapshot.");
+  const result = await pool.query(
+    `INSERT INTO user_activity_receipts(user_id, event_id, dismissed_at)
+     SELECT $1, e.id, NOW()
+     ${updateCountScope} AND e.id <= $2 AND (${visibleUpdateFast})
+     ON CONFLICT (user_id, event_id) DO UPDATE
+       SET dismissed_at = COALESCE(user_activity_receipts.dismissed_at, EXCLUDED.dismissed_at)`,
     [userId, snapshot],
   );
   return { updated: result.rowCount };

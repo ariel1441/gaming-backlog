@@ -14,6 +14,11 @@ import {
   getSteamAccount,
   serializeSteamAccount,
 } from "./steamService.js";
+import {
+  enqueueWishlistMetadataWork,
+  getWishlistMetadataStatus,
+  serializeWishlistMetadataWork,
+} from "./wishlistMetadataService.js";
 
 const SOURCE = "steam_wishlist";
 const EMPTY_EVIDENCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -71,6 +76,12 @@ export function serializeWishlistPrice(row) {
   const last = p?.lastKnown;
   const reason = row.price_reason || 'disconnected';
   const pendingBaseline = o && o.epoch !== p.epoch;
+  const nextAttemptAt = p?.nextAttemptAt ? Date.parse(p.nextAttemptAt) : NaN;
+  const hasFutureAttempt = Number.isFinite(nextAttemptAt) && nextAttemptAt > Date.now();
+  const permanentError = ['steam_price_offer_uncertain', 'steam_price_package_mismatch', 'steam_price_unsupported_type'].includes(p?.lastError);
+  const checkState = p?.lastError
+    ? (permanentError ? 'error' : 'retrying')
+    : (!o || pendingBaseline ? 'unchecked' : (hasFutureAttempt ? 'awaiting_scheduled_check' : 'checked'));
   return {
     country: 'IL', monitoring: reason === 'eligible', monitoringReason: reason,
     status: p?.lastError ? 'failed' : pendingBaseline ? 'not_checked' : o?.availability || 'not_checked',
@@ -81,7 +92,7 @@ export function serializeWishlistPrice(row) {
     discountPercent: o?.discount_percent ?? null,
     offerId: o?.offer_id || null, offerName: o?.offer_name || null,
     observedAt: o?.observed_at || null, lastAttemptAt: p?.lastAttemptAt || null,
-    nextAttemptAt: p?.nextAttemptAt || null, errorCode: p?.lastError || null,
+    nextAttemptAt: p?.nextAttemptAt || null, errorCode: p?.lastError || null, checkState,
     stale: Boolean(o && (pendingBaseline || reason !== 'eligible' || p.lastError || Date.now() - new Date(o.observed_at).getTime() > 36 * 60 * 60 * 1000)),
     lastKnown: last ? { currentMinor: Number(last.current_minor), currency: last.currency, observedAt: last.observed_at } : null,
   };
@@ -112,6 +123,8 @@ function serializeWishlistItem(row, { hltbLookup } = {}) {
     providerOrder: row.provider_order == null ? null : Number(row.provider_order),
     changedAt: row.last_changed_at || row.updated_at,
     metadataProvenance: row.metadata_provenance || {},
+    metadataWork: serializeWishlistMetadataWork(row.metadata_work),
+    metadataStatus: row.metadata_work ? serializeWishlistMetadataWork(row.metadata_work).status : "pending",
     inBacklog: row.game_id != null && String(row.game_status || "").trim().toLowerCase() !== "wishlist",
     dateAdded: row.date_added || null,
     active: Boolean(row.local_intent_active || row.is_active),
@@ -158,7 +171,7 @@ export async function listWishlistItems(userId, options = {}) {
     where.push(`COALESCE(catalog.name, game.name, candidate.steam_name, wishlist.display_name) ILIKE $${params.length}`);
   }
   params.push(limit, offset);
-  const { rows, account, priceHealth } = await withTransaction(async (client) => {
+  const { rows, account, priceHealth, metadataHealth } = await withTransaction(async (client) => {
     await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const { rows } = await client.query(
     `SELECT wishlist.*, steam.wishlist_item_id, steam.steam_app_id, steam.priority,
@@ -174,6 +187,7 @@ export async function listWishlistItems(userId, options = {}) {
             catalog.genres_json AS catalog_genres_json,
             game.how_long_to_beat AS game_hltb_hours,
             candidate.steam_name, candidate.steam_icon_url,
+            to_jsonb(metadata_work) AS metadata_work,
             COUNT(*) OVER()::int AS total_count,
             COUNT(*) FILTER (WHERE COALESCE(catalog.name, game.name, candidate.steam_name, wishlist.display_name) ~ '^Steam App [0-9]+$') OVER()::int AS metadata_missing_count
        FROM user_wishlist_items wishlist
@@ -199,7 +213,9 @@ export async function listWishlistItems(userId, options = {}) {
            AND (target.steam_app_id IS NULL OR m.steam_app_id = target.steam_app_id)
          ORDER BY m.id DESC LIMIT 1
        ) price ON TRUE
-       LEFT JOIN steam_import_candidates candidate ON candidate.user_id = wishlist.user_id AND candidate.steam_app_id = steam.steam_app_id
+      LEFT JOIN steam_import_candidates candidate ON candidate.user_id = wishlist.user_id AND candidate.steam_app_id = steam.steam_app_id
+      LEFT JOIN wishlist_metadata_work metadata_work
+        ON metadata_work.wishlist_item_id = wishlist.id AND metadata_work.user_id = wishlist.user_id
       WHERE ${where.join(" AND ")}
       ORDER BY ${order}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -212,6 +228,7 @@ export async function listWishlistItems(userId, options = {}) {
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error IN ('steam_price_offer_uncertain', 'steam_price_package_mismatch'))::int AS verification,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error = 'steam_price_unsupported_type')::int AS unsupported,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error IS NOT NULL AND m.last_error NOT IN ('steam_price_offer_uncertain', 'steam_price_package_mismatch', 'steam_price_unsupported_type'))::int AS retrying,
+      COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error IS NULL AND o.id IS NOT NULL AND m.next_attempt_at > NOW())::int AS awaiting_scheduled,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND o.epoch = m.epoch AND o.observed_at >= NOW() - INTERVAL '36 hours' AND m.last_error IS NULL)::int AS fresh,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.latest_observation_id IS NULL AND m.last_error IS NULL)::int AS unchecked,
       COUNT(*) FILTER (WHERE t.reason = 'identity_unresolved')::int AS unresolved,
@@ -220,7 +237,12 @@ export async function listWishlistItems(userId, options = {}) {
       LEFT JOIN steam_price_monitors m ON m.account_id = t.account_id AND m.wishlist_item_id = t.wishlist_item_id AND m.steam_app_id = t.steam_app_id
       LEFT JOIN steam_price_observations o ON o.id = m.latest_observation_id
       WHERE t.user_id = $1`, [userId]);
-    return { rows, account: await getSteamAccount(userId, client), priceHealth: health.rows[0] };
+    return {
+      rows,
+      account: await getSteamAccount(userId, client),
+      priceHealth: health.rows[0],
+      metadataHealth: await getWishlistMetadataStatus(userId, client),
+    };
   });
   const items = rows.map((row) => serializeWishlistItem(row, { hltbLookup: options.hltbLookup }));
   return {
@@ -234,6 +256,7 @@ export async function listWishlistItems(userId, options = {}) {
       missingNames: Number(rows[0]?.metadata_missing_count) || 0,
       complete: items.every((item) => item.metadataComplete),
       incompleteItems: items.filter((item) => !item.metadataComplete).length,
+      ...(metadataHealth || {}),
     },
     limit,
     offset,
@@ -419,6 +442,11 @@ export async function processSteamWishlistJob(job) {
            last_sync_run_id = EXCLUDED.last_sync_run_id, updated_at = NOW()`,
         [job.user_id, account.id, wishlistItemId, item.appid, item.priority, item.dateAdded, job.sync_run_id, item.providerOrder ?? null],
       );
+      await enqueueWishlistMetadataWork(client, {
+        userId: job.user_id,
+        wishlistItemId,
+        steamAppId: item.appid,
+      });
       if (baselineExists && (!prior || !prior.is_active)) {
         await resolveOppositeEvent(client, job.user_id, item.appid, "wishlist_removed");
         await resolveOppositeEvent(client, job.user_id, item.appid, "wishlist_likely_purchased");

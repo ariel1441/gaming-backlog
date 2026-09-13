@@ -207,6 +207,8 @@ export default function BacklogPage() {
     handleAddGame,
     startEditing,
     handleEditGame,
+    handleRefreshMetadata,
+    metadataRefreshingId,
     startFinishing,
     handleFinishGame,
     handleReorderGames,
@@ -588,6 +590,8 @@ export default function BacklogPage() {
             allMyGenres={allMyGenres}
             onAddToNextUp={handleAddToNextUp}
             onDeleteGame={handleDeleteGame}
+            onRefreshMetadata={isAuthenticated && !isGuest ? handleRefreshMetadata : null}
+            metadataRefreshingId={metadataRefreshingId}
             showAuth={showAuth}
             onCloseAuth={() => setShowAuth(false)}
             showOnboarding={showOnboarding}

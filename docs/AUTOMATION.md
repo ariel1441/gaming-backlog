@@ -39,8 +39,11 @@ For each eligible account it runs these stages sequentially:
    new/changed games and matching/review work, then eligible achievement follow-ups.
 2. **Wishlist:** reconcile membership and metadata, preserving removal history
    and separate local intentions. Empty-response protection guards mass removal.
-3. **Prices:** refresh eligible, due Israel offers and persist observations/events.
-   Errors, unavailable offers and ambiguous identities are distinct outcomes.
+3. **Prices:** scan Steam's public Store change feed, intersect changed AppIDs
+   with exact eligible Wishlist identities, confirm matching Israel offers, and
+   persist observations/events. New/unobserved, retrying, and periodic audit
+   work remains bounded. Errors, unavailable offers and ambiguous identities
+   are distinct outcomes.
 
 A failed stage is recorded and later stages/accounts can continue. The command
 can process jobs itself and needs no browser. Separately, the running backend
@@ -56,11 +59,17 @@ library runs also select due pending work. Attempts normally have a six-hour min
 spacing; failures back off up to seven days. Becoming due does not launch a new
 library run. This is not a six-hour refresh of every game's achievements.
 
-Successful price observations normally become eligible again after 24 hours.
-Price runs are bounded by 500 items, 650 provider requests and a ten-minute request
-budget. Deferred work awaits another run. Failure backoff starts at six hours in
-production, or one minute in explicit development mode. Provider Retry-After can
-extend it. These limits do not guarantee full Wishlist price coverage every day.
+Scheduled successful price observations normally become eligible again after a
+three-day safety audit; a global Store change signal can select them sooner.
+New/never-observed entries and retry failures remain due immediately or follow
+the existing backoff. The feed cursor advances only after complete pagination,
+and a short replay overlap plus a retained change ledger prevents page/clock
+boundary gaps. A feed failure keeps the last cursor and uses the bounded audit
+fallback. Price runs are bounded by 500 items, 650 provider requests and a
+ten-minute request budget. Deferred work awaits another run. Failure backoff
+starts at six hours in production, or one minute in explicit development mode.
+Provider Retry-After can extend it. These limits do not guarantee full Wishlist
+price coverage every day.
 
 Steam updates private source facts and review/notification evidence. It does not
 silently change personal status/dates or blindly import the whole library. Current
@@ -139,6 +148,31 @@ without the same RAWG fallback. The UI's generic Estimate label and `displayHLTB
 field do not establish that a value actually came from HLTB. See
 [catalog decoration](../backend/services/catalogService.js) and
 [hours display](../src/utils/hours.js). There is no new estimate model implied here.
+
+## Wishlist metadata: explicit bounded work
+
+Steam Wishlist membership reconciliation only enqueues item-scoped metadata work;
+it does not call RAWG or change price observations. Use the Wishlist diagnostics'
+**Refresh metadata** action to drain at most two due items at a time, or the
+explicit **Refresh all queued** action to drain the current queue in bounded
+batches of ten while the page remains open. Existing Steam name, cover, release
+and tag fallbacks remain usable while work is pending.
+
+Only an exact Steam/catalog identity or one normalized-title RAWG match is linked
+automatically. No match remains unresolved, while multiple exact matches remain
+in identity review with the Steam fallback preserved. Successful incomplete work
+retries after three days and then weekly; complete recent catalog records are due
+monthly and mature records every four months. Provider failures retain the same
+item in the durable queue with a bounded retry time. This queue is separate from
+`METADATA_REFRESH_ENABLED`, which remains off by default and is not required for
+Wishlist hydration.
+
+Refresh runs are also recorded in the general `metadata_jobs` history, with
+item-level outcomes in `wishlist_metadata_attempts`. The authenticated
+`GET /api/wishlist/metadata/runs` endpoint returns recent owner-scoped summaries;
+provider payloads and secrets are not stored in this history.
+
+Source: [wishlistMetadataService.js](../backend/services/wishlistMetadataService.js).
 
 | Mechanism | Timing and effect |
 | --- | --- |

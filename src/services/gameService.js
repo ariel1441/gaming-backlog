@@ -22,6 +22,10 @@ export function updateGame(id, put, opts = {}) {
   return api.put(`/api/games/${id}`, put, opts);
 }
 
+export function refreshGameMetadata(id, opts = {}) {
+  return api.post(`/api/games/${id}/metadata/refresh`, {}, opts);
+}
+
 export function finishGame(id, payload, opts = {}) {
   return api.post(`/api/games/${id}/finish`, payload, opts);
 }

@@ -29,7 +29,7 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
     const runs = await import('./services/integrationSyncService.js');
     let sequence = 0, hold = null;
     const amounts = new Map(), failures = new Set(), calls = [];
-    let allFree = false, rateLimited = false, retryAfter = '3600';
+    let allFree = false, rateLimited = false, retryAfter = '3600', feedApps = [], feedFailure = false;
     const respond = body => Response.json(body, { headers: { 'x-eresult': '1' } });
     globalThis.fetch = async input => {
       const uri = new URL(String(input)); calls.push(uri);
@@ -37,6 +37,11 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       if (hold?.matches(uri)) {
         const current = hold; hold = null; current.started();
         await new Promise(resolve => { releaseHeld = resolve; });
+      }
+      if (uri.hostname === 'partner.steam-api.com' && uri.pathname.includes('GetAppList')) {
+        if (feedFailure) return new Response('feed unavailable', { status: 503 });
+        assert.equal(uri.searchParams.get('key'), 'fixture-key');
+        return respond({ response: { apps: feedApps, last_appid: feedApps.at(-1)?.appid || null, have_more_results: false } });
       }
       if (uri.pathname.includes('GetItems')) {
         const request = JSON.parse(uri.searchParams.get('input_json'));
@@ -289,6 +294,60 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       assert.equal((await monitors(user.userId))[0].active, false);
     });
 
+    await t.test('scheduled bulk deltas intersect Wishlist targets, confirm IL, and preserve the cursor on feed failure', async () => {
+      const previousKey = process.env.STEAM_WEB_API_KEY;
+      process.env.STEAM_WEB_API_KEY = 'fixture-key';
+      try {
+        const user = await owner(['901', '902']);
+        await steam.updateSteamAutoSync(user.userId, true);
+        await finish(user.userId); // independent baselines
+        await pool.query("UPDATE steam_price_monitors SET next_attempt_at = NOW() + INTERVAL '1 day' WHERE user_id = $1", [user.userId]);
+        amounts.set('901', 500);
+        feedApps = [
+          { appid: 901, last_modified: 1_700_000_000, price_change_number: '1' },
+          { appid: 999, last_modified: 1_700_000_001, price_change_number: '2' },
+        ];
+        const scheduled = await claimed(user, { trigger: 'scheduled' });
+        const result = await prices.processSteamPriceJob(scheduled);
+        assert.equal(result.summary.priceMode, 'delta');
+        assert.equal(result.summary.feedChangedCandidates, 2);
+        assert.equal(result.summary.succeeded, 1);
+        assert.equal((await observations(user.userId)).length, 3);
+        assert.equal((await events(user.userId)).length, 2);
+        assert.equal((await monitors(user.userId)).find(m => m.steam_app_id === '902').latest_observation_id != null, true);
+        const diagnosticRead = await wishlist.listWishlistItems(user.userId);
+        assert.equal(diagnosticRead.items.find(i => i.steamAppId === '901').steamPrice.checkState, 'awaiting_scheduled_check');
+        assert.equal(Number(diagnosticRead.priceHealth.awaiting_scheduled), 2);
+
+        await pool.query("UPDATE steam_price_feed_cursor SET last_success_at = NOW() - INTERVAL '2 days', lease_token = NULL, lease_expires_at = NULL WHERE id = 1");
+        const unchangedFeed = await claimed(user, { trigger: 'scheduled' });
+        const unchanged = await prices.processSteamPriceJob(unchangedFeed);
+        assert.equal(unchanged.summary.priceMode, 'delta');
+        assert.equal(unchanged.summary.feedChangedCandidates, 0);
+        assert.equal(unchanged.summary.reason, 'nothing_due');
+        assert.equal((await observations(user.userId)).length, 3);
+        const cursorBeforeFailure = (await pool.query('SELECT cursor_modified_since FROM steam_price_feed_cursor WHERE id = 1')).rows[0];
+
+        const failedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+        await pool.query("UPDATE steam_price_feed_cursor SET last_success_at = $1, lease_token = NULL, lease_expires_at = NULL WHERE id = 1", [failedAt]);
+        feedFailure = true;
+        await pool.query("UPDATE steam_price_monitors SET next_attempt_at = NOW() + INTERVAL '1 day' WHERE user_id = $1", [user.userId]);
+        const failedFeed = await claimed(user, { trigger: 'scheduled' });
+        const fallback = await prices.processSteamPriceJob(failedFeed);
+        assert.equal(fallback.summary.priceMode, 'fallback');
+        assert.equal(fallback.summary.feedErrorCode, 'steam_http_error');
+        assert.equal((await observations(user.userId)).length, 3);
+        const cursorAfter = (await pool.query('SELECT last_success_at, cursor_modified_since FROM steam_price_feed_cursor WHERE id = 1')).rows[0];
+        assert.equal(cursorAfter.last_success_at.getTime(), failedAt.getTime());
+        assert.equal(Number(cursorAfter.cursor_modified_since), Number(cursorBeforeFailure.cursor_modified_since));
+      } finally {
+        feedFailure = false;
+        feedApps = [];
+        if (previousKey == null) delete process.env.STEAM_WEB_API_KEY;
+        else process.env.STEAM_WEB_API_KEY = previousKey;
+      }
+    });
+
     await t.test('owner guards, private reads, account history and idempotent additive migration', async () => {
       const other = await owner([]);
       assert.equal((await wishlist.listWishlistItems(other.userId)).total, 0);
@@ -304,6 +363,10 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       await pool.query(await readFile('backend/migrations/033_add_steam_wishlist_prices.sql', 'utf8'));
       assert.equal((await observations(first.userId)).length, before);
       assert.ok((await readFile('backend/schema.sql', 'utf8')).replace(/\r\n/g, '\n').includes((await readFile('backend/migrations/033_add_steam_wishlist_prices.sql', 'utf8')).replace(/\r\n/g, '\n')));
+      const feedMigration = await readFile('backend/migrations/037_add_steam_price_change_feed.sql', 'utf8');
+      await pool.query(feedMigration);
+      assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM steam_price_feed_cursor')).rows[0].n, 1);
+      assert.ok((await readFile('backend/schema.sql', 'utf8')).replace(/\r\n/g, '\n').includes(feedMigration.replace(/\r\n/g, '\n')));
     });
   } finally {
     releaseHeld?.(); globalThis.fetch = nativeFetch;
