@@ -74,12 +74,7 @@ test("wishlist sync preserves baselines, removals, events, and user isolation", 
     );
 
     const finish = async (queued) => {
-      let job = queued;
-      for (let attempt = 0; attempt < 100 && ["queued", "running"].includes(job.status); attempt += 1) {
-        await sync.runSteamSyncJobs();
-        job = await sync.getSteamSyncJob(userId, queued.id);
-      }
-      return job;
+      return sync.waitForSteamSyncJob(userId, queued.id, { pollMs: 5, timeoutMs: 30_000 });
     };
 
     const baseline = await finish(await sync.enqueueSteamSync(userId, { syncKind: "wishlist" }));

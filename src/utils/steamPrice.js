@@ -38,6 +38,7 @@ export function steamPriceDisplay(price, now = Date.now()) {
       : price.errorCode === 'steam_price_package_mismatch' ? 'Package contents need verification'
       : price.errorCode === 'steam_price_unsupported_type' ? 'This content type is not supported for pricing'
       : price.errorCode === 'steam_rate_limited' ? 'Steam rate limit reached; waiting to retry'
+      : price.checkState === 'awaiting_scheduled_check' ? 'Awaiting scheduled price check'
       : price.status === 'failed' ? (hasPrice ? 'Refresh failed; saved price retained' : 'Refresh failed; no price saved yet')
       : price.status === 'not_checked' ? 'Waiting for a price refresh' : stale ? 'Price may be out of date' : null,
     lastKnown: !hasPrice && price.lastKnown?.currency === 'ILS' && Number.isSafeInteger(price.lastKnown.currentMinor)
@@ -49,6 +50,10 @@ export function priceSyncMessage(summary = {}) {
     (summary.pendingRetries > (summary.failed || 0) ? ` ${summary.pendingRetries} earlier failures await retry.` : '');
   if (summary.reason === 'provider_cooldown') return `${counts} Steam cooldown${summary.cooldownUntil ? ` until ${new Date(summary.cooldownUntil).toLocaleString()}` : ''}.`;
   if (summary.reason === 'request_budget') return `${counts} Run limit reached; remaining work stays due for a later run.`;
+  if (summary.priceMode === 'fallback') return `${counts} Bulk price changes could not be checked; adaptive safety checks are scheduled.`;
+  if (summary.priceMode === 'delta' && summary.feedChangedCandidates && !summary.succeeded && !summary.failed) {
+    return `${counts} Steam reported changes, but none matched your Wishlist prices.`;
+  }
   if (summary.reason === 'nothing_due') return 'No prices are due for refresh. Saved prices are unchanged.';
   return counts;
 }

@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wishlistItemToGame, composeBacklogWishlist, wishlistArtwork } from "./wishlistPresentation.js";
+import {
+  wishlistItemToGame,
+  composeBacklogWishlist,
+  isWishlistRawgMatchUnavailable,
+  summarizeWishlistMetadataResults,
+  wishlistArtwork,
+  wishlistMetadataBatchMessage,
+} from "./wishlistPresentation.js";
 
 test("saved Steam portraits use landscape art with an original-image fallback", () => {
   const cover = "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3321460/hash/library_capsule.jpg?t=123";
@@ -11,6 +18,33 @@ test("saved Steam portraits use landscape art with an original-image fallback", 
   assert.deepEqual(wishlistArtwork("https://example.com/steam/apps/10/library_capsule.jpg"), {});
   assert.deepEqual(wishlistArtwork("https://shared.fastly.steamstatic.com/steam/apps/10/header.jpg"), {});
   assert.equal(composeBacklogWishlist([{ id: 2, cover: "manual.jpg" }], [{ id: 1, gameId: 2, active: true, cover }])[0].cover, "manual.jpg");
+});
+
+test("metadata refresh feedback keeps review, incomplete and failed outcomes distinct", () => {
+  const results = [
+    { status: "completed" },
+    { status: "review" },
+    { status: "unmatched", issue: "rawg_metadata_incomplete" },
+    { status: "failed" },
+  ];
+
+  assert.deepEqual(summarizeWishlistMetadataResults(results), {
+    completed: 1,
+    review: 1,
+    unmatched: 1,
+    failed: 1,
+  });
+  assert.equal(
+    wishlistMetadataBatchMessage({ processed: 4, pending: 2, results }),
+    "Metadata checked for 4 Wishlist items: 1 linked, 1 need review, 1 need a match, 1 failed/retry scheduled. 2 remain pending or awaiting retry.",
+  );
+});
+
+test("manual RAWG matching marks another Wishlist identity unavailable but keeps the current match selectable", () => {
+  const duplicate = { rawg_id: 101, alreadyInWishlist: true };
+  assert.equal(isWishlistRawgMatchUnavailable(duplicate, { rawg_id: 202 }), true);
+  assert.equal(isWishlistRawgMatchUnavailable(duplicate, { rawg_id: 101 }), false);
+  assert.equal(isWishlistRawgMatchUnavailable({ rawg_id: 101 }, { rawg_id: 202 }), false);
 });
 import { buildDisplayGames } from "../../utils/gameList.js";
 import { canEditGame, canDeleteGame } from "../../utils/permissions.js";

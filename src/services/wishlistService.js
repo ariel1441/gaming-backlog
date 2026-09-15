@@ -80,6 +80,24 @@ export async function moveWishlistToBacklog(itemId, status, opts = {}) {
   return result;
 }
 
+export async function refreshWishlistMetadata({ maxItems = 2, ...opts } = {}) {
+  const result = await api.post("/api/wishlist/metadata/refresh", { maxItems }, opts);
+  invalidateWishlistCache();
+  return result;
+}
+
+export async function refreshWishlistMetadataItem(itemId, opts = {}) {
+  const result = await api.post(`/api/wishlist/${itemId}/metadata/refresh`, {}, opts);
+  invalidateWishlistCache();
+  return result;
+}
+
+export async function matchWishlistRawg(itemId, rawgId, opts = {}) {
+  const result = await api.post(`/api/wishlist/${itemId}/metadata/match`, { rawg_id: rawgId }, opts);
+  invalidateWishlistCache();
+  return result;
+}
+
 export async function retireWishlistIntention(itemId, gameId, opts = {}) {
   const result = await api.post(`/api/wishlist/${itemId}/retire-intention`, { gameId }, opts);
   invalidateWishlistCache();

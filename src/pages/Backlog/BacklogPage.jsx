@@ -97,6 +97,9 @@ export default function BacklogPage() {
     setDateFilter,
     sourceFilter,
     setSourceFilter,
+    rawgStatus,
+    toggleRawgStatus,
+    setRawgStatus,
     missingEstimatesOnly,
     setMissingEstimatesOnly,
     sortKey,
@@ -207,6 +210,8 @@ export default function BacklogPage() {
     handleAddGame,
     startEditing,
     handleEditGame,
+    handleRefreshMetadata,
+    metadataRefreshingId,
     startFinishing,
     handleFinishGame,
     handleReorderGames,
@@ -342,6 +347,7 @@ export default function BacklogPage() {
         hoursBounds,
         dateFilter,
         sourceFilter,
+        rawgStatus,
         missingEstimatesOnly,
         sortKey,
         isReversed,
@@ -359,6 +365,7 @@ export default function BacklogPage() {
     selectedMyGenres.length +
     (dateFilter ? 1 : 0) +
     (sourceFilter !== "all" ? 1 : 0) +
+    (rawgStatus !== "all" ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveFilters = Boolean(
     searchQuery ||
@@ -367,6 +374,7 @@ export default function BacklogPage() {
       selectedMyGenres.length ||
       dateFilter ||
       sourceFilter !== "all" ||
+      rawgStatus !== "all" ||
       hasHoursFilter,
   );
   const manualReorder = getManualReorderAvailability({
@@ -432,6 +440,9 @@ export default function BacklogPage() {
                 setDateFilter,
                 sourceFilter,
                 setSourceFilter,
+                rawgStatus,
+                toggleRawgStatus,
+                setRawgStatus,
                 setSelectedStatuses,
                 setSelectedGenres,
                 setSelectedMyGenres,
@@ -588,6 +599,8 @@ export default function BacklogPage() {
             allMyGenres={allMyGenres}
             onAddToNextUp={handleAddToNextUp}
             onDeleteGame={handleDeleteGame}
+            onRefreshMetadata={isAuthenticated && !isGuest ? handleRefreshMetadata : null}
+            metadataRefreshingId={metadataRefreshingId}
             showAuth={showAuth}
             onCloseAuth={() => setShowAuth(false)}
             showOnboarding={showOnboarding}

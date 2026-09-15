@@ -5,6 +5,7 @@ import { verifyToken } from "../middleware/auth.js";
 import {
   favoriteGames,
   finishGame,
+  gameSearch,
   gameIdParam,
   upsertGame,
   reorderGame,
@@ -200,19 +201,18 @@ router.get("/", verifyToken, async (req, res, next) => {
 });
 
 // Search RAWG so users can choose the exact external game identity before add.
-router.get("/search", verifyToken, async (req, res, next) => {
+router.get("/search", verifyToken, gameSearch, async (req, res, next) => {
   try {
-    const q = String(req.query.q || "").trim();
-    if (q.length < 3) {
-      return next(badRequest("Search query must be at least 3 characters."));
-    }
+    const q = req.query.q;
 
     if (req.user?.is_guest) {
       res.setHeader("Cache-Control", "no-store");
       return res.json({ results: [] });
     }
 
-    const catalogPayload = await searchCatalog(q, req.user);
+    const catalogPayload = await searchCatalog(q, req.user, {
+      wishlistItemId: req.query.wishlist_item_id,
+    });
     const results = (catalogPayload.results || []).map((game) => ({
       catalog_game_id: game.id,
       rawg_id: game.rawg_id ?? game.rawgId ?? null,
@@ -222,11 +222,71 @@ router.get("/search", verifyToken, async (req, res, next) => {
       cover: game.cover,
       rating: game.rating,
       metacritic: game.metacritic,
+      alreadyInWishlist: Boolean(game.alreadyInWishlist),
     }));
     res.setHeader("Cache-Control", "no-store");
     res.json({ results, cacheStatus: catalogPayload.cacheStatus });
   } catch (err) {
     next(err);
+  }
+});
+
+router.post("/:id/metadata/refresh", verifyToken, gameIdParam, async (req, res, next) => {
+  try {
+    if (req.user?.is_guest) {
+      return next(httpError(403, "Metadata refresh is unavailable for demo accounts.", "forbidden"));
+    }
+    const userId = req.user.id;
+    const gameId = Number(req.params.id);
+    const { rows } = await pool.query(
+      `SELECT g.id, g.rawg_id, g.rawg_slug, g.catalog_game_id,
+              external.external_id AS catalog_rawg_id
+         FROM games g
+         LEFT JOIN external_game_ids external
+           ON external.catalog_game_id = g.catalog_game_id
+          AND external.source = 'rawg'
+        WHERE g.id = $1 AND g.user_id = $2
+        LIMIT 1`,
+      [gameId, userId],
+    );
+    const game = rows[0];
+    if (!game) return next(notFound("Game not found"));
+
+    const rawgId = game.rawg_id || game.catalog_rawg_id;
+    if (!rawgId) {
+      return next(
+        httpError(
+          422,
+          "Choose a RAWG match in Edit game > Metadata before refreshing.",
+          "metadata_identity_required",
+        ),
+      );
+    }
+
+    const ingestMetadata =
+      req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata;
+    const ingested = await ingestMetadata(Number(rawgId), { force: true });
+    const catalogGameId = Number(ingested?.catalogGame?.id || game.catalog_game_id);
+    if (!Number.isInteger(catalogGameId) || catalogGameId <= 0) {
+      return next(httpError(502, "RAWG metadata did not return a catalog identity.", "metadata_identity_missing"));
+    }
+
+    await pool.query(
+      `UPDATE games
+          SET catalog_game_id = $3,
+              rawg_id = COALESCE(rawg_id, $4),
+              rawg_slug = COALESCE(rawg_slug, $5)
+        WHERE id = $1 AND user_id = $2`,
+      [gameId, userId, catalogGameId, Number(rawgId), ingested?.catalogGame?.slug || game.rawg_slug || null],
+    );
+    const detailsQuery = selectOwnedGameDetailsQuery(gameId, userId);
+    const details = await pool.query(detailsQuery.text, detailsQuery.values);
+    if (!details.rows[0]) return next(notFound("Game not found"));
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json(decorateGameForClient(details.rows[0]));
+  } catch (error) {
+    next(error);
   }
 });
 

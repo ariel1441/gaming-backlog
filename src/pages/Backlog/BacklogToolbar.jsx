@@ -30,6 +30,7 @@ import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import {
   NO_PERSONAL_GENRE_FILTER,
   NO_RAWG_GENRE_FILTER,
+  RAWG_STATUS_OPTIONS,
 } from "../../utils/filterOptions";
 import {
   DateDropdown,
@@ -59,7 +60,7 @@ const sourceOptions = [
 function MoreFilters({ filters }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const active = Number(!!filters.dateFilter) + Number(filters.sourceFilter && filters.sourceFilter !== "all");
+  const active = Number(!!filters.dateFilter) + Number(filters.sourceFilter && filters.sourceFilter !== "all") + Number(filters.rawgStatus && filters.rawgStatus !== "all");
   useDismissibleLayer({ open, layerRef: ref, onDismiss: () => setOpen(false) });
   return <div ref={ref} className="relative max-sm:static">
     <Button type="button" variant={active ? "filterActive" : "secondary"} onClick={() => setOpen((value) => !value)} className="h-10 shrink-0 whitespace-nowrap" aria-expanded={open}>
@@ -69,6 +70,7 @@ function MoreFilters({ filters }) {
       <div><div className="text-sm font-semibold text-content-primary">More filters</div><p className="mt-1 text-xs text-content-muted">Less-used library controls.</p></div>
       <DateDropdown dateFilter={filters.dateFilter} setDateFilter={filters.setDateFilter} />
       <FilterDropdown label="Steam details" options={sourceOptions.filter((option) => option.value !== "all")} selected={filters.sourceFilter && filters.sourceFilter !== "all" ? [filters.sourceFilter] : []} onToggle={(value) => filters.setSourceFilter(filters.sourceFilter === value ? "all" : value)} onClear={() => filters.setSourceFilter("all")} />
+      <FilterDropdown label="RAWG status" options={RAWG_STATUS_OPTIONS} selected={filters.rawgStatus && filters.rawgStatus !== "all" ? [filters.rawgStatus] : []} onToggle={filters.toggleRawgStatus} onClear={() => filters.setRawgStatus("all")} />
     </PopoverPanel> : null}
   </div>;
 }
@@ -239,6 +241,15 @@ export default function BacklogToolbar({
                 onClear={() => filters.setSelectedGenres([])}
                 searchable
               />
+              {collection === "wishlist" ? (
+                <FilterDropdown
+                  label="RAWG status"
+                  options={RAWG_STATUS_OPTIONS}
+                  selected={filters.rawgStatus && filters.rawgStatus !== "all" ? [filters.rawgStatus] : []}
+                  onToggle={filters.toggleRawgStatus}
+                  onClear={() => filters.setRawgStatus("all")}
+                />
+              ) : null}
               {collection !== "wishlist" ? <>
               <MoreFilters filters={filters} />
               <div>

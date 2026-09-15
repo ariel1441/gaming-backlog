@@ -344,6 +344,38 @@ test("applyGameFilters can show games missing an estimate", () => {
   );
 });
 
+test("applyGameFilters distinguishes RAWG identity from incomplete metadata", () => {
+  const games = [
+    { id: 1, name: "Linked", rawg_id: 101, metadataQuality: "full" },
+    { id: 2, name: "Missing", rawg_id: null, metadataQuality: null },
+    { id: 3, name: "Review", rawg_id: null, metadataWork: { status: "review" } },
+    { id: 4, name: "Incomplete", rawg_id: 104, metadataQuality: "search_result" },
+    { id: 5, name: "Failed", rawg_id: 105, metadataWork: { status: "failed" } },
+    { id: 6, name: "Incomplete worker result", rawg_id: 106, metadataWork: { status: "unmatched", issue: "rawg_metadata_incomplete" } },
+  ];
+
+  assert.deepEqual(
+    applyGameFilters(games, { rawgStatus: "linked" }).map((game) => game.id),
+    [1],
+  );
+  assert.deepEqual(
+    applyGameFilters(games, { rawgStatus: "missing" }).map((game) => game.id),
+    [2],
+  );
+  assert.deepEqual(
+    applyGameFilters(games, { rawgStatus: "review" }).map((game) => game.id),
+    [3],
+  );
+  assert.deepEqual(
+    applyGameFilters(games, { rawgStatus: "incomplete" }).map((game) => game.id),
+    [4, 6],
+  );
+  assert.deepEqual(
+    applyGameFilters(games, { rawgStatus: "failed" }).map((game) => game.id),
+    [5],
+  );
+});
+
 test("matchesDateFilter supports active unfinished aging", () => {
   assert.equal(
     matchesDateFilter(

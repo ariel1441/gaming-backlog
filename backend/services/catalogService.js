@@ -259,7 +259,7 @@ function normalizeRawgSearchResult(result) {
 
 function mapCatalogRow(
   row,
-  { cacheStatus = "fresh", alreadyInBacklog = false } = {},
+  { cacheStatus = "fresh", alreadyInBacklog = false, alreadyInWishlist = false } = {},
 ) {
   if (!row) return null;
   const genres = jsonArray(row.genres_json);
@@ -298,6 +298,7 @@ function mapCatalogRow(
     cacheStatus,
     metadata_status: cacheStatus,
     alreadyInBacklog,
+    alreadyInWishlist,
     steamOwned: !!row.steam_owned,
     steamAppId: row.steam_external_id || null,
   };
@@ -584,8 +585,11 @@ async function searchRawgCoalesced(query) {
   return inflight.get(key);
 }
 
-async function catalogRowsForIds(ids, userId) {
+async function catalogRowsForIds(ids, userId, wishlistItemId = null) {
   if (!ids.length) return [];
+  const excludedWishlistItemId = Number.isInteger(Number(wishlistItemId)) && Number(wishlistItemId) > 0
+    ? Number(wishlistItemId)
+    : null;
   const { rows } = await pool.query(
     `
     SELECT cg.*,
@@ -595,13 +599,19 @@ async function catalogRowsForIds(ids, userId) {
            EXISTS (
              SELECT 1 FROM games g
              WHERE ${ownedCatalogPredicate("g", 2)}
-           ) AS already_in_backlog
+           ) AS already_in_backlog,
+           EXISTS (
+             SELECT 1 FROM user_wishlist_items wishlist
+             WHERE wishlist.user_id = $2
+               AND wishlist.catalog_game_id = cg.id
+               AND ($3::int IS NULL OR wishlist.id <> $3)
+           ) AS already_in_wishlist
     FROM catalog_games cg
     LEFT JOIN external_game_ids e
       ON e.catalog_game_id = cg.id AND e.source = 'rawg'
     WHERE cg.id = ANY($1::int[])
     `,
-    [ids, userId || null],
+    [ids, userId || null, excludedWishlistItemId],
   );
   const byId = new Map(rows.map((row) => [Number(row.id), row]));
   return ids.map((id) => byId.get(Number(id))).filter(Boolean);
@@ -955,8 +965,9 @@ async function markSearchFailure(queryKey, reason) {
   );
 }
 
-export async function searchCatalog(query, user = {}) {
+export async function searchCatalog(query, user = {}, options = {}) {
   const queryKey = normalizeQueryKey(query);
+  const wishlistItemId = options.wishlistItemId ?? null;
   if (queryKey.length < 3) {
     return { results: [], source: "cache", cacheStatus: "unavailable" };
   }
@@ -964,12 +975,13 @@ export async function searchCatalog(query, user = {}) {
   const cache = await getSearchCache(queryKey);
   const cachedIds = jsonArray(cache?.result_catalog_game_ids_json).map(Number);
   if (cacheFresh(cache)) {
-    const rows = await catalogRowsForIds(cachedIds, user.id);
+    const rows = await catalogRowsForIds(cachedIds, user.id, wishlistItemId);
     return {
       results: rows.map((row) =>
         mapCatalogRow(row, {
           cacheStatus: "fresh",
           alreadyInBacklog: row.already_in_backlog,
+          alreadyInWishlist: row.already_in_wishlist,
         }),
       ),
       source: "cache",
@@ -978,12 +990,13 @@ export async function searchCatalog(query, user = {}) {
   }
 
   if (user?.is_guest) {
-    const rows = await catalogRowsForIds(cachedIds, user.id);
+    const rows = await catalogRowsForIds(cachedIds, user.id, wishlistItemId);
     return {
       results: rows.map((row) =>
         mapCatalogRow(row, {
           cacheStatus: "stale",
           alreadyInBacklog: row.already_in_backlog,
+          alreadyInWishlist: row.already_in_wishlist,
         }),
       ),
       source: "cache",
@@ -1007,12 +1020,14 @@ export async function searchCatalog(query, user = {}) {
     const rows = await catalogRowsForIds(
       catalogRows.map((row) => row.id),
       user.id,
+      wishlistItemId,
     );
     return {
       results: rows.map((row) =>
         mapCatalogRow(row, {
           cacheStatus: "live",
           alreadyInBacklog: row.already_in_backlog,
+          alreadyInWishlist: row.already_in_wishlist,
         }),
       ),
       source: "rawg",
@@ -1020,13 +1035,14 @@ export async function searchCatalog(query, user = {}) {
     };
   } catch (error) {
     await markSearchFailure(queryKey, error?.message || "rawg_search_failed");
-    const rows = await catalogRowsForIds(cachedIds, user.id);
+    const rows = await catalogRowsForIds(cachedIds, user.id, wishlistItemId);
     if (!rows.length) throw error;
     return {
       results: rows.map((row) =>
         mapCatalogRow(row, {
           cacheStatus: "stale",
           alreadyInBacklog: row.already_in_backlog,
+          alreadyInWishlist: row.already_in_wishlist,
         }),
       ),
       source: "cache",

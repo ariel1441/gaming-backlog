@@ -443,6 +443,100 @@ test("PUT /api/games/:id rejects duplicate title excluding current row", async (
   );
 });
 
+test("GET /api/games/search marks Wishlist RAWG duplicates and excludes the current item", async () => {
+  let catalogRowsSql = "";
+  let catalogRowsValues = null;
+  await withServer(async (text, values) => {
+    const sql = String(text);
+    if (sql.includes("FROM catalog_search_cache")) {
+      return {
+        rows: [{
+          result_catalog_game_ids_json: [12],
+          expires_at: new Date(Date.now() + 60_000),
+        }],
+      };
+    }
+    if (sql.includes("SELECT cg.*")) {
+      catalogRowsSql = sql;
+      catalogRowsValues = values;
+      return {
+        rows: [{
+          id: 12,
+          name: "Portal",
+          rawg_external_id: "101",
+          rawg_external_slug: "portal",
+          cover_url: "https://img.example/portal.jpg",
+          already_in_backlog: false,
+          already_in_wishlist: true,
+          genres_json: [],
+          stores_json: [],
+          tags_json: [],
+          metadata_quality: "search_result",
+        }],
+      };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const res = await request(baseUrl, "/api/games/search?q=portal&wishlist_item_id=20", {
+      authPayload: { is_guest: false },
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.results[0].alreadyInWishlist, true);
+    assert.match(catalogRowsSql, /user_wishlist_items/);
+    assert.match(catalogRowsSql, /\$3::int IS NULL OR wishlist\.id <> \$3/);
+    assert.equal(catalogRowsValues[2], 20);
+  });
+});
+
+test("POST /api/games/:id/metadata/refresh refreshes the owned RAWG identity", async () => {
+  const ingestionCalls = [];
+
+  await withServer(
+    async (text) => {
+      const sql = String(text);
+      if (sql.includes("external_game_ids")) {
+        return {
+          rows: [{ id: 12, rawg_id: 42, rawg_slug: "hades", catalog_game_id: 10 }],
+        };
+      }
+      if (sql.includes("UPDATE games")) return { rows: [] };
+      if (sql.includes("FROM games g")) {
+        return {
+          rows: [{
+            id: 12,
+            user_id: 7,
+            name: "Hades",
+            status: "playing",
+            rawg_id: 42,
+            rawg_slug: "hades",
+            catalog_game_id: 10,
+            catalog_name: "Hades",
+            personal_genres: [],
+          }],
+        };
+      }
+      return { rows: [] };
+    },
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/12/metadata/refresh", {
+        method: "POST",
+        authPayload: { is_guest: false },
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.id, 12);
+      assert.deepEqual(ingestionCalls, [[42, { force: true }]]);
+    },
+    undefined,
+    {
+      ingestRawgGameMetadata: async (rawgId, options) => {
+        ingestionCalls.push([rawgId, options]);
+        return { catalogGame: { id: 10, slug: "hades" } };
+      },
+    },
+  );
+});
+
 test("rename with omitted hours preserves saved estimate even when local HLTB matches", async () => {
   let savedHours;
   await withServer(async (text, values) => {

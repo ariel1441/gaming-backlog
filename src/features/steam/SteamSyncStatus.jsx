@@ -24,6 +24,9 @@ export default function SteamSyncStatus({
   busy = false,
   confirmEmpty,
   hasMissingMetadata = false,
+  metadata,
+  onMetadataRefresh,
+  onMetadataBulkRefresh,
   diagnostics = false,
   onLibraryRefresh,
 }) {
@@ -44,6 +47,8 @@ export default function SteamSyncStatus({
           (priceHealth?.unsupported || 0),
       ),
   );
+  const awaitingScheduled = Number(priceHealth?.awaiting_scheduled || 0);
+  const metadataAttention = Number(metadata?.review || 0) + Number(metadata?.unmatched || 0);
   const saveAuto = async (enabled) => {
     setSaving(true);
     try {
@@ -80,6 +85,8 @@ export default function SteamSyncStatus({
             </span>
             {verification + retrying > 0 ? (
               <span>· {verification + retrying} prices need attention</span>
+            ) : awaitingScheduled > 0 ? (
+              <span>· {awaitingScheduled} prices awaiting scheduled check</span>
             ) : null}
             {account.wishlistSyncStatus === "empty_unconfirmed" ? (
               <span>· Wishlist membership needs attention</span>
@@ -113,6 +120,16 @@ export default function SteamSyncStatus({
             {onPriceRefresh ? (
               <Button size="sm" disabled={working} onClick={onPriceRefresh}>
                 Refresh prices
+              </Button>
+            ) : null}
+            {onMetadataRefresh ? (
+              <Button size="sm" disabled={working} onClick={onMetadataRefresh}>
+                Refresh metadata
+              </Button>
+            ) : null}
+            {onMetadataBulkRefresh ? (
+              <Button size="sm" variant="secondary" disabled={working} onClick={onMetadataBulkRefresh}>
+                Refresh all queued
               </Button>
             ) : null}
             {account.wishlistSyncStatus === "empty_unconfirmed" &&
@@ -167,10 +184,18 @@ export default function SteamSyncStatus({
           {retrying > 0 ? (
             <span>{retrying} temporary refresh issues</span>
           ) : null}
+          {awaitingScheduled > 0 ? (
+            <span>{awaitingScheduled} awaiting scheduled check</span>
+          ) : null}
           {account.wishlistSyncStatus === "empty_unconfirmed" ? (
             <span className="text-state-warning">
               Membership needs attention
             </span>
+          ) : null}
+          {metadataAttention > 0 ? (
+            <span>{metadataAttention} metadata identities need attention</span>
+          ) : metadata?.pending > 0 ? (
+            <span>{metadata.pending} metadata items queued</span>
           ) : null}
           {health.error ? (
             <span>Sync status unavailable; saved data retained</span>
@@ -245,9 +270,9 @@ export default function SteamSyncStatus({
                 {priceHealth.fresh || 0} are fresh with no refresh error.
               </p>
               <p>
-                {priceHealth.unchecked || 0} not checked · {retrying} temporary
-                issues · {verification} need offer verification ·{" "}
-                {priceHealth.unsupported || 0} unsupported.
+                {priceHealth.unchecked || 0} unchecked · {awaitingScheduled} awaiting
+                scheduled check · {retrying} retrying · {verification} need offer
+                verification · {priceHealth.unsupported || 0} unsupported.
               </p>
               {priceHealth.unresolved ? (
                 <p>
@@ -306,8 +331,20 @@ export default function SteamSyncStatus({
           ) : null}
           {hasMissingMetadata ? (
             <p className="text-xs text-content-muted">
-              Some artwork or metadata is missing. Price updates do not repair
-              catalog metadata.
+              Some artwork or catalog metadata is missing. Refresh metadata
+              processes a small, durable Wishlist queue; price updates remain
+              separate.
+            </p>
+          ) : null}
+          {metadata ? (
+            <p className="text-xs text-content-muted">
+              {metadata.complete || 0} complete · {metadata.pending || 0} queued · {metadata.review || 0} need identity review · {metadata.unmatched || 0} unmatched.
+              {metadata.failed ? ` ${metadata.failed} waiting to retry.` : ""}
+            </p>
+          ) : null}
+          {metadata?.recentRuns?.[0] ? (
+            <p className="text-xs text-content-muted">
+              Last metadata run: {metadata.recentRuns[0].processed} processed, {metadata.recentRuns[0].completed} complete, {metadata.recentRuns[0].review} review, {metadata.recentRuns[0].unmatched} unmatched, {metadata.recentRuns[0].failed} failed.
             </p>
           ) : null}
           {job ? (
@@ -342,6 +379,26 @@ export default function SteamSyncStatus({
                 onClick={onPriceRefresh}
               >
                 Refresh prices
+              </Button>
+            ) : null}
+            {onMetadataRefresh ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={working}
+                onClick={onMetadataRefresh}
+              >
+                Refresh metadata
+              </Button>
+            ) : null}
+            {onMetadataBulkRefresh ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={working}
+                onClick={onMetadataBulkRefresh}
+              >
+                Refresh all queued
               </Button>
             ) : null}
             {job ? (

@@ -3,7 +3,8 @@ import Chip from "./Chip";
 
 /**
  * Shows the tags the available line width can accommodate, instead of an
- * arbitrary count. The overflow counter is included in the fit calculation.
+ * arbitrary count. The overflow counter is checked separately so it cannot
+ * make the fit calculation oscillate between two layouts.
  */
 export default function AdaptiveChipList({
   items = [],
@@ -13,16 +14,22 @@ export default function AdaptiveChipList({
   chipClassName = "",
 }) {
   const rootRef = useRef(null);
-  const skipNextResizeRef = useRef(false);
-  const [visibleCount, setVisibleCount] = useState(items.length);
-  const normalized = items.filter(Boolean);
+  const normalized = [
+    ...new Map(
+      items
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+        .map((item) => [item.toLowerCase(), item]),
+    ).values(),
+  ];
+  const [visibleCount, setVisibleCount] = useState(normalized.length);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return undefined;
 
     const measure = () => {
-      const children = [...root.querySelectorAll("[data-adaptive-chip]")];
+      const children = [...root.querySelectorAll("[data-adaptive-chip]:not([data-adaptive-overflow])")];
       if (!children.length) return;
       const rows = [];
       children.forEach((child, index) => {
@@ -32,22 +39,25 @@ export default function AdaptiveChipList({
       });
       let fit = rows[Math.min(maxLines, rows.length) - 1]?.end + 1 || normalized.length;
       const overflow = root.querySelector("[data-adaptive-overflow]");
-      if (overflow && rows.findIndex((row) => row.top === overflow.offsetTop) >= maxLines) {
+      const matchingRow = overflow
+        ? rows.findIndex((row) => row.top === overflow.offsetTop)
+        : -1;
+      const overflowRow = matchingRow >= 0
+        ? matchingRow
+        : overflow
+          ? rows.filter((row) => row.top < overflow.offsetTop).length
+          : -1;
+      if (overflow && overflowRow >= maxLines) {
         fit = Math.max(0, fit - 1);
       }
       setVisibleCount((current) => {
         if (current === fit) return current;
-        skipNextResizeRef.current = true;
         return fit;
       });
     };
 
     measure();
     const observer = new ResizeObserver(() => {
-      if (skipNextResizeRef.current) {
-        skipNextResizeRef.current = false;
-        return;
-      }
       measure();
     });
     observer.observe(root);

@@ -257,7 +257,8 @@ CREATE TABLE metadata_jobs (
       'catalog_refresh',
       'cache_import',
       'exact_backfill',
-      'discover_ingest'
+      'discover_ingest',
+      'wishlist_metadata'
     )),
   scope_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   scope_catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE CASCADE,
@@ -922,6 +923,31 @@ CREATE TRIGGER steam_activity_observations_owner_guard
   BEFORE INSERT OR UPDATE OF user_id, game_id ON steam_activity_observations
   FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
 
+-- Public Steam Store delta-feed state. This is global provider state; it never
+-- contains user Wishlist or price observations.
+CREATE TABLE IF NOT EXISTS steam_price_feed_cursor (
+  id SMALLINT PRIMARY KEY CHECK (id = 1),
+  cursor_modified_since BIGINT NOT NULL DEFAULT 0 CHECK (cursor_modified_since >= 0),
+  last_success_at TIMESTAMPTZ,
+  last_attempt_at TIMESTAMPTZ,
+  last_error_code TEXT,
+  last_error_at TIMESTAMPTZ,
+  lease_token UUID,
+  lease_expires_at TIMESTAMPTZ
+);
+INSERT INTO steam_price_feed_cursor (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS steam_price_feed_changes (
+  app_id TEXT PRIMARY KEY CHECK (app_id ~ '^[1-9][0-9]*$'),
+  last_modified BIGINT NOT NULL CHECK (last_modified >= 0),
+  price_change_number TEXT CHECK (price_change_number IS NULL OR price_change_number ~ '^[0-9]+$'),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  price_candidate_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS steam_price_feed_changes_seen
+  ON steam_price_feed_changes (price_candidate_at DESC, app_id)
+  WHERE price_candidate_at IS NOT NULL;
+
 CREATE TRIGGER steam_import_candidates_owner_guard
   BEFORE INSERT OR UPDATE OF user_id, duplicate_game_id ON steam_import_candidates
   FOR EACH ROW EXECUTE FUNCTION enforce_candidate_duplicate_owner();
@@ -1234,13 +1260,108 @@ LEFT JOIN LATERAL (
   SELECT bool_or(m.is_active AND m.account_id = a.id) AS is_active
   FROM steam_wishlist_items m WHERE m.wishlist_item_id = w.id AND m.user_id = w.user_id
 ) s ON TRUE
-LEFT JOIN games g ON g.id = w.game_id AND g.user_id = w.user_id
 LEFT JOIN LATERAL (
   SELECT array_agg(DISTINCT app_id) AS app_ids FROM (
+    -- Steam Wishlist membership is the price identity. A RAWG catalog match is
+    -- metadata/user selection and must not introduce or replace a Steam app id.
     SELECT m.steam_app_id AS app_id FROM steam_wishlist_items m
       WHERE m.wishlist_item_id = w.id AND m.user_id = w.user_id
-    UNION ALL
-    SELECT e.external_id FROM external_game_ids e
-      WHERE e.source = 'steam' AND e.catalog_game_id IN (w.catalog_game_id, g.catalog_game_id)
+        AND ((COALESCE(s.is_active, FALSE) AND m.account_id = a.id AND m.is_active)
+          OR NOT COALESCE(s.is_active, FALSE))
   ) exact_ids WHERE app_id ~ '^[1-9][0-9]*$'
 ) ids ON TRUE;
+
+-- Durable, item-scoped Wishlist metadata work (migration 038).
+CREATE TABLE IF NOT EXISTS wishlist_metadata_work (
+  wishlist_item_id BIGINT PRIMARY KEY REFERENCES user_wishlist_items(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  steam_app_id TEXT,
+  status TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued', 'running', 'completed', 'review', 'unmatched', 'failed')),
+  identity_state TEXT NOT NULL DEFAULT 'unresolved'
+    CHECK (identity_state IN ('exact', 'ambiguous', 'unresolved')),
+  identity_reason TEXT,
+  candidates_json JSONB NOT NULL DEFAULT '[]'::jsonb
+    CHECK (jsonb_typeof(candidates_json) = 'array'),
+  metadata_due_reason TEXT,
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  last_attempt_at TIMESTAMPTZ,
+  next_attempt_at TIMESTAMPTZ,
+  last_error_code TEXT,
+  last_error_message TEXT,
+  worker_id TEXT,
+  lease_expires_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS wishlist_metadata_work_runnable
+  ON wishlist_metadata_work (status, next_attempt_at, lease_expires_at, updated_at, wishlist_item_id)
+  WHERE status IN ('queued', 'completed', 'failed', 'unmatched');
+
+CREATE INDEX IF NOT EXISTS wishlist_metadata_work_user_status
+  ON wishlist_metadata_work (user_id, status, next_attempt_at, updated_at);
+
+CREATE TABLE IF NOT EXISTS wishlist_metadata_attempts (
+  id BIGSERIAL PRIMARY KEY,
+  metadata_job_id BIGINT REFERENCES metadata_jobs(id) ON DELETE SET NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  wishlist_item_id BIGINT NOT NULL REFERENCES user_wishlist_items(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('completed', 'review', 'unmatched', 'failed')),
+  identity_state TEXT CHECK (identity_state IS NULL OR identity_state IN ('exact', 'ambiguous', 'unresolved')),
+  issue TEXT,
+  error_code TEXT,
+  candidate_count INTEGER CHECK (candidate_count IS NULL OR candidate_count >= 0),
+  attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS wishlist_metadata_attempts_user_time
+  ON wishlist_metadata_attempts (user_id, attempted_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS wishlist_metadata_attempts_item_time
+  ON wishlist_metadata_attempts (wishlist_item_id, attempted_at DESC, id DESC);
+
+CREATE OR REPLACE FUNCTION enforce_wishlist_metadata_attempt_owner()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE item_owner INTEGER;
+BEGIN
+  SELECT user_id INTO item_owner FROM user_wishlist_items WHERE id = NEW.wishlist_item_id;
+  IF item_owner IS NULL OR item_owner <> NEW.user_id THEN
+    RAISE EXCEPTION 'wishlist metadata attempt owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS wishlist_metadata_attempt_owner_guard ON wishlist_metadata_attempts;
+CREATE TRIGGER wishlist_metadata_attempt_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, wishlist_item_id ON wishlist_metadata_attempts
+  FOR EACH ROW EXECUTE FUNCTION enforce_wishlist_metadata_attempt_owner();
+
+CREATE OR REPLACE FUNCTION enforce_wishlist_metadata_work_owner()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE item_owner INTEGER;
+BEGIN
+  SELECT user_id INTO item_owner FROM user_wishlist_items WHERE id = NEW.wishlist_item_id;
+  IF item_owner IS NULL OR item_owner <> NEW.user_id THEN
+    RAISE EXCEPTION 'wishlist metadata work owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS wishlist_metadata_work_owner_guard ON wishlist_metadata_work;
+CREATE TRIGGER wishlist_metadata_work_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, wishlist_item_id ON wishlist_metadata_work
+  FOR EACH ROW EXECUTE FUNCTION enforce_wishlist_metadata_work_owner();
+
+INSERT INTO wishlist_metadata_work (wishlist_item_id, user_id, steam_app_id, next_attempt_at)
+SELECT wishlist.id, wishlist.user_id, steam.steam_app_id, NOW()
+  FROM user_wishlist_items wishlist
+  LEFT JOIN LATERAL (
+    SELECT steam_app_id FROM steam_wishlist_items
+     WHERE wishlist_item_id = wishlist.id AND user_id = wishlist.user_id
+     ORDER BY is_active DESC, last_seen_at DESC, steam_app_id
+     LIMIT 1
+  ) steam ON TRUE
+ON CONFLICT (wishlist_item_id) DO NOTHING;

@@ -76,6 +76,8 @@ available as optional History from the panel.
   exact saved Steam identity, ownership and the user's linked Backlog game.
 - Hide all updates dismisses Other updates through a fixed server snapshot, including
   older pages, while retaining game decisions, positive price groups and later arrivals.
+- Clear notifications dismisses all currently available informational groups through a
+  fixed server snapshot, including price groups, while retaining game decisions and later arrivals.
 - Wishlist has a compact freshness/attention line and secondary recovery controls.
   Detailed coverage, daily opt-in, run diagnostics and Library recovery are in
   Settings > Integrations. Moving the switch does not change its value or schedules.

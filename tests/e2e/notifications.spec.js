@@ -40,6 +40,10 @@ for (const [label, viewport] of [
       event(13, "Hades", "steam_status_suggestion", {
         gameId: 1,
         playtimeMinutes: 80,
+        ...(label === "desktop" ? {
+          firstPlayObservedAt: "2026-09-11T12:00:00.000Z",
+          lastPlayedAt: "2026-09-14T12:00:00.000Z",
+        } : {}),
       }),
       event(15, "Unmatched Steam game", "steam_new_game"),
     ];
@@ -197,8 +201,9 @@ for (const [label, viewport] of [
       if (path === "/api/steam/games/1/status-suggestion") {
         expect(data).toEqual({
           status: "playing",
-          setStartedAt: false,
+          setStartedAt: label === "desktop",
           activityEventId: 13,
+          ...(label === "desktop" ? { startedAt: "2026-09-11T12:00:00.000Z" } : {}),
         });
         if (failPlaying) {
           failPlaying = false;
@@ -210,7 +215,7 @@ for (const [label, viewport] of [
           });
         }
         games[0].status = "playing";
-        return json({ game: games[0], activityEventResolved: true });
+        return json({ game: { ...games[0], startedAt: label === "desktop" ? "2026-09-11" : null }, activityEventResolved: true });
       }
       return json({});
     });
@@ -389,7 +394,7 @@ for (const [label, viewport] of [
     await expect(hades.getByRole("alert")).toContainText("Could not save");
     await hades.getByRole("button", { name: "Accept Playing" }).click();
     await expect(hades.getByRole("status")).toContainText(
-      "Dates kept unchanged",
+      label === "desktop" ? "Started date: 2026-09-11" : "Existing dates were kept.",
     );
     await panel
       .locator("summary")

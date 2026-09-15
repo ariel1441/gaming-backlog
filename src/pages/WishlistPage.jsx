@@ -22,6 +22,9 @@ import useMedia from "../hooks/useMedia";
 import { buildDisplayGames, isHoursFilterActive } from "../utils/gameList";
 import {
   moveWishlistToBacklog,
+  matchWishlistRawg,
+  refreshWishlistMetadata,
+  refreshWishlistMetadataItem,
   syncWishlist,
 } from "../services/wishlistService";
 import { normalizeUserPreferences } from "../utils/userPreferences";
@@ -31,8 +34,23 @@ import WishlistCardFooter from "./Wishlist/WishlistCardFooter";
 import useWishlist from "./Wishlist/useWishlist";
 import {
   wishlistItemsToGames,
+  wishlistMetadataBatchMessage,
   wishlistSortOptions,
 } from "./Wishlist/wishlistPresentation";
+
+function metadataOutcomeMessage(outcome) {
+  if (outcome?.status === "completed") return "RAWG data is available.";
+  if (outcome?.status === "review") {
+    return "Multiple RAWG matches need review. Use Match RAWG to choose one.";
+  }
+  if (outcome?.status === "failed") {
+    return "RAWG refresh failed; try again later.";
+  }
+  if (outcome?.issue === "rawg_metadata_incomplete") {
+    return "The RAWG match was found, but its metadata is still incomplete.";
+  }
+  return "No safe RAWG match was found. You can choose one with Match RAWG.";
+}
 
 const PAGE_SIZE = 50;
 const membershipOptions = [
@@ -75,6 +93,9 @@ export default function WishlistPage() {
     if (requestedItem) setSearchParams({}, { replace: true });
   };
   const [syncing, setSyncing] = useState(false);
+  const [metadataRefreshing, setMetadataRefreshing] = useState(false);
+  const [metadataBulkRefreshing, setMetadataBulkRefreshing] = useState(false);
+  const [metadataItemRefreshing, setMetadataItemRefreshing] = useState(null);
   const [movingId, setMovingId] = useState(null);
   const [moveStatus, setMoveStatus] = useState("plan to play");
   const syncRequest = useRef(null);
@@ -93,6 +114,7 @@ export default function WishlistPage() {
   const selected = games.find((game) => game.id === selectedId);
   const filterCount =
     Number(onSaleOnly) + filters.selectedGenres.length +
+    Number(filters.rawgStatus !== "all") +
     (isHoursFilterActive(filters.hoursRange, filters.hoursBounds) ? 1 : 0);
   const statusOptions = (statuses || [])
     .filter((status) => status.toLowerCase().trim() !== "wishlist")
@@ -171,6 +193,76 @@ export default function WishlistPage() {
       setMovingId(null);
     }
   };
+  const runMetadataRefresh = async () => {
+    if (metadataRefreshing || metadataBulkRefreshing || syncing) return;
+    setMetadataRefreshing(true);
+    try {
+      const result = await refreshWishlistMetadata();
+      toast.success(wishlistMetadataBatchMessage({
+        processed: result.drain?.processed,
+        pending: result.pending,
+        results: result.drain?.results,
+      }));
+      await state.refresh();
+    } catch (error) {
+      toast.error(error.message || "Wishlist metadata refresh failed.");
+    } finally {
+      setMetadataRefreshing(false);
+    }
+  };
+  const runAllMetadataRefresh = async () => {
+    if (metadataRefreshing || metadataBulkRefreshing || syncing) return;
+    setMetadataBulkRefreshing(true);
+    let processed = 0;
+    let pending = Number(state.metadata?.pending || 0);
+    const results = [];
+    try {
+      while (pending > 0 || processed === 0) {
+        const result = await refreshWishlistMetadata({ maxItems: 10 });
+        const batch = Number(result.drain?.processed || 0);
+        processed += batch;
+        results.push(...(result.drain?.results || []));
+        pending = Number(result.pending || 0);
+        if (!batch) break;
+      }
+      toast.success(wishlistMetadataBatchMessage({ processed, pending, results }));
+      await state.refresh();
+    } catch (error) {
+      toast.error(error.message || "Wishlist metadata refresh failed.");
+    } finally {
+      setMetadataBulkRefreshing(false);
+    }
+  };
+  const runItemMetadataRefresh = async (game) => {
+    if (metadataItemRefreshing || metadataRefreshing || metadataBulkRefreshing || syncing || !game?.wishlistItemId) return;
+    setMetadataItemRefreshing(game.wishlistItemId);
+    try {
+      const result = await refreshWishlistMetadataItem(game.wishlistItemId);
+      const outcome = result.drain?.results?.[0];
+      const message = `${game.name} metadata checked. ${metadataOutcomeMessage(outcome)}`;
+      if (outcome?.status === "completed") toast.success(message);
+      else toast.warning(message);
+      await state.refresh();
+    } catch (error) {
+      toast.error(error.message || "Wishlist metadata refresh failed.");
+    } finally {
+      setMetadataItemRefreshing(null);
+    }
+  };
+  const runWishlistRawgMatch = async (game, rawgId) => {
+    if (!game?.wishlistItemId || !rawgId || syncing || metadataRefreshing || metadataBulkRefreshing) return;
+    setMetadataItemRefreshing(game.wishlistItemId);
+    try {
+      await matchWishlistRawg(game.wishlistItemId, rawgId);
+      toast.success(`${game.name} is now linked to RAWG.`);
+      await state.refresh();
+    } catch (error) {
+      toast.error(error.message || "Could not save the RAWG match.");
+      throw error;
+    } finally {
+      setMetadataItemRefreshing(null);
+    }
+  };
   if (!isAuthenticated || isGuest)
     return (
       <AppPage>
@@ -244,8 +336,10 @@ export default function WishlistPage() {
       </div>
       <div className="mx-auto w-full max-w-[1760px]">
         <SteamSyncStatus savedAccount={state.account} priceHealth={state.priceHealth}
-          onMembershipRefresh={() => runSync()} onPriceRefresh={() => runSync(false, true)} busy={syncing}
-          confirmEmpty={confirmEmpty} hasMissingMetadata={games.some(game => game.metadataComplete === false)} />
+          onMembershipRefresh={() => runSync()} onPriceRefresh={() => runSync(false, true)} busy={syncing || metadataRefreshing || metadataBulkRefreshing}
+          confirmEmpty={confirmEmpty} metadata={state.metadata}
+          onMetadataRefresh={runMetadataRefresh} onMetadataBulkRefresh={runAllMetadataRefresh}
+          hasMissingMetadata={games.some(game => game.metadataComplete === false)} />
         {state.loading && !games.length ? <PageLoading rows={5} /> : null}
         {state.error && state.saved ? <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-content-muted" role="status"><span>Saved Wishlist shown; could not check for updates</span><Button size="sm" variant="ghost" onClick={state.refresh}>Retry saved data</Button></div> : state.error ? (
           <PageError
@@ -325,9 +419,12 @@ export default function WishlistPage() {
         ) : null}
       </div>
       {selected ? (
-        <GameModal game={selected} onClose={closeDetails} readOnly hidePrivateFields
-          footer={<WishlistCardFooter game={selected} statusOptions={statusOptions} moveStatus={moveStatus}
-            onMoveStatusChange={setMoveStatus} onMove={move} moving={movingId === selected.wishlistItemId} />} />
+         <GameModal game={selected} onClose={closeDetails} readOnly hidePrivateFields footerScrollable
+           footer={<WishlistCardFooter game={selected} statusOptions={statusOptions} moveStatus={moveStatus}
+            onMoveStatusChange={setMoveStatus} onMove={move} moving={movingId === selected.wishlistItemId}
+            onRefreshMetadata={() => runItemMetadataRefresh(selected)}
+            onMatchRawg={runWishlistRawgMatch}
+            metadataRefreshing={metadataItemRefreshing === selected.wishlistItemId || metadataRefreshing || metadataBulkRefreshing} />} />
       ) : null}
     </main>
   );

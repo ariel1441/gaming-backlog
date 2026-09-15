@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useConfirm, useToast } from "../../components/ui";
+import { refreshGameMetadata } from "../../services/gameService";
 import {
   apiErrorMessage,
   buildAddGamePayload,
@@ -31,6 +32,7 @@ export default function useBacklogActions({
   const [addFormError, setAddFormError] = useState(null);
   const [editFormError, setEditFormError] = useState(null);
   const [deletingIds, setDeletingIds] = useState(() => new Set());
+  const [metadataRefreshingId, setMetadataRefreshingId] = useState(null);
 
   const updateNewGame = (next) => {
     setAddFormError(null);
@@ -152,6 +154,26 @@ export default function useBacklogActions({
     }
   };
 
+  const handleRefreshMetadata = async (game) => {
+    if (metadataRefreshingId || !game?.id) return null;
+    if (!isAuthenticated || isGuest) {
+      toast.warning("Sign in with a saved account to refresh metadata.");
+      return null;
+    }
+    setMetadataRefreshingId(game.id);
+    try {
+      const updated = await refreshGameMetadata(game.id);
+      await refresh({ silent: true });
+      toast.success(`${game.name} metadata refreshed.`);
+      return updated;
+    } catch (error) {
+      toast.error(error.message || "Could not refresh game metadata.");
+      return null;
+    } finally {
+      setMetadataRefreshingId(null);
+    }
+  };
+
   const startFinishing = (game) => {
     if (!isAuthenticated) {
       toast.warning("Sign in required to finish games.");
@@ -186,6 +208,8 @@ export default function useBacklogActions({
     handleAddGame,
     startEditing,
     handleEditGame,
+    handleRefreshMetadata,
+    metadataRefreshingId,
     startFinishing,
     handleFinishGame,
     handleReorderGames,

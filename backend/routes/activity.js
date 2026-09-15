@@ -7,12 +7,16 @@ import {
 } from "../services/activityEventService.js";
 import { listActivity, listPlayHistory, updateActivity } from "../validators/activity.js";
 import { listInbox, updateInbox, hideOtherInbox } from '../validators/activity.js';
-import { activateActivityInbox, listActivityInbox, updateActivityInbox, hideOtherActivityUpdates } from '../services/activityInboxService.js';
+import { activateActivityInbox, listActivityInbox, updateActivityInbox, hideOtherActivityUpdates, clearActivityUpdates } from '../services/activityInboxService.js';
 import { listSteamActivityHistory } from "../services/steamActivityService.js";
 
 const router = express.Router();
 router.post('/inbox/hide-other', verifyToken, hideOtherInbox, async (req, res, next) => {
   try { res.json(await hideOtherActivityUpdates(req.user.id, req.body.snapshot)); }
+  catch (error) { next(error); }
+});
+router.post('/inbox/clear-updates', verifyToken, hideOtherInbox, async (req, res, next) => {
+  try { res.json(await clearActivityUpdates(req.user.id, req.body.snapshot)); }
   catch (error) { next(error); }
 });
 

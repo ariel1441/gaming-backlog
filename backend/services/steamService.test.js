@@ -790,6 +790,51 @@ test("importSteamCandidates attaches marked duplicates instead of creating a new
   );
 });
 
+test("importSteamCandidates uses the Jerusalem first observed day instead of latest play", async () => {
+  await withMockClient(
+    async (text) => {
+      const sql = compact(text);
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.includes("FROM steam_import_candidates candidate") && sql.includes("FOR UPDATE")) {
+        return {
+          rows: [
+            {
+              id: 11,
+              user_id: 7,
+              steam_app_id: "123456",
+              steam_name: "Delayed Import Game",
+              playtime_minutes_forever: 240,
+              last_played_at: "2026-09-14T00:00:00.000Z",
+              source_first_play_observed_at: "2026-09-11T22:00:00.000Z",
+              proposed_catalog_game_id: 56,
+              user_selected_catalog_game_id: null,
+              duplicate_game_id: null,
+              suggested_status: "playing",
+              selected_status: null,
+              filtered_reason: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT id, name FROM games WHERE user_id = $1 AND catalog_game_id = $2")) return { rows: [] };
+      if (sql.includes("SELECT id, name FROM games") && sql.includes("regexp_replace")) return { rows: [] };
+      if (sql.includes("SELECT id, name FROM games") && sql.includes("ORDER BY id DESC")) return { rows: [] };
+      if (sql.startsWith("SELECT id, name, rawg_playtime_hours FROM catalog_games")) return { rows: [{ id: 56, name: "Delayed Import Game", rawg_playtime_hours: null }] };
+      if (sql.startsWith("SELECT status FROM statuses")) return { rows: [{ status: "playing" }] };
+      if (sql.includes("SELECT COALESCE(MAX(g.position)")) return { rows: [{ max: 0 }] };
+      if (sql.includes("INSERT INTO games")) return { rows: [{ id: 77 }] };
+      return { rows: [] };
+    },
+    async (calls) => {
+      const result = await importSteamCandidates(7, [11]);
+
+      assert.deepEqual(result.imported, [{ candidateId: 11, gameId: 77 }]);
+      const insert = calls.find((call) => call.text.includes("INSERT INTO games"));
+      assert.deepEqual(insert.values, [7, 56, "Delayed Import Game", "playing", 1000, "2026-09-12"]);
+    },
+  );
+});
+
 test("attachSteamCandidateToGame moves a current Steam link without copying candidate telemetry", async () => {
   await withMockClient(
     async (text) => {

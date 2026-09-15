@@ -203,17 +203,38 @@ test(
             ),
             [Number(future.id), Number(deal.id)],
           );
-          assert.equal(
-            (
-              await inbox.listActivityInbox(who.userId, {
-                section: "attention",
-              })
-            ).groups.length,
-            1,
-          );
-          assert.equal(
-            (
-              await pool.query(
+           assert.equal(
+             (
+               await inbox.listActivityInbox(who.userId, {
+                 section: "attention",
+               })
+             ).groups.length,
+             1,
+           );
+           const clearPage = await inbox.listActivityInbox(who.userId);
+           const cleared = await request(
+             who,
+             "/activity/inbox/clear-updates",
+             "POST",
+             { snapshot: clearPage.snapshot },
+           );
+           assert.equal(cleared.status, 200);
+           assert.equal((await cleared.json()).updated, 2);
+           assert.equal(
+             (await inbox.listActivityInbox(who.userId)).groups.length,
+             0,
+           );
+           assert.equal(
+             (
+               await inbox.listActivityInbox(who.userId, {
+                 section: "attention",
+               })
+             ).groups.length,
+             1,
+           );
+           assert.equal(
+             (
+               await pool.query(
                 "SELECT COUNT(*)::int AS n FROM user_activity_events WHERE user_id=$1",
                 [who.userId],
               )

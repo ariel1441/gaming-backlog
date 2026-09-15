@@ -215,6 +215,8 @@ export default function GameModal({
   onSubmitEdit,
   onCancelEdit,
   onGameUpdated,
+  onRefreshMetadata,
+  metadataRefreshing = false,
   startInEditMode = false,
   isSubmitting = false,
   formError = null,
@@ -227,6 +229,7 @@ export default function GameModal({
   onFinish,
   onDelete,
   footer,
+  footerScrollable = false,
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [isEditMode, setIsEditMode] = useState(startInEditMode);
@@ -688,7 +691,7 @@ export default function GameModal({
             </div>
           </div>
 
-          {game.steamPrice ? <div className="shrink-0 px-5 py-3 sm:px-7"><SteamPrice price={game.steamPrice} details /></div> : null}
+          {game.steamPrice ? <div className="shrink-0 px-5 py-3 sm:px-7"><SteamPrice price={game.steamPrice} details compact /></div> : null}
           <div className="grid shrink-0 grid-cols-2 gap-4 border-b border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:grid-cols-4 sm:px-7">
             {isEditMode ? (
               <EditMetric
@@ -1187,7 +1190,18 @@ export default function GameModal({
             ) : null}
           </div>
 
-          {footer && !isEditMode ? <div className="shrink-0 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:px-7">{footer}</div> : null}
+          {footer && !isEditMode ? (
+            <div
+              className={[
+                "border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:px-7",
+                footerScrollable
+                  ? "flex min-h-0 shrink-0 max-h-[min(55dvh,32rem)] flex-col overflow-hidden"
+                  : "shrink-0",
+              ].join(" ")}
+            >
+              {footer}
+            </div>
+          ) : null}
           {isEditMode ? (
             <div className="flex shrink-0 flex-col gap-3 border-t border-surface-border/65 bg-surface-card/95 px-5 py-4 shadow-sticky-footer backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-7">
               <div className="text-xs text-content-muted">
@@ -1220,7 +1234,7 @@ export default function GameModal({
                 </Button>
               </div>
             </div>
-          ) : onEdit || onRefresh || canEdit ? (
+          ) : onEdit || onRefresh || canEdit || onRefreshMetadata ? (
             <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:flex-row sm:items-center sm:px-7">
               <div>
                 {onRefresh ? (
@@ -1230,8 +1244,22 @@ export default function GameModal({
                   </Button>
                 ) : null}
               </div>
-              {canEdit ? (
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                {onRefreshMetadata ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={onRefreshMetadata}
+                    disabled={metadataRefreshing}
+                    aria-busy={metadataRefreshing}
+                    className="w-full sm:w-auto"
+                  >
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                    {metadataRefreshing ? "Refreshing..." : "Refresh metadata"}
+                  </Button>
+                ) : null}
+                {canEdit ? (
+                  <>
                   <Button
                     type="button"
                     variant="secondary"
@@ -1285,8 +1313,9 @@ export default function GameModal({
                       ) : null}
                     </div>
                   ) : null}
-                </div>
-              ) : null}
+                  </>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>

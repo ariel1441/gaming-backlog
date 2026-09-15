@@ -52,7 +52,7 @@ export function buildSteamStatusSuggestionPayload(item, { setStartedAt = false }
   if (item?.activityEventId) payload.activityEventId = item.activityEventId;
   if (!payload.setStartedAt) return payload;
 
-  const rawDate = item?.firstPlayObservedAt || item?.lastPlayedAt;
+  const rawDate = item?.firstPlayObservedAt;
   const parsed = rawDate ? new Date(rawDate) : null;
   if (parsed && Number.isFinite(parsed.getTime())) {
     payload.startedAt = parsed.toISOString();

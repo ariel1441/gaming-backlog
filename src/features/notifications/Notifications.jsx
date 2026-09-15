@@ -39,6 +39,7 @@ import {
   listActivityInbox,
   updateActivityInbox,
   hideOtherActivityUpdates,
+  clearActivityUpdates,
 } from "../../services/activityService";
 import { useSteamExperience } from "../steam/SteamExperienceContext";
 import {
@@ -320,12 +321,44 @@ function NotificationController({ scope, publish }) {
       setReading(false);
     }
   };
+  const clearAll = async () => {
+    const snapshot = state.pages.updates?.snapshot;
+    if (!snapshot || reading) return;
+    const request = sequence.current;
+    setReading(true);
+    try {
+      const result = await clearActivityUpdates(snapshot);
+      if (request !== sequence.current) return;
+      setState((value) => ({
+        ...value,
+        groups: value.groups.filter(
+          (group) => !["prices", "updates"].includes(notificationCategory(group)),
+        ),
+        error: "",
+      }));
+      setNotice(
+        `${result.updated} notifications cleared. Your game decisions remain open.`,
+      );
+    } catch (error) {
+      if (request === sequence.current)
+        setState((value) => ({ ...value, error: error.message }));
+    } finally {
+      setReading(false);
+    }
+  };
   const body = (
     <>
       {notice ? (
         <p role="status" className="px-2 py-2 text-xs text-content-muted">
           {notice}
         </p>
+      ) : null}
+      {buckets.some((bucket) => ["prices", "updates"].includes(bucket.category)) ? (
+        <div className="flex justify-end px-2 pb-2">
+          <Button size="sm" variant="ghost" disabled={reading} onClick={clearAll}>
+            Clear notifications
+          </Button>
+        </div>
       ) : null}
       {state.error ? (
         <div className="mb-3 space-y-2">

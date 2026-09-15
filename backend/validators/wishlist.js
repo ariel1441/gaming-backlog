@@ -28,3 +28,14 @@ export const wishlistItemAction = celebrate({
     status: Joi.string().trim().max(80).required(),
   }),
 }, opts);
+
+export const wishlistMetadataItem = celebrate({
+  [Segments.PARAMS]: Joi.object({ itemId }),
+}, opts);
+
+export const wishlistMetadataMatch = celebrate({
+  [Segments.PARAMS]: Joi.object({ itemId }),
+  [Segments.BODY]: Joi.object({
+    rawg_id: Joi.number().integer().positive().required(),
+  }),
+}, opts);

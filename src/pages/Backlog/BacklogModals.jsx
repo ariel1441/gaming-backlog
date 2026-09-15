@@ -28,6 +28,8 @@ export default function BacklogModals({
   allMyGenres,
   onAddToNextUp,
   onDeleteGame,
+  onRefreshMetadata,
+  metadataRefreshingId,
   showAuth,
   onCloseAuth,
   showOnboarding,
@@ -52,6 +54,11 @@ export default function BacklogModals({
           onSubmitEdit={onSubmitEditGame}
           onCancelEdit={onCancelEditGame}
           onGameUpdated={onSelectedGameUpdated}
+          onRefreshMetadata={onRefreshMetadata ? async () => {
+            const updated = await onRefreshMetadata(modalGame);
+            if (updated) onSelectedGameUpdated(updated);
+          } : undefined}
+          metadataRefreshing={metadataRefreshingId === modalGame.id}
           startInEditMode={!!editingGame}
           onDraftChange={onEditDraftChange}
           formError={editFormError}
