@@ -1312,21 +1312,22 @@ async function claimSteamSyncJob() {
   return rows[0] || null;
 }
 
-let steamSyncWorkerRunning = false;
+let steamSyncWorkerPromise = null;
 
 export async function runSteamSyncJobs() {
-  if (steamSyncWorkerRunning) return;
-  steamSyncWorkerRunning = true;
-  try {
+  if (steamSyncWorkerPromise) return steamSyncWorkerPromise;
+  const workerPromise = (async () => {
     let draining = true;
     while (draining) {
       const job = await claimSteamSyncJob();
       if (!job) draining = false;
       else await processSteamSyncJob(job);
     }
-  } finally {
-    steamSyncWorkerRunning = false;
-  }
+  })();
+  steamSyncWorkerPromise = workerPromise.finally(() => {
+    steamSyncWorkerPromise = null;
+  });
+  return steamSyncWorkerPromise;
 }
 
 export function startSteamSyncJobScheduler() {
@@ -1376,6 +1377,7 @@ export async function waitForSteamSyncJob(
       await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
   }
+  await runSteamSyncJobs();
   return job;
 }
 
