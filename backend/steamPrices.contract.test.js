@@ -279,6 +279,7 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       );
       const previousKey = process.env.STEAM_WEB_API_KEY;
       process.env.STEAM_WEB_API_KEY = 'fixture-key';
+      await steam.updateSteamAutoSync(user.userId, true);
       feedFailure = true;
       allFree = true;
       try {

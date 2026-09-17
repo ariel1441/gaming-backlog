@@ -49,7 +49,7 @@ async function initialize(job) {
     }
     const { rows: selected } = await client.query(`
       WITH eligible AS (
-        SELECT m.id, m.steam_app_id, m.epoch, a.price_next_attempt_at,
+        SELECT m.id, m.steam_app_id, m.epoch, m.next_attempt_at, a.price_next_attempt_at,
                (m.latest_observation_id IS NULL AND m.attempts = 0) AS first_attempt,
                COUNT(*) OVER()::int AS due_count,
                COUNT(*) FILTER (WHERE m.latest_observation_id IS NULL AND m.attempts = 0) OVER()::int AS first_attempt_due_count
