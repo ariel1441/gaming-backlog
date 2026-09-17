@@ -442,8 +442,15 @@ for (const [label, viewport] of [
     await panel
       .getByRole("button", { name: "Close notifications", exact: true })
       .click();
-    await page.getByRole("button", { name: "Details", exact: true }).click();
-    await page.getByRole("link", { name: "Steam sync settings" }).click();
+    if (label === "mobile") {
+      await page
+        .getByRole("button", { name: "Filters and view", exact: true })
+        .click();
+    }
+    await page
+      .getByRole("button", { name: "Manage Steam Wishlist updates", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: "Steam sync settings" }).click();
     await expect(
       page.getByText("Daily Steam sync", { exact: true }),
     ).toBeVisible();

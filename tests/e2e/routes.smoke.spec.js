@@ -9,7 +9,7 @@ const routes = [
   ["/insights", "Insights"],
   ["/steam/library", "Steam Library"],
   ["/steam/import", "Steam Import Review"],
-  ["/wishlist", "Wishlist"],
+  ["/wishlist", /wishlist$/i],
   ["/me", "@smoke_user"],
   ["/settings", "Settings"],
 ];
@@ -131,7 +131,10 @@ for (const [route, expectedHeading] of routes) {
     ).toHaveCount(0);
 
     await expect(
-      page.getByRole("heading", { name: expectedHeading, exact: true }).first(),
+      page.getByRole("heading", {
+        name: expectedHeading,
+        exact: typeof expectedHeading === "string",
+      }).first(),
     ).toBeVisible({ timeout: 10_000 });
   });
 }
