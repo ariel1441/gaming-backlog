@@ -12,8 +12,8 @@ import { useGames } from "../../hooks/useGames";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   applySteamStatusSuggestion,
+  addSteamCandidateToBacklog,
   attachSteamCandidate,
-  importSteamCandidates,
   listSteamLinkCandidates,
   updateSteamImportCandidate,
 } from "../../services/steamService";
@@ -171,18 +171,22 @@ export default function NotificationActions({
     await retireWishlistIntention(wishlist.id, linkedId);
   };
   // Never offer a second import when a secondary Wishlist write fails.
-  const finishAcquisition = async (message, savedGameId) => {
+  const finishAcquisition = async (
+    message,
+    savedGameId,
+    { decisionResolved = false } = {},
+  ) => {
     invalidateWishlistCache();
     if (removeWishlist && wishlist?.localActive && mounted.current) {
       try {
         await retire(savedGameId);
       } catch {
         if (mounted.current)
-          setRetirementRetry({ gameId: savedGameId, message });
+          setRetirementRetry({ gameId: savedGameId, message, decisionResolved });
         return `${message} Your Wishlist reminder is still saved.`;
       }
     }
-    return finishDecision(message);
+    return decisionResolved ? message : finishDecision(message);
   };
   const add = () =>
     perform(async () => {
@@ -190,16 +194,10 @@ export default function NotificationActions({
         const response = await moveWishlistToBacklog(wishlist.id, targetStatus);
         return finishAcquisition(`Added to Backlog · ${statusDisplayLabel(targetStatus)}`, response.gameId);
       }
-      const saved = await updateSteamImportCandidate(candidate.id, {
-        action: "set_status",
+      const response = await addSteamCandidateToBacklog(candidate.id, {
         status: targetStatus,
+        activityEventId: event.id,
       });
-      if (!mounted.current) return "";
-      if (!saved)
-        throw new Error(
-          "This Steam game is no longer available. Reopen notifications to refresh.",
-        );
-      const response = await importSteamCandidates([candidate.id]);
       if (!response.imported?.length && !response.attached?.length)
         throw new Error(
           "This game could not be added. Check its match in More options.",
@@ -208,7 +206,8 @@ export default function NotificationActions({
         response.attached?.length
           ? "Linked to your existing game. Its status was kept."
           : `Added to Backlog · ${statusDisplayLabel(targetStatus)}`,
-        response.imported?.[0]?.gameId,
+        response.gameId || response.imported?.[0]?.gameId,
+        { decisionResolved: true },
       );
     });
   const availableGames = buildDisplayGames({
@@ -275,9 +274,10 @@ export default function NotificationActions({
                   perform(async () => {
                     await retire(retirementRetry.gameId);
                     if (mounted.current) setRetirementRetry(null);
-                    return finishDecision(
-                      `${retirementRetry.message} Wishlist reminder removed.`,
-                    );
+                    const message = `${retirementRetry.message} Wishlist reminder removed.`;
+                    return retirementRetry.decisionResolved
+                      ? message
+                      : finishDecision(message);
                   })
                 }
               >
@@ -290,7 +290,9 @@ export default function NotificationActions({
                 onClick={() =>
                   perform(async () => {
                     setRetirementRetry(null);
-                    return finishDecision(retirementRetry.message);
+                    return retirementRetry.decisionResolved
+                      ? retirementRetry.message
+                      : finishDecision(retirementRetry.message);
                   })
                 }
               >

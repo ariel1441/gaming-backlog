@@ -287,7 +287,7 @@ export async function getWishlistMetadataStatus(userId, db = pool) {
   };
 }
 
-async function claimWork(db, workerId, userId = null, wishlistItemId = null) {
+async function claimWork(db, workerId, userId = null, wishlistItemId = null, priority = "due_order") {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -298,9 +298,16 @@ async function claimWork(db, workerId, userId = null, wishlistItemId = null) {
           AND status IN ('queued', 'running', 'completed', 'failed', 'unmatched')
           AND (status = 'running' OR next_attempt_at IS NULL OR next_attempt_at <= NOW())
           AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
-        ORDER BY next_attempt_at NULLS FIRST, updated_at, wishlist_item_id
+          AND ($3::text <> 'fresh_only' OR $2::bigint IS NOT NULL OR attempt_count = 0)
+        ORDER BY
+          CASE WHEN $3::text = 'retry_first' THEN CASE WHEN attempt_count > 0 THEN 0 ELSE 1 END ELSE 0 END,
+          next_attempt_at NULLS FIRST, updated_at, wishlist_item_id
         FOR UPDATE SKIP LOCKED LIMIT 1`,
-      [userId == null ? null : Number(userId), wishlistItemId == null ? null : Number(wishlistItemId)],
+      [
+        userId == null ? null : Number(userId),
+        wishlistItemId == null ? null : Number(wishlistItemId),
+        priority,
+      ],
     );
     if (!claimed.rows[0]) {
       await client.query("COMMIT");
@@ -622,8 +629,9 @@ export async function processNextWishlistMetadataBatch({
   searchCatalogFn = searchCatalog,
   ingestRawgGameMetadataFn = ingestRawgGameMetadata,
   now = () => new Date(),
+  workPriority = "due_order",
 } = {}) {
-  const work = await claimWork(db, workerId, userId, wishlistItemId);
+  const work = await claimWork(db, workerId, userId, wishlistItemId, workPriority);
   if (!work) return null;
   const stopHeartbeat = startWorkHeartbeat(work, db);
   const dependencies = {
@@ -679,7 +687,18 @@ export async function drainWishlistMetadataQueue({
   const limit = positiveInt(maxItems, DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE);
   const results = [];
   for (let index = 0; index < limit; index += 1) {
-    const result = await processNextWishlistMetadataBatch({ db, userId, ...options });
+    // Reserve the first claim in each general batch for a never-attempted item.
+    // The remaining claims prefer due retries, but still use fresh work when no
+    // retries are runnable. Item-scoped refreshes stay strictly item-scoped.
+    const workPriority = options.wishlistItemId
+      ? "due_order"
+      : index === 0
+        ? "fresh_only"
+        : "retry_first";
+    let result = await processNextWishlistMetadataBatch({ db, userId, ...options, workPriority });
+    if (!result && workPriority === "fresh_only") {
+      result = await processNextWishlistMetadataBatch({ db, userId, ...options, workPriority: "retry_first" });
+    }
     if (!result) break;
     if (!result.processed) continue;
     results.push(result);

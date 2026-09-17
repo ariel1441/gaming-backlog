@@ -9,6 +9,7 @@ import { isWishlistRawgMatchUnavailable } from "./wishlistPresentation";
 
 const metadataStateClasses = {
   linked: "border-state-success/30 bg-state-success/10 text-state-success",
+  pending: "border-primary/30 bg-primary/10 text-primary-light",
   missing: "border-content-muted/30 bg-content-muted/10 text-content-muted",
   review: "border-state-warning/35 bg-state-warning/10 text-state-warning",
   incomplete: "border-state-warning/35 bg-state-warning/10 text-state-warning",
@@ -85,7 +86,7 @@ export default function WishlistCardFooter({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-content-muted">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-content-muted">
         <span className="inline-flex items-center gap-1.5">
           <Heart className="h-3.5 w-3.5 text-primary-light" aria-hidden="true" />
           {game.steamActive ? (game.providerOrder != null ? `Steam order ${game.providerOrder + 1}` : "Steam wishlist") : game.removalReason === "account_disconnected" ? "Previous Steam connection" : game.steamAppId ? "Removed from Steam" : "Local wishlist"}
@@ -94,15 +95,33 @@ export default function WishlistCardFooter({
           <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
           Added {formatDate(game.dateAdded)}
         </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span
-          className={`inline-flex items-center rounded-full border px-2.5 py-1 font-semibold ${metadataStateClasses[metadataState] || metadataStateClasses.missing}`}
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold ${metadataStateClasses[metadataState] || metadataStateClasses.missing}`}
           aria-label={`RAWG metadata status: ${metadataLabel}`}
         >
           RAWG: {metadataLabel}
         </span>
+        {!preview && game.inBacklog ? (
+          <span className="inline-flex items-center rounded-full border border-state-success/30 bg-state-success/10 px-2 py-0.5 font-semibold text-state-success">
+            Already in backlog
+          </span>
+        ) : null}
       </div>
+      {!preview && !game.inBacklog ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="primary" onClick={() => onMove?.(game)} disabled={moving} className="min-w-40 flex-1 sm:flex-none">
+            <ListPlus className="h-4 w-4" aria-hidden="true" />
+            {moving ? "Moving..." : "Move to backlog"}
+          </Button>
+          <SelectMenu
+            value={moveStatus}
+            onChange={onMoveStatusChange}
+            options={statusOptions.length ? statusOptions : [{ value: "planned", label: "planned" }]}
+            aria-label={`Backlog status for ${game.name}`}
+            className="min-w-36 flex-1 sm:w-44 sm:flex-none"
+          />
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {onRefreshMetadata ? (
           <Button
@@ -150,29 +169,13 @@ export default function WishlistCardFooter({
           <Button as={Link} to="/wishlist" size="sm" variant="secondary">
             View Wishlist
           </Button>
-        ) : !game.inBacklog ? (
-          <>
-            <SelectMenu
-              value={moveStatus}
-              onChange={onMoveStatusChange}
-              options={statusOptions.length ? statusOptions : [{ value: "planned", label: "planned" }]}
-              aria-label={`Backlog status for ${game.name}`}
-              className="min-w-32"
-            />
-            <Button size="sm" variant="secondary" onClick={() => onMove?.(game)} disabled={moving}>
-              <ListPlus className="h-4 w-4" aria-hidden="true" />
-              {moving ? "Moving..." : "Move to backlog"}
-            </Button>
-          </>
-        ) : (
-          <span className="text-xs font-medium text-state-success">Already in backlog</span>
-        )}
+        ) : null}
       </div>
       {matchOpen ? (
         <section
           id="wishlist-rawg-match-panel"
           aria-label="Choose RAWG match"
-          className="flex min-h-0 max-h-[min(22rem,42dvh)] flex-col overflow-hidden rounded-panel border border-primary/30 bg-surface-card/55 p-3 shadow-sm shadow-primary/5 sm:p-4"
+          className="rounded-panel border border-primary/30 bg-surface-card/55 p-3 shadow-sm shadow-primary/5 sm:p-4"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -202,7 +205,7 @@ export default function WishlistCardFooter({
             aria-label="Search RAWG games"
           />
           <div
-            className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]"
+            className="mt-3 space-y-2"
             aria-live="polite"
           >
             {matchResults.map((result) => (

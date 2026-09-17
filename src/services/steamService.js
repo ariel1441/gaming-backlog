@@ -101,6 +101,10 @@ export function updateSteamImportCandidate(id, payload, opts = {}) {
   return api.patch(`/api/steam/import-candidates/${id}`, payload, opts);
 }
 
+export function addSteamCandidateToBacklog(id, payload, opts = {}) {
+  return api.post(`/api/steam/import-candidates/${id}/add-to-backlog`, payload, opts);
+}
+
 export function bulkUpdateSteamImportCandidates(payload, opts = {}) {
   return api.post("/api/steam/import-candidates/bulk", payload, opts);
 }

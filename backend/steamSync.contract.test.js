@@ -302,6 +302,7 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     assert.equal(incremental.status, "completed");
     assert.equal(incremental.run.triggerType, "scheduled");
     assert.equal(incremental.result.summary.newlyObserved, 1);
+    assert.equal(incremental.result.notificationDecisions.created, 1);
     let openEvents = await activity.listActivityEvents(userId, {
       source: "steam_library",
       state: "open",
@@ -313,6 +314,7 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
       await steamSync.enqueueSteamSync(userId, { force: true }),
     );
     assert.equal(identicalIncremental.result.summary.newlyObserved, 0);
+    assert.equal(identicalIncremental.result.notificationDecisions.notNew, 0);
     openEvents = await activity.listActivityEvents(userId, {
       source: "steam_library",
       state: "open",

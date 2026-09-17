@@ -179,19 +179,19 @@ for (const [label, viewport] of [
         expect(data).toEqual({ status: 'finished' });
         return json({ gameId: 3, wishlistItemId: 9 });
       }
-      if (/\/api\/steam\/import-candidates\/(11|16)$/.test(path)) {
+      if (/\/api\/steam\/import-candidates\/(11|16)\/add-to-backlog$/.test(path)) {
+        const candidateId = Number(path.split("/").at(-2));
         expect(data).toEqual({
-          action: "set_status",
-          status: path.endsWith("16") ? "playing" : "finished",
+          status: candidateId === 16 ? "playing" : "finished",
+          activityEventId: candidateId,
         });
-        return json({});
-      }
-      if (path === "/api/steam/import") {
-        expect([11, 16]).toContain(data.candidateIds[0]);
+        dismissed.add(candidateId);
         return json({
-          imported: [{ candidateId: 11, gameId: 3 }],
+          imported: [{ candidateId, gameId: 3 }],
           attached: [],
           skipped: [],
+          gameId: 3,
+          resolvedActivityEventIds: [candidateId],
         });
       }
       if (path === "/api/steam/link-candidates/12/attach") {
@@ -221,7 +221,7 @@ for (const [label, viewport] of [
     });
     await page.goto("/wishlist");
     await expect(
-      page.getByRole("heading", { name: "Wishlist", exact: true }),
+      page.getByRole("heading", { name: /wishlist$/i }),
     ).toBeVisible();
     const bell = page
       .getByRole("button", { name: /^Notifications/, includeHidden: true })
@@ -433,8 +433,9 @@ for (const [label, viewport] of [
     ).toBeVisible();
     expect(writes.filter(({ path }) => path.includes("/sync"))).toEqual([]);
     expect(
-      writes.filter(({ path }) => path === "/api/steam/import"),
+      writes.filter(({ path }) => /\/api\/steam\/import-candidates\/(11|16)\/add-to-backlog$/.test(path)),
     ).toHaveLength(label === 'legacy wishlist' ? 1 : 2);
+    expect(writes.filter(({ path }) => path === "/api/steam/import")).toHaveLength(0);
     expect(writes.filter(({ path }) => path === '/api/wishlist/9/move-to-backlog')).toHaveLength(label === 'legacy wishlist' ? 1 : 0);
     expect(errors).toEqual([]);
     await expect(page).toHaveURL(/\/wishlist$/);

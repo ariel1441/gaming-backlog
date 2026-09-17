@@ -150,6 +150,52 @@ test("Wishlist work is owner-scoped, idempotent, and hydrates one safe RAWG iden
   });
 });
 
+test("metadata batches give a new Wishlist item a first attempt without starving due retries", async () => {
+  await withMetadataSchema(async db => {
+    await seed(db);
+    await completeCatalog(db, 10);
+    await completeCatalog(db, 11);
+    await db.query("UPDATE user_wishlist_items SET catalog_game_id=11 WHERE id=22");
+    await enqueueWishlistMetadataWork(db, { userId: 1, wishlistItemId: 20 });
+    await enqueueWishlistMetadataWork(db, { userId: 1, wishlistItemId: 22 });
+    await db.query(`UPDATE wishlist_metadata_work
+      SET status='failed', attempt_count=3, next_attempt_at=NOW()-INTERVAL '1 day'
+      WHERE wishlist_item_id=20`);
+
+    const mixed = await drainWishlistMetadataQueue({
+      db,
+      userId: 1,
+      maxItems: 2,
+      searchCatalogFn: noSearch,
+      ingestRawgGameMetadataFn: noIngestion,
+    });
+    assert.deepEqual(mixed.results.map(result => result.wishlistItemId), [22, 20]);
+
+    await db.query(`
+      INSERT INTO catalog_games (id, name, canonical_title, cover_url, metadata_quality, genres_json, metadata_source, metadata_fetched_at)
+      VALUES
+        (13, 'Fresh Queue One', 'Fresh Queue One', 'https://img.example/one.jpg', 'full', '["Action"]', 'rawg', NOW()),
+        (14, 'Fresh Queue Two', 'Fresh Queue Two', 'https://img.example/two.jpg', 'full', '["RPG"]', 'rawg', NOW());
+      INSERT INTO external_game_ids (catalog_game_id, source, external_id, slug)
+      VALUES (13, 'rawg', '103', 'fresh-queue-one'), (14, 'rawg', '104', 'fresh-queue-two');
+      INSERT INTO user_wishlist_items (id, user_id, catalog_game_id, display_name)
+      VALUES (24, 1, 13, 'Fresh Queue One'), (25, 1, 14, 'Fresh Queue Two')
+    `);
+    await enqueueWishlistMetadataWork(db, { userId: 1, wishlistItemId: 24 });
+    await enqueueWishlistMetadataWork(db, { userId: 1, wishlistItemId: 25 });
+    await db.query("UPDATE wishlist_metadata_work SET next_attempt_at=NOW()+INTERVAL '1 day' WHERE wishlist_item_id IN (20, 22)");
+
+    const freshOnly = await drainWishlistMetadataQueue({
+      db,
+      userId: 1,
+      maxItems: 2,
+      searchCatalogFn: noSearch,
+      ingestRawgGameMetadataFn: noIngestion,
+    });
+    assert.deepEqual(freshOnly.results.map(result => result.wishlistItemId), [24, 25]);
+  });
+});
+
 test("ambiguous title matches stay in review and preserve the Steam fallback", async () => {
   await withMetadataSchema(async (db) => {
     await seed(db);

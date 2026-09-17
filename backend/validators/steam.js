@@ -160,6 +160,10 @@ export const steamSchemas = {
       .unique(),
     scope: scopeSchema.optional(),
   }).or("candidateIds", "scope"),
+  addCandidateToBacklogBody: Joi.object({
+    status: Joi.string().trim().max(80).required(),
+    activityEventId: Joi.number().integer().positive().allow(null).optional(),
+  }),
 };
 
 export const devLinkSteam = celebrate(
@@ -283,4 +287,12 @@ export const importSteam = celebrate(
     [Segments.BODY]: steamSchemas.importBody,
   },
   opts
+);
+
+export const addSteamCandidateToBacklog = celebrate(
+  {
+    [Segments.PARAMS]: steamSchemas.candidateIdParams,
+    [Segments.BODY]: steamSchemas.addCandidateToBacklogBody,
+  },
+  opts,
 );

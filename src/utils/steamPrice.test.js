@@ -24,7 +24,9 @@ test('prices distinguish zero, unknown, failed, stale, owned and unavailable', (
   assert.doesNotMatch(steamPriceDisplay({ ...price, status: 'failed' }).label, /Last known/);
   assert.match(steamPriceDisplay({ ...price, status: 'failed' }).note, /saved price retained/);
   assert.match(steamPriceDisplay({ ...price, monitoring: false, monitoringReason: 'owned' }).note, /Owned/);
-  assert.equal(steamPriceDisplay({ ...price, checkState: 'awaiting_scheduled_check' }).note, 'Awaiting scheduled price check');
+  assert.equal(steamPriceDisplay({ ...price, checkState: 'awaiting_scheduled_check' }, Date.parse(price.observedAt)).note, null);
+  assert.equal(steamPriceDisplay({ ...price, checkState: 'awaiting_scheduled_check' }, Date.parse(price.observedAt)).cardNote, false);
+  assert.equal(steamPriceDisplay({ ...price, status: 'failed' }).cardNote, true);
   assert.equal(steamPriceDisplay({ ...price, currentMinor: null, status: 'unavailable' }).label, 'Unavailable in Israel');
   assert.equal(steamPriceDisplay(price, Date.parse(price.observedAt) + 2 * 86400000).stale, true);
 });

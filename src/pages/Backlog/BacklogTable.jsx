@@ -310,10 +310,15 @@ function BacklogTableRow({
             ) : null}
           </span>
         </button>
-        {game.steamPrice || game.wishlist?.steamPrice ? (
+        {collection !== "wishlist" && (game.steamPrice || game.wishlist?.steamPrice) ? (
           <div className="mt-2 max-w-[340px] font-normal"><SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} /></div>
         ) : null}
       </th>
+      {collection === "wishlist" ? (
+        <td className="min-w-[130px] px-3 py-3">
+          <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
+        </td>
+      ) : null}
       <td className="min-w-[170px] px-3 py-3">
         {collection === "wishlist" ? <span className="text-sm text-content-secondary">{game.steamActive && game.providerOrder != null ? game.providerOrder + 1 : "?"}</span> : <StatusBadge status={game.status} className="max-w-[180px]" />}
       </td>
@@ -428,7 +433,7 @@ export default function BacklogTable({
           strategy={verticalListSortingStrategy}
         >
           <table
-            className="w-full min-w-[1260px] border-separate border-spacing-0"
+            className={`w-full ${collection === "wishlist" ? "min-w-[1380px]" : "min-w-[1260px]"} border-separate border-spacing-0`}
             aria-label={collection === "wishlist" ? "Wishlist table" : "Backlog table"}
           >
             <thead className="relative z-20">
@@ -449,6 +454,16 @@ export default function BacklogTable({
                   onSort={handleSort}
                   className="min-w-[280px] border-b border-surface-border"
                 />
+                {collection === "wishlist" ? (
+                  <SortableHeader
+                    label="Price"
+                    sortKey="price"
+                    activeSortKey={sortKey}
+                    isReversed={isReversed}
+                    onSort={handleSort}
+                    className="min-w-[130px] border-b border-surface-border"
+                  />
+                ) : null}
                 <SortableHeader
                   label={collection === "wishlist" ? "Steam order" : "Status"}
                   sortKey={collection === "wishlist" ? "providerOrder" : "status"}

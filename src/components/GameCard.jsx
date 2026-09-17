@@ -207,25 +207,25 @@ export default function GameCard({
   const myGenres = game.entryKind === "wishlist" ? splitCsv(game.genres) : personalGenreNames(game);
   const hours = resolveGameHours(game);
   const cardStats = [
-    {
+    hours.hours ? {
       icon: Clock3,
       label: hours.sourceLabel,
       value: hours.label,
-      tone: hours.hours ? (hours.isActual ? "primary" : "default") : "muted",
-    },
-    {
+      tone: hours.isActual ? "primary" : "default",
+    } : null,
+    game.rating ? {
       icon: Star,
       label: "RAWG",
-      value: game.rating ? `${game.rating}/5` : "N/A",
-      tone: game.rating ? "default" : "muted",
-    },
-    {
+      value: `${game.rating}/5`,
+      tone: "default",
+    } : null,
+    game.metacritic ? {
       icon: Trophy,
       label: "Metacritic",
-      value: game.metacritic ? String(game.metacritic) : "N/A",
-      tone: game.metacritic ? "default" : "muted",
-    },
-  ];
+      value: String(game.metacritic),
+      tone: "default",
+    } : null,
+  ].filter(Boolean);
   const isActiveOrDone = statusIsAlreadyActiveOrDone(game.status, statusGroupOf);
   const steamHours = Number(hours.secondarySteamHours);
   const showSteamContext = isActiveOrDone || (Number.isFinite(steamHours) && steamHours >= MIN_PLANNED_STEAM_ACTIVITY_HOURS);
@@ -256,7 +256,7 @@ export default function GameCard({
     ? formatAchievementSummary(game.steamAchievements)
     : null;
   const achievementStat =
-    hours.hours && achievements?.isMeaningful && Number(achievements.percent) > 0
+    showSteamContext && hours.hours && achievements?.isMeaningful && Number(achievements.percent) > 0
       ? {
           icon: Trophy,
           label: "Achievements",
@@ -407,7 +407,7 @@ export default function GameCard({
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-1.5">
+              {cardStats.length ? <div className="flex flex-wrap gap-1.5">
                 {cardStats.map((stat) => (
                   <MiniStat
                     key={stat.label}
@@ -442,7 +442,7 @@ export default function GameCard({
                   />
                 ) : null}
                 <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
-              </div>
+              </div> : null}
 
               <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
               {myGenres.length ? <AdaptiveChipList items={myGenres} className="gap-2" /> : null}
@@ -496,8 +496,9 @@ export default function GameCard({
       <div className="flex flex-1 flex-col gap-4 px-3.5 py-4">
         <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
         {isCompact ? (
-          <div className="grid content-start gap-2">
-            <div className="flex flex-wrap gap-1.5">
+          cardStats.length || steamPlaytime || steamLastPlayed || steamActivityStat || achievementStat || startedAt || finishedAt ? (
+            <div className="grid content-start gap-2">
+              <div className="flex flex-wrap gap-1.5">
               {cardStats.map((stat) => (
                 <MiniStat
                   key={stat.label}
@@ -540,10 +541,11 @@ export default function GameCard({
                 />
               ) : null}
             </div>
-            <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
-          </div>
+              <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
+            </div>
+          ) : null
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          cardStats.length || steamPlaytime || steamLastPlayed || steamActivityStat || achievementStat || startedAt || finishedAt ? <div className="flex flex-wrap gap-1.5">
             {cardStats.map((stat) => (
               <MiniStat
                 key={stat.label}
@@ -586,7 +588,7 @@ export default function GameCard({
               />
             ) : null}
             <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
-          </div>
+          </div> : null
         )}
 
         {myGenres.length ? <AdaptiveChipList items={myGenres} className="mt-auto border-t border-surface-border/70 pt-4" chipClassName="px-3" /> : null}

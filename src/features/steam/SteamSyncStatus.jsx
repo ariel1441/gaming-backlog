@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, RefreshCw } from "lucide-react";
-import { Button, Switch, useToast } from "../../components/ui";
+import { ActionMenu, Button, Switch, useToast } from "../../components/ui";
 import {
   updateSteamAccountSettings,
   cancelSteamLibrarySync,
 } from "../../services/steamService";
 import { useSteamExperience } from "./SteamExperienceContext";
 import { relativeSavedTime } from "../../utils/steamPrice";
+import { formatSteamPhaseRunDetail } from "../../utils/steamSync";
 
 const domains = {
   library: "Library & activity",
@@ -29,6 +30,7 @@ export default function SteamSyncStatus({
   onMetadataBulkRefresh,
   diagnostics = false,
   onLibraryRefresh,
+  compact = false,
 }) {
   const health = useSteamExperience();
   const account = health.account || savedAccount;
@@ -61,6 +63,13 @@ export default function SteamSyncStatus({
     }
   };
   if (!account)
+    if (compact)
+      return (
+        <Button as={Link} to="/settings?section=integrations" size="sm" variant="secondary">
+          Connect Steam
+        </Button>
+      );
+    else
     return (
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-content-muted">
         <span>Saved Wishlist</span>
@@ -69,6 +78,66 @@ export default function SteamSyncStatus({
         </Button>
         {health.error ? <span>Sync status unavailable</span> : null}
       </div>
+    );
+  if (compact)
+    return (
+      <ActionMenu
+        label={working ? "Updating" : "Manage"}
+        ariaLabel="Manage Steam Wishlist updates"
+        icon={RefreshCw}
+        align="start"
+        className="whitespace-nowrap"
+        menuClassName="w-[min(20rem,calc(100vw-1rem))]"
+      >
+        {({ close }) => (
+          <div className="space-y-3 p-1">
+            <div className="space-y-1 px-2 pt-1 text-xs text-content-muted">
+              <p className="font-medium text-content-primary">
+                {working ? "Steam is updating in the background" : `Wishlist ${relativeSavedTime(account.lastWishlistSyncAt)}`}
+              </p>
+              {verification + retrying > 0 ? (
+                <p className="text-state-warning">
+                  {verification + retrying} {verification + retrying === 1 ? "price needs" : "prices need"} attention
+                </p>
+              ) : null}
+              {account.wishlistSyncStatus === "empty_unconfirmed" ? (
+                <p className="text-state-warning">Wishlist membership needs attention</p>
+              ) : null}
+              {health.error ? <p className="text-state-warning">Sync status is unavailable</p> : null}
+            </div>
+            <div className="space-y-1 border-t border-surface-border/65 pt-2">
+              {onMembershipRefresh ? (
+                <Button role="menuitem" size="sm" variant="ghost" className="w-full justify-start" disabled={working} onClick={() => { close(); onMembershipRefresh(); }}>
+                  Refresh membership
+                </Button>
+              ) : null}
+              {onPriceRefresh ? (
+                <Button role="menuitem" size="sm" variant="ghost" className="w-full justify-start" disabled={working} onClick={() => { close(); onPriceRefresh(); }}>
+                  Refresh prices
+                </Button>
+              ) : null}
+              {onMetadataRefresh ? (
+                <Button role="menuitem" size="sm" variant="ghost" className="w-full justify-start" disabled={working} onClick={() => { close(); onMetadataRefresh(); }}>
+                  Refresh metadata
+                </Button>
+              ) : null}
+              {onMetadataBulkRefresh ? (
+                <Button role="menuitem" size="sm" variant="ghost" className="w-full justify-start" disabled={working} onClick={() => { close(); onMetadataBulkRefresh(); }}>
+                  Refresh all queued
+                </Button>
+              ) : null}
+              {account.wishlistSyncStatus === "empty_unconfirmed" && confirmEmpty ? (
+                <Button role="menuitem" size="sm" variant="ghost" className="w-full justify-start text-state-warning" disabled={working} onClick={() => { close(); confirmEmpty(); }}>
+                  Confirm empty wishlist
+                </Button>
+              ) : null}
+              <Button as={Link} to="/settings?section=integrations" role="menuitem" size="sm" variant="ghost" className="w-full justify-start" onClick={close}>
+                Steam sync settings
+              </Button>
+            </div>
+          </div>
+        )}
+      </ActionMenu>
     );
   if (!diagnostics)
     return (
@@ -243,6 +312,7 @@ export default function SteamSyncStatus({
                   : kind === "wishlist"
                     ? account.lastWishlistSyncAt
                     : account.lastPriceSyncAt;
+              const detail = formatSteamPhaseRunDetail(run);
               return (
                 <div
                   key={kind}
@@ -258,6 +328,9 @@ export default function SteamSyncStatus({
                       ? `${date(run.startedAt)} · ${run.status}`
                       : "Not recorded"}
                   </p>
+                  {detail ? (
+                    <p className="mt-1 text-xs text-content-muted">{detail}</p>
+                  ) : null}
                 </div>
               );
             })}

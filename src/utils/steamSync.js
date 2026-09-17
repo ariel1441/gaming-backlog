@@ -2,6 +2,10 @@ function plural(value, singular, pluralLabel = `${singular}s`) {
   return `${value} ${value === 1 ? singular : pluralLabel}`;
 }
 
+function count(value) {
+  return Math.max(0, Number(value) || 0);
+}
+
 function syncReviewTotal(review) {
   return (
     Number(review?.startedPlaying?.length || 0) +
@@ -137,6 +141,40 @@ export function formatSteamLibrarySyncMessage(payload) {
   }
 
   return parts.join(" ");
+}
+
+export function formatSteamPhaseRunDetail(run) {
+  const summary = run?.summary || {};
+  if (run?.syncKind === "library") {
+    const incompleteAchievements = count(summary.achievementFailures) + count(summary.achievementUnavailable);
+    if (run.status === "partial" && summary.librarySnapshotSucceeded) {
+      const parts = ["Library snapshot and activity observations were saved."];
+      if (incompleteAchievements) {
+        parts.push(`${plural(incompleteAchievements, "achievement refresh", "achievement refreshes")} need follow-up.`);
+      }
+      return parts.join(" ");
+    }
+    return run.status === "partial" ? "Library update is partial; saved data remains available." : null;
+  }
+
+  if (run?.syncKind === "wishlist_prices") {
+    const deferred = count(summary.deferred);
+    const failed = count(summary.failed);
+    const uncertain = count(summary.errorCounts?.steam_price_offer_uncertain);
+    const retrying = Math.max(0, failed - uncertain);
+    const parts = [];
+    if (summary.priceMode === "fallback") parts.push("Steam price feed was unavailable; a fallback sweep ran.");
+    if (deferred) parts.push(`${plural(deferred, "price check")} deferred.`);
+    if (uncertain) parts.push(`${plural(uncertain, "offer")} need verification.`);
+    if (retrying || count(summary.pendingRetries)) parts.push("Temporary price retries are scheduled.");
+    if (run.status === "partial" && !parts.length) parts.push("Price refresh is partial; saved prices remain available.");
+    return parts.length ? parts.join(" ") : null;
+  }
+
+  if (run?.syncKind === "wishlist" && run.status === "partial") {
+    return "Wishlist membership was saved, but some Steam fallback details are incomplete.";
+  }
+  return null;
 }
 
 export function formatAchievementBatchSyncMessage(payload) {

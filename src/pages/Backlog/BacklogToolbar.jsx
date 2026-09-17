@@ -91,6 +91,7 @@ export default function BacklogToolbar({
   collection = "backlog",
   membershipControl = null,
   collectionControl = null,
+  utilityControl = null,
   sortOptions = backlogSortOptions,
 }) {
   const title = identity?.title || "Backlog";
@@ -125,6 +126,7 @@ export default function BacklogToolbar({
               setQuery={search.setQuery}
               clear={search.clear}
               placeholder={search.placeholder}
+              collectionLabel={collection === "wishlist" ? "Wishlist" : "Backlog"}
               games={games}
               onSelectGame={onSelectGame}
             />
@@ -203,6 +205,7 @@ export default function BacklogToolbar({
         >
           <div className="flex flex-col gap-3 2xl:flex-row 2xl:flex-nowrap 2xl:items-center">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 2xl:flex-nowrap">
+              {utilityControl}
               {membershipControl}
               {collectionControl}
               {collection !== "wishlist" ? <>

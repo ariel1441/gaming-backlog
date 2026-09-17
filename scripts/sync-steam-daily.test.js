@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runDailySteamSync } from "./sync-steam-daily.js";
+import { dailyPhaseDiagnostics, runDailySteamSync } from "./sync-steam-daily.js";
 
 test("daily runner preserves the selected account identity and counts later ineligibility as skipped", async () => {
   const selections = [];
@@ -90,5 +90,84 @@ test("daily Steam runner continues after waiting for one job times out", async (
     wishlist: { succeeded: 2, partial: 0, failed: 0, skipped: 0 },
     wishlist_prices: { succeeded: 2, partial: 0, failed: 0, skipped: 0 },
   });
-  assert.match(errors[0], /Timed out waiting/);
+  assert.match(errors[0], /steam_sync_wait_timeout/);
+  assert.doesNotMatch(errors[0], /user 1/);
+});
+
+test("daily Steam runner logs redacted phase outcomes and library notification decisions", async () => {
+  const logs = [];
+  await runDailySteamSync({
+    listUsers: async () => [{ userId: 901, accountId: 902 }],
+    enqueue: async (_userId, options) => ({ id: `job-${options.syncKind}` }),
+    waitForJob: async () => ({
+      status: "completed",
+      result: {
+        run: { status: "partial" },
+        summary: { newlyObserved: 2 },
+        candidatesCreated: 2,
+        notificationDecisions: { created: 1, baseline: 1 },
+      },
+    }),
+    logger: { log: (message) => logs.push(message), error() {} },
+  });
+  const library = logs.find((message) => message.includes('"syncKind":"library"') && message.includes('"event":"finished"'));
+  assert.match(library, /"newlyObserved":2/);
+  assert.match(library, /"notificationDecisions":\{"created":1,"baseline":1\}/);
+  assert.doesNotMatch(library, /901|902/);
+});
+
+test("daily phase diagnostics preserve partial causes without provider payloads", () => {
+  assert.deepEqual(
+    dailyPhaseDiagnostics("library", {
+      summary: {
+        total: 750,
+        activityObservations: 750,
+        reviewItemsCreated: 2,
+        librarySnapshotSucceeded: true,
+        achievementFailures: 3,
+        achievementUnavailable: 7,
+      },
+    }),
+    {
+      itemsSeen: 750,
+      activityObservations: 750,
+      reviewItemsCreated: 2,
+      librarySnapshotSucceeded: true,
+      achievementFailures: 3,
+      achievementUnavailable: 7,
+      achievementSkipped: 0,
+    },
+  );
+  assert.deepEqual(
+    dailyPhaseDiagnostics("wishlist_prices", {
+      summary: {
+        requests: 187,
+        succeeded: 176,
+        failed: 4,
+        changed: 28,
+        deferred: 268,
+        pendingRetries: 4,
+        priceMode: "fallback",
+        feedErrorCode: "steam_http_error",
+        errorCounts: { steam_price_offer_uncertain: 4 },
+        errorExamples: [{ appId: "private", message: "do not log" }],
+      },
+    }),
+    {
+      itemsSeen: 0,
+      requests: 187,
+      succeeded: 176,
+      failed: 4,
+      changed: 28,
+      deferred: 268,
+      pendingRetries: 4,
+      firstAttemptSelected: 0,
+      firstAttemptDeferred: 0,
+      priceMode: "fallback",
+      feedErrorCode: "steam_http_error",
+      reason: null,
+      errorCounts: { steam_price_offer_uncertain: 4 },
+      retryScheduled: false,
+    },
+  );
 });

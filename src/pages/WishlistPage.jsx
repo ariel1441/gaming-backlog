@@ -59,6 +59,12 @@ const membershipOptions = [
   { value: "all", label: "All history" },
 ];
 
+function possessiveName(value) {
+  const name = String(value || "").trim();
+  if (!name) return "Your";
+  return /s$/i.test(name) ? `${name}’` : `${name}’s`;
+}
+
 export default function WishlistPage() {
   const { user, isAuthenticated, isGuest } = useAuth();
   const { statuses } = useStatuses();
@@ -126,6 +132,7 @@ export default function WishlistPage() {
   const setSort = (value) => {
     setPage(0);
     filters.setSortKey(value);
+    if (value === "discount") filters.setIsReversed(true);
   };
   const setReverse = (value) => {
     setPage(0);
@@ -161,7 +168,11 @@ export default function WishlistPage() {
         );
     } catch (error) {
       if (error.name !== "AbortError")
-        toast.error(error.message || "Wishlist sync failed.");
+        toast.error(
+          prices && error.code === "steam_price_failed"
+            ? "Price refresh did not complete. Saved prices are unchanged; try again later."
+            : error.message || "Wishlist sync failed.",
+        );
     } finally {
       if (!controller.signal.aborted) {
         setSyncing(false);
@@ -286,7 +297,7 @@ export default function WishlistPage() {
         showNotifications
         collection="wishlist"
         identity={{
-          title: "Wishlist",
+          title: `${possessiveName(user?.display_name?.trim() || user?.username)} wishlist`,
         }}
         search={{
           query: filters.searchQuery,
@@ -301,6 +312,20 @@ export default function WishlistPage() {
           setIsReversed: setReverse,
         }}
         sortOptions={wishlistSortOptions}
+        utilityControl={
+          <SteamSyncStatus
+            compact
+            savedAccount={state.account}
+            priceHealth={state.priceHealth}
+            onMembershipRefresh={() => runSync()}
+            onPriceRefresh={() => runSync(false, true)}
+            busy={syncing || metadataRefreshing || metadataBulkRefreshing}
+            confirmEmpty={confirmEmpty}
+            metadata={state.metadata}
+            onMetadataRefresh={runMetadataRefresh}
+            onMetadataBulkRefresh={runAllMetadataRefresh}
+          />
+        }
         filters={{
           ...filters,
           count: filterCount,
@@ -335,13 +360,8 @@ export default function WishlistPage() {
       />
       </div>
       <div className="mx-auto w-full max-w-[1760px]">
-        <SteamSyncStatus savedAccount={state.account} priceHealth={state.priceHealth}
-          onMembershipRefresh={() => runSync()} onPriceRefresh={() => runSync(false, true)} busy={syncing || metadataRefreshing || metadataBulkRefreshing}
-          confirmEmpty={confirmEmpty} metadata={state.metadata}
-          onMetadataRefresh={runMetadataRefresh} onMetadataBulkRefresh={runAllMetadataRefresh}
-          hasMissingMetadata={games.some(game => game.metadataComplete === false)} />
         {state.loading && !games.length ? <PageLoading rows={5} /> : null}
-        {state.error && state.saved ? <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-content-muted" role="status"><span>Saved Wishlist shown; could not check for updates</span><Button size="sm" variant="ghost" onClick={state.refresh}>Retry saved data</Button></div> : state.error ? (
+        {state.error && state.saved ? <div className="mb-4 flex flex-wrap items-center gap-2 rounded-control border border-state-warning/30 bg-state-warning/10 px-3 py-2 text-xs text-content-secondary" role="alert"><span>Could not check for updates. Showing your saved Wishlist.</span><Button size="sm" variant="ghost" onClick={state.refresh}>Retry</Button></div> : state.error ? (
           <PageError
             title={state.saved ? "Saved Wishlist shown; could not check for updates" : "Could not load wishlist"}
             description={state.error}
@@ -419,7 +439,7 @@ export default function WishlistPage() {
         ) : null}
       </div>
       {selected ? (
-         <GameModal game={selected} onClose={closeDetails} readOnly hidePrivateFields footerScrollable
+         <GameModal game={selected} onClose={closeDetails} readOnly hidePrivateFields compactHero hideTabs footerInBody
            footer={<WishlistCardFooter game={selected} statusOptions={statusOptions} moveStatus={moveStatus}
             onMoveStatusChange={setMoveStatus} onMove={move} moving={movingId === selected.wishlistItemId}
             onRefreshMetadata={() => runItemMetadataRefresh(selected)}

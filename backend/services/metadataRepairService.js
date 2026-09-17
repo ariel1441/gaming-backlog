@@ -25,6 +25,13 @@ function jsonObject(value) {
     : {};
 }
 
+function priorityGameIds(value) {
+  return Array.from(new Set((Array.isArray(value) ? value : [])
+    .map(Number)
+    .filter(Number.isInteger)
+    .filter((id) => id > 0)));
+}
+
 function serializeJob(row) {
   if (!row) return null;
   return {
@@ -44,7 +51,12 @@ function serializeJob(row) {
   };
 }
 
-export async function enqueueMetadataRepair(userId, db = pool) {
+export async function enqueueMetadataRepair(
+  userId,
+  db = pool,
+  { priorityGameIds: requestedPriorityGameIds = [] } = {},
+) {
+  const requestedPriorityIds = priorityGameIds(requestedPriorityGameIds);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -63,6 +75,19 @@ export async function enqueueMetadataRepair(userId, db = pool) {
       [JOB_TYPE, userId],
     );
     if (active.rows[0]) {
+      const parameters = jsonObject(active.rows[0].parameters_json);
+      const currentPriorityIds = priorityGameIds(parameters.priorityGameIds);
+      const mergedPriorityIds = priorityGameIds([...currentPriorityIds, ...requestedPriorityIds]);
+      if (mergedPriorityIds.length !== currentPriorityIds.length) {
+        const updated = await client.query(
+          `UPDATE metadata_jobs
+              SET parameters_json = $2::jsonb, updated_at = NOW()
+            WHERE id = $1
+          RETURNING *`,
+          [active.rows[0].id, JSON.stringify({ ...parameters, priorityGameIds: mergedPriorityIds })],
+        );
+        active.rows[0] = updated.rows[0];
+      }
       await client.query("COMMIT");
       return serializeJob(active.rows[0]);
     }
@@ -105,6 +130,7 @@ export async function enqueueMetadataRepair(userId, db = pool) {
             DEFAULT_PROVIDER_BUDGET,
             250,
           ),
+          priorityGameIds: requestedPriorityIds,
         }),
         JSON.stringify({ lastGameId: 0, providerSearches: 0 }),
         total.rows[0].count,
@@ -193,6 +219,8 @@ async function claimJob(dbPool, workerId) {
 
 async function nextGames(job, limit, db = pool) {
   const cursor = jsonObject(job.cursor_json);
+  const parameters = jsonObject(job.parameters_json);
+  const priorities = priorityGameIds(parameters.priorityGameIds);
   const { rows } = await db.query(
     `
     SELECT game.id, game.user_id, game.name, game.rawg_id, game.rawg_slug,
@@ -206,7 +234,6 @@ async function nextGames(job, limit, db = pool) {
        AND external.source = 'rawg'
      WHERE game.user_id = $1
        AND LOWER(TRIM(game.status)) <> 'wishlist'
-       AND game.id > $2
        AND NOT EXISTS (
          SELECT 1 FROM game_metadata_candidates candidate
           WHERE candidate.game_id = game.id
@@ -217,10 +244,11 @@ async function nextGames(job, limit, db = pool) {
          game.catalog_game_id IS NULL OR
          catalog.metadata_quality IS DISTINCT FROM 'full'
        )
-     ORDER BY game.id
+       AND (game.id = ANY($4::int[]) OR game.id > $2)
+     ORDER BY CASE WHEN game.id = ANY($4::int[]) THEN 0 ELSE 1 END, game.id
      LIMIT $3
     `,
-    [job.scope_user_id, Number(cursor.lastGameId || 0), limit],
+    [job.scope_user_id, Number(cursor.lastGameId || 0), limit, priorities],
   );
   return rows;
 }
@@ -390,16 +418,24 @@ async function processGame(job, game, dependencies) {
 
 async function recordOutcome(job, gameId, outcome, db = pool) {
   const cursor = jsonObject(job.cursor_json);
+  const parameters = jsonObject(job.parameters_json);
+  const priorityIds = priorityGameIds(parameters.priorityGameIds);
+  const wasPriority = priorityIds.includes(Number(gameId));
+  const remainingPriorityIds = priorityIds.filter((id) => id !== Number(gameId));
+  const nextLastGameId = wasPriority
+    ? Number(cursor.lastGameId || 0)
+    : Number(gameId);
   await db.query(
     `
     UPDATE metadata_jobs
        SET cursor_json = $2::jsonb,
+           parameters_json = $3::jsonb,
            processed_count = processed_count + 1,
-           linked_count = linked_count + $3,
-           review_count = review_count + $4,
-           unmatched_count = unmatched_count + $5,
-           failed_count = failed_count + $6,
-           lease_expires_at = NOW() + ($7::int * INTERVAL '1 millisecond'),
+           linked_count = linked_count + $4,
+           review_count = review_count + $5,
+           unmatched_count = unmatched_count + $6,
+           failed_count = failed_count + $7,
+           lease_expires_at = NOW() + ($8::int * INTERVAL '1 millisecond'),
            updated_at = NOW()
      WHERE id = $1
     `,
@@ -407,11 +443,12 @@ async function recordOutcome(job, gameId, outcome, db = pool) {
       job.id,
       JSON.stringify({
         ...cursor,
-        lastGameId: Number(gameId),
+        lastGameId: nextLastGameId,
         providerSearches:
           Number(cursor.providerSearches || 0) +
           Number(outcome.providerSearches || 0),
       }),
+      JSON.stringify({ ...parameters, priorityGameIds: remainingPriorityIds }),
       Number(outcome.linked || 0),
       Number(outcome.review || 0),
       Number(outcome.unmatched || 0),
@@ -421,10 +458,11 @@ async function recordOutcome(job, gameId, outcome, db = pool) {
   );
   job.cursor_json = {
     ...cursor,
-    lastGameId: Number(gameId),
+    lastGameId: nextLastGameId,
     providerSearches:
       Number(cursor.providerSearches || 0) + Number(outcome.providerSearches || 0),
   };
+  job.parameters_json = { ...parameters, priorityGameIds: remainingPriorityIds };
 }
 
 export async function processNextMetadataRepairBatch({

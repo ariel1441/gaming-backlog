@@ -5,6 +5,22 @@ export function currentSteamPrice(price, now = Date.now()) {
   return price.currentMinor;
 }
 
+// Sorting should reflect the price the person can actually see, even when the
+// daily freshness window has elapsed. Freshness remains intentionally stricter
+// for sale filtering and price-health messaging.
+export function listedSteamPrice(price) {
+  if (
+    !price ||
+    price.currency !== "ILS" ||
+    !Number.isSafeInteger(price.currentMinor) ||
+    price.currentMinor < 0 ||
+    !["available", "free", "failed"].includes(price.status)
+  ) {
+    return null;
+  }
+  return price.currentMinor;
+}
+
 export function isSteamSale(price, now = Date.now()) {
   return currentSteamPrice(price, now) != null && price.discountPercent > 0 && price.regularMinor > price.currentMinor;
 }
@@ -33,12 +49,13 @@ export function steamPriceDisplay(price, now = Date.now()) {
   return { label, stale, regular: hasPrice && price.regularMinor > price.currentMinor && price.discountPercent > 0 ? format(price.regularMinor) : null,
     discount: hasPrice && price.discountPercent > 0 ? `${price.discountPercent}% off` : null,
     freshness: validDate ? relativeSavedTime(price.observedAt, now) : 'No successful price observation',
+    cardNote: Boolean(price.errorCode || price.status === 'failed' || stale),
     note: price.monitoringReason === 'owned' ? 'Owned · monitoring stopped' : price.monitoringReason === 'identity_unresolved' ? 'Steam identity needs verification'
       : !price.monitoring ? 'Monitoring paused' : price.errorCode === 'steam_price_offer_uncertain' ? 'Standard offer needs verification'
       : price.errorCode === 'steam_price_package_mismatch' ? 'Package contents need verification'
       : price.errorCode === 'steam_price_unsupported_type' ? 'This content type is not supported for pricing'
       : price.errorCode === 'steam_rate_limited' ? 'Steam rate limit reached; waiting to retry'
-      : price.checkState === 'awaiting_scheduled_check' ? 'Awaiting scheduled price check'
+      : price.checkState === 'awaiting_scheduled_check' ? null
       : price.status === 'failed' ? (hasPrice ? 'Refresh failed; saved price retained' : 'Refresh failed; no price saved yet')
       : price.status === 'not_checked' ? 'Waiting for a price refresh' : stale ? 'Price may be out of date' : null,
     lastKnown: !hasPrice && price.lastKnown?.currency === 'ILS' && Number.isSafeInteger(price.lastKnown.currentMinor)

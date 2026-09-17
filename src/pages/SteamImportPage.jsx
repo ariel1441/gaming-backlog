@@ -15,6 +15,7 @@ import { AppPage, PageHeader, PageSection } from "../components/layout";
 import { useAuth } from "../contexts/AuthContext";
 import {
   applySteamStatusSuggestion,
+  addSteamCandidateToBacklog,
   autoMatchSteamImportCandidates,
   bulkUpdateSteamImportCandidates,
   devLinkSteam,
@@ -192,6 +193,7 @@ export default function SteamImportPage() {
   const [syncReview, setSyncReview] = useState(null);
   const [lastSyncReview, setLastSyncReview] = useState(null);
   const [applyingSuggestionId, setApplyingSuggestionId] = useState(null);
+  const [addingReviewCandidateId, setAddingReviewCandidateId] = useState(null);
 
   const isDev = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
 
@@ -503,6 +505,28 @@ export default function SteamImportPage() {
       await refreshSteamActivity({ open: true });
     } catch (error) {
       toast.error(error.message || "Could not dismiss this Steam activity item.");
+    }
+  };
+
+  const addSyncReviewCandidate = async (item, status) => {
+    if (!item?.candidateId || !status) return;
+    setAddingReviewCandidateId(item.candidateId);
+    try {
+      const payload = await addSteamCandidateToBacklog(item.candidateId, {
+        status,
+        activityEventId: item.activityEventId || null,
+      });
+      toast.success(
+        payload?.attached?.length
+          ? "Steam linked to your existing Backlog game. Its status was kept."
+          : "Game added to Backlog.",
+      );
+      await refreshSteamActivity({ open: true });
+      await loadCandidates();
+    } catch (error) {
+      toast.error(error.message || "Could not add this Steam game to Backlog.");
+    } finally {
+      setAddingReviewCandidateId(null);
     }
   };
 
@@ -1226,8 +1250,11 @@ export default function SteamImportPage() {
         <SteamSyncReviewModal
           review={syncReview}
           applyingGameId={applyingSuggestionId}
+          addingCandidateId={addingReviewCandidateId}
+          statuses={statuses}
           onClose={() => setSyncReview(null)}
           onApplyStatus={applyStatusSuggestion}
+          onAddCandidate={addSyncReviewCandidate}
           onDismissItem={dismissSyncReviewItem}
           onReviewImport={reviewImportPile}
         />

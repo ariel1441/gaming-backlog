@@ -128,6 +128,92 @@ test("sortGames supports selected sort keys and reverse order", () => {
   );
 });
 
+test("sortGames orders Wishlist by its displayed saved price when it is stale", () => {
+  const staleWishlist = [
+    {
+      id: 1,
+      name: "Higher price",
+      steamPrice: {
+        status: "available",
+        currency: "ILS",
+        currentMinor: 27900,
+        observedAt: "2026-01-01T00:00:00.000Z",
+      },
+    },
+    {
+      id: 2,
+      name: "Lower price",
+      steamPrice: {
+        status: "available",
+        currency: "ILS",
+        currentMinor: 12999,
+        observedAt: "2026-01-01T00:00:00.000Z",
+      },
+    },
+  ];
+
+  assert.deepEqual(
+    sortGames(staleWishlist, { sortKey: "price" }).map((game) => game.id),
+    [2, 1],
+  );
+});
+
+test("Wishlist sale filtering and discount sorting use fresh verified Steam prices", () => {
+  const observedAt = new Date().toISOString();
+  const wishlist = [
+    {
+      id: 1,
+      name: "Smaller sale",
+      steamPrice: {
+        monitoring: true,
+        status: "available",
+        currency: "ILS",
+        currentMinor: 9000,
+        regularMinor: 10000,
+        discountPercent: 10,
+        observedAt,
+      },
+    },
+    {
+      id: 2,
+      name: "Larger sale",
+      steamPrice: {
+        monitoring: true,
+        status: "available",
+        currency: "ILS",
+        currentMinor: 5000,
+        regularMinor: 10000,
+        discountPercent: 50,
+        observedAt,
+      },
+    },
+    {
+      id: 3,
+      name: "Stale sale",
+      steamPrice: {
+        monitoring: true,
+        status: "available",
+        currency: "ILS",
+        currentMinor: 3000,
+        regularMinor: 10000,
+        discountPercent: 70,
+        observedAt: "2026-01-01T00:00:00.000Z",
+      },
+    },
+  ];
+
+  assert.deepEqual(
+    applyGameFilters(wishlist, { onSaleOnly: true }).map((game) => game.id),
+    [1, 2],
+  );
+  assert.deepEqual(
+    sortGames(wishlist, { sortKey: "discount", isReversed: true }).map(
+      (game) => game.id,
+    ),
+    [2, 1, 3],
+  );
+});
+
 test("sortGames supports table status, genre, estimated-hours, and score columns", () => {
   const tableGames = [
     {
@@ -347,6 +433,7 @@ test("applyGameFilters can show games missing an estimate", () => {
 test("applyGameFilters distinguishes RAWG identity from incomplete metadata", () => {
   const games = [
     { id: 1, name: "Linked", rawg_id: 101, metadataQuality: "full" },
+    { id: 7, name: "Pending", rawg_id: null, metadataWork: { status: "pending" } },
     { id: 2, name: "Missing", rawg_id: null, metadataQuality: null },
     { id: 3, name: "Review", rawg_id: null, metadataWork: { status: "review" } },
     { id: 4, name: "Incomplete", rawg_id: 104, metadataQuality: "search_result" },
@@ -354,6 +441,10 @@ test("applyGameFilters distinguishes RAWG identity from incomplete metadata", ()
     { id: 6, name: "Incomplete worker result", rawg_id: 106, metadataWork: { status: "unmatched", issue: "rawg_metadata_incomplete" } },
   ];
 
+  assert.deepEqual(
+    applyGameFilters(games, { rawgStatus: "pending" }).map((game) => game.id),
+    [7],
+  );
   assert.deepEqual(
     applyGameFilters(games, { rawgStatus: "linked" }).map((game) => game.id),
     [1],
