@@ -85,29 +85,48 @@ const games = [
 
 const insights = {
   totals: {
-    count: 3,
-    hours_playing: 91,
-    hours_planned: 0,
-    hours_done: 25,
-    total_hours: 116,
-    remaining_hours: 91,
-    avg_hours: 38.7,
-    total_games_counted: 3,
+    games: 4,
+    estimatedGames: 4,
+    missingEstimates: 0,
+    wishlist: 2,
+    finished: 1,
+    playing: 3,
   },
+  games: games.map((game) => ({
+    id: game.id,
+    name: game.name,
+    status: game.status,
+    score: game.my_score,
+    startedAt: game.started_at,
+    finishedAt: game.finished_at,
+    personalGenres: game.my_genre ? [game.my_genre] : [],
+    rawgGenres: game.genres ? game.genres.split(", ") : [],
+    hours: game.how_long_to_beat,
+  })),
   byStatus: [
-    { status: "playing", rank: 1, count: 1, hours: 70 },
+    { status: "playing", rank: 1, count: 2, hours: 93 },
     { status: "played and should come back", rank: 4, count: 1, hours: 21 },
     { status: "finished", rank: 12, count: 1, hours: 25 },
   ],
-  eta: {
-    remaining_hours: 91,
-    weekly_hours: 10,
-    weeks: 9.1,
-    finish_date: "2026-07-15",
-  },
-  meta: {
-    missing_names: [],
-    sources: { db: 3, hltb: 0, rawg: 0 },
+  yearly: [
+    { year: 2025, started: 1, finished: 0 },
+    { year: 2026, started: 3, finished: 1 },
+  ],
+  focused: {
+    games: 4,
+    started: 4,
+    finished: 1,
+    playing: 3,
+    estimatedGames: 4,
+    missingEstimates: 0,
+    rated: 4,
+    averageScore: 9.25,
+    scores: Array.from({ length: 21 }, (_, index) => ({
+      score: index / 2,
+      count: [8, 9, 10].includes(index / 2)
+        ? games.filter((game) => game.my_score === index / 2).length
+        : 0,
+    })),
   },
 };
 
@@ -553,6 +572,108 @@ test("links from insights playing stats back to filtered backlog", async ({
   await expect(page).toHaveURL(/group=playing/);
   await expect(page.getByText("Baldur's Gate 3")).toBeVisible();
   await expect(page.getByText("Clair Obscur: Expedition 33")).toHaveCount(0);
+});
+
+test("insights score bars open the exact-score backlog filter", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/insights", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", {
+    name: "View 2 games rated 10 out of 10",
+  }).click();
+
+  await expect(page).toHaveURL(/score=10/);
+  await expect(page.getByText("2 shown")).toBeVisible();
+  await expect(page.getByText("Disco Elysium")).toBeVisible();
+  await expect(page.getByText("Baldur's Gate 3")).toHaveCount(0);
+});
+
+test("the Insights rated-games card opens the rated Backlog filter", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/insights", { waitUntil: "domcontentloaded" });
+
+  await page.locator("main section").first().getByRole("button", { name: /^Rated games/ }).click();
+
+  await expect(page).toHaveURL(/rated=true/);
+  await expect(page.getByRole("button", { name: "Remove rated games filter" })).toBeVisible();
+});
+
+test("a selected Insights year scopes summary-card click-throughs", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/insights", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", { name: "Select year" }).click();
+  await page.getByRole("option", { name: "2026" }).click();
+  await expect(page.getByRole("heading", { name: "Status of 2026 games" })).toBeVisible();
+
+  await page.locator("main section").first().getByRole("button", { name: /^Started/ }).click();
+  await expect(page).toHaveURL(/dateType=started/);
+  await expect(page).toHaveURL(/year=2026/);
+});
+
+test("an Insights year and genre query keeps the exact Backlog scope", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/?genreType=my&genre=RPG&insightsYear=2026", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page.getByRole("button", {
+    name: "Remove Started or finished in 2026 filter",
+  })).toBeVisible();
+  await expect(page.getByText("3 shown")).toBeVisible();
+  await expect(page.getByText("Returnal")).toHaveCount(0);
+});
+
+test("the Insights Other status filter never opens the full backlog", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route(`${API_BASE}/api/games/statuses-list`, (route) =>
+    route.fulfill({
+      json: [
+        "playing",
+        "plan to play soon",
+        "played and should come back",
+        "finished",
+        "on hold",
+      ],
+    }),
+  );
+  await page.route(`${API_BASE}/api/games`, (route) =>
+    route.fulfill({
+      json: [
+        ...games,
+        {
+          id: 50,
+          name: "Paused Game",
+          status: "on hold",
+          status_rank: 5,
+          position: 1000,
+          my_genre: "Adventure",
+          genres: "Adventure",
+          how_long_to_beat: 12,
+          cover: "",
+        },
+      ],
+    }),
+  );
+  await page.goto("/?group=other", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByText("Paused Game")).toBeVisible();
+  await expect(page.getByText("Baldur's Gate 3")).toHaveCount(0);
 });
 
 test("opens the restored Reviews page from application navigation", async ({

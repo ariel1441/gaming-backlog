@@ -29,7 +29,7 @@ import { fmtInt } from "../../utils/format";
 export default function GenresChart({
   data,
   accessor,
-  scopeDescription,
+  emptyMessage = "No games match this view.",
   isSmall,
   axisTick,
   gridStroke,
@@ -51,7 +51,6 @@ export default function GenresChart({
           <h2 className="font-semibold text-content-primary">
             Genres ({genreType === "my" ? "My genres" : "RAWG genres"})
           </h2>
-          {scopeDescription ? <p className="mt-1 text-sm text-content-muted">{scopeDescription}</p> : null}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Segmented
@@ -84,11 +83,7 @@ export default function GenresChart({
       </div>
 
       {!data?.length ? (
-        <div className="text-sm text-content-muted">
-          No data. Tag some games with{" "}
-          <span className="font-medium">My genres</span> to populate this
-          chart.
-        </div>
+        <div className="text-sm text-content-muted">{emptyMessage}</div>
       ) : (
         <div className="overflow-x-auto">
           <div className="h-72 w-full" style={{ minWidth: isSmall ? Math.max(data.length * 58, 560) : undefined }}>
@@ -124,14 +119,15 @@ export default function GenresChart({
                   ]}
                 />
                 <Bar dataKey={accessor} radius={[6, 6, 0, 0]}>
-                  {data.map((row, i) => (
-                    <Cell
+                  {data.map((row, i) => {
+                    const clickable = row.key !== "Other" && row.key !== "Unclassified";
+                    return <Cell
                       key={row.key}
                       fill={colorAt(i)}
-                      cursor="pointer"
-                      onClick={() => onBarClick(row)}
-                    />
-                  ))}
+                      cursor={clickable ? "pointer" : "default"}
+                      onClick={clickable ? () => onBarClick(row) : undefined}
+                    />;
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

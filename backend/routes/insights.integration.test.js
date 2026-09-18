@@ -73,3 +73,48 @@ test("Insights payload keeps total games separate from estimate coverage", () =>
   assert.equal(payload.totals.missingEstimates, 1);
   assert.equal(payload.focused.scores.find((item) => item.score === 8.5)?.count, 1);
 });
+
+test("Insights coverage excludes an HLTB lookup that Backlog cannot display", () => {
+  const payload = buildInsightsPayload([
+    { id: 1, name: "HLTB-only", status: "playing", rank: 1, how_long_to_beat: null, my_score: null, personal_genres: [], rawg_genres: [] },
+  ], { locals: { hltbLookup: { "hltb only": { main: 12 } } } });
+  assert.equal(payload.games[0].hoursSource, "hltb");
+  assert.equal(payload.totals.estimatedGames, 0);
+  assert.equal(payload.totals.missingEstimates, 1);
+});
+
+test("Insights coverage keeps a RAWG fallback visible in Backlog even when HLTB powers the chart", () => {
+  const payload = buildInsightsPayload([
+    {
+      id: 1,
+      name: "Both sources",
+      status: "playing",
+      rank: 1,
+      how_long_to_beat: null,
+      catalog_rawg_playtime_hours: 8,
+      my_score: null,
+      personal_genres: [],
+      rawg_genres: [],
+    },
+  ], { locals: { hltbLookup: { "both sources": { main: 12 } } } });
+
+  assert.equal(payload.games[0].hoursSource, "hltb");
+  assert.equal(payload.totals.estimatedGames, 1);
+  assert.equal(payload.totals.missingEstimates, 0);
+});
+
+test("Insights selected-year summaries use games touched in that year", () => {
+  const payload = buildInsightsPayload([
+    { id: 1, name: "Started", status: "playing", rank: 1, started_at: "2025-01-03", my_score: 8, personal_genres: [], rawg_genres: [] },
+    { id: 2, name: "Finished", status: "finished", rank: 2, finished_at: "2025-05-04", how_long_to_beat: 10, personal_genres: [], rawg_genres: [] },
+    { id: 3, name: "Older", status: "playing", rank: 1, started_at: "2024-01-03", my_score: 9, personal_genres: [], rawg_genres: [] },
+  ], { locals: { hltb: {} } }, 2025);
+
+  assert.equal(payload.focused.games, 2);
+  assert.equal(payload.focused.started, 1);
+  assert.equal(payload.focused.finished, 1);
+  assert.equal(payload.focused.playing, 1);
+  assert.equal(payload.focused.rated, 1);
+  assert.equal(payload.focused.estimatedGames, 1);
+  assert.equal(payload.focused.missingEstimates, 1);
+});

@@ -63,6 +63,17 @@ function resolveHours(app, row) {
   return { hours: null, source: null };
 }
 
+function hasHoursVisibleInBacklog(row) {
+  // The Backlog receives saved hours or the catalog RAWG fallback. It does not
+  // receive an in-process HLTB lookup, so coverage must not use resolveHours().
+  // Steam playtime also fills the hours value when a game has no estimate.
+  return Boolean(
+    toHours(row.how_long_to_beat)
+    || toHours(row.catalog_rawg_playtime_hours)
+    || toHours(Number(row.steam_playtime_minutes) / 60),
+  );
+}
+
 export function buildInsightsPayload(rows, app, selectedYear = null) {
   const sources = { saved: 0, hltb: 0, rawg: 0, steam: 0 };
   const games = rows.map((row) => {
@@ -74,6 +85,9 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
       startedAt: row.started_at || null, finishedAt: row.finished_at || null,
       personalGenres: names(row.personal_genres), rawgGenres: names(row.rawg_genres),
       hours: resolved.hours, hoursSource: resolved.source,
+      // Backlog does not expose the process-local HLTB lookup. Keep estimate
+      // coverage aligned with the list a user reaches from this tile.
+      backlogEstimateCovered: hasHoursVisibleInBacklog(row),
     };
   });
   const yearly = new Map();
@@ -107,8 +121,9 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
   return {
     params: { year: selectedYear }, games,
     totals: {
-      games: games.length, estimatedGames: games.filter((game) => game.hours != null).length,
-      missingEstimates: games.filter((game) => game.hours == null).length,
+      games: games.length,
+      estimatedGames: games.filter((game) => game.backlogEstimateCovered).length,
+      missingEstimates: games.filter((game) => !game.backlogEstimateCovered).length,
       finished: games.filter((game) => statusGroupOf(game.status) === "done").length,
       playing: games.filter((game) => statusGroupOf(game.status) === "playing").length,
       startedUnfinished: startedUnfinished.length,
@@ -120,6 +135,9 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
       year: selectedYear, games: focusedGames.length,
       started: selectedYear ? focusedGames.filter((game) => String(game.startedAt || "").startsWith(`${selectedYear}-`)).length : games.filter((game) => game.startedAt).length,
       finished: selectedYear ? focusedGames.filter((game) => String(game.finishedAt || "").startsWith(`${selectedYear}-`)).length : games.filter((game) => game.finishedAt).length,
+      playing: focusedGames.filter((game) => statusGroupOf(game.status) === "playing").length,
+      estimatedGames: focusedGames.filter((game) => game.backlogEstimateCovered).length,
+      missingEstimates: focusedGames.filter((game) => !game.backlogEstimateCovered).length,
       rated: rated.length,
       averageScore: rated.length ? Math.round((rated.reduce((sum, game) => sum + game.score, 0) / rated.length) * 10) / 10 : null,
       scores,
@@ -129,7 +147,15 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
 
 async function fetchWishlistCount(userId) {
   const { rows } = await pool.query(
-    "SELECT COUNT(*)::int AS count FROM user_wishlist_items WHERE user_id = $1 AND local_intent_active = TRUE",
+    `SELECT COUNT(*)::int AS count
+       FROM user_wishlist_items wishlist
+      WHERE wishlist.user_id = $1
+        AND (wishlist.local_intent_active OR EXISTS (
+          SELECT 1 FROM steam_wishlist_items membership
+           WHERE membership.user_id = wishlist.user_id
+             AND membership.wishlist_item_id = wishlist.id
+             AND membership.is_active = TRUE
+        ))`,
     [userId],
   );
   return Number(rows[0]?.count) || 0;
@@ -138,7 +164,7 @@ async function fetchWishlistCount(userId) {
 router.get("/", verifyToken, insightsQuery, async (req, res, next) => {
   try {
     const year = req.query.year ?? null;
-    const cacheKey = `v6|year=${year || "all"}`;
+    const cacheKey = `v8|year=${year || "all"}`;
     const cached = cacheGet(req.user.id, cacheKey);
     if (cached) return res.json(cached);
     const [rows, wishlistCount] = await Promise.all([

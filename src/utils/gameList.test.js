@@ -418,6 +418,41 @@ test("applyGameFilters supports date filters", () => {
     }).map((game) => game.name),
     ["Hades"],
   );
+  assert.deepEqual(
+    applyGameFilters(games, {
+      dateFilter: { type: "touchedYear", year: 2024 },
+    }).map((game) => game.name),
+    ["Celeste", "Elden Ring"],
+  );
+});
+
+test("applyGameFilters supports an exact score filter", () => {
+  assert.deepEqual(
+    applyGameFilters([
+      { id: 1, name: "Nine", my_score: 9 },
+      { id: 2, name: "Eight and a half", my_score: 8.5 },
+      { id: 3, name: "Unrated", my_score: null },
+    ], { scoreFilter: 8.5 }).map((game) => game.name),
+    ["Eight and a half"],
+  );
+  assert.deepEqual(
+    applyGameFilters([
+      { id: 1, name: "Zero", my_score: 0 },
+      { id: 2, name: "Unrated", my_score: null },
+    ], { scoreFilter: 0 }).map((game) => game.name),
+    ["Zero"],
+  );
+});
+
+test("applyGameFilters can show all rated games", () => {
+  assert.deepEqual(
+    applyGameFilters([
+      { id: 1, name: "Rated", my_score: 8 },
+      { id: 2, name: "Zero", my_score: 0 },
+      { id: 3, name: "Unrated", my_score: null },
+    ], { ratedOnly: true }).map((game) => game.name),
+    ["Rated", "Zero"],
+  );
 });
 
 test("applyGameFilters can show games missing an estimate", () => {

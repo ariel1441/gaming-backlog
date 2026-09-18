@@ -47,7 +47,9 @@ export default function HoursByStatusChart({
   return (
     <section className="rounded-2xl border border-surface-border bg-surface-card p-4 md:p-5 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="font-semibold text-content-primary">{title}</h2>
+        <div>
+          <h2 className="font-semibold text-content-primary">{title}</h2>
+        </div>
       </div>
 
       {isPhone ? (

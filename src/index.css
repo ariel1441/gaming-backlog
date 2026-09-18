@@ -61,6 +61,17 @@ body,
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Recharts focuses its SVG after a pointer click. Keep keyboard focus visible
+   without showing the browser's large default ring after clicking a bar. */
+.recharts-surface:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.recharts-surface:focus-visible {
+  outline: 2px solid rgb(var(--color-focus-ring));
+  outline-offset: 2px;
+}
+
 @keyframes finish-success-settle {
   from {
     opacity: 0;

@@ -32,6 +32,12 @@ Live code, scripts and Git take precedence over historical documentation.
   current `origin/main` into the source branch. Resolve any conflicts, then require
   CI on that post-sync source SHA before opening/reopening or merging the PR. Do not
   use a direct push to `main` as a substitute for this release check.
+- Railway Free-plan production services in EU West cannot deploy during its
+  08:00–20:00 Amsterdam peak window (currently 09:00–21:00 Asia/Jerusalem).
+  Prepare and verify `Dev` at any time, but schedule `main` promotion and any
+  required Railway deployment after 21:10 Israel time; recheck Railway plan/region
+  if either changes. A nightly cron is separate from a code deployment, but must be
+  verified after any Railway configuration change.
 - Review findings lead with bugs, security/data risks and missing tests, with file
   and line references. Distinguish confirmed failures from missing evidence.
 

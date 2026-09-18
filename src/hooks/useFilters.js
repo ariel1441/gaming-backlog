@@ -15,6 +15,8 @@ export function useFilters(games, opts = {}) {
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [selectedMyGenres, setSelectedMyGenres] = useState([]);
   const [dateFilter, setDateFilter] = useState(null);
+  const [scoreFilter, setScoreFilter] = useState(null);
+  const [ratedOnly, setRatedOnly] = useState(false);
   const [sourceFilter, setSourceFilter] = useState("all");
   const [rawgStatus, setRawgStatus] = useState("all");
   const [missingEstimatesOnly, setMissingEstimatesOnly] = useState(false);
@@ -112,6 +114,8 @@ export function useFilters(games, opts = {}) {
     setSelectedGenres([]);
     setSelectedMyGenres([]);
     setDateFilter(null);
+    setScoreFilter(null);
+    setRatedOnly(false);
     setSourceFilter("all");
     setRawgStatus("all");
     setMissingEstimatesOnly(false);
@@ -131,6 +135,10 @@ export function useFilters(games, opts = {}) {
     setSelectedMyGenres,
     dateFilter,
     setDateFilter,
+    scoreFilter,
+    setScoreFilter,
+    ratedOnly,
+    setRatedOnly,
     sourceFilter,
     setSourceFilter,
     rawgStatus,
