@@ -28,6 +28,10 @@ Live code, scripts and Git take precedence over historical documentation.
   or production verification. A commit is local; a push publishes only the named
   branch. `main` is production; `Dev` is integration. Prefer short-lived branches
   from Dev. Do not switch branches or discard changes merely to follow a convention.
+- Before preparing or merging a release PR to `main`, fetch `origin` and merge the
+  current `origin/main` into the source branch. Resolve any conflicts, then require
+  CI on that post-sync source SHA before opening/reopening or merging the PR. Do not
+  use a direct push to `main` as a substitute for this release check.
 - Review findings lead with bugs, security/data risks and missing tests, with file
   and line references. Distinguish confirmed failures from missing evidence.
 
