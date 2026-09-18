@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -38,12 +38,15 @@ export function SearchBox({
   setQuery,
   clear,
   placeholder = "Search your backlog...",
+  collectionLabel = "Backlog",
   games = [],
   onSelectGame,
 }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const wrapperRef = useRef(null);
+  const searchId = useId();
+  const resultsId = `${searchId}-results`;
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -55,6 +58,9 @@ export function SearchBox({
       )
       .slice(0, 7);
   }, [games, query]);
+  const activeOptionId = suggestions[activeIndex]
+    ? `${searchId}-option-${activeIndex}`
+    : undefined;
 
   useDismissibleLayer({
     open,
@@ -106,7 +112,8 @@ export function SearchBox({
         className="h-10 border-surface-border/75 bg-surface-card/55 pl-11 pr-11 text-sm shadow-control-inset placeholder:text-content-muted/75 focus:border-primary/55 focus:bg-surface-card"
         role="combobox"
         aria-expanded={open && suggestions.length > 0}
-        aria-controls="backlog-search-results"
+        aria-controls={resultsId}
+        aria-activedescendant={open && suggestions.length ? activeOptionId : undefined}
         aria-autocomplete="list"
       />
       {query ? (
@@ -115,13 +122,13 @@ export function SearchBox({
 
       {open && suggestions.length ? (
         <PopoverPanel
-          id="backlog-search-results"
+          id={resultsId}
           role="listbox"
           padding="none"
           className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden"
         >
           <div className="border-b border-surface-border px-3 py-2 text-xs font-medium text-content-muted">
-            Backlog matches
+            {collectionLabel} matches
           </div>
           {suggestions.map((game, index) => {
             const hours = resolveGameHours(game);
@@ -129,6 +136,7 @@ export function SearchBox({
               <button
                 type="button"
                 key={game.id || game.name}
+                id={`${searchId}-option-${index}`}
                 role="option"
                 aria-selected={activeIndex === index}
                 onMouseEnter={() => setActiveIndex(index)}

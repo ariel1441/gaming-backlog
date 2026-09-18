@@ -141,6 +141,27 @@ test("automatic title repair requires exactly one valid normalized-title result"
   );
 });
 
+test("a newly added Backlog game gets the next durable metadata repair attempt", async () => {
+  await withRepairSchema(async db => {
+    await seed(db);
+    const job = await enqueueMetadataRepair(1, db, { priorityGameIds: [21] });
+    const first = await processNextMetadataRepairBatch({
+      db,
+      batchSize: 1,
+      workerId: "priority-repair-worker",
+      searchCatalogFn: async (query) => {
+        assert.equal(query, "Needs Provider Search");
+        return { source: "rawg", results: [] };
+      },
+      ingestRawgGameMetadataFn: async () => assert.fail("The priority game has no saved RAWG identity"),
+    });
+    assert.equal(first.processed, 1);
+    const saved = await db.query("SELECT parameters_json, cursor_json FROM metadata_jobs WHERE id=$1", [job.id]);
+    assert.deepEqual(saved.rows[0].parameters_json.priorityGameIds, []);
+    assert.equal(saved.rows[0].cursor_json.lastGameId, 0);
+  });
+});
+
 test("a retry excludes incomplete games that already have pending review candidates", async () => {
   await withRepairSchema(async (db) => {
     await seed(db);

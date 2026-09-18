@@ -1,7 +1,7 @@
 import { smartFuzzySearch } from "./fuzzySearch.js";
 import { parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
-import { currentSteamPrice, isSteamSale } from "./steamPrice.js";
+import { currentSteamPrice, isSteamSale, listedSteamPrice } from "./steamPrice.js";
 import {
   NO_PERSONAL_GENRE_FILTER,
   NO_RAWG_GENRE_FILTER,
@@ -159,7 +159,7 @@ export function sortGames(
   const sorted = [...(Array.isArray(games) ? games : [])].sort((a, b) => {
     switch (sortKey) {
       case "price":
-        return compareOptionalNumbers(a, b, (game) => currentSteamPrice(game.steamPrice || game.wishlist?.steamPrice), isReversed);
+        return compareOptionalNumbers(a, b, (game) => listedSteamPrice(game.steamPrice || game.wishlist?.steamPrice), isReversed);
       case "discount":
         return compareOptionalNumbers(a, b, (game) => {
           const price = game.steamPrice || game.wishlist?.steamPrice;

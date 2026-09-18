@@ -5,6 +5,7 @@ import { cacheClear } from "../utils/microCache.js";
 import { badRequest, notFound } from "../utils/httpError.js";
 import {
   attachSteamCandidate as validateAttachSteamCandidate,
+  addSteamCandidateToBacklog as validateAddSteamCandidateToBacklog,
   applySteamStatusSuggestion as validateApplySteamStatusSuggestion,
   autoMatchSteam as validateAutoMatchSteam,
   bulkSteamCandidates as validateBulkSteamCandidates,
@@ -25,6 +26,7 @@ import {
   beginSteamLink,
   consumeSteamLink,
   applySteamStatusSuggestion,
+  addSteamCandidateToBacklog,
   attachSteamCandidateToGame,
   autoMatchSteamCandidates,
   bulkUpdateSteamCandidates,
@@ -151,6 +153,25 @@ router.patch(
       );
       res.setHeader("Cache-Control", "no-store");
       res.json(payload);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.post(
+  "/import-candidates/:id/add-to-backlog",
+  verifyToken,
+  validateAddSteamCandidateToBacklog,
+  async (req, res, next) => {
+    try {
+      const payload = await addSteamCandidateToBacklog(
+        req.user.id,
+        req.params.id,
+        req.body || {},
+      );
+      cacheClear(req.user.id);
+      res.status(201).json(payload);
     } catch (err) {
       next(err);
     }

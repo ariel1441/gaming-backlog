@@ -245,11 +245,10 @@ for (const [label, viewport] of [
       .locator("h2")
       .textContent();
     expect(backlogModal).toBe(games[0].name);
+    await page.screenshot({ path: testInfo.outputPath(`backlog-modal-${label}.png`) });
     await page.keyboard.press("Escape");
     await page.goto("/wishlist");
-    await expect(
-      page.getByRole("heading", { name: "Wishlist", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /wishlist$/i })).toBeVisible();
     await expect(page.locator("article")).toHaveCount(8);
     await expect(page.locator("article").first().locator("img")).toHaveAttribute("src", "https://cdn.akamai.steamstatic.com/steam/apps/3321460/header.jpg");
     await expect.poll(() => page.locator("article").first().locator("img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
@@ -319,20 +318,27 @@ for (const [label, viewport] of [
     ).toHaveText(games[7].name);
     await page.locator("#backlog-sort").click();
     await page.getByRole("option", { name: "Discount %", exact: true }).click();
+    await expect(
+      page.getByRole("button", {
+        name: "Sort direction: descending. Change to ascending.",
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "On sale", exact: true }).click();
     await page
-      .getByRole("button", { name: "Details", exact: true })
+      .getByRole("button", { name: "Manage Steam Wishlist updates", exact: true })
       .click();
-    await expect(page.getByText(/1 prices need attention/)).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Steam sync settings' })).toBeVisible();
+    await expect(page.getByText(/1 price needs attention/)).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Steam sync settings' })).toBeVisible();
     background = true;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(
-      page.getByRole('region', { name: 'Steam sync status' }).getByText("Steam updating in background", { exact: true }),
+      page.getByText("Steam is updating in the background", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Refresh prices", exact: true }),
+      page.getByRole("menuitem", { name: "Refresh prices", exact: true }),
     ).toBeDisabled();
+    await page.keyboard.press("Escape");
     revision = "2";
     items[0].steamPrice.currentMinor = 200;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -349,16 +355,13 @@ for (const [label, viewport] of [
     background = false;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(
-      page.getByText("Saved Wishlist shown; could not check for updates", {
+      page.getByText("Could not check for updates. Showing your saved Wishlist.", {
         exact: true,
       }),
     ).toBeVisible({ timeout: 10000 });
     await expect(page.locator("article")).toHaveCount(8);
     expect(mutations.filter((path) => /sync/.test(path))).toEqual([]);
     failReads = false;
-    await page
-      .getByRole("button", { name: "Details", exact: true })
-      .click();
     await page.screenshot({
       path: testInfo.outputPath(`wishlist-${label}.png`),
       fullPage: true,

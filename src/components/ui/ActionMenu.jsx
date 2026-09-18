@@ -16,6 +16,7 @@ export default function ActionMenu({
   children,
   className = "",
   menuClassName = "",
+  align = "end",
   disabled = false,
 }) {
   const [open, setOpen] = useState(false);
@@ -49,7 +50,8 @@ export default function ActionMenu({
     const spaceBelow = window.innerHeight - bounds.bottom - VIEWPORT_GAP;
     const spaceAbove = bounds.top - VIEWPORT_GAP;
     const placeAbove = spaceBelow < menuHeight && spaceAbove > spaceBelow;
-    const preferredLeft = bounds.right - menuWidth;
+    const preferredLeft =
+      align === "start" ? bounds.left : bounds.right - menuWidth;
     const left = Math.min(
       Math.max(VIEWPORT_GAP, preferredLeft),
       Math.max(VIEWPORT_GAP, window.innerWidth - menuWidth - VIEWPORT_GAP),

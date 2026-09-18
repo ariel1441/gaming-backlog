@@ -125,6 +125,99 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       assert.equal((await f.source()).first_play_observed_at.toISOString(), frozen.toISOString());
     });
 
+    await t.test("one acquisition action imports once, preserves its selected status on retry, and fences a replaced account", async () => {
+      const f = await fixture();
+      await f.run(0);
+      const newAppId = String(Number(f.appId) + 10_000);
+      const newName = `${f.name} newly owned`;
+      const newCatalogId = (
+        await pool.query("INSERT INTO catalog_games (name) VALUES ($1) RETURNING id", [newName])
+      ).rows[0].id;
+      const wishlistItemId = (
+        await pool.query(
+          "INSERT INTO user_wishlist_items (user_id, catalog_game_id, display_name) VALUES ($1, $2, $3) RETURNING id",
+          [f.userId, newCatalogId, newName],
+        )
+      ).rows[0].id;
+      await pool.query(
+        "INSERT INTO steam_wishlist_items (user_id, account_id, wishlist_item_id, steam_app_id) VALUES ($1, $2, $3, $4)",
+        [f.userId, f.account.id, wishlistItemId, newAppId],
+      );
+      process.env.STEAM_MOCK_OWNED_GAMES_JSON = JSON.stringify({
+        response: {
+          games: [
+            { appid: Number(f.appId), name: f.name, playtime_forever: 0 },
+            { appid: Number(newAppId), name: newName, playtime_forever: 0 },
+          ],
+        },
+      });
+      const queued = await sync.enqueueSteamSync(f.userId, { force: true });
+      const job = await sync.waitForSteamSyncJob(f.userId, queued.id, { pollMs: 5 });
+      assert.equal(job.result.notificationDecisions.created, 1);
+      const event = (
+        await pool.query(
+          "SELECT id, state FROM user_activity_events WHERE user_id=$1 AND external_id=$2 AND event_type='steam_new_game'",
+          [f.userId, newAppId],
+        )
+      ).rows[0];
+      assert.equal(event.state, "open");
+      const candidate = (
+        await pool.query(
+          "SELECT id, proposed_catalog_game_id FROM steam_import_candidates WHERE user_id=$1 AND steam_app_id=$2",
+          [f.userId, newAppId],
+        )
+      ).rows[0];
+      assert.equal(candidate.proposed_catalog_game_id, newCatalogId);
+      const candidateId = candidate.id;
+      const first = await steam.addSteamCandidateToBacklog(f.userId, candidateId, {
+        status: "playing",
+        activityEventId: event.id,
+      });
+      assert.deepEqual(first.imported, [{ candidateId, gameId: first.gameId }]);
+      assert.equal(first.metadataRepairQueued, true);
+      const repair = (
+        await pool.query(
+          "SELECT parameters_json FROM metadata_jobs WHERE job_type='backlog_repair' AND scope_user_id=$1 ORDER BY id DESC LIMIT 1",
+          [f.userId],
+        )
+      ).rows[0];
+      assert.ok(repair.parameters_json.priorityGameIds.includes(first.gameId));
+      assert.equal(
+        (await pool.query("SELECT status FROM games WHERE id=$1", [first.gameId])).rows[0].status,
+        "playing",
+      );
+
+      const replay = await steam.addSteamCandidateToBacklog(f.userId, candidateId, {
+        status: "finished",
+      });
+      assert.equal(replay.alreadyCompleted, true);
+      assert.equal(replay.gameId, first.gameId);
+      assert.equal(
+        (await pool.query("SELECT status FROM games WHERE id=$1", [first.gameId])).rows[0].status,
+        "playing",
+      );
+      assert.equal(
+        (await pool.query("SELECT COUNT(*)::int AS n FROM games WHERE user_id=$1", [f.userId])).rows[0].n,
+        1,
+      );
+      assert.equal(
+        (await pool.query("SELECT state FROM user_activity_events WHERE id=$1", [event.id])).rows[0].state,
+        "resolved",
+      );
+
+      const replaced = await fixture();
+      await replaced.run(0);
+      const replacedCandidateId = await replaced.candidate();
+      await steam.disconnectSteamAccount(replaced.userId);
+      await steam.upsertSteamAccount(replaced.userId, "76561199999999888");
+      await assert.rejects(
+        steam.addSteamCandidateToBacklog(replaced.userId, replacedCandidateId, {
+          status: "plan to play",
+        }),
+        (error) => error?.status === 409,
+      );
+    });
+
     await t.test("Wishlist moves preserve first observed dates and membership, including legacy games", async () => {
       for (const legacy of [false, true]) {
         const f = await fixture({ backlog: legacy });

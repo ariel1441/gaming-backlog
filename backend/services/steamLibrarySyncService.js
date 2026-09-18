@@ -210,6 +210,15 @@ function emptySyncProgress() {
     newCandidateIds: [],
     achievementSourceIds: [],
     reviewItemsCreated: 0,
+    notificationDecisions: {
+      created: 0,
+      deduped: 0,
+      baseline: 0,
+      ignored: 0,
+      filtered: 0,
+      alreadyLinked: 0,
+      notNew: 0,
+    },
     syncReview: emptySyncReview(),
   };
 }
@@ -223,6 +232,10 @@ function normalizeSyncProgress(value = {}) {
     candidateWrites: {
       ...defaults.candidateWrites,
       ...(value.candidateWrites || {}),
+    },
+    notificationDecisions: {
+      ...defaults.notificationDecisions,
+      ...(value.notificationDecisions || {}),
     },
     newCandidateIds: Array.isArray(value.newCandidateIds)
       ? value.newCandidateIds
@@ -384,6 +397,10 @@ function staleLinkedStatus(status) {
 }
 
 function reviewItem(app, source, candidate, game, activityEventId) {
+  const candidateCatalogGameId =
+    candidate?.user_selected_catalog_game_id ||
+    candidate?.proposed_catalog_game_id ||
+    null;
   return {
     activityEventId: activityEventId || null,
     steamAppId: String(app.appid),
@@ -393,13 +410,21 @@ function reviewItem(app, source, candidate, game, activityEventId) {
     lastPlayedAt: app.lastPlayedAt || null,
     firstPlayObservedAt: source.first_play_observed_at || null,
     candidateId: candidate?.id || null,
+    candidateCatalogGameId,
+    canAddToBacklog: Boolean(
+      candidate && (candidateCatalogGameId || candidate.duplicate_game_id),
+    ),
     gameId: game?.id || null,
     gameName: game?.name || null,
     currentStatus: game?.status || null,
     startedAt: game?.started_at || null,
-    suggestedStatus: "playing",
-    suggestedStatusReason: "Steam shows new play activity.",
-    suggestedStatusConfidence: "medium",
+    suggestedStatus:
+      candidate?.selected_status || candidate?.suggested_status || (game ? "playing" : null),
+    suggestedStatusReason:
+      candidate?.suggested_status_reason ||
+      (game ? "Steam shows new play activity." : null),
+    suggestedStatusConfidence:
+      candidate?.suggested_status_confidence || (game ? "medium" : null),
   };
 }
 
@@ -695,6 +720,19 @@ async function persistWorkItem(job, item, prepared) {
     const legacyReviewItem = event
       ? reviewItem(item.app, source, candidate, game, Number(event.id))
       : null;
+    const notificationDecision = !item.isNew
+      ? "notNew"
+      : !job.payload_json.hasPreviousSync
+        ? "baseline"
+        : ignored
+          ? "ignored"
+          : filtered
+            ? "filtered"
+            : game
+              ? "alreadyLinked"
+              : event
+                ? "created"
+                : "deduped";
     const result = {
       matched: !ignored && prepared?.match?.catalogGameId ? 1 : 0,
       duplicates: !ignored && prepared?.duplicate ? 1 : 0,
@@ -711,6 +749,7 @@ async function persistWorkItem(job, item, prepared) {
           ? source.id
           : null,
       eventCreated: Boolean(event),
+      notificationDecision,
       reviewType: event ? reviewType : null,
       reviewItem: legacyReviewItem,
     };
@@ -721,6 +760,7 @@ async function persistWorkItem(job, item, prepared) {
     if (result.candidateId && !progress.newCandidateIds.includes(result.candidateId)) progress.newCandidateIds.push(result.candidateId);
     if (result.achievementSourceId && !progress.achievementSourceIds.includes(result.achievementSourceId)) progress.achievementSourceIds.push(result.achievementSourceId);
     if (result.eventCreated) progress.reviewItemsCreated += 1;
+    progress.notificationDecisions[result.notificationDecision] += 1;
     if (result.reviewType) progress.syncReview[result.reviewType].push(result.reviewItem);
     await client.query(
       "UPDATE steam_sync_jobs SET cursor = cursor + 1, progress_json = $2::jsonb, locked_at = NOW(), updated_at = NOW() WHERE id = $1",
@@ -992,6 +1032,7 @@ async function finalizeSteamSyncJob(job) {
       achievementUnavailable: achievements?.unavailable || 0,
       achievementSkipped: achievements?.skipped || 0,
       reviewItemsCreated,
+      notificationDecisions: progress.notificationDecisions,
       activityObservations: activityObservations.recorded,
       activityBaselines: activityObservations.baselines,
       activityObservationChanges: activityObservations.activityChanged,
@@ -1035,6 +1076,7 @@ async function finalizeSteamSyncJob(job) {
       duplicates: progress.duplicates || 0,
       filtered: progress.filtered || 0,
       needsReview: progress.needsReview || 0,
+      notificationDecisions: progress.notificationDecisions,
       syncReview: progress.syncReview,
       achievements,
       syncedAt: nowIso(),

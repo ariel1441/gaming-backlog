@@ -267,6 +267,40 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       assert.equal(result.result.summary.deferred, 1); assert.equal(result.run.status, 'partial');
       assert.equal((await observations(user.userId)).length, 500); assert.equal(calls.length - callCount, 25);
       await finish(user.userId); assert.equal((await observations(user.userId)).length, 501); allFree = false;
+
+      await due(user.userId);
+      const fresh = (await pool.query(
+        "INSERT INTO user_wishlist_items (user_id, display_name) VALUES ($1, 'Fresh fallback target') RETURNING id",
+        [user.userId],
+      )).rows[0];
+      await pool.query(
+        "INSERT INTO steam_wishlist_items (user_id, account_id, wishlist_item_id, steam_app_id) VALUES ($1, $2, $3, '9999')",
+        [user.userId, user.account.id, fresh.id],
+      );
+      const previousKey = process.env.STEAM_WEB_API_KEY;
+      process.env.STEAM_WEB_API_KEY = 'fixture-key';
+      await steam.updateSteamAutoSync(user.userId, true);
+      feedFailure = true;
+      allFree = true;
+      try {
+        const fallback = await prices.processSteamPriceJob(await claimed(user, { trigger: 'scheduled' }));
+        assert.equal(fallback.summary.priceMode, 'fallback');
+        assert.equal(fallback.summary.firstAttemptSelected, 1);
+        assert.equal(fallback.summary.firstAttemptDeferred, 0);
+        assert.equal(fallback.summary.deferred, 2);
+        assert.equal(
+          (await pool.query(`SELECT COUNT(*)::int AS count
+             FROM steam_price_observations observation
+             JOIN steam_price_monitors monitor ON monitor.id = observation.monitor_id
+            WHERE monitor.user_id = $1 AND monitor.steam_app_id = '9999'`, [user.userId])).rows[0].count,
+          1,
+        );
+      } finally {
+        feedFailure = false;
+        allFree = false;
+        if (previousKey == null) delete process.env.STEAM_WEB_API_KEY;
+        else process.env.STEAM_WEB_API_KEY = previousKey;
+      }
     });
 
     await t.test('request budget is persisted across reclaim and leaves unattempted items due', async () => {

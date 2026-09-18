@@ -3,6 +3,7 @@ export const NO_RAWG_GENRE_FILTER = "__no_rawg_genre__";
 
 export const RAWG_STATUS_LABELS = Object.freeze({
   linked: "RAWG linked",
+  pending: "Metadata pending",
   missing: "No RAWG match",
   review: "Needs review",
   incomplete: "Metadata incomplete",
@@ -15,6 +16,7 @@ export const RAWG_STATUS_OPTIONS = [
 
 export function rawgMetadataState(game) {
   const workStatus = game?.metadataWork?.status || game?.metadataStatus;
+  if (workStatus === "pending") return "pending";
   if (workStatus === "review") return "review";
   if (workStatus === "failed") return "failed";
   if (workStatus === "unmatched" && game?.metadataWork?.issue === "rawg_metadata_incomplete") {

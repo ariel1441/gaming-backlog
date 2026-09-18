@@ -16,6 +16,7 @@ import {
   readProviderText,
 } from "../utils/providerFetch.js";
 import { searchCatalog } from "./catalogService.js";
+import { enqueueMetadataRepair } from "./metadataRepairService.js";
 import { replaceGamePersonalGenres } from "./personalGenreService.js";
 
 const PROVIDER = "steam";
@@ -1814,7 +1815,36 @@ async function selectCatalogBrief(catalogGameId) {
   return rows[0] || null;
 }
 
-async function findCatalogMatch(app) {
+async function findCatalogMatch(app, userId = null) {
+  if (userId != null) {
+    const wishlistMatch = await pool.query(
+      `
+      SELECT catalog.id, catalog.name
+      FROM steam_wishlist_items membership
+      JOIN user_wishlist_items wishlist
+        ON wishlist.id = membership.wishlist_item_id
+       AND wishlist.user_id = membership.user_id
+      JOIN catalog_games catalog ON catalog.id = wishlist.catalog_game_id
+      JOIN user_external_accounts account
+        ON account.id = membership.account_id
+       AND account.user_id = membership.user_id
+       AND account.provider = 'steam'
+       AND account.disconnected_at IS NULL
+      WHERE membership.user_id = $1
+        AND membership.steam_app_id = $2
+        AND membership.is_active = TRUE
+      LIMIT 1
+      `,
+      [userId, String(app.appid)],
+    );
+    if (wishlistMatch.rows[0]) {
+      return {
+        catalogGameId: wishlistMatch.rows[0].id,
+        confidence: "exact",
+        reason: "Reused the current Steam Wishlist catalog match.",
+      };
+    }
+  }
   const bySteam = await pool.query(
     `
     SELECT cg.id, cg.name
@@ -2125,7 +2155,7 @@ async function backfillCandidateRecommendations(userId) {
 
 export async function prepareSteamLibraryCandidate(userId, app) {
   const filteredReason = likelyFilteredReason(app.name);
-  const match = await findCatalogMatch(app);
+  const match = await findCatalogMatch(app, userId);
   const catalog = await selectCatalogBrief(match.catalogGameId);
   const recommendation = recommendStatus(app, catalog, filteredReason);
   const duplicate = await findDuplicateGame(userId, app, match.catalogGameId);
@@ -3492,6 +3522,167 @@ async function nextPosition(client, userId, status) {
   return (rows[0]?.max || 0) + 1000;
 }
 
+async function validBacklogStatusTx(client, status) {
+  const nextStatus = String(status || "").trim();
+  const { rows } = await client.query(
+    "SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist' LIMIT 1",
+    [nextStatus],
+  );
+  if (!rows[0]) throw badRequest("Selected status was not found.");
+  return rows[0].status;
+}
+
+async function resolveCurrentSteamAcquisitionEventsTx(
+  client,
+  userId,
+  steamAppId,
+  activityEventId = null,
+) {
+  const params = [userId, String(steamAppId)];
+  const eventFilter = activityEventId == null
+    ? ""
+    : " AND event.id = $3";
+  if (activityEventId != null) params.push(Number(activityEventId));
+  const { rows } = await client.query(
+    `
+    UPDATE user_activity_events event
+       SET state = 'resolved',
+           seen_at = COALESCE(seen_at, NOW()),
+           resolved_at = NOW()
+     WHERE event.user_id = $1
+       AND event.source = 'steam_library'
+       AND event.external_id = $2
+       AND event.event_type IN ('steam_new_game', 'steam_started_playing')
+       AND event.state = 'open'
+       ${eventFilter}
+       AND EXISTS (
+         SELECT 1
+         FROM steam_sync_jobs job
+         JOIN user_external_accounts account
+           ON account.id = job.account_id
+          AND account.user_id = job.user_id
+          AND account.provider = 'steam'
+          AND account.disconnected_at IS NULL
+         JOIN user_game_sources source
+           ON source.user_id = event.user_id
+          AND source.provider = 'steam'
+          AND source.provider_app_id = event.external_id
+          AND source.source_status = 'owned'
+          AND source.last_synced_at >= account.linked_at
+        WHERE job.user_id = event.user_id
+          AND job.sync_run_id = event.sync_run_id
+       )
+     RETURNING event.id
+    `,
+    params,
+  );
+  return rows.map((row) => Number(row.id));
+}
+
+async function importSteamCandidateRowsTx(client, userId, rows) {
+  const imported = [];
+  const attached = [];
+  const skipped = [];
+
+  for (const row of rows) {
+    const catalogGameId = row.user_selected_catalog_game_id || row.proposed_catalog_game_id;
+    const app = {
+      appid: row.steam_app_id,
+      name: row.steam_name,
+      playtimeMinutes: row.playtime_minutes_forever,
+      lastPlayedAt: row.last_played_at,
+    };
+    const markedDuplicate = row.duplicate_game_id
+      ? await selectUserGameBriefTx(client, userId, row.duplicate_game_id)
+      : null;
+    const duplicate =
+      markedDuplicate || (await findDuplicateGameTx(client, userId, app, catalogGameId));
+    if (duplicate?.id) {
+      await attachSteamCandidateTx(client, userId, row, duplicate.id, catalogGameId);
+      attached.push(row.id);
+      continue;
+    }
+
+    if (!catalogGameId) {
+      skipped.push({ id: row.id, reason: "missing_catalog_match" });
+      continue;
+    }
+
+    const catalog = await client.query(
+      "SELECT id, name, rawg_playtime_hours FROM catalog_games WHERE id = $1",
+      [catalogGameId]
+    );
+    if (!catalog.rows[0]) {
+      skipped.push({ id: row.id, reason: "catalog_not_found" });
+      continue;
+    }
+
+    const fallbackRecommendation = recommendStatus(
+      {
+        name: row.steam_name,
+        playtimeMinutes: row.playtime_minutes_forever,
+        lastPlayedAt: row.last_played_at,
+      },
+      catalog.rows[0],
+      row.filtered_reason
+    );
+    const targetStatus =
+      row.selected_status ||
+      row.suggested_status ||
+      fallbackRecommendation.status ||
+      "plan to play";
+    const validStatus = await client.query(
+      "SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist' LIMIT 1",
+      [targetStatus]
+    );
+    const importStatus = validStatus.rows[0]?.status || "plan to play";
+    const position = await nextPosition(client, userId, importStatus);
+    const startedAt =
+      statusGroupOf(importStatus) === "playing"
+        ? steamPlayDate(row.source_first_play_observed_at)
+        : null;
+    const inserted = await client.query(
+      `
+      INSERT INTO games (user_id, catalog_game_id, name, status, position, started_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+      `,
+      [
+        userId,
+        catalogGameId,
+        catalog.rows[0].name || row.steam_name,
+        importStatus,
+        position,
+        startedAt,
+      ]
+    );
+    const gameId = inserted.rows[0].id;
+
+    await client.query(
+      `
+      UPDATE user_game_sources
+         SET game_id = $3,
+             catalog_game_id = $4,
+             source_status = 'owned',
+             updated_at = NOW()
+       WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = $2
+      `,
+      [userId, row.steam_app_id, gameId, catalogGameId]
+    );
+    await client.query(
+      `
+      UPDATE steam_import_candidates
+         SET import_status = 'imported', decision_at = NOW(), updated_at = NOW()
+       WHERE id = $1
+      `,
+      [row.id]
+    );
+    imported.push({ candidateId: row.id, gameId });
+  }
+
+  return { imported, attached, skipped };
+}
+
 export async function importSteamCandidates(userId, candidateIds = []) {
   const ids = candidateIds.map(Number).filter(Number.isInteger);
   if (!ids.length) throw badRequest("Choose at least one Steam import candidate.");
@@ -3517,108 +3708,116 @@ export async function importSteamCandidates(userId, candidateIds = []) {
       [userId, ids]
     );
 
-    const imported = [];
-    const attached = [];
-    const skipped = [];
+    const result = await importSteamCandidateRowsTx(client, userId, rows);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
-    for (const row of rows) {
-      const catalogGameId = row.user_selected_catalog_game_id || row.proposed_catalog_game_id;
-      const app = {
-        appid: row.steam_app_id,
-        name: row.steam_name,
-        playtimeMinutes: row.playtime_minutes_forever,
-        lastPlayedAt: row.last_played_at,
+export async function addSteamCandidateToBacklog(
+  userId,
+  candidateId,
+  { status, activityEventId = null } = {},
+) {
+  const id = Number(candidateId);
+  if (!Number.isInteger(id)) throw badRequest("Invalid Steam candidate id.");
+  if (activityEventId != null && !Number.isInteger(Number(activityEventId)))
+    throw badRequest("Invalid activity event id.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await lockCurrentSteamCandidates(client, userId, [id]);
+    const selectedStatus = await validBacklogStatusTx(client, status);
+    const { rows } = await client.query(
+      `
+      SELECT candidate.*, source.first_play_observed_at AS source_first_play_observed_at,
+             source.game_id AS source_game_id
+      FROM steam_import_candidates candidate
+      LEFT JOIN user_game_sources source
+        ON source.user_id = candidate.user_id
+       AND source.provider = 'steam'
+       AND source.provider_app_id = candidate.steam_app_id
+       AND source.source_status = 'owned'
+      WHERE candidate.user_id = $1
+        AND candidate.id = $2
+      FOR UPDATE OF candidate
+      `,
+      [userId, id],
+    );
+    const candidate = rows[0];
+    if (!candidate) throw badRequest("Steam import candidate was not found.");
+    if (candidate.import_status === "ignored")
+      throw badRequest("Restore this Steam game before adding it to Backlog.");
+
+    let result;
+    let gameId = candidate.source_game_id || candidate.duplicate_game_id || null;
+    if (["imported", "attached"].includes(candidate.import_status)) {
+      if (!gameId) {
+        const linked = await client.query(
+          `SELECT game_id FROM user_game_sources
+            WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = $2
+            LIMIT 1`,
+          [userId, candidate.steam_app_id],
+        );
+        gameId = linked.rows[0]?.game_id || null;
+      }
+      if (!gameId) throw conflict("This Steam game no longer has a Backlog link. Refresh Steam Library and try again.");
+      result = {
+        imported: candidate.import_status === "imported" ? [{ candidateId: id, gameId }] : [],
+        attached: candidate.import_status === "attached" ? [id] : [],
+        skipped: [],
+        alreadyCompleted: true,
       };
-      const markedDuplicate = row.duplicate_game_id
-        ? await selectUserGameBriefTx(client, userId, row.duplicate_game_id)
-        : null;
-      const duplicate =
-        markedDuplicate || (await findDuplicateGameTx(client, userId, app, catalogGameId));
-      if (duplicate?.id) {
-        await attachSteamCandidateTx(client, userId, row, duplicate.id, catalogGameId);
-        attached.push(row.id);
-        continue;
-      }
-
-      if (!catalogGameId) {
-        skipped.push({ id: row.id, reason: "missing_catalog_match" });
-        continue;
-      }
-
-      const catalog = await client.query(
-        "SELECT id, name, rawg_playtime_hours FROM catalog_games WHERE id = $1",
-        [catalogGameId]
-      );
-      if (!catalog.rows[0]) {
-        skipped.push({ id: row.id, reason: "catalog_not_found" });
-        continue;
-      }
-
-      const fallbackRecommendation = recommendStatus(
-        {
-          name: row.steam_name,
-          playtimeMinutes: row.playtime_minutes_forever,
-          lastPlayedAt: row.last_played_at,
-        },
-        catalog.rows[0],
-        row.filtered_reason
-      );
-      const targetStatus =
-        row.selected_status ||
-        row.suggested_status ||
-        fallbackRecommendation.status ||
-        "plan to play";
-      const validStatus = await client.query(
-        "SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist' LIMIT 1",
-        [targetStatus]
-      );
-      const importStatus = validStatus.rows[0]?.status || "plan to play";
-      const position = await nextPosition(client, userId, importStatus);
-      const startedAt =
-        statusGroupOf(importStatus) === "playing"
-          ? steamPlayDate(row.source_first_play_observed_at)
-          : null;
-      const inserted = await client.query(
-        `
-        INSERT INTO games (user_id, catalog_game_id, name, status, position, started_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id
-        `,
-        [
-          userId,
-          catalogGameId,
-          catalog.rows[0].name || row.steam_name,
-          importStatus,
-          position,
-          startedAt,
-        ]
-      );
-      const gameId = inserted.rows[0].id;
-
+    } else {
       await client.query(
-        `
-        UPDATE user_game_sources
-           SET game_id = $3,
-               catalog_game_id = $4,
-               source_status = 'owned',
-               updated_at = NOW()
-         WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = $2
-        `,
-        [userId, row.steam_app_id, gameId, catalogGameId]
+        `UPDATE steam_import_candidates
+            SET selected_status = $3, decision_at = NOW(), updated_at = NOW()
+          WHERE id = $1 AND user_id = $2`,
+        [id, userId, selectedStatus],
       );
-      await client.query(
-        `
-        UPDATE steam_import_candidates
-           SET import_status = 'imported', decision_at = NOW(), updated_at = NOW()
-         WHERE id = $1
-        `,
-        [row.id]
-      );
-      imported.push({ candidateId: row.id, gameId });
+      const importRow = { ...candidate, selected_status: selectedStatus };
+      result = await importSteamCandidateRowsTx(client, userId, [importRow]);
+      gameId = result.imported[0]?.gameId || null;
+      if (!gameId && result.attached.length) {
+        const linked = await client.query(
+          `SELECT game_id FROM user_game_sources
+            WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = $2
+            LIMIT 1`,
+          [userId, candidate.steam_app_id],
+        );
+        gameId = linked.rows[0]?.game_id || null;
+      }
+      if (!gameId) {
+        const skipped = result.skipped[0]?.reason;
+        if (skipped === "missing_catalog_match")
+          throw badRequest("Choose a catalog match before adding this Steam game.");
+        throw conflict("This Steam game could not be added. Refresh Steam Library and try again.");
+      }
     }
 
+    const resolvedActivityEventIds = await resolveCurrentSteamAcquisitionEventsTx(
+      client,
+      userId,
+      candidate.steam_app_id,
+      activityEventId == null ? null : Number(activityEventId),
+    );
     await client.query("COMMIT");
-    return { imported, attached, skipped };
+    let metadataRepairQueued = false;
+    try {
+      await enqueueMetadataRepair(userId, pool, { priorityGameIds: [Number(gameId)] });
+      metadataRepairQueued = true;
+    } catch (error) {
+      console.error("Steam Backlog metadata repair enqueue failed:", error?.code || error?.message);
+    }
+    return { ...result, gameId: Number(gameId), resolvedActivityEventIds, metadataRepairQueued };
   } catch (err) {
     try {
       await client.query("ROLLBACK");

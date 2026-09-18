@@ -8,6 +8,7 @@ import { ensureSteamPriceFeed } from './steamPriceFeedService.js';
 
 export const PRICE_MAX_ITEMS = 500;
 export const PRICE_MAX_REQUESTS = 650;
+export const PRICE_FIRST_ATTEMPT_QUOTA = 25;
 const MAX_RUN_MS = 10 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const PRICE_SAFETY_AUDIT_MS = 3 * DAY_MS;
@@ -46,18 +47,47 @@ async function initialize(job) {
           attempts = CASE WHEN steam_price_monitors.active THEN steam_price_monitors.attempts ELSE 0 END`,
       [job.user_id, job.account_id, target.wishlist_item_id, target.steam_app_id, crypto.randomUUID()]);
     }
-    const { rows: selected } = await client.query(`SELECT m.id, m.steam_app_id, m.epoch, a.price_next_attempt_at, COUNT(*) OVER()::int AS due_count
-      FROM steam_price_monitors m JOIN user_external_accounts a ON a.id = m.account_id
-      WHERE m.account_id = $1 AND m.user_id = $2 AND m.active
-        AND (m.next_attempt_at <= NOW() OR ($3::boolean AND m.steam_app_id = ANY($4::text[])))
-      ORDER BY m.next_attempt_at, m.id LIMIT $5`,
-    [job.account_id, job.user_id, feed.mode === 'delta', feed.changedAppIds, PRICE_MAX_ITEMS]);
+    const { rows: selected } = await client.query(`
+      WITH eligible AS (
+        SELECT m.id, m.steam_app_id, m.epoch, m.next_attempt_at, a.price_next_attempt_at,
+               (m.latest_observation_id IS NULL AND m.attempts = 0) AS first_attempt,
+               COUNT(*) OVER()::int AS due_count,
+               COUNT(*) FILTER (WHERE m.latest_observation_id IS NULL AND m.attempts = 0) OVER()::int AS first_attempt_due_count
+          FROM steam_price_monitors m
+          JOIN user_external_accounts a ON a.id = m.account_id
+         WHERE m.account_id = $1 AND m.user_id = $2 AND m.active
+           AND (m.next_attempt_at <= NOW() OR ($3::boolean AND m.steam_app_id = ANY($4::text[])))
+      ), first_attempts AS (
+        SELECT *, 0 AS selection_rank FROM eligible
+         WHERE first_attempt
+         ORDER BY next_attempt_at, id
+         LIMIT $5
+      ), remaining AS (
+        SELECT *, 1 AS selection_rank FROM eligible
+         WHERE id NOT IN (SELECT id FROM first_attempts)
+         ORDER BY CASE WHEN first_attempt THEN 1 ELSE 0 END, next_attempt_at, id
+         LIMIT ($6 - (SELECT COUNT(*) FROM first_attempts))
+      )
+      SELECT id, steam_app_id, epoch, price_next_attempt_at, first_attempt,
+             due_count, first_attempt_due_count
+        FROM (
+          SELECT * FROM first_attempts
+          UNION ALL
+          SELECT * FROM remaining
+        ) selected
+       ORDER BY selection_rank, next_attempt_at, id`,
+    [job.account_id, job.user_id, feed.mode === 'delta', feed.changedAppIds, PRICE_FIRST_ATTEMPT_QUOTA, PRICE_MAX_ITEMS]);
     const cooldownUntil = (await client.query('SELECT price_next_attempt_at FROM user_external_accounts WHERE id = $1', [job.account_id])).rows[0]?.price_next_attempt_at;
     const blocked = cooldownUntil && new Date(cooldownUntil).getTime() > Date.now();
     const due = blocked ? [] : selected;
-    const payload = { monitors: due.map(({ id, steam_app_id, epoch }) => ({ id, steam_app_id, epoch })),
+    const firstAttemptSelected = due.filter((monitor) => monitor.first_attempt).length;
+    const payload = { monitors: due.map(({ id, steam_app_id, epoch, first_attempt }) => ({
+      id, steam_app_id, epoch, firstAttempt: Boolean(first_attempt),
+    })),
       cooldownUntil: blocked ? cooldownUntil : null,
       deferred: Math.max(0, (selected[0]?.due_count || 0) - due.length),
+      firstAttemptSelected,
+      firstAttemptDeferred: Math.max(0, Number(selected[0]?.first_attempt_due_count || 0) - firstAttemptSelected),
       priceMode: feed.mode, feedErrorCode: feed.feedErrorCode,
       feedChangedCandidates: feed.changedAppIds.length, feedPages: feed.pages || 0 };
     await client.query(`UPDATE user_external_accounts SET price_sync_status = 'syncing', last_price_attempt_at = NOW(), price_revision = price_revision + 1 WHERE id = $1`, [job.account_id]);
@@ -153,6 +183,9 @@ async function complete(job, stopReason = null) {
     if (!current) return null;
     const p = current.progress_json;
     const deferred = current.payload_json.deferred + Math.max(0, current.total - current.cursor);
+    const unprocessedFirstAttempts = (current.payload_json.monitors || [])
+      .slice(current.cursor)
+      .filter((monitor) => monitor.firstAttempt).length;
     const pendingRetries = Number((await client.query(`SELECT COUNT(*) FROM steam_price_monitors
       WHERE account_id = $1 AND active AND last_error IS NOT NULL`, [job.account_id])).rows[0].count);
     const status = p.failed || deferred || pendingRetries ? (p.succeeded || deferred || !p.failed ? 'partial' : 'failed') : p.succeeded ? 'succeeded' : 'skipped';
@@ -160,6 +193,8 @@ async function complete(job, stopReason = null) {
       feedErrorCode: current.payload_json.feedErrorCode || null,
       feedChangedCandidates: current.payload_json.feedChangedCandidates || 0,
       feedPages: current.payload_json.feedPages || 0,
+      firstAttemptSelected: current.payload_json.firstAttemptSelected || 0,
+      firstAttemptDeferred: (current.payload_json.firstAttemptDeferred || 0) + unprocessedFirstAttempts,
       deferred, pendingRetries, cooldownUntil: p.cooldownUntil || current.payload_json.cooldownUntil || null,
       reason: stopReason || (current.payload_json.cooldownUntil ? 'provider_cooldown' : status === 'skipped' ? 'nothing_due' : null), country: 'IL' };
     const run = await finishIntegrationSyncRun(job.sync_run_id, { status, itemsSeen: current.cursor,

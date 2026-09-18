@@ -87,13 +87,13 @@ export default function GameCover({
           ].join(" ")}
         >
           <div className="flex min-w-0 flex-col items-center justify-center gap-2 text-center">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-surface-border bg-surface-bg/65 text-base font-semibold text-content-secondary shadow-control-inset">
+            <span className={`flex items-center justify-center rounded-xl border border-surface-border bg-surface-bg/65 font-semibold text-content-secondary shadow-control-inset ${showFallbackLabel ? "h-14 w-14 text-xl" : "h-10 w-10 text-base"}`}>
               {initials || (
                 <Gamepad2 className="h-5 w-5" aria-hidden="true" />
               )}
             </span>
             {showFallbackLabel ? (
-              <span className="line-clamp-2 text-xs font-medium text-content-muted">
+              <span className="line-clamp-2 text-sm font-medium text-content-muted">
                 {fallbackLabel}
               </span>
             ) : (

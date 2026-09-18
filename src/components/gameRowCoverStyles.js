@@ -1,2 +1,2 @@
 export const GAME_ROW_COVER_SIZE =
-  "h-36 w-[42vw] max-w-80 sm:w-80";
+  "aspect-[2/3] w-auto max-w-[42vw] self-stretch sm:max-w-80";

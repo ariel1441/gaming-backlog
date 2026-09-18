@@ -6,6 +6,7 @@ import {
   formatAchievementGameSyncMessage,
   formatAchievementBatchSyncMessage,
   formatSteamLibrarySyncMessage,
+  formatSteamPhaseRunDetail,
   normalizeSyncReview,
 } from "./steamSync.js";
 
@@ -103,6 +104,30 @@ test("formatSteamLibrarySyncMessage describes checks without implying every app 
       },
     }),
     "Checked 700 Steam apps for library changes. Import queue: 12 new, 4 updated, 684 unchanged. Achievements: 12 synced, 3 recently checked, 3 unavailable."
+  );
+});
+
+test("phase details explain what a partial library or price run did save", () => {
+  assert.equal(
+    formatSteamPhaseRunDetail({
+      syncKind: "library",
+      status: "partial",
+      summary: { librarySnapshotSucceeded: true, achievementFailures: 2, achievementUnavailable: 1 },
+    }),
+    "Library snapshot and activity observations were saved. 3 achievement refreshes need follow-up.",
+  );
+  assert.equal(
+    formatSteamPhaseRunDetail({
+      syncKind: "wishlist_prices",
+      status: "partial",
+      summary: {
+        priceMode: "fallback",
+        deferred: 268,
+        failed: 4,
+        errorCounts: { steam_price_offer_uncertain: 4 },
+      },
+    }),
+    "Steam price feed was unavailable; a fallback sweep ran. 268 price checks deferred. 4 offers need verification.",
   );
 });
 

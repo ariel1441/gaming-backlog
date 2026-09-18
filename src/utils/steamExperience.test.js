@@ -22,7 +22,7 @@ const price = {
   status: "available",
   observedAt: new Date().toISOString(),
 };
-test("price and discount sort unknown/stale last in both directions; sale excludes unverified and free-to-play", () => {
+test("price sorts visible saved prices while discount requires a fresh verified price", () => {
   const games = [
     { id: 1, name: "Sale", steamPrice: price },
     { id: 2, name: "Unknown", steamPrice: { ...price, currentMinor: null } },
@@ -53,18 +53,24 @@ test("price and discount sort unknown/stale last in both directions; sale exclud
       steamPrice: { ...price, observedAt: "2020-01-01" },
     },
   ];
-  for (const sortKey of ["price", "discount"]) {
+  assert.deepEqual(
+    sortGames(games, { sortKey: "price" })
+      .slice(0, 2)
+      .map((game) => game.id),
+    [4, 1],
+  );
+  assert.deepEqual(
+    sortGames(games, { sortKey: "price", isReversed: true })
+      .slice(0, 2)
+      .map((game) => game.id),
+    [1, 3],
+  );
+  for (const isReversed of [false, true]) {
     assert.deepEqual(
-      sortGames(games, { sortKey })
+      sortGames(games, { sortKey: "discount", isReversed })
         .slice(0, 2)
         .map((game) => game.id),
-      [4, 1],
-    );
-    assert.deepEqual(
-      sortGames(games, { sortKey, isReversed: true })
-        .slice(0, 2)
-        .map((game) => game.id),
-      [1, 4],
+      isReversed ? [1, 4] : [4, 1],
     );
   }
   assert.deepEqual(

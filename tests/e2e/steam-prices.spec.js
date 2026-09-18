@@ -33,27 +33,31 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
       return json({});
     });
     await page.goto('/wishlist');
-    await expect(page.getByText('Steam Israel', { exact: true })).toHaveCount(3);
+    const displayedPrices = page.locator('.text-lg.font-semibold.leading-none.tabular-nums');
+    await expect(displayedPrices).toHaveCount(3);
     await expect(page.getByText('50% off').first()).toBeVisible();
     await expect(page.getByText('Free', { exact: true })).toBeVisible();
-    await expect(page.getByText('Refresh failed; saved price retained')).toBeVisible();
+    await expect(page.getByText('Refresh failed; saved price retained')).toHaveCount(0);
     if (label === 'mobile') await page.getByRole('button', { name: 'Filters and view', exact: true }).click();
     for (const name of ['Compact cards', 'Rows', 'Table', 'Cards']) {
       await page.getByTitle(name, { exact: true }).click();
-      await expect(page.getByText('Steam Israel', { exact: true })).toHaveCount(3);
+      await expect(displayedPrices).toHaveCount(3);
     }
-    await page.getByRole('button', { name: 'Details', exact: true }).click();
-    await page.getByRole('button', { name: 'Refresh prices', exact: true }).click();
+    const manageUpdates = page.getByRole('button', { name: 'Manage Steam Wishlist updates', exact: true });
+    await manageUpdates.click();
+    await page.getByRole('menuitem', { name: 'Refresh prices', exact: true }).click();
     await expect(page.getByText('3 prices refreshed, 0 failed, 0 still waiting.')).toBeVisible();
     expect(mutations).toEqual(['/api/wishlist/prices/sync']);
-    await page.getByRole('button', { name: 'Refresh prices', exact: true }).click();
+    await manageUpdates.click();
+    await page.getByRole('menuitem', { name: 'Refresh prices', exact: true }).click();
     await expect(page.getByText('0 prices refreshed, 0 failed, 2 still waiting. Steam cooldown.')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Steam sync settings' })).toBeVisible();
-    await expect(page.getByText(/1 prices need attention/)).toBeVisible();
+    await manageUpdates.click();
+    await expect(page.getByRole('menuitem', { name: 'Steam sync settings' })).toBeVisible();
+    await expect(page.getByText(/1 price needs attention/)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`prices-${label}.png`), fullPage: true });
     await page.goto('/');
-    await expect(page.getByText('Steam Israel', { exact: true })).toHaveCount(3);
+    await expect(page.locator('.text-lg.font-semibold.leading-none.tabular-nums')).toHaveCount(3);
     expect(errors).toEqual([]);
   });
 }

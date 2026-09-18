@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  ActionMenu,
   Button,
   Chip,
   Field,
@@ -230,6 +231,9 @@ export default function GameModal({
   onDelete,
   footer,
   footerScrollable = false,
+  footerInBody = false,
+  compactHero = false,
+  hideTabs = false,
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [isEditMode, setIsEditMode] = useState(startInEditMode);
@@ -251,6 +255,7 @@ export default function GameModal({
   const [steamAchievementsSyncing, setSteamAchievementsSyncing] =
     useState(false);
   const [showSteamSearch, setShowSteamSearch] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const modalRef = useRef(null);
   const titleId = `${useId()}-title`;
   const toast = useToast();
@@ -264,6 +269,7 @@ export default function GameModal({
     !["playing", "done"].includes(statusGroupOf(game?.status));
   const canFinish =
     !!onFinish && normalizedStatus !== "finished";
+  const hasOverflowActions = !!onRefreshMetadata || canEdit || canAddToNextUp || !!onDelete;
   const tabs = isEditMode
     ? [...viewTabs, { value: "metadata", label: "Metadata", icon: Tag }]
     : game?.entryKind === 'wishlist' ? viewTabs.filter(tab => tab.value === 'overview') : viewTabs;
@@ -279,6 +285,7 @@ export default function GameModal({
     setUnlinkedSteamAppId(null);
     setSteamResults([]);
     setShowSteamSearch(false);
+    setDescriptionExpanded(false);
     setIsEditMode(startInEditMode);
   }, [game?.id, startInEditMode]);
 
@@ -418,6 +425,7 @@ export default function GameModal({
   const rating = Number(game.rating) > 0 ? `${game.rating}/5` : "—";
   const metacritic =
     Number(game.metacritic) > 0 ? String(game.metacritic) : "—";
+  const hasWishlistMetrics = !!hours.hours || rating !== "—" || metacritic !== "—";
   const hasMyScore =
     displayGame.my_score !== null &&
     displayGame.my_score !== undefined &&
@@ -427,6 +435,7 @@ export default function GameModal({
   const thoughts = displayGame.thoughts?.trim() || null;
   const resumeNote = displayGame.resume_note?.trim() || null;
   const description = game.description || null;
+  const shouldCollapseDescription = hidePrivateFields && String(description || "").length > 500;
   const achievementSyncedAt = formatAchievementSyncDate(
     (localAchievements || game.steamAchievements)?.lastSyncedAt,
   );
@@ -598,7 +607,7 @@ export default function GameModal({
             title="Close"
           />
 
-          <div className="relative z-20 h-60 shrink-0 overflow-visible sm:h-[400px]">
+          <div className={`relative z-20 shrink-0 overflow-visible ${compactHero ? "h-56 sm:h-72" : "h-60 sm:h-[400px]"}`}>
             <GameCover
               src={cover}
               fallbackSources={isEditMode ? undefined : game.coverFallbacks}
@@ -692,7 +701,7 @@ export default function GameModal({
           </div>
 
           {game.steamPrice ? <div className="shrink-0 px-5 py-3 sm:px-7"><SteamPrice price={game.steamPrice} details compact /></div> : null}
-          <div className="grid shrink-0 grid-cols-2 gap-4 border-b border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:grid-cols-4 sm:px-7">
+          {(!hidePrivateFields || isEditMode || hasWishlistMetrics) ? <div className={`shrink-0 gap-4 border-b border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:px-7 ${hidePrivateFields ? "flex flex-wrap" : "grid grid-cols-2 sm:grid-cols-4"}`}>
             {isEditMode ? (
               <EditMetric
                 label="Estimated hours"
@@ -713,21 +722,21 @@ export default function GameModal({
                   className="min-h-8 py-1"
                 />
               </EditMetric>
-            ) : (
+            ) : !hidePrivateFields || hours.hours ? (
               <Metric
                 icon={Clock3}
                 label={hours.sourceLabel}
                 value={hours.label || "—"}
                 tone={hours.hours ? "primary" : "default"}
               />
-            )}
-            <Metric
+            ) : null}
+            {!hidePrivateFields || rating !== "—" ? <Metric
               icon={Star}
               label="RAWG"
               value={rating}
               tone={rating !== "—" ? "warning" : "default"}
-            />
-            <Metric icon={Trophy} label="Metacritic" value={metacritic} />
+            /> : null}
+            {!hidePrivateFields || metacritic !== "—" ? <Metric icon={Trophy} label="Metacritic" value={metacritic} /> : null}
             {!hidePrivateFields
               ? isEditMode
                 ? (
@@ -760,9 +769,15 @@ export default function GameModal({
                     />
                   )
               : null}
-          </div>
+          </div> : null}
 
-          <div className="shrink-0 overflow-x-auto border-b border-surface-border/65 bg-surface-card/22 px-4 sm:px-7">
+          {footer && !isEditMode && footerInBody ? (
+            <div className="shrink-0 border-b border-surface-border/65 bg-surface-card/22 px-5 py-4 sm:px-7">
+              {footer}
+            </div>
+          ) : null}
+
+          {!hideTabs ? <div className="shrink-0 overflow-x-auto border-b border-surface-border/65 bg-surface-card/22 px-4 sm:px-7">
             <div className="flex min-w-max items-center gap-1">
               {tabs.map(({ value, label, icon: Icon }) => (
                 <button
@@ -782,7 +797,7 @@ export default function GameModal({
                 </button>
               ))}
             </div>
-          </div>
+          </div> : null}
 
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
             {formError?.message && isEditMode ? (
@@ -801,7 +816,7 @@ export default function GameModal({
                   </h3>
                   {description ? (
                     <div
-                      className="prose prose-invert mt-3 max-w-none text-sm leading-7 text-content-secondary prose-p:my-2"
+                      className={`prose prose-invert mt-3 max-w-none text-sm leading-7 text-content-secondary prose-p:my-2 ${shouldCollapseDescription && !descriptionExpanded ? "max-h-56 overflow-hidden [mask-image:linear-gradient(to_bottom,black_78%,transparent)]" : ""}`}
                       dangerouslySetInnerHTML={{ __html: description }}
                     />
                   ) : (
@@ -809,6 +824,17 @@ export default function GameModal({
                       No game description is available yet.
                     </p>
                   )}
+                  {shouldCollapseDescription ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="mt-2"
+                      onClick={() => setDescriptionExpanded((value) => !value)}
+                    >
+                      {descriptionExpanded ? "Show less" : "Read more"}
+                    </Button>
+                  ) : null}
                   {isEditMode ? (
                     <div className="mt-6 grid gap-4 sm:grid-cols-2">
                       <Field id="edit-hours-source" label="Hours source">
@@ -835,7 +861,7 @@ export default function GameModal({
                   ) : null}
                 </section>
 
-                <aside className="divide-y divide-surface-border/55 rounded-xl border border-surface-border/65 bg-surface-card/35 px-4 lg:sticky lg:top-0 lg:self-start">
+                <aside className={hidePrivateFields ? "divide-y divide-surface-border/55 lg:sticky lg:top-0 lg:self-start lg:rounded-xl lg:border lg:border-surface-border/65 lg:bg-surface-card/35 lg:px-4" : "divide-y divide-surface-border/55 rounded-xl border border-surface-border/65 bg-surface-card/35 px-4 lg:sticky lg:top-0 lg:self-start"}>
                   {isEditMode ? (
                     <div className="py-3">
                       <Field id="edit-my-genre" label="My genres">
@@ -880,7 +906,7 @@ export default function GameModal({
                   <DetailRow
                     icon={Gamepad2}
                     label="Source"
-                    value={currentSteam ? "Steam" : "Backlog"}
+                    value={game.entryKind === "wishlist" ? (game.steamActive ? "Steam Wishlist" : "Wishlist") : currentSteam ? "Steam" : "Backlog"}
                   />
                 </aside>
               </div>
@@ -1190,7 +1216,7 @@ export default function GameModal({
             ) : null}
           </div>
 
-          {footer && !isEditMode ? (
+          {footer && !isEditMode && !footerInBody ? (
             <div
               className={[
                 "border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:px-7",
@@ -1235,86 +1261,50 @@ export default function GameModal({
               </div>
             </div>
           ) : onEdit || onRefresh || canEdit || onRefreshMetadata ? (
-            <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t border-surface-border/65 bg-surface-card/38 px-5 py-4 sm:flex-row sm:items-center sm:px-7">
-              <div>
-                {onRefresh ? (
-                  <Button type="button" variant="ghost" onClick={onRefresh}>
-                    <Sparkles className="h-4 w-4" aria-hidden="true" />
-                    Surprise me again
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-surface-border/65 bg-surface-card/38 px-5 py-3 sm:px-7">
+              {onRefresh ? (
+                <Button type="button" size="sm" variant="ghost" onClick={onRefresh}>
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  Surprise me again
+                </Button>
+              ) : <span />}
+              <div className="flex items-center gap-2">
+                {canFinish ? (
+                  <Button type="button" size="sm" variant="successSoft" onClick={() => onFinish(game)}>
+                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                    Finish game
                   </Button>
                 ) : null}
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                {onRefreshMetadata ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={onRefreshMetadata}
-                    disabled={metadataRefreshing}
-                    aria-busy={metadataRefreshing}
-                    className="w-full sm:w-auto"
-                  >
-                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                    {metadataRefreshing ? "Refreshing..." : "Refresh metadata"}
-                  </Button>
-                ) : null}
-                {canEdit ? (
-                  <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setDraft(draftFromGame(game));
-                      setSavedDraft(draftFromGame(game));
-                      setIsEditMode(true);
-                      setActiveTab("overview");
-                      onEdit?.(game);
-                    }}
-                    className="w-full sm:w-auto"
-                  >
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                    Edit game
-                  </Button>
-                  {canAddToNextUp ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => onAddToNextUp(game)}
-                      title="Add this game to Next Up"
-                      className="w-full sm:w-auto"
-                    >
-                      <ListPlus className="h-4 w-4" aria-hidden="true" />
-                      Add to Next Up
-                    </Button>
-                  ) : null}
-                  {canFinish || onDelete ? (
-                    <div className="flex flex-col gap-2 sm:ml-1 sm:flex-row">
-                      {canFinish ? (
-                        <Button
-                          type="button"
-                          variant="successSoft"
-                          onClick={() => onFinish(game)}
-                          className="w-full sm:w-auto"
-                        >
-                          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                          Finish game
-                        </Button>
+                {hasOverflowActions ? <ActionMenu label="More actions" ariaLabel={`More actions for ${game.name}`}>
+                  {({ close }) => (
+                    <div className="space-y-1">
+                      {onRefreshMetadata ? (
+                        <button type="button" role="menuitem" disabled={metadataRefreshing} onClick={() => { close(); onRefreshMetadata(); }} className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-55">
+                          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                          {metadataRefreshing ? "Refreshing..." : "Refresh metadata"}
+                        </button>
+                      ) : null}
+                      {canEdit ? (
+                        <button type="button" role="menuitem" onClick={() => { close(); setDraft(draftFromGame(game)); setSavedDraft(draftFromGame(game)); setIsEditMode(true); setActiveTab("overview"); onEdit?.(game); }} className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated">
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                          Edit game
+                        </button>
+                      ) : null}
+                      {canAddToNextUp ? (
+                        <button type="button" role="menuitem" onClick={() => { close(); onAddToNextUp(game); }} className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated">
+                          <ListPlus className="h-4 w-4" aria-hidden="true" />
+                          Add to Next Up
+                        </button>
                       ) : null}
                       {onDelete ? (
-                        <Button
-                          type="button"
-                          variant="dangerSoft"
-                          onClick={() => onDelete(game)}
-                          className="w-full sm:w-auto"
-                        >
+                        <button type="button" role="menuitem" onClick={() => { close(); onDelete(game); }} className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-state-error hover:bg-state-error/10">
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                           Delete game
-                        </Button>
+                        </button>
                       ) : null}
                     </div>
-                  ) : null}
-                  </>
-                ) : null}
+                  )}
+                </ActionMenu> : null}
               </div>
             </div>
           ) : null}

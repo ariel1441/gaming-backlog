@@ -1,4 +1,6 @@
-import { Badge, Button, GameCover, Modal } from "../../components/ui";
+import { useState } from "react";
+import { Badge, Button, GameCover, Modal, SelectMenu } from "../../components/ui";
+import { statusOption } from "../../utils/statusDisplay";
 import {
   formatSteamDate,
   formatSteamPlaytime,
@@ -35,8 +37,11 @@ export function removeSyncReviewItem(review, item) {
 export function SteamSyncReviewModal({
   review,
   applyingGameId,
+  addingCandidateId,
+  statuses = [],
   onClose,
   onApplyStatus,
+  onAddCandidate,
   onDismissItem,
   onReviewImport,
 }) {
@@ -56,7 +61,10 @@ export function SteamSyncReviewModal({
           empty="No newly started games in this sync."
           items={startedPlaying}
           applyingGameId={applyingGameId}
+          addingCandidateId={addingCandidateId}
+          statuses={statuses}
           onApplyStatus={onApplyStatus}
+          onAddCandidate={onAddCandidate}
           onDismissItem={onDismissItem}
           onReviewImport={onReviewImport}
         />
@@ -65,7 +73,10 @@ export function SteamSyncReviewModal({
           empty="No linked backlog statuses need attention."
           items={statusSuggestions}
           applyingGameId={applyingGameId}
+          addingCandidateId={addingCandidateId}
+          statuses={statuses}
           onApplyStatus={onApplyStatus}
+          onAddCandidate={onAddCandidate}
           onDismissItem={onDismissItem}
           onReviewImport={onReviewImport}
         />
@@ -74,7 +85,10 @@ export function SteamSyncReviewModal({
           empty="No newly discovered unplayed Steam games in this sync."
           items={newSteamGames}
           applyingGameId={applyingGameId}
+          addingCandidateId={addingCandidateId}
+          statuses={statuses}
           onApplyStatus={onApplyStatus}
+          onAddCandidate={onAddCandidate}
           onDismissItem={onDismissItem}
           onReviewImport={onReviewImport}
           importGroup="unplayed"
@@ -101,7 +115,10 @@ function SyncReviewSection({
   empty,
   items,
   applyingGameId,
+  addingCandidateId,
+  statuses,
   onApplyStatus,
+  onAddCandidate,
   onDismissItem,
   onReviewImport,
   importGroup = "newly_played",
@@ -121,7 +138,10 @@ function SyncReviewSection({
               key={syncReviewKey(item)}
               item={item}
               applying={applyingGameId === item.gameId}
+              adding={addingCandidateId === item.candidateId}
+              statuses={statuses}
               onApplyStatus={onApplyStatus}
+              onAddCandidate={onAddCandidate}
               onDismiss={() => onDismissItem(item)}
               onReviewImport={() => onReviewImport(importGroup)}
             />
@@ -139,7 +159,10 @@ function SyncReviewSection({
 function SyncReviewRow({
   item,
   applying,
+  adding,
+  statuses = [],
   onApplyStatus,
+  onAddCandidate,
   onDismiss,
   onReviewImport,
 }) {
@@ -148,6 +171,8 @@ function SyncReviewRow({
   const observed = formatSteamDate(item.firstPlayObservedAt);
   const lastPlayed = formatSteamDate(item.lastPlayedAt);
   const canApply = Boolean(item.gameId);
+  const canAdd = Boolean(item.candidateId && item.canAddToBacklog);
+  const [targetStatus, setTargetStatus] = useState(item.selectedStatus || item.suggestedStatus || "");
   const approximateStartedAt = item.firstPlayObservedAt || item.lastPlayedAt;
   const canSetStartedAt =
     canApply &&
@@ -208,6 +233,28 @@ function SyncReviewRow({
               </Button>
             ) : null}
           </>
+        ) : canAdd ? (
+          <div className="flex min-w-52 flex-wrap gap-2 md:justify-end">
+            <SelectMenu
+              id={`steam-sync-review-status-${item.candidateId}`}
+              aria-label={`Backlog status for ${title}`}
+              value={targetStatus}
+              onChange={setTargetStatus}
+              options={statuses.filter((status) => status.toLowerCase() !== "wishlist").map(statusOption)}
+              placeholder="Choose status"
+              className="min-w-44"
+              disabled={adding}
+            />
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={!targetStatus || adding}
+              onClick={() => onAddCandidate(item, targetStatus)}
+            >
+              {adding ? "Adding..." : "Add to Backlog"}
+            </Button>
+          </div>
         ) : (
           <Button
             type="button"
