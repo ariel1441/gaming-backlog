@@ -423,7 +423,7 @@ export function SelectionActionBar({
             size="sm"
             onClick={onBulkAccept}
           >
-            Approve matches
+            Approve matches only
           </Button>
         ) : (
           <Button
@@ -451,7 +451,7 @@ export function SelectionActionBar({
           size="sm"
           onClick={onBulkImport}
         >
-          Apply selected
+          Add selected to Backlog
         </Button>
       </div>
     </div>
@@ -522,7 +522,7 @@ export function AdvancedTools({
               onClick={onAcceptGroup}
               disabled={!canApprovePile}
             >
-              Approve all
+              Approve matches only
             </Button>
             <Button
               type="button"
@@ -540,7 +540,9 @@ export function AdvancedTools({
               onClick={onImportGroup}
               disabled={!canImportPile}
             >
-              {group === "duplicates" ? "Link all" : "Add all"}
+              {group === "duplicates"
+                ? "Link all to Backlog"
+                : "Add all to Backlog"}
             </Button>
           </div>
         </section>
