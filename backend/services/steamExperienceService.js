@@ -2,6 +2,7 @@ import { pool } from "../db.js";
 import { assertSavedAccountUser } from "./steamWishlistService.js";
 import { getSteamAccount, serializeSteamAccount } from "./steamService.js";
 import { serializeIntegrationSyncRun } from "./integrationSyncService.js";
+import { listDailyAutomationRunsForAccount } from "./dailyAutomationRunService.js";
 
 // A read of saved work, never a provider request or a scheduling trigger.
 export async function getSteamExperienceHealth(userId) {
@@ -16,6 +17,7 @@ export async function getSteamExperienceHealth(userId) {
         account: null,
         activeJob: null,
         runs: [],
+        dailyRuns: [],
         lastScheduledAt: null,
       };
     }
@@ -36,6 +38,7 @@ export async function getSteamExperienceHealth(userId) {
       WHERE user_id = $1 AND account_id = $2 AND trigger_type = 'scheduled'`,
       [userId, account.id],
     );
+    const dailyRuns = await listDailyAutomationRunsForAccount(userId, account.id, 10, client);
     await client.query("COMMIT");
     const job = jobs[0];
     return {
@@ -52,6 +55,7 @@ export async function getSteamExperienceHealth(userId) {
           }
         : null,
       runs: runs.map(serializeIntegrationSyncRun),
+      dailyRuns,
       lastScheduledAt: scheduled[0]?.last_scheduled_at || null,
     };
   } catch (error) {

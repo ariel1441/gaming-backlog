@@ -34,6 +34,7 @@ test(
       const activity = await import("./services/activityEventService.js");
       const wishlist = await import("./services/steamWishlistService.js");
       const health = await import("./services/steamExperienceService.js");
+      const daily = await import("./services/dailyAutomationRunService.js");
       const app = express();
       app.use(express.json());
       app.use("/activity", (await import("./routes/activity.js")).default);
@@ -553,9 +554,49 @@ test(
         },
       );
       await t.test(
+        "daily runner audit keeps account summaries private and durable",
+        async () => {
+          const audit = await daily.beginDailyAutomationRun({ revision: "test-revision" });
+          assert.ok(audit?.id);
+          await daily.registerDailyAutomationAccounts(audit.id, [
+            { userId: second.userId, accountId: second.account.id },
+          ]);
+          const totals = {
+            library: { succeeded: 1, partial: 0, failed: 0, skipped: 0 },
+            wishlist: { succeeded: 1, partial: 0, failed: 0, skipped: 0 },
+            wishlist_prices: { succeeded: 0, partial: 1, failed: 0, skipped: 0 },
+          };
+          await daily.finishDailyAutomationAccount(audit.id, {
+            userId: second.userId,
+            accountId: second.account.id,
+            totals,
+          });
+          await daily.finishDailyAutomationRun(audit.id, { totals });
+          const privateHistory = await health.getSteamExperienceHealth(second.userId);
+          assert.equal(privateHistory.dailyRuns[0].id, audit.id);
+          assert.equal(privateHistory.dailyRuns[0].status, "partial");
+          assert.deepEqual(privateHistory.dailyRuns[0].summary.phases, totals);
+          assert.ok(!(await health.getSteamExperienceHealth(first.userId)).dailyRuns.some((run) => run.id === audit.id));
+        },
+      );
+      await t.test(
         "saved health discovers background jobs without enqueueing; coverage classifies verification",
         async () => {
           const work = await run(first, "wishlist", "running");
+          const dailyId = crypto.randomUUID();
+          const foreignDailyId = crypto.randomUUID();
+          await pool.query(
+            `INSERT INTO daily_automation_runs(id,automation_key,status,finished_at,summary_json)
+             VALUES($1,'steam_daily','partial',NOW(),'{"totals":{"eligible":1}}'),
+                    ($2,'steam_daily','succeeded',NOW(),'{}')`,
+            [dailyId, foreignDailyId],
+          );
+          await pool.query(
+            `INSERT INTO daily_automation_run_accounts(automation_run_id,user_id,account_id,status,summary_json,finished_at)
+             VALUES($1,$2,$3,'partial','{"phases":{"wishlist_prices":{"partial":1}}}',NOW()),
+                   ($4,$5,$6,'succeeded','{}',NOW())`,
+            [dailyId, first.userId, first.account.id, foreignDailyId, second.userId, second.account.id],
+          );
           const before = (
             await pool.query("SELECT COUNT(*)::int AS n FROM steam_sync_jobs")
           ).rows[0].n;
@@ -564,6 +605,10 @@ test(
           assert.equal(saved.activeJob.processed, 3);
           assert.ok(saved.lastScheduledAt);
           assert.equal(saved.runs.length, 2);
+          assert.equal(saved.dailyRuns.length, 1);
+          assert.equal(saved.dailyRuns[0].id, dailyId);
+          assert.equal(saved.dailyRuns[0].status, "partial");
+          assert.equal(saved.dailyRuns[0].summary.phases.wishlist_prices.partial, 1);
           assert.equal(
             (await health.getSteamExperienceHealth(second.userId)).activeJob,
             null,

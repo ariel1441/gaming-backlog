@@ -595,6 +595,52 @@ CREATE INDEX integration_sync_runs_recent_problems
   ON integration_sync_runs (started_at DESC)
   WHERE status IN ('partial', 'failed');
 
+CREATE TABLE daily_automation_runs (
+  id UUID PRIMARY KEY,
+  automation_key TEXT NOT NULL CHECK (automation_key IN ('steam_daily')),
+  status TEXT NOT NULL DEFAULT 'running'
+    CHECK (status IN ('running', 'succeeded', 'partial', 'failed', 'abandoned', 'skipped')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  deployment_revision TEXT,
+  summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_code TEXT,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX daily_automation_runs_one_active
+  ON daily_automation_runs (automation_key)
+  WHERE status = 'running';
+
+CREATE INDEX daily_automation_runs_recent
+  ON daily_automation_runs (automation_key, started_at DESC);
+
+CREATE TABLE daily_automation_run_accounts (
+  automation_run_id UUID NOT NULL REFERENCES daily_automation_runs(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id INTEGER NOT NULL REFERENCES user_external_accounts(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'running'
+    CHECK (status IN ('running', 'succeeded', 'partial', 'failed', 'abandoned', 'skipped')),
+  summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_code TEXT,
+  error_message TEXT,
+  finished_at TIMESTAMPTZ,
+  PRIMARY KEY (automation_run_id, account_id)
+);
+
+CREATE INDEX daily_automation_run_accounts_history
+  ON daily_automation_run_accounts (user_id, account_id, automation_run_id);
+
+ALTER TABLE integration_sync_runs
+  ADD COLUMN daily_automation_run_id UUID
+    REFERENCES daily_automation_runs(id) ON DELETE SET NULL;
+
+CREATE INDEX integration_sync_runs_daily_automation_run
+  ON integration_sync_runs (daily_automation_run_id)
+  WHERE daily_automation_run_id IS NOT NULL;
+
 CREATE TABLE steam_link_transactions (
   id UUID PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -617,6 +663,7 @@ CREATE TABLE steam_sync_jobs (
   sync_kind TEXT NOT NULL DEFAULT 'library'
     CHECK (sync_kind IN ('library', 'wishlist')),
   sync_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL,
+  daily_automation_run_id UUID REFERENCES daily_automation_runs(id) ON DELETE SET NULL,
   lease_token UUID,
   status TEXT NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
@@ -646,6 +693,10 @@ CREATE INDEX steam_sync_jobs_runnable
 CREATE UNIQUE INDEX steam_sync_jobs_sync_run_unique
   ON steam_sync_jobs (sync_run_id)
   WHERE sync_run_id IS NOT NULL;
+
+CREATE INDEX steam_sync_jobs_daily_automation_run
+  ON steam_sync_jobs (daily_automation_run_id)
+  WHERE daily_automation_run_id IS NOT NULL;
 
 CREATE TABLE user_game_sources (
   id SERIAL PRIMARY KEY,
