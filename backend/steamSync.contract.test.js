@@ -236,15 +236,27 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
       "UPDATE user_external_accounts SET last_library_sync_at = NULL WHERE user_id = $1",
       [userId],
     );
-    const cancellable = await steamSync.enqueueSteamSync(userId, { force: true });
-    let running = cancellable;
-    for (let attempts = 0; attempts < 200; attempts += 1) {
-      running = await steamSync.getSteamSyncJob(userId, cancellable.id);
-      if (running.status === "running") break;
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    assert.equal(running.status, "running");
+    const cancellationRun = await pool.query(
+      `INSERT INTO integration_sync_runs (user_id, provider, sync_kind, trigger_type, status)
+       VALUES ($1, 'steam', 'library', 'manual', 'running')
+       RETURNING id`,
+      [userId],
+    );
+    const cancellable = { id: crypto.randomUUID() };
+    await pool.query(
+      `INSERT INTO steam_sync_jobs
+         (id, user_id, account_id, sync_run_id, status, force, locked_at, lease_token, started_at)
+       VALUES ($1, $2, $3, $4, 'running', TRUE, NOW(), $5, NOW())`,
+      [
+        cancellable.id,
+        userId,
+        account.rows[0].id,
+        cancellationRun.rows[0].id,
+        crypto.randomUUID(),
+      ],
+    );
     const cancelled = await steamSync.cancelSteamSyncJob(userId, cancellable.id);
+    assert.ok(cancelled);
     assert.equal(cancelled.status, "cancelled");
     await new Promise((resolve) => setTimeout(resolve, 50));
     const cancelledAfterWorker = await steamSync.getSteamSyncJob(

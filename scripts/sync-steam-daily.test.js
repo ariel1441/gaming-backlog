@@ -116,6 +116,37 @@ test("daily Steam runner logs redacted phase outcomes and library notification d
   assert.doesNotMatch(library, /901|902/);
 });
 
+test("daily Steam runner reports each account summary without exposing it in logs", async () => {
+  const accounts = [];
+  const completed = [];
+  await runDailySteamSync({
+    listUsers: async () => [{ userId: 7, accountId: 42 }],
+    enqueue: async (_userId, options) => ({ id: options.syncKind }),
+    waitForJob: async (_userId, jobId) => ({
+      status: "completed",
+      result: { run: { status: jobId === "wishlist_prices" ? "partial" : "succeeded" } },
+    }),
+    onAccountsReady: async (value) => accounts.push(...value),
+    onAccountFinished: async (value) => completed.push(value),
+    logger: { log() {}, error() {} },
+  });
+  assert.deepEqual(accounts, [{ userId: 7, accountId: 42 }]);
+  assert.deepEqual(completed, [{
+    userId: 7,
+    accountId: 42,
+    totals: {
+      library: { succeeded: 1, partial: 0, failed: 0, skipped: 0 },
+      wishlist: { succeeded: 1, partial: 0, failed: 0, skipped: 0 },
+      wishlist_prices: { succeeded: 0, partial: 1, failed: 0, skipped: 0 },
+    },
+    details: {
+      library: { status: "succeeded", diagnostics: { itemsSeen: 0, activityObservations: 0, reviewItemsCreated: 0, librarySnapshotSucceeded: false, achievementFailures: 0, achievementUnavailable: 0, achievementSkipped: 0 }, notificationDecisions: null },
+      wishlist: { status: "succeeded", diagnostics: { itemsSeen: 0, added: 0, removed: 0, priorityChanged: 0, metadataComplete: false, metadataFailedPages: 0 }, notificationDecisions: null },
+      wishlist_prices: { status: "partial", diagnostics: { itemsSeen: 0, requests: 0, succeeded: 0, failed: 0, changed: 0, deferred: 0, pendingRetries: 0, firstAttemptSelected: 0, firstAttemptDeferred: 0, priceMode: "unknown", feedErrorCode: null, reason: null, errorCounts: {}, retryScheduled: false }, notificationDecisions: null },
+    },
+  }]);
+});
+
 test("daily phase diagnostics preserve partial causes without provider payloads", () => {
   assert.deepEqual(
     dailyPhaseDiagnostics("library", {

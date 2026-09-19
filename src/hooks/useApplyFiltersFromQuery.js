@@ -7,7 +7,10 @@ export default function useApplyFiltersFromQuery({
   setSelectedGenres,
   setSelectedMyGenres,
   setDateFilter,
+  setScoreFilter,
+  setRatedOnly,
   setMissingEstimatesOnly,
+  allStatuses = [],
 }) {
   const [sp] = useSearchParams();
   const { rawStatusesForGroup, toGroup } = useStatusGroups();
@@ -21,10 +24,15 @@ export default function useApplyFiltersFromQuery({
     const year = sp.get("year");
     const active = sp.get("active");
     const missing = sp.get("missing");
+    const insightsYear = sp.get("insightsYear");
+    const score = sp.get("score");
+    const rated = sp.get("rated");
 
     if (group) {
       const g = toGroup(group); // normalize "playing"/"Playing"/etc
-      const statuses = rawStatusesForGroup(g);
+      const statuses = g === "other"
+        ? allStatuses.filter((value) => String(value).trim().toLowerCase() !== "wishlist" && toGroup(value) === "other")
+        : rawStatusesForGroup(g);
       if (statuses.length) setSelectedStatuses(statuses);
     } else if (status) {
       setSelectedStatuses([status]);
@@ -46,8 +54,19 @@ export default function useApplyFiltersFromQuery({
         setDateFilter({ type: "activeUnfinished" });
       } else if (active === "olderThan6Months") {
         setDateFilter({ type: "activeOlderThanMonths", months: 6 });
+      } else if (/^\d{4}$/.test(insightsYear || "")) {
+        setDateFilter({ type: "touchedYear", year: Number(insightsYear) });
       }
     }
+    if (setScoreFilter) {
+      const value = score == null ? NaN : Number(score);
+      setScoreFilter(
+        Number.isFinite(value) && value >= 0 && value <= 10 && Number.isInteger(value * 2)
+          ? value
+          : null,
+      );
+    }
+    if (setRatedOnly) setRatedOnly(rated === "true");
     if (setMissingEstimatesOnly) setMissingEstimatesOnly(missing === "estimates");
   }, [
     sp,
@@ -57,6 +76,9 @@ export default function useApplyFiltersFromQuery({
     setSelectedGenres,
     setSelectedMyGenres,
     setDateFilter,
+    setScoreFilter,
+    setRatedOnly,
     setMissingEstimatesOnly,
+    allStatuses,
   ]);
 }

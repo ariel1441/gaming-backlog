@@ -1614,8 +1614,10 @@ function reviewGroupForCandidate(row) {
   if (row.duplicate_game_id) return "duplicates";
   if (!row.proposed_catalog_game_id && !row.user_selected_catalog_game_id) return "needs_match";
   if (row.first_play_observed_at) return "newly_played";
+  // Review lanes reflect Steam's evidence, not the status the user intends to
+  // use when importing. Keeping those concepts separate lets someone process a
+  // suggested pile without their status choice moving the row mid-review.
   const status =
-    row.selected_status ||
     row.suggested_status ||
     recommendStatus(
       {
@@ -1641,13 +1643,13 @@ function appendImportGroupWhere(where, group) {
     where.push("c.filtered_reason IS NULL");
     where.push("ugs.first_play_observed_at IS NULL");
     where.push(
-      "(COALESCE(c.selected_status, c.suggested_status) IS NULL OR COALESCE(c.selected_status, c.suggested_status) NOT IN ('plan to play', 'played a bit', 'playing', 'played alot but didnt finish', 'finished'))"
+      "(c.suggested_status IS NULL OR c.suggested_status NOT IN ('plan to play', 'played a bit', 'playing', 'played alot but didnt finish', 'finished'))"
     );
   } else if (group === "unplayed") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
-    where.push("COALESCE(c.selected_status, c.suggested_status) = 'plan to play'");
+    where.push("c.suggested_status = 'plan to play'");
   } else if (group === "newly_played") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
@@ -1658,25 +1660,25 @@ function appendImportGroupWhere(where, group) {
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
     where.push("ugs.first_play_observed_at IS NULL");
-    where.push("COALESCE(c.selected_status, c.suggested_status) = 'played a bit'");
+    where.push("c.suggested_status = 'played a bit'");
   } else if (group === "playing") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
     where.push("ugs.first_play_observed_at IS NULL");
-    where.push("COALESCE(c.selected_status, c.suggested_status) = 'playing'");
+    where.push("c.suggested_status = 'playing'");
   } else if (group === "played_alot") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
     where.push("ugs.first_play_observed_at IS NULL");
-    where.push("COALESCE(c.selected_status, c.suggested_status) = 'played alot but didnt finish'");
+    where.push("c.suggested_status = 'played alot but didnt finish'");
   } else if (group === "likely_finished") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");
     where.push("(c.proposed_catalog_game_id IS NOT NULL OR c.user_selected_catalog_game_id IS NOT NULL)");
     where.push("ugs.first_play_observed_at IS NULL");
-    where.push("COALESCE(c.selected_status, c.suggested_status) = 'finished'");
+    where.push("c.suggested_status = 'finished'");
   } else if (group === "needs_match") {
     where.push("c.filtered_reason IS NULL");
     where.push("c.duplicate_game_id IS NULL");

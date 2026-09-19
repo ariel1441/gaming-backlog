@@ -32,6 +32,7 @@ import {
   updateActivityEvent,
 } from "../services/activityService";
 import { useStatuses } from "../hooks/useStatuses";
+import { useGames } from "../hooks/useGames";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   useSteamAccount,
@@ -134,6 +135,7 @@ export default function SteamImportPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated, loading: authLoading, isGuest } = useAuth();
+  const { refresh: refreshGames } = useGames();
   const toast = useToast();
   const confirm = useConfirm();
   const { statuses } = useStatuses();
@@ -194,6 +196,9 @@ export default function SteamImportPage() {
   const [lastSyncReview, setLastSyncReview] = useState(null);
   const [applyingSuggestionId, setApplyingSuggestionId] = useState(null);
   const [addingReviewCandidateId, setAddingReviewCandidateId] = useState(null);
+  const [savingCandidateStatusIds, setSavingCandidateStatusIds] = useState(
+    () => new Set(),
+  );
 
   const isDev = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
 
@@ -269,6 +274,14 @@ export default function SteamImportPage() {
     setLastSyncReview(review);
     if (open) setSyncReview(review);
     return review;
+  };
+
+  const refreshBacklogAfterImport = async () => {
+    try {
+      await refreshGames({ silent: true });
+    } catch {
+      // The import is already committed. A later Backlog read can retry safely.
+    }
   };
 
   useEffect(() => {
@@ -521,6 +534,7 @@ export default function SteamImportPage() {
           ? "Steam linked to your existing Backlog game. Its status was kept."
           : "Game added to Backlog.",
       );
+      await refreshBacklogAfterImport();
       await refreshSteamActivity({ open: true });
       await loadCandidates();
     } catch (error) {
@@ -566,11 +580,40 @@ export default function SteamImportPage() {
   };
 
   const updateCandidate = async (candidate, action, payload = {}) => {
+    const isStatusChange = action === "set_status";
+    if (isStatusChange) {
+      setSavingCandidateStatusIds((current) => new Set(current).add(candidate.id));
+    }
     try {
-      await updateSteamImportCandidate(candidate.id, { action, ...payload });
-      await loadCandidates();
+      const updated = await updateSteamImportCandidate(candidate.id, {
+        action,
+        ...payload,
+      });
+      if (isStatusChange) {
+        setCandidates((current) =>
+          current.map((item) =>
+            item.id === candidate.id
+              ? {
+                  ...item,
+                  selectedStatus: updated?.selectedStatus || payload.status,
+                  decisionAt: updated?.decisionAt || item.decisionAt,
+                }
+              : item,
+          ),
+        );
+      } else {
+        await loadCandidates();
+      }
     } catch (error) {
       toast.error(error.message || "Could not update this import.");
+    } finally {
+      if (isStatusChange) {
+        setSavingCandidateStatusIds((current) => {
+          const next = new Set(current);
+          next.delete(candidate.id);
+          return next;
+        });
+      }
     }
   };
 
@@ -638,14 +681,23 @@ export default function SteamImportPage() {
 
   const bulkSetStatus = async () => {
     if (!bulkStatus) return;
+    const candidateIds = selectedArray();
     try {
       await bulkUpdateSteamImportCandidates({
         action: "set_status",
-        candidateIds: selectedArray(),
+        candidateIds,
         status: bulkStatus,
       });
       toast.success("Selected import statuses updated.");
-      await loadCandidates();
+      const updatedIds = new Set(candidateIds);
+      setCandidates((current) =>
+        current.map((candidate) =>
+          updatedIds.has(candidate.id)
+            ? { ...candidate, selectedStatus: bulkStatus }
+            : candidate,
+        ),
+      );
+      setSelectedIds(new Set());
     } catch (error) {
       toast.error(error.message || "Could not update selected statuses.");
     }
@@ -727,7 +779,12 @@ export default function SteamImportPage() {
       toast.success(
         `Updated ${payload?.updated || 0} statuses in ${groupLabel(group)}.`,
       );
-      await loadCandidates();
+      setCandidates((current) =>
+        current.map((candidate) => ({
+          ...candidate,
+          selectedStatus: bulkStatus,
+        })),
+      );
     } catch (error) {
       toast.error(error.message || "Could not update this group.");
     }
@@ -773,6 +830,7 @@ export default function SteamImportPage() {
               payload?.attached?.length || 0
             }, skipped ${payload?.skipped?.length || 0}.`,
       );
+      await refreshBacklogAfterImport();
       await loadCandidates();
     } catch (error) {
       toast.error(error.message || "Could not add or link this group.");
@@ -787,6 +845,7 @@ export default function SteamImportPage() {
           payload?.attached?.length || 0
         }, skipped ${payload?.skipped?.length || 0}.`,
       );
+      await refreshBacklogAfterImport();
       await loadCandidates();
     } catch (error) {
       toast.error(
@@ -826,6 +885,7 @@ export default function SteamImportPage() {
       } else {
         toast.warning("Choose a catalog match before adding this Steam game.");
       }
+      if (imported || attached) await refreshBacklogAfterImport();
       await loadCandidates();
     } catch (error) {
       toast.error(error.message || "Could not add or link this Steam game.");
@@ -1137,6 +1197,7 @@ export default function SteamImportPage() {
                     updateCandidate(candidate, "set_status", { status })
                   }
                   onChangeMatch={() => openMatch(candidate)}
+                  statusSaving={savingCandidateStatusIds.has(candidate.id)}
                 />
               ))
             ) : (

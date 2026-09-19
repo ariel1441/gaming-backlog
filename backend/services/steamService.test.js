@@ -586,6 +586,11 @@ test("listSteamImportCandidates group filters match exclusive summary piles", as
       await listSteamImportCandidates(7, { group: "needs_match" });
       await listSteamImportCandidates(7, { group: "matched" });
       await listSteamImportCandidates(7, { group: "newly_played" });
+      await listSteamImportCandidates(7, { group: "unplayed" });
+      await listSteamImportCandidates(7, { group: "played_bit" });
+      await listSteamImportCandidates(7, { group: "playing" });
+      await listSteamImportCandidates(7, { group: "played_alot" });
+      await listSteamImportCandidates(7, { group: "likely_finished" });
 
       const countQueries = calls
         .map((call) => compact(call.text))
@@ -593,6 +598,7 @@ test("listSteamImportCandidates group filters match exclusive summary piles", as
       const needsMatchSql = countQueries[0];
       const matchedSql = countQueries[1];
       const newlyPlayedSql = countQueries[2];
+      const statusLaneSql = countQueries.slice(3);
 
       assert.match(needsMatchSql, /c\.filtered_reason IS NULL/);
       assert.match(needsMatchSql, /c\.duplicate_game_id IS NULL/);
@@ -603,9 +609,25 @@ test("listSteamImportCandidates group filters match exclusive summary piles", as
       assert.match(matchedSql, /c\.filtered_reason IS NULL/);
       assert.match(matchedSql, /c\.duplicate_game_id IS NULL/);
       assert.match(matchedSql, /ugs\.first_play_observed_at IS NULL/);
-      assert.match(matchedSql, /NOT IN \('plan to play', 'played a bit', 'playing'/);
+      assert.match(matchedSql, /c\.suggested_status NOT IN \('plan to play', 'played a bit', 'playing'/);
+      assert.doesNotMatch(matchedSql, /COALESCE\(c\.selected_status, c\.suggested_status\)/);
       assert.match(newlyPlayedSql, /ugs\.first_play_observed_at IS NOT NULL/);
       assert.match(newlyPlayedSql, /c\.duplicate_game_id IS NULL/);
+      assert.deepEqual(
+        statusLaneSql.map((sql) =>
+          sql.match(/c\.suggested_status = '([^']+)'/)?.[1],
+        ),
+        [
+          "plan to play",
+          "played a bit",
+          "playing",
+          "played alot but didnt finish",
+          "finished",
+        ],
+      );
+      statusLaneSql.forEach((sql) => {
+        assert.doesNotMatch(sql, /COALESCE\(c\.selected_status, c\.suggested_status\)/);
+      });
     }
   );
 });

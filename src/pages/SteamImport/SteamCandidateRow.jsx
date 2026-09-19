@@ -41,6 +41,20 @@ function candidateMatchHint(candidate) {
 }
 
 function candidatePrimaryAction(candidate) {
+  if (candidate.importStatus === "imported") {
+    return {
+      label: "Added to Backlog",
+      kind: "completed",
+      variant: "secondary",
+    };
+  }
+  if (candidate.importStatus === "attached") {
+    return {
+      label: "Linked to Backlog",
+      kind: "completed",
+      variant: "secondary",
+    };
+  }
   if (candidate.importStatus === "ignored") {
     return { label: "Restore", kind: "restore", variant: "secondary" };
   }
@@ -86,6 +100,7 @@ export function CandidateRow({
   onImport,
   onSetStatus,
   onChangeMatch,
+  statusSaving = false,
 }) {
   const canImport =
     !!candidate.proposedCatalogGameId || !!candidate.duplicateGameId;
@@ -198,7 +213,7 @@ export function CandidateRow({
             placeholder="Choose status"
             className="h-9 w-full"
             options={statusOptions}
-            disabled={isIgnored}
+            disabled={isIgnored || statusSaving}
           />
           {candidate.suggestedStatusReason ? (
             <p
@@ -216,7 +231,10 @@ export function CandidateRow({
             variant={primaryAction.variant}
             size="sm"
             onClick={runPrimaryAction}
-            disabled={primaryAction.kind === "import" && !canImport}
+            disabled={
+              primaryAction.kind === "completed" ||
+              (primaryAction.kind === "import" && !canImport)
+            }
           >
             {primaryAction.label}
           </Button>

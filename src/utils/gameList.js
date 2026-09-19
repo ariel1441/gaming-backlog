@@ -267,6 +267,10 @@ export function matchesDateFilter(game, dateFilter, now = new Date()) {
       return started?.year === Number(dateFilter.year);
     case "finishedYear":
       return finished?.year === Number(dateFilter.year);
+    case "touchedYear": {
+      const year = Number(dateFilter.year);
+      return started?.year === year || finished?.year === year;
+    }
     case "activeUnfinished":
       return !!started && !finished;
     case "activeOlderThanMonths": {
@@ -353,6 +357,8 @@ export function applyGameFilters(
     hoursRange = null,
     hoursBounds = null,
     dateFilter = null,
+    scoreFilter = null,
+    ratedOnly = false,
     sourceFilter = "all",
     rawgStatus = "all",
     missingEstimatesOnly = false,
@@ -419,6 +425,8 @@ export function applyGameFilters(
     if (missingEstimatesOnly && Number(hoursValueForList(game)) > 0) return false;
 
     if (!matchesDateFilter(game, dateFilter, now)) return false;
+    if (scoreFilter != null && (game.my_score == null || Number(game.my_score) !== Number(scoreFilter))) return false;
+    if (ratedOnly && (game.my_score == null || !Number.isFinite(Number(game.my_score)))) return false;
     if (!matchesSourceFilter(game, sourceFilter, now)) return false;
     if (rawgStatus !== "all" && rawgMetadataState(game) !== rawgStatus) return false;
 
@@ -435,7 +443,9 @@ export function buildDisplayGames({
   hoursRange = null,
   hoursBounds = null,
   dateFilter = null,
-    sourceFilter = "all",
+  scoreFilter = null,
+  ratedOnly = false,
+  sourceFilter = "all",
   rawgStatus = "all",
   missingEstimatesOnly = false,
   onSaleOnly = false,
@@ -449,6 +459,8 @@ export function buildDisplayGames({
     hoursRange,
     hoursBounds,
     dateFilter,
+    scoreFilter,
+    ratedOnly,
     sourceFilter,
     rawgStatus,
     missingEstimatesOnly,

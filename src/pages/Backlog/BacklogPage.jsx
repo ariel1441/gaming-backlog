@@ -95,6 +95,10 @@ export default function BacklogPage() {
     setSelectedMyGenres,
     dateFilter,
     setDateFilter,
+    scoreFilter,
+    setScoreFilter,
+    ratedOnly,
+    setRatedOnly,
     sourceFilter,
     setSourceFilter,
     rawgStatus,
@@ -159,7 +163,10 @@ export default function BacklogPage() {
     setSelectedGenres,
     setSelectedMyGenres,
     setDateFilter,
+    setScoreFilter,
+    setRatedOnly,
     setMissingEstimatesOnly,
+    allStatuses,
   });
 
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
@@ -293,6 +300,24 @@ export default function BacklogPage() {
     clearFilters();
     nav(loc.pathname, { replace: true });
   };
+  const clearInsightYearFilter = React.useCallback(() => {
+    setDateFilter((current) => current?.type === "touchedYear" ? null : current);
+    const params = new URLSearchParams(loc.search);
+    params.delete("insightsYear");
+    nav({ pathname: loc.pathname, search: params.toString() }, { replace: true });
+  }, [loc.pathname, loc.search, nav, setDateFilter]);
+  const clearScoreFilter = React.useCallback(() => {
+    setScoreFilter(null);
+    const params = new URLSearchParams(loc.search);
+    params.delete("score");
+    nav({ pathname: loc.pathname, search: params.toString() }, { replace: true });
+  }, [loc.pathname, loc.search, nav, setScoreFilter]);
+  const clearRatedFilter = React.useCallback(() => {
+    setRatedOnly(false);
+    const params = new URLSearchParams(loc.search);
+    params.delete("rated");
+    nav({ pathname: loc.pathname, search: params.toString() }, { replace: true });
+  }, [loc.pathname, loc.search, nav, setRatedOnly]);
 
   const handleAddToNextUp = async (game) => {
     try {
@@ -346,6 +371,8 @@ export default function BacklogPage() {
         hoursRange,
         hoursBounds,
         dateFilter,
+        scoreFilter,
+        ratedOnly,
         sourceFilter,
         rawgStatus,
         missingEstimatesOnly,
@@ -364,8 +391,11 @@ export default function BacklogPage() {
     selectedGenres.length +
     selectedMyGenres.length +
     (dateFilter ? 1 : 0) +
+    (scoreFilter != null ? 1 : 0) +
+    (ratedOnly ? 1 : 0) +
     (sourceFilter !== "all" ? 1 : 0) +
     (rawgStatus !== "all" ? 1 : 0) +
+    (missingEstimatesOnly ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveFilters = Boolean(
     searchQuery ||
@@ -373,8 +403,11 @@ export default function BacklogPage() {
       selectedGenres.length ||
       selectedMyGenres.length ||
       dateFilter ||
+      scoreFilter != null ||
+      ratedOnly ||
       sourceFilter !== "all" ||
       rawgStatus !== "all" ||
+      missingEstimatesOnly ||
       hasHoursFilter,
   );
   const manualReorder = getManualReorderAvailability({
@@ -438,6 +471,10 @@ export default function BacklogPage() {
                 selectedMyGenres,
                 dateFilter,
                 setDateFilter,
+                scoreFilter,
+                setScoreFilter,
+                ratedOnly,
+                setRatedOnly,
                 sourceFilter,
                 setSourceFilter,
                 rawgStatus,
@@ -452,6 +489,10 @@ export default function BacklogPage() {
                 hoursBounds,
                 hoursRange,
                 setHoursRange,
+                missingEstimatesOnly,
+                clearInsightYearFilter,
+                clearScoreFilter,
+                clearRatedFilter,
                 clear: resetFilters,
               }}
               actions={{

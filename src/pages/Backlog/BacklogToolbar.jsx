@@ -101,6 +101,9 @@ export default function BacklogToolbar({
     resultCount !== totalCount && (search.query || filters.count)
       ? `${resultCount} shown`
       : null;
+  const insightYear = filters.dateFilter?.type === "touchedYear"
+    ? filters.dateFilter.year
+    : null;
 
   return (
     <header className="-mx-3 mb-6 shrink-0 border-b border-surface-border/65 bg-surface-bg px-3 sm:-mx-6 sm:px-6 lg:-mx-5 lg:px-5">
@@ -114,7 +117,7 @@ export default function BacklogToolbar({
               {countLabel}
             </span>
             {filteredCountLabel ? (
-              <span className="hidden shrink-0 text-xs text-content-muted xl:inline">
+              <span className="hidden shrink-0 text-xs text-content-muted sm:inline">
                 {filteredCountLabel}
               </span>
             ) : null}
@@ -321,6 +324,49 @@ export default function BacklogToolbar({
             </div>
           </div>
         </div>
+        {insightYear || filters.scoreFilter != null || filters.ratedOnly ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2" aria-label="Insights filters">
+            {insightYear ? (
+              <Button
+                type="button"
+                variant="soft"
+                size="sm"
+                onClick={filters.clearInsightYearFilter}
+                className="h-8 px-2.5 text-xs"
+                aria-label={`Remove Started or finished in ${insightYear} filter`}
+              >
+                Started or finished in {insightYear}
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            ) : null}
+            {filters.scoreFilter != null ? (
+              <Button
+                type="button"
+                variant="soft"
+                size="sm"
+                onClick={filters.clearScoreFilter}
+                className="h-8 px-2.5 text-xs"
+                aria-label={`Remove score ${filters.scoreFilter} filter`}
+              >
+                Score {filters.scoreFilter}/10
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            ) : null}
+            {filters.ratedOnly ? (
+              <Button
+                type="button"
+                variant="soft"
+                size="sm"
+                onClick={filters.clearRatedFilter}
+                className="h-8 px-2.5 text-xs"
+                aria-label="Remove rated games filter"
+              >
+                Rated games
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </header>
   );

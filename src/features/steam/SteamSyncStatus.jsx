@@ -17,6 +17,41 @@ const domains = {
 };
 const date = (value) => (value ? new Date(value).toLocaleString() : "Not yet");
 
+function dailyRunDetail(run) {
+  const phases = run?.summary?.phases || {};
+  return [
+    ["library", "Library"],
+    ["wishlist", "Wishlist"],
+    ["wishlist_prices", "Prices"],
+  ]
+    .map(([key, label]) => {
+      const phase = phases[key] || {};
+      const status = phase.failed ? "failed" : phase.partial ? "partial" : phase.skipped ? "skipped" : "succeeded";
+      return `${label} ${status}`;
+    })
+    .join(" · ");
+}
+
+function dailyRunTone(status) {
+  if (["failed", "abandoned"].includes(status)) return "text-state-error";
+  if (["partial", "skipped"].includes(status)) return "text-state-warning";
+  return "text-state-success";
+}
+
+function dailyRunFacts(run) {
+  const details = run?.summary?.details || {};
+  const facts = [];
+  const library = details.library?.diagnostics;
+  const wishlist = details.wishlist?.diagnostics;
+  const prices = details.wishlist_prices?.diagnostics;
+  if (library?.itemsSeen) facts.push(`Library ${library.itemsSeen} seen`);
+  if (wishlist?.added || wishlist?.removed || wishlist?.priorityChanged)
+    facts.push(`Wishlist ${wishlist.added || 0} added · ${wishlist.removed || 0} removed · ${wishlist.priorityChanged || 0} reordered`);
+  if (prices && (prices.succeeded || prices.changed || prices.deferred || prices.failed))
+    facts.push(`Prices ${prices.succeeded || 0} checked · ${prices.changed || 0} changed · ${prices.deferred || 0} deferred${prices.failed ? ` · ${prices.failed} retrying` : ""}`);
+  return facts;
+}
+
 export default function SteamSyncStatus({
   savedAccount,
   priceHealth,
@@ -303,6 +338,31 @@ export default function SteamSyncStatus({
                 : "Enabled for scheduled updates. No scheduled run has been observed for this connection yet."
               : "Automatic updates are off. Saved data stays available."}
           </p>
+          <section aria-label="Daily Steam runner history" className="rounded-lg border border-surface-border p-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="font-medium">Daily runner history</p>
+              <p className="text-xs text-content-muted">Latest 10 daily runner invocations</p>
+            </div>
+            {health.dailyRuns?.length ? (
+              <ul className="mt-2 divide-y divide-surface-border/65 text-xs">
+                {health.dailyRuns.map((run) => (
+                  <li key={run.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-2 first:pt-0 last:pb-0">
+                    <div className="min-w-0">
+                      <p className="text-content-primary">{date(run.startedAt)}</p>
+                      <p className="mt-0.5 text-content-muted">{dailyRunDetail(run)}</p>
+                      {dailyRunFacts(run).map((fact) => <p key={fact} className="mt-0.5 text-content-muted">{fact}</p>)}
+                      {run.errorMessage ? <p className="mt-1 text-state-error">{run.errorMessage}</p> : null}
+                    </div>
+                    <span className={`font-medium capitalize ${dailyRunTone(run.status)}`}>{run.status}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-content-muted">
+                No daily runner result has been saved for this Steam connection yet.
+              </p>
+            )}
+          </section>
           <div className="grid gap-3 md:grid-cols-3">
             {Object.entries(domains).map(([kind, label]) => {
               const run = health.runs?.find((item) => item.syncKind === kind);

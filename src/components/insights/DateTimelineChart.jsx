@@ -35,7 +35,6 @@ function YearSummary({ row, onBarClick }) {
   ];
   const max = Math.max(1, ...metrics.map(({ key }) => row[key] || 0));
   return <div className="flex min-h-64 flex-col justify-center gap-5">
-    <p className="text-sm text-content-muted">Select a total to view those games.</p>
     {metrics.map(({ key, label, color }) => <button key={key} type="button" onClick={() => onBarClick?.(key, row.year)} className="rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
       <div className="flex items-baseline justify-between gap-3"><span className="flex items-center gap-2 text-sm font-medium text-content-primary"><i className={`h-2.5 w-2.5 rounded-sm ${color}`} aria-hidden="true" />{label}</span><span className="text-2xl font-semibold text-content-primary">{fmtInt(row[key])}</span></div>
       <div className="mt-2 h-3 overflow-hidden rounded-full bg-surface-elevated"><div className={`h-full rounded-full ${color}`} style={{ width: `${((row[key] || 0) / max) * 100}%` }} /></div>

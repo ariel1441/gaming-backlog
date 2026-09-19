@@ -372,6 +372,7 @@ async function ensureRunForJob(job) {
         provider: "steam",
         syncKind: current.sync_kind || "library",
         triggerType: current.trigger_type || "manual",
+        dailyAutomationRunId: current.daily_automation_run_id || null,
       },
       client,
     );
@@ -1204,7 +1205,7 @@ async function processSteamSyncJob(job) {
 
 export async function enqueueSteamSync(
   userId,
-  { force = false, trigger = "manual", syncKind = "library", expectedAccountId = null } = {},
+  { force = false, trigger = "manual", syncKind = "library", expectedAccountId = null, dailyAutomationRunId = null } = {},
 ) {
   await assertSteamUser(userId);
   const account = await getSteamAccount(userId);
@@ -1219,14 +1220,14 @@ export async function enqueueSteamSync(
     const { rows } = await pool.query(
       `
       INSERT INTO steam_sync_jobs (
-        id, user_id, account_id, force, trigger_type, sync_kind, provider_user_id
+        id, user_id, account_id, force, trigger_type, sync_kind, provider_user_id, daily_automation_run_id
       )
-      SELECT $1, $2, id, $4, $5, $6, provider_user_id FROM user_external_accounts
+      SELECT $1, $2, id, $4, $5, $6, provider_user_id, $8 FROM user_external_accounts
        WHERE id = $3 AND user_id = $2 AND disconnected_at IS NULL AND provider_user_id = $7
          AND ($5 <> 'scheduled' OR auto_sync_enabled = TRUE)
       RETURNING *
       `,
-      [jobId, userId, account.id, force, triggerType, normalizedKind, account.provider_user_id],
+      [jobId, userId, account.id, force, triggerType, normalizedKind, account.provider_user_id, dailyAutomationRunId],
     );
     if (!rows[0]) {
       if (triggerType === 'scheduled') return null;
@@ -1247,7 +1248,7 @@ export async function enqueueSteamSync(
     if ((rows[0].sync_kind || "library") !== normalizedKind) {
       if (triggerType === "scheduled") {
         await waitForSteamSyncJob(userId, rows[0].id);
-        return enqueueSteamSync(userId, { force, trigger, syncKind: normalizedKind, expectedAccountId: expectedAccountId ?? account.id });
+        return enqueueSteamSync(userId, { force, trigger, syncKind: normalizedKind, expectedAccountId: expectedAccountId ?? account.id, dailyAutomationRunId });
       }
       const busy = new Error("Another Steam sync is already running.");
       busy.status = 409;

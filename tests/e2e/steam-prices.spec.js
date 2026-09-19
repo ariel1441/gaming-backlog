@@ -33,7 +33,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
       return json({});
     });
     await page.goto('/wishlist');
-    const displayedPrices = page.locator('.text-lg.font-semibold.leading-none.tabular-nums');
+    const displayedPrices = page.getByTestId('steam-price');
     await expect(displayedPrices).toHaveCount(3);
     await expect(page.getByText('50% off').first()).toBeVisible();
     await expect(page.getByText('Free', { exact: true })).toBeVisible();
@@ -57,7 +57,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`prices-${label}.png`), fullPage: true });
     await page.goto('/');
-    await expect(page.locator('.text-lg.font-semibold.leading-none.tabular-nums')).toHaveCount(3);
+    await expect(page.getByTestId('steam-price')).toHaveCount(3);
     expect(errors).toEqual([]);
   });
 }

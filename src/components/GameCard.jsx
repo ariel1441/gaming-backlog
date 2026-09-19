@@ -444,7 +444,7 @@ export default function GameCard({
                 <TimelineSlot startedAt={startedAt} finishedAt={finishedAt} />
               </div> : null}
 
-              <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
+              <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} prominent={game.entryKind === "wishlist"} />
               {myGenres.length ? <AdaptiveChipList items={myGenres} className="gap-2" /> : null}
             </div>
           </div>
@@ -494,7 +494,7 @@ export default function GameCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-4 px-3.5 py-4">
-        <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} />
+        <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} prominent={game.entryKind === "wishlist"} />
         {isCompact ? (
           cardStats.length || steamPlaytime || steamLastPlayed || steamActivityStat || achievementStat || startedAt || finishedAt ? (
             <div className="grid content-start gap-2">

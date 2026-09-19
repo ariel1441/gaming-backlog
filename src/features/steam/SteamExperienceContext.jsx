@@ -19,6 +19,7 @@ const Context = createContext({
   account: null,
   activeJob: null,
   runs: [],
+  dailyRuns: [],
   error: "",
   reload: async () => {},
 });
@@ -111,6 +112,7 @@ export function SteamExperienceProvider({ children }) {
         account: null,
         activeJob: null,
         runs: [],
+        dailyRuns: [],
         error: "",
         ...visible,
         reload,

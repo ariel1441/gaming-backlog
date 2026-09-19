@@ -21,18 +21,18 @@ export function serializeIntegrationSyncRun(row) {
 
 export async function createIntegrationSyncRun(
   userId,
-  { provider, syncKind, triggerType },
+  { provider, syncKind, triggerType, dailyAutomationRunId = null },
   client = pool,
 ) {
   const { rows } = await client.query(
     `
     INSERT INTO integration_sync_runs (
-      user_id, provider, sync_kind, trigger_type, status
+      user_id, provider, sync_kind, trigger_type, daily_automation_run_id, status
     )
-    VALUES ($1, $2, $3, $4, 'running')
+    VALUES ($1, $2, $3, $4, $5, 'running')
     RETURNING *
     `,
-    [userId, provider, syncKind, triggerType],
+    [userId, provider, syncKind, triggerType, dailyAutomationRunId],
   );
   return rows[0] || null;
 }
