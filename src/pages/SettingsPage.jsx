@@ -70,6 +70,7 @@ import { ThemeSettings } from "./Settings/ThemeSettings";
 import { PublicProfileSection } from "./Settings/PublicProfileSettings";
 import MetadataSettings from "./Settings/MetadataSettings";
 import { PersonalGenreSettings } from "./Settings/PersonalGenreSettings";
+import { NotificationLabSettings } from "./Settings/NotificationLabSettings";
 
 const MAX_FAVORITES = 5;
 
@@ -239,7 +240,10 @@ export default function SettingsPage() {
                 />
               ) : null}
               {activeSection === "integrations" ? (
-                <IntegrationsSection isGuest={isGuest} />
+                <>
+                  <IntegrationsSection isGuest={isGuest} />
+                  <NotificationLabSettings isGuest={isGuest} />
+                </>
               ) : null}
             </div>
           </div>
