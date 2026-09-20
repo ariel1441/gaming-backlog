@@ -19,7 +19,12 @@ import { normStatus, statusGroupOf } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
 import { affectsInsights } from "../utils/insightsInvalidation.js";
 import { normalizeScore } from "../utils/normalize.js";
-import { badRequest, notFound, conflict, httpError } from "../utils/httpError.js";
+import {
+  badRequest,
+  notFound,
+  conflict,
+  httpError,
+} from "../utils/httpError.js";
 import { findDuplicateGameTitle } from "../utils/gameTitle.js";
 import {
   decorateGameWithCatalog,
@@ -93,12 +98,17 @@ const getNextPosition = async (status, userId, db = pool) => {
 };
 
 async function lockUserRank(db, userId, status) {
-  const result = await db.query("SELECT rank FROM statuses WHERE status = $1", [status]);
+  const result = await db.query("SELECT rank FROM statuses WHERE status = $1", [
+    status,
+  ]);
   const rank = result.rows[0]?.rank;
   if (!Number.isInteger(rank)) {
     throw httpError(422, "status is invalid", "validation_error");
   }
-  await db.query("SELECT pg_advisory_xact_lock($1, $2)", [Number(userId), rank]);
+  await db.query("SELECT pg_advisory_xact_lock($1, $2)", [
+    Number(userId),
+    rank,
+  ]);
   return rank;
 }
 
@@ -112,7 +122,9 @@ export const decorateGameForClient = (game) => {
   const personalGenres = Array.isArray(game.personal_genres)
     ? game.personal_genres
     : parseLegacyPersonalGenres(game.my_genre).map((name) => ({ name }));
-  const compatibilityGenre = personalGenres.map((genre) => genre.name).join(", ");
+  const compatibilityGenre = personalGenres
+    .map((genre) => genre.name)
+    .join(", ");
   const steamPlaytimeMinutes = Number.isFinite(
     Number(game.steam_playtime_minutes),
   )
@@ -153,6 +165,9 @@ export const decorateGameForClient = (game) => {
       errorMessage: game.steam_achievements_last_error_message || null,
     },
   };
+  const focusRole = ["main", "side", "occasional"].includes(game.focus_role)
+    ? game.focus_role
+    : null;
   const catalogDecorated = decorateGameWithCatalog(game);
   if (catalogDecorated) {
     return {
@@ -162,6 +177,7 @@ export const decorateGameForClient = (game) => {
       ...catalogDecorated,
       cover: resolvedCover(game),
       ...steamFields,
+      focusRole,
     };
   }
 
@@ -184,6 +200,7 @@ export const decorateGameForClient = (game) => {
     stores: null,
     features: null,
     ...steamFields,
+    focusRole,
   };
 };
 
@@ -240,74 +257,108 @@ router.get("/search", verifyToken, gameSearch, async (req, res, next) => {
 
 // Existing-backlog review queue. It reads only already-cached full metadata;
 // a metadata refresh remains an explicit, per-game action.
-router.get("/genre-suggestions", verifyToken, listGenreSuggestions, async (req, res, next) => {
-  try {
-    const payload = await listPersonalGenreSuggestionReviews(pool, req.user.id, {
-      limit: req.query.limit,
-      offset: req.query.offset,
-      onlyWithoutPersonalGenres: req.query.only_without_personal_genres,
-    });
-    res.setHeader("Cache-Control", "no-store");
-    res.json(payload);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/:id/genre-suggestions", verifyToken, gameIdParam, async (req, res, next) => {
-  try {
-    const payload = await getPersonalGenreSuggestionReview(
-      pool,
-      req.user.id,
-      Number(req.params.id),
-    );
-    res.setHeader("Cache-Control", "no-store");
-    res.json(payload);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.post("/:id/genre-suggestions", verifyToken, applyGenreSuggestions, async (req, res, next) => {
-  let client;
-  try {
-    client = await pool.connect();
-    await client.query("BEGIN");
-    const gameId = Number(req.params.id);
-    await client.query(
-      "SELECT id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE",
-      [gameId, req.user.id],
-    );
-    await applyPersonalGenreSuggestions(
-      client,
-      req.user.id,
-      gameId,
-      req.body.personalGenreIds,
-      req.body.expectedPersonalGenreIds,
-    );
-    const detailsQuery = selectOwnedGameDetailsQuery(gameId, req.user.id);
-    const details = await client.query(detailsQuery.text, detailsQuery.values);
-    if (!details.rows[0]) throw notFound("Game not found.");
-    await client.query("COMMIT");
-    cacheClear(req.user.id);
-    res.json(decorateGameForClient(details.rows[0]));
-  } catch (error) {
-    try { await client?.query("ROLLBACK"); } catch {}
-    next(error);
-  } finally {
-    client?.release();
-  }
-});
-
-router.post("/:id/metadata/refresh", verifyToken, gameIdParam, async (req, res, next) => {
-  try {
-    if (req.user?.is_guest) {
-      return next(httpError(403, "Metadata refresh is unavailable for demo accounts.", "forbidden"));
+router.get(
+  "/genre-suggestions",
+  verifyToken,
+  listGenreSuggestions,
+  async (req, res, next) => {
+    try {
+      const payload = await listPersonalGenreSuggestionReviews(
+        pool,
+        req.user.id,
+        {
+          limit: req.query.limit,
+          offset: req.query.offset,
+          onlyWithoutPersonalGenres: req.query.only_without_personal_genres,
+        },
+      );
+      res.setHeader("Cache-Control", "no-store");
+      res.json(payload);
+    } catch (error) {
+      next(error);
     }
-    const userId = req.user.id;
-    const gameId = Number(req.params.id);
-    const { rows } = await pool.query(
-      `SELECT g.id, g.rawg_id, g.rawg_slug, g.catalog_game_id,
+  },
+);
+
+router.get(
+  "/:id/genre-suggestions",
+  verifyToken,
+  gameIdParam,
+  async (req, res, next) => {
+    try {
+      const payload = await getPersonalGenreSuggestionReview(
+        pool,
+        req.user.id,
+        Number(req.params.id),
+      );
+      res.setHeader("Cache-Control", "no-store");
+      res.json(payload);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.post(
+  "/:id/genre-suggestions",
+  verifyToken,
+  applyGenreSuggestions,
+  async (req, res, next) => {
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const gameId = Number(req.params.id);
+      await client.query(
+        "SELECT id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE",
+        [gameId, req.user.id],
+      );
+      await applyPersonalGenreSuggestions(
+        client,
+        req.user.id,
+        gameId,
+        req.body.personalGenreIds,
+        req.body.expectedPersonalGenreIds,
+      );
+      const detailsQuery = selectOwnedGameDetailsQuery(gameId, req.user.id);
+      const details = await client.query(
+        detailsQuery.text,
+        detailsQuery.values,
+      );
+      if (!details.rows[0]) throw notFound("Game not found.");
+      await client.query("COMMIT");
+      cacheClear(req.user.id);
+      res.json(decorateGameForClient(details.rows[0]));
+    } catch (error) {
+      try {
+        await client?.query("ROLLBACK");
+      } catch {}
+      next(error);
+    } finally {
+      client?.release();
+    }
+  },
+);
+
+router.post(
+  "/:id/metadata/refresh",
+  verifyToken,
+  gameIdParam,
+  async (req, res, next) => {
+    try {
+      if (req.user?.is_guest) {
+        return next(
+          httpError(
+            403,
+            "Metadata refresh is unavailable for demo accounts.",
+            "forbidden",
+          ),
+        );
+      }
+      const userId = req.user.id;
+      const gameId = Number(req.params.id);
+      const { rows } = await pool.query(
+        `SELECT g.id, g.rawg_id, g.rawg_slug, g.catalog_game_id,
               external.external_id AS catalog_rawg_id
          FROM games g
          LEFT JOIN external_game_ids external
@@ -315,48 +366,63 @@ router.post("/:id/metadata/refresh", verifyToken, gameIdParam, async (req, res, 
           AND external.source = 'rawg'
         WHERE g.id = $1 AND g.user_id = $2
         LIMIT 1`,
-      [gameId, userId],
-    );
-    const game = rows[0];
-    if (!game) return next(notFound("Game not found"));
-
-    const rawgId = game.rawg_id || game.catalog_rawg_id;
-    if (!rawgId) {
-      return next(
-        httpError(
-          422,
-          "Choose a RAWG match in Edit game > Metadata before refreshing.",
-          "metadata_identity_required",
-        ),
+        [gameId, userId],
       );
-    }
+      const game = rows[0];
+      if (!game) return next(notFound("Game not found"));
 
-    const ingestMetadata =
-      req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata;
-    const ingested = await ingestMetadata(Number(rawgId), { force: true });
-    const catalogGameId = Number(ingested?.catalogGame?.id || game.catalog_game_id);
-    if (!Number.isInteger(catalogGameId) || catalogGameId <= 0) {
-      return next(httpError(502, "RAWG metadata did not return a catalog identity.", "metadata_identity_missing"));
-    }
+      const rawgId = game.rawg_id || game.catalog_rawg_id;
+      if (!rawgId) {
+        return next(
+          httpError(
+            422,
+            "Choose a RAWG match in Edit game > Metadata before refreshing.",
+            "metadata_identity_required",
+          ),
+        );
+      }
 
-    await pool.query(
-      `UPDATE games
+      const ingestMetadata =
+        req.app.locals.ingestRawgGameMetadata || ingestRawgGameMetadata;
+      const ingested = await ingestMetadata(Number(rawgId), { force: true });
+      const catalogGameId = Number(
+        ingested?.catalogGame?.id || game.catalog_game_id,
+      );
+      if (!Number.isInteger(catalogGameId) || catalogGameId <= 0) {
+        return next(
+          httpError(
+            502,
+            "RAWG metadata did not return a catalog identity.",
+            "metadata_identity_missing",
+          ),
+        );
+      }
+
+      await pool.query(
+        `UPDATE games
           SET catalog_game_id = $3,
               rawg_id = COALESCE(rawg_id, $4),
               rawg_slug = COALESCE(rawg_slug, $5)
         WHERE id = $1 AND user_id = $2`,
-      [gameId, userId, catalogGameId, Number(rawgId), ingested?.catalogGame?.slug || game.rawg_slug || null],
-    );
-    const detailsQuery = selectOwnedGameDetailsQuery(gameId, userId);
-    const details = await pool.query(detailsQuery.text, detailsQuery.values);
-    if (!details.rows[0]) return next(notFound("Game not found"));
+        [
+          gameId,
+          userId,
+          catalogGameId,
+          Number(rawgId),
+          ingested?.catalogGame?.slug || game.rawg_slug || null,
+        ],
+      );
+      const detailsQuery = selectOwnedGameDetailsQuery(gameId, userId);
+      const details = await pool.query(detailsQuery.text, detailsQuery.values);
+      if (!details.rows[0]) return next(notFound("Game not found"));
 
-    res.setHeader("Cache-Control", "no-store");
-    res.json(decorateGameForClient(details.rows[0]));
-  } catch (error) {
-    next(error);
-  }
-});
+      res.setHeader("Cache-Control", "no-store");
+      res.json(decorateGameForClient(details.rows[0]));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
   let client;
@@ -431,7 +497,8 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
              ugs.achievements_last_synced_at AS steam_achievements_last_synced_at,
              ugs.achievements_last_error_code AS steam_achievements_last_error_code,
              ugs.achievements_last_error_message AS steam_achievements_last_error_message,
-             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned
+             (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned,
+             focus.focus_role
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
       LEFT JOIN catalog_games cg ON cg.id = g.catalog_game_id
@@ -451,6 +518,9 @@ router.put("/favorites", verifyToken, favoriteGames, async (req, res, next) => {
       LEFT JOIN steam_import_candidates sic
         ON sic.user_id = g.user_id
        AND sic.steam_app_id = ugs.provider_app_id
+      LEFT JOIN user_play_focus_games focus
+        ON focus.user_id = g.user_id
+       AND focus.game_id = g.id
       WHERE g.user_id = $1
       ORDER BY s.rank NULLS LAST, g.position NULLS LAST, g.id
       `,
@@ -499,7 +569,13 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     const userTitle = String(name).trim();
 
     if (statusNorm === "wishlist") {
-      return next(httpError(422, "Use the Wishlist page instead of a backlog status.", "validation_error"));
+      return next(
+        httpError(
+          422,
+          "Use the Wishlist page instead of a backlog status.",
+          "validation_error",
+        ),
+      );
     }
 
     const statusRow = await pool.query(
@@ -634,7 +710,10 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
       finalDuplicateQuery.text,
       finalDuplicateQuery.values,
     );
-    const finalDuplicate = findDuplicateGameTitle(userTitle, finalDuplicates.rows);
+    const finalDuplicate = findDuplicateGameTitle(
+      userTitle,
+      finalDuplicates.rows,
+    );
     if (finalDuplicate) {
       throw conflict(`"${finalDuplicate.name}" is already in your backlog.`);
     }
@@ -668,43 +747,39 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
 });
 
 // POST atomically finish a game without rewriting unrelated edit fields.
-router.post(
-  "/:id/finish",
-  verifyToken,
-  finishGame,
-  async (req, res, next) => {
-    let client;
-    try {
-      const userId = req.user.id;
-      const gameId = Number(req.params.id);
-      const finishedAt = req.body.finished_at;
-      const score = normalizeScore(req.body.my_score);
-      const thoughts = req.body.thoughts?.trim() || null;
+router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
+  let client;
+  try {
+    const userId = req.user.id;
+    const gameId = Number(req.params.id);
+    const finishedAt = req.body.finished_at;
+    const score = normalizeScore(req.body.my_score);
+    const thoughts = req.body.thoughts?.trim() || null;
 
-      client = await pool.connect();
-      await client.query("BEGIN");
+    client = await pool.connect();
+    await client.query("BEGIN");
 
-      const existingQuery = selectOwnedGameQuery(gameId, userId);
-      const existing = await client.query(
-        `${existingQuery.text} FOR UPDATE`,
-        existingQuery.values,
-      );
-      const row = existing.rows[0];
-      if (!row) throw notFound("Not found");
+    const existingQuery = selectOwnedGameQuery(gameId, userId);
+    const existing = await client.query(
+      `${existingQuery.text} FOR UPDATE`,
+      existingQuery.values,
+    );
+    const row = existing.rows[0];
+    if (!row) throw notFound("Not found");
 
-      let outcome = "finished";
-      if (normStatus(row.status) !== "finished") {
-        const startedAt = toDateOrNull(row.started_at);
-        if (startedAt && finishedAt < startedAt) {
-          throw httpError(
-            422,
-            "finished_at cannot be before started_at",
-            "validation_error",
-          );
-        }
+    let outcome = "finished";
+    if (normStatus(row.status) !== "finished") {
+      const startedAt = toDateOrNull(row.started_at);
+      if (startedAt && finishedAt < startedAt) {
+        throw httpError(
+          422,
+          "finished_at cannot be before started_at",
+          "validation_error",
+        );
+      }
 
-        const updated = await client.query(
-          `
+      const updated = await client.query(
+        `
           UPDATE games
              SET status = 'finished',
                  finished_at = $3,
@@ -713,42 +788,48 @@ router.post(
            WHERE id = $1 AND user_id = $2
            RETURNING *
           `,
-          [gameId, userId, finishedAt, score, thoughts],
-        );
-        if (!updated.rows[0]) throw notFound("Not found");
-      } else {
-        outcome = "already_finished";
-      }
-
-      await client.query(
-        "DELETE FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
-        [userId, gameId],
+        [gameId, userId, finishedAt, score, thoughts],
       );
-
-      const detailsQuery = selectOwnedGameDetailsQuery(gameId, userId);
-      const detailsRes = await client.query(
-        detailsQuery.text,
-        detailsQuery.values,
-      );
-      const responseRow = detailsRes.rows[0];
-      if (!responseRow) throw notFound("Not found");
-
-      await client.query("COMMIT");
-      cacheClear(userId);
-      res.json({
-        outcome,
-        game: decorateGameForClient(responseRow),
-      });
-    } catch (err) {
-      try {
-        await client?.query("ROLLBACK");
-      } catch {}
-      next(err);
-    } finally {
-      client?.release();
+      if (!updated.rows[0]) throw notFound("Not found");
+    } else {
+      outcome = "already_finished";
     }
-  },
-);
+
+    await client.query(
+      "DELETE FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
+      [userId, gameId],
+    );
+    const clearedFocus = await client.query(
+      `DELETE FROM user_play_focus_games
+          WHERE user_id = $1 AND game_id = $2
+          RETURNING focus_role`,
+      [userId, gameId],
+    );
+
+    const detailsQuery = selectOwnedGameDetailsQuery(gameId, userId);
+    const detailsRes = await client.query(
+      detailsQuery.text,
+      detailsQuery.values,
+    );
+    const responseRow = detailsRes.rows[0];
+    if (!responseRow) throw notFound("Not found");
+
+    await client.query("COMMIT");
+    cacheClear(userId);
+    res.json({
+      outcome,
+      game: decorateGameForClient(responseRow),
+      clearedFocusRole: clearedFocus.rows[0]?.focus_role || null,
+    });
+  } catch (err) {
+    try {
+      await client?.query("ROLLBACK");
+    } catch {}
+    next(err);
+  } finally {
+    client?.release();
+  }
+});
 
 // PUT update a game; position is preserved and never recalculated on edit.
 router.put(
@@ -800,7 +881,13 @@ router.put(
       const row = existing.rows[0];
       if (!row) return next(notFound("Not found"));
       if (statusNorm === "wishlist" && normStatus(row.status) !== "wishlist") {
-        return next(httpError(422, "Use the Wishlist page instead of a backlog status.", "validation_error"));
+        return next(
+          httpError(
+            422,
+            "Use the Wishlist page instead of a backlog status.",
+            "validation_error",
+          ),
+        );
       }
 
       const duplicateQuery = listOwnedGameTitlesQuery(userId);
@@ -835,7 +922,12 @@ router.put(
       const isGuest = !!req.user?.is_guest;
       let catalogGameId = row.catalog_game_id || null;
 
-      if (newHLTB == null && !hoursProvided && nameChanged && toHourInt(row.how_long_to_beat) == null) {
+      if (
+        newHLTB == null &&
+        !hoursProvided &&
+        nameChanged &&
+        toHourInt(row.how_long_to_beat) == null
+      ) {
         const pref = ["main", "plus", "comp"].includes(hltb_pref)
           ? hltb_pref
           : "main";
@@ -887,7 +979,7 @@ router.put(
 
       const hours_new = hoursProvided
         ? newHLTB
-        : newHLTB ?? toHourInt(row.how_long_to_beat);
+        : (newHLTB ?? toHourInt(row.how_long_to_beat));
 
       const effectiveStarted = startedProvided
         ? startedBody
@@ -947,6 +1039,13 @@ router.put(
        AND game_id = $10
        AND $23
      RETURNING game_id
+  ),
+  unfocused AS (
+    DELETE FROM user_play_focus_games
+     WHERE user_id = $14
+       AND game_id = $10
+       AND $24
+     RETURNING game_id
   )
   SELECT * FROM updated;
 `;
@@ -975,8 +1074,10 @@ router.put(
         statusNorm === "finished", // $21
         resumeNoteProvided
           ? normalizeResumeNote(resume_note)
-          : row.resume_note ?? null, // $22
+          : (row.resume_note ?? null), // $22
         ["playing", "done"].includes(statusGroupOf(statusNorm)), // $23
+        ["returning", "done"].includes(statusGroupOf(statusNorm)) ||
+          normStatus(statusNorm) === "wishlist", // $24
       ];
 
       client = await pool.connect();
@@ -1011,7 +1112,9 @@ router.put(
 
       res.json(decorateGameForClient(responseRow));
     } catch (err) {
-      try { await client?.query("ROLLBACK"); } catch {}
+      try {
+        await client?.query("ROLLBACK");
+      } catch {}
       next(err);
     } finally {
       client?.release();
@@ -1085,9 +1188,18 @@ router.patch(
       }
 
       const targetStatus = resolveTargetStatus(current.status, status);
-      if (normStatus(targetStatus) === "wishlist" && normStatus(current.status) !== "wishlist") {
+      if (
+        normStatus(targetStatus) === "wishlist" &&
+        normStatus(current.status) !== "wishlist"
+      ) {
         await client.query("ROLLBACK");
-        return next(httpError(422, "Use the Wishlist page instead of a backlog status.", "validation_error"));
+        return next(
+          httpError(
+            422,
+            "Use the Wishlist page instead of a backlog status.",
+            "validation_error",
+          ),
+        );
       }
 
       // Resolve ranks for current & target statuses
@@ -1142,6 +1254,8 @@ router.patch(
           userId,
           targetStatus,
           ["playing", "done"].includes(statusGroupOf(targetStatus)),
+          ["returning", "done"].includes(statusGroupOf(targetStatus)) ||
+            normStatus(targetStatus) === "wishlist",
         );
         await client.query(statusQuery.text, statusQuery.values);
       }

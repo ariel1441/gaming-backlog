@@ -1,7 +1,11 @@
 import express from "express";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
-import { nextUpGameId, reorderNextUp } from "../validators/nextUp.js";
+import {
+  assignPlayFocus,
+  nextUpGameId,
+  reorderNextUp,
+} from "../validators/nextUp.js";
 import { statusGroupOf } from "../utils/status.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
 import { selectOwnedGameDetailsQuery } from "../utils/gameAccess.js";
@@ -52,17 +56,45 @@ async function compactQueue(client, userId, rows = null) {
   return ordered.map((row) => Number(row.game_id));
 }
 
+function focusPayload(rows = []) {
+  const result = { main: null, side: null, occasional: [] };
+  rows.forEach((row) => {
+    const gameId = Number(row.game_id);
+    if (row.focus_role === "occasional") result.occasional.push(gameId);
+    else if (row.focus_role === "main" || row.focus_role === "side") {
+      result[row.focus_role] = gameId;
+    }
+  });
+  return result;
+}
+
+async function readFocus(queryable, userId) {
+  const result = await queryable.query(
+    `SELECT focus.game_id, focus.focus_role, focus.assigned_at
+       FROM user_play_focus_games focus
+       JOIN games g ON g.id = focus.game_id AND g.user_id = focus.user_id
+      WHERE focus.user_id = $1
+        AND LOWER(TRIM(g.status)) <> 'wishlist'
+      ORDER BY focus.assigned_at, focus.game_id`,
+    [userId],
+  );
+  return focusPayload(result.rows);
+}
+
 router.get("/", verifyToken, async (req, res, next) => {
   try {
-    const result = await pool.query(
-      `SELECT n.game_id, n.position, n.added_at
+    const [result, focus] = await Promise.all([
+      pool.query(
+        `SELECT n.game_id, n.position, n.added_at
          FROM user_next_up_games n
          JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
         WHERE n.user_id = $1
           AND LOWER(TRIM(g.status)) <> 'wishlist'
         ORDER BY n.position, n.game_id`,
-      [req.user.id],
-    );
+        [req.user.id],
+      ),
+      readFocus(pool, req.user.id),
+    ]);
     res.setHeader("Cache-Control", "no-store");
     res.json({
       gameIds: result.rows.map((row) => Number(row.game_id)),
@@ -71,11 +103,94 @@ router.get("/", verifyToken, async (req, res, next) => {
         position: index,
         addedAt: row.added_at,
       })),
+      focus,
     });
   } catch (error) {
     next(error);
   }
 });
+
+router.put(
+  "/focus/:role",
+  verifyToken,
+  assignPlayFocus,
+  async (req, res, next) => {
+    let client;
+    try {
+      const userId = req.user.id;
+      const gameId = Number(req.body.gameId);
+      const role = req.params.role;
+      client = await pool.connect();
+      await client.query("BEGIN");
+      await lockQueue(client, userId);
+
+      const gameResult = await client.query(
+        "SELECT id, status FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE",
+        [gameId, userId],
+      );
+      const game = gameResult.rows[0];
+      if (!game) throw notFound("Game not found");
+      const normalized = String(game.status || "")
+        .trim()
+        .toLowerCase();
+      if (normalized === "wishlist" || statusGroupOf(game.status) === "done") {
+        throw badRequest("Finished and wishlist games cannot be focused.");
+      }
+      if (role === "occasional" && statusGroupOf(game.status) !== "playing") {
+        throw badRequest("Only Playing games can be marked occasional.");
+      }
+
+      await client.query(
+        `DELETE FROM user_play_focus_games
+          WHERE user_id = $1
+            AND (game_id = $2 OR ($3 IN ('main', 'side') AND focus_role = $3))`,
+        [userId, gameId, role],
+      );
+      await client.query(
+        `INSERT INTO user_play_focus_games (user_id, game_id, focus_role)
+         VALUES ($1, $2, $3)`,
+        [userId, gameId, role],
+      );
+      await client.query(
+        "DELETE FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
+        [userId, gameId],
+      );
+      const gameIds = await compactQueue(client, userId);
+      const focus = await readFocus(client, userId);
+      await client.query("COMMIT");
+      res.json({ focus, gameIds });
+    } catch (error) {
+      try {
+        await client?.query("ROLLBACK");
+      } catch {}
+      next(error);
+    } finally {
+      client?.release();
+    }
+  },
+);
+
+router.delete(
+  "/focus/:gameId",
+  verifyToken,
+  nextUpGameId,
+  async (req, res, next) => {
+    try {
+      const userId = req.user.id;
+      const gameId = Number(req.params.gameId);
+      const removed = await pool.query(
+        `DELETE FROM user_play_focus_games
+          WHERE user_id = $1 AND game_id = $2
+          RETURNING game_id`,
+        [userId, gameId],
+      );
+      if (!removed.rows[0]) throw notFound("Game is not focused.");
+      res.json({ gameId, focus: await readFocus(pool, userId) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.post("/:gameId", verifyToken, nextUpGameId, async (req, res, next) => {
   let client;
@@ -91,7 +206,11 @@ router.post("/:gameId", verifyToken, nextUpGameId, async (req, res, next) => {
     );
     const game = gameResult.rows[0];
     if (!game) throw notFound("Game not found");
-    if (String(game.status || "").trim().toLowerCase() === "wishlist") {
+    if (
+      String(game.status || "")
+        .trim()
+        .toLowerCase() === "wishlist"
+    ) {
       throw badRequest("Move this wishlist item into the backlog first.");
     }
     if (["playing", "done"].includes(statusGroupOf(game.status))) {
@@ -205,14 +324,17 @@ router.post(
       const gameResult = await client.query(
         `SELECT g.*
            FROM games g
-           JOIN user_next_up_games n
-             ON n.game_id = g.id AND n.user_id = g.user_id
           WHERE g.id = $1 AND g.user_id = $2
-          FOR UPDATE OF g, n`,
+          FOR UPDATE OF g`,
         [gameId, userId],
       );
-      if (!gameResult.rows[0]) {
-        throw notFound("Queued game not found.");
+      const game = gameResult.rows[0];
+      if (!game) throw notFound("Game not found.");
+      const normalized = String(game.status || "")
+        .trim()
+        .toLowerCase();
+      if (normalized === "wishlist" || statusGroupOf(game.status) === "done") {
+        throw badRequest("Finished and wishlist games cannot be started here.");
       }
       const updated = await client.query(
         `UPDATE games

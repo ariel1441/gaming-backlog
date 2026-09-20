@@ -3,7 +3,9 @@ import SteamPrice from './SteamPrice';
 import {
   CalendarDays,
   CheckCircle2,
+  CircleDot,
   Clock3,
+  Crown,
   Flag,
   Gamepad2,
   ListPlus,
@@ -142,6 +144,17 @@ function ReleaseBadge({ value }) {
       />
       <span className="truncate">Released {value}</span>
     </div>
+  );
+}
+
+function FocusBadge({ role }) {
+  if (!["main", "side"].includes(role)) return null;
+  const Icon = role === "main" ? Crown : CircleDot;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/35 bg-surface-bg/80 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary-light shadow-md backdrop-blur">
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      {role}
+    </span>
   );
 }
 
@@ -310,7 +323,7 @@ export default function GameCard({
                   className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated"
                 >
                   <ListPlus className="h-4 w-4" aria-hidden="true" />
-                  Add to Next Up
+                  Add to shortlist
                 </button>
               ) : null}
               {canEdit ? (
@@ -402,6 +415,7 @@ export default function GameCard({
                   {game.name}
                 </h3>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <FocusBadge role={game.focusRole} />
                   {game.status ? <StatusBadge status={game.status} /> : null}
                   {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
                 </div>
@@ -486,6 +500,7 @@ export default function GameCard({
               {game.name}
             </h3>
             <div className="flex max-w-full flex-wrap items-center gap-2">
+              <FocusBadge role={game.focusRole} />
               {game.status ? <StatusBadge status={game.status} /> : null}
               {releaseDate ? <ReleaseBadge value={releaseDate} /> : null}
             </div>

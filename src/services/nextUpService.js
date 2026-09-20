@@ -19,3 +19,11 @@ export function reorderNextUp(gameIds, opts = {}) {
 export function startPlaying(gameId, opts = {}) {
   return api.post(`/api/next-up/${gameId}/start`, undefined, opts);
 }
+
+export function assignPlayFocus(role, gameId, opts = {}) {
+  return api.put(`/api/next-up/focus/${role}`, { gameId }, opts);
+}
+
+export function removePlayFocus(gameId, opts = {}) {
+  return api.del(`/api/next-up/focus/${gameId}`, opts);
+}

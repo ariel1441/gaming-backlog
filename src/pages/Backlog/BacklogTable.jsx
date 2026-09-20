@@ -3,6 +3,8 @@ import SteamPrice from '../../components/SteamPrice';
 import {
   CalendarDays,
   CheckCircle2,
+  CircleDot,
+  Crown,
   Gamepad2,
   GripVertical,
   ListPlus,
@@ -161,7 +163,7 @@ function GameActions({
               className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated"
             >
               <ListPlus className="h-4 w-4" aria-hidden="true" />
-              Add to Next Up
+              Add to shortlist
             </button>
           ) : null}
           {canEdit ? (
@@ -303,6 +305,16 @@ function BacklogTableRow({
             >
               {game.name}
             </span>
+            {["main", "side"].includes(game.focusRole) ? (
+              <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-light">
+                {game.focusRole === "main" ? (
+                  <Crown className="h-3 w-3" aria-hidden="true" />
+                ) : (
+                  <CircleDot className="h-3 w-3" aria-hidden="true" />
+                )}
+                {game.focusRole}
+              </span>
+            ) : null}
             {game.releaseDate ? (
               <span className="mt-1 block truncate text-xs font-normal text-content-muted">
                 Released {formatDate(game.releaseDate)}

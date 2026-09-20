@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import {
   CalendarDays,
   CheckCircle2,
+  CircleDot,
   Clock3,
+  Crown,
   Gamepad2,
   Layers3,
   ListPlus,
@@ -730,6 +732,16 @@ export default function GameModal({
                   </h2>
                 )}
                 <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                  {["main", "side"].includes(game.focusRole) ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-primary/35 bg-media-overlay/40 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary-light backdrop-blur">
+                      {game.focusRole === "main" ? (
+                        <Crown className="h-3.5 w-3.5" aria-hidden="true" />
+                      ) : (
+                        <CircleDot className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
+                      {game.focusRole}
+                    </span>
+                  ) : null}
                   {isEditMode ? (
                     <SelectMenu
                       id="edit-status"
@@ -1411,7 +1423,7 @@ export default function GameModal({
                       {canAddToNextUp ? (
                         <button type="button" role="menuitem" onClick={() => { close(); onAddToNextUp(game); }} className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated">
                           <ListPlus className="h-4 w-4" aria-hidden="true" />
-                          Add to Next Up
+                          Add to shortlist
                         </button>
                       ) : null}
                       {onDelete ? (

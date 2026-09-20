@@ -22,7 +22,9 @@ function appToday() {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const value = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
   return `${value.year}-${value.month}-${value.day}`;
 }
 
@@ -75,6 +77,7 @@ export default function FinishGameFlow({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [outcome, setOutcome] = useState("");
   const [finishedGame, setFinishedGame] = useState(null);
+  const [clearedFocusRole, setClearedFocusRole] = useState("");
 
   useEffect(() => {
     setDraft(initialDraft(game));
@@ -82,6 +85,7 @@ export default function FinishGameFlow({
     setMessage("");
     setOutcome("");
     setFinishedGame(null);
+    setClearedFocusRole("");
   }, [game?.id]);
 
   const initial = useMemo(() => initialDraft(game), [game]);
@@ -124,6 +128,7 @@ export default function FinishGameFlow({
       const updated = response?.game || game;
       setFinishedGame(updated);
       setOutcome(response?.outcome || "finished");
+      setClearedFocusRole(response?.clearedFocusRole || "");
       onFinished?.(updated);
     } catch (error) {
       setMessage(
@@ -275,7 +280,11 @@ export default function FinishGameFlow({
         variant="secondary"
         onClick={() => {
           onClose?.();
-          navigate("/next-up");
+          navigate(
+            clearedFocusRole
+              ? `/next-up?choose=${clearedFocusRole}`
+              : "/next-up",
+          );
         }}
       >
         Choose what to play next
@@ -314,7 +323,11 @@ export default function FinishGameFlow({
       description={description}
       onClose={() => void requestClose()}
       closeDisabled={isSubmitting}
-      footer={<div className="flex flex-col-reverse gap-2 min-[420px]:flex-row min-[420px]:justify-end">{footer}</div>}
+      footer={
+        <div className="flex flex-col-reverse gap-2 min-[420px]:flex-row min-[420px]:justify-end">
+          {footer}
+        </div>
+      }
     >
       {body}
     </Sheet>

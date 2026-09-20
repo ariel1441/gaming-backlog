@@ -22,6 +22,12 @@ export const nextUpSchemas = {
         "any.required": "gameIds is required",
       }),
   }),
+  focusRoleParams: Joi.object({
+    role: Joi.string().valid("main", "side", "occasional").required(),
+  }),
+  focusBody: Joi.object({
+    gameId: Joi.number().integer().positive().required(),
+  }),
 };
 
 export const nextUpGameId = celebrate(
@@ -31,5 +37,13 @@ export const nextUpGameId = celebrate(
 
 export const reorderNextUp = celebrate(
   { [Segments.BODY]: nextUpSchemas.reorderBody },
+  opts,
+);
+
+export const assignPlayFocus = celebrate(
+  {
+    [Segments.PARAMS]: nextUpSchemas.focusRoleParams,
+    [Segments.BODY]: nextUpSchemas.focusBody,
+  },
   opts,
 );

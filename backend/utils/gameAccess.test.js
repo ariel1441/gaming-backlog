@@ -34,6 +34,19 @@ test("owned game list keeps Steam fields private-route only", () => {
   assert.match(query, /source\.user_id = g\.user_id/);
 });
 
+test("owned game reads expose user-scoped Play Next focus roles", () => {
+  for (const query of [
+    listOwnedGamesQuery(7),
+    selectOwnedGameDetailsQuery(12, 7),
+  ]) {
+    const sql = compact(query.text);
+    assert.match(sql, /LEFT JOIN user_play_focus_games focus/);
+    assert.match(sql, /focus\.user_id = g\.user_id/);
+    assert.match(sql, /focus\.game_id = g\.id/);
+    assert.match(sql, /focus\.focus_role/);
+  }
+});
+
 test("owned game detail query preserves Steam metadata for mutation responses", () => {
   const query = selectOwnedGameDetailsQuery(12, 7);
   const sql = compact(query.text);
@@ -62,9 +75,10 @@ test("owned delete requires id and user_id", () => {
   assert.deepEqual(query.values, [12, 7]);
 });
 
-test("owned status update requires id and user_id", () => {
-  const query = updateOwnedGameStatusQuery(12, 7, "finished", true);
+test("owned status update requires id and user_id and can clear private planning relationships", () => {
+  const query = updateOwnedGameStatusQuery(12, 7, "finished", true, true);
   assert.match(compact(query.text), /WHERE id = \$1 AND user_id = \$2/);
   assert.match(compact(query.text), /DELETE FROM user_next_up_games/);
-  assert.deepEqual(query.values, [12, 7, "finished", true]);
+  assert.match(compact(query.text), /DELETE FROM user_play_focus_games/);
+  assert.deepEqual(query.values, [12, 7, "finished", true, true]);
 });

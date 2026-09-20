@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 dotenv.config();
 
 const connectionString =
-  process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/game_backlog";
+  process.env.DATABASE_URL ||
+  "postgres://postgres:postgres@localhost:5432/game_backlog";
 const execFileAsync = promisify(execFile);
 
 async function withTemporaryDatabase(work) {
@@ -25,10 +26,12 @@ async function withTemporaryDatabase(work) {
     await admin.query(`CREATE DATABASE ${database}`);
     await work(target.toString(), database);
   } finally {
-    await admin.query(
-      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
-      [database],
-    ).catch(() => {});
+    await admin
+      .query(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
+        [database],
+      )
+      .catch(() => {});
     await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
     await admin.end();
   }
@@ -41,10 +44,15 @@ test("fresh schema enforces game identity, dates, metrics, and relationship owne
   try {
     await client.query(`CREATE SCHEMA ${schema}`);
     await client.query(`SET search_path TO ${schema}`);
-    const sql = await fs.readFile(new URL("./schema.sql", import.meta.url), "utf8");
+    const sql = await fs.readFile(
+      new URL("./schema.sql", import.meta.url),
+      "utf8",
+    );
     await client.query(sql);
 
-    await client.query("INSERT INTO statuses (status, rank) VALUES ('contract status', 1)");
+    await client.query(
+      "INSERT INTO statuses (status, rank) VALUES ('contract status', 1)",
+    );
     const statusName = "contract status";
     const users = await client.query(
       `INSERT INTO users (username, password_hash) VALUES ('contract_a', 'x'), ('contract_b', 'x') RETURNING id`,
@@ -100,9 +108,16 @@ test("fresh schema enforces game identity, dates, metrics, and relationship owne
     );
     await assert.rejects(
       client.query(
-        "UPDATE games SET resume_note = $1 WHERE id = $2",
-        ["x".repeat(1001), gameA.rows[0].id],
+        "INSERT INTO user_play_focus_games (user_id, game_id, focus_role) VALUES ($1, $2, 'main')",
+        [userA, gameB.rows[0].id],
       ),
+      (error) => error.code === "23514",
+    );
+    await assert.rejects(
+      client.query("UPDATE games SET resume_note = $1 WHERE id = $2", [
+        "x".repeat(1001),
+        gameA.rows[0].id,
+      ]),
       (error) => error.code === "23514",
     );
     await client.query(
@@ -110,15 +125,36 @@ test("fresh schema enforces game identity, dates, metrics, and relationship owne
       [userA, gameA.rows[0].id],
     );
     await client.query(
+      "INSERT INTO user_play_focus_games (user_id, game_id, focus_role) VALUES ($1, $2, 'main')",
+      [userA, gameA.rows[0].id],
+    );
+    const gameA2 = await client.query(
+      "INSERT INTO games (user_id, name, status) VALUES ($1, 'Second Focus Game', $2) RETURNING id",
+      [userA, statusName],
+    );
+    await assert.rejects(
+      client.query(
+        "INSERT INTO user_play_focus_games (user_id, game_id, focus_role) VALUES ($1, $2, 'main')",
+        [userA, gameA2.rows[0].id],
+      ),
+      (error) => error.code === "23505",
+    );
+    await client.query(
       "INSERT INTO user_list_games (list_id, game_id) VALUES ($1, $2)",
       [listA.rows[0].id, gameA.rows[0].id],
     );
     await assert.rejects(
-      client.query("UPDATE games SET user_id = $1 WHERE id = $2", [userB, gameA.rows[0].id]),
+      client.query("UPDATE games SET user_id = $1 WHERE id = $2", [
+        userB,
+        gameA.rows[0].id,
+      ]),
       (error) => error.code === "23514",
     );
     await assert.rejects(
-      client.query("UPDATE user_lists SET user_id = $1 WHERE id = $2", [userB, listA.rows[0].id]),
+      client.query("UPDATE user_lists SET user_id = $1 WHERE id = $2", [
+        userB,
+        listA.rows[0].id,
+      ]),
       (error) => error.code === "23514",
     );
 
@@ -182,7 +218,9 @@ test("fresh schema enforces game identity, dates, metrics, and relationship owne
     );
   } finally {
     await client.query("SET search_path TO public").catch(() => {});
-    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => {});
+    await client
+      .query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`)
+      .catch(() => {});
     await client.end();
   }
 });
@@ -195,36 +233,50 @@ test("ordered migrations bootstrap an empty database and status stays read-only"
       .filter((file) => /^\d+_.+\.sql$/.test(file))
       .sort();
 
-    await execFileAsync(process.execPath, [path.join(root, "scripts", "db-migrate.js"), "--status"], {
-      cwd: root,
-      env: { ...process.env, DATABASE_URL: target, PGSSL: "false" },
-    });
+    await execFileAsync(
+      process.execPath,
+      [path.join(root, "scripts", "db-migrate.js"), "--status"],
+      {
+        cwd: root,
+        env: { ...process.env, DATABASE_URL: target, PGSSL: "false" },
+      },
+    );
     const before = new pg.Client({ connectionString: target });
     await before.connect();
     assert.equal(
-      (await before.query("SELECT to_regclass('schema_migrations') AS name")).rows[0].name,
+      (await before.query("SELECT to_regclass('schema_migrations') AS name"))
+        .rows[0].name,
       null,
     );
     await before.end();
 
-    await execFileAsync(process.execPath, [path.join(root, "scripts", "db-migrate.js")], {
-      cwd: root,
-      env: { ...process.env, DATABASE_URL: target, PGSSL: "false" },
-    });
+    await execFileAsync(
+      process.execPath,
+      [path.join(root, "scripts", "db-migrate.js")],
+      {
+        cwd: root,
+        env: { ...process.env, DATABASE_URL: target, PGSSL: "false" },
+      },
+    );
 
     const client = new pg.Client({ connectionString: target });
     await client.connect();
     try {
       assert.equal(
-        Number((await client.query("SELECT COUNT(*) FROM schema_migrations")).rows[0].count),
+        Number(
+          (await client.query("SELECT COUNT(*) FROM schema_migrations")).rows[0]
+            .count,
+        ),
         files.length,
       );
       assert.equal(
-        (await client.query("SELECT to_regclass('games') AS name")).rows[0].name,
+        (await client.query("SELECT to_regclass('games') AS name")).rows[0]
+          .name,
         "games",
       );
       assert.ok(
-        (await client.query("SELECT COUNT(*)::int AS count FROM statuses")).rows[0].count > 0,
+        (await client.query("SELECT COUNT(*)::int AS count FROM statuses"))
+          .rows[0].count > 0,
       );
       for (const table of [
         "catalog_provider_snapshots",
@@ -233,7 +285,8 @@ test("ordered migrations bootstrap an empty database and status stays read-only"
         "user_next_up_games",
       ]) {
         assert.equal(
-          (await client.query("SELECT to_regclass($1) AS name", [table])).rows[0].name,
+          (await client.query("SELECT to_regclass($1) AS name", [table]))
+            .rows[0].name,
           table,
         );
       }
@@ -295,10 +348,14 @@ test("ordered migrations reconcile a historical games table missing core schema 
       await seed.end();
     }
 
-    await execFileAsync(process.execPath, [path.join(root, "scripts", "db-migrate.js")], {
-      cwd: root,
-      env: { ...process.env, DATABASE_URL: target, PGSSL: "false" },
-    });
+    await execFileAsync(
+      process.execPath,
+      [path.join(root, "scripts", "db-migrate.js")],
+      {
+        cwd: root,
+        env: { ...process.env, DATABASE_URL: target, PGSSL: "false" },
+      },
+    );
 
     const client = new pg.Client({ connectionString: target });
     await client.connect();
@@ -311,7 +368,9 @@ test("ordered migrations reconcile a historical games table missing core schema 
            AND column_name IN ('cover', 'position')
          ORDER BY column_name
       `);
-      const byName = new Map(columns.rows.map((column) => [column.column_name, column]));
+      const byName = new Map(
+        columns.rows.map((column) => [column.column_name, column]),
+      );
       assert.ok(byName.has("cover"));
       assert.equal(byName.get("position")?.is_nullable, "NO");
       assert.match(byName.get("position")?.column_default || "", /1000/);
