@@ -113,7 +113,7 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       amounts.set('1', 1000); amounts.set('2', 500); await due(first.userId);
       const job = await finish(first.userId);
       const saved = await events(first.userId);
-      assert.equal(saved.length, 4); assert.ok(saved.every(e => e.event_kind === 'fact' && e.state === 'resolved'));
+      assert.equal(saved.length, 2); assert.ok(saved.every(e => e.event_kind === 'fact' && e.state === 'resolved'));
       assert.equal((await activity.listActivityEvents(first.userId)).events.length, 0);
       await activity.updateActivityEvent(first.userId, saved[0].id, 'dismiss');
       const duplicate = await activity.createFactualActivityEvent({ userId: first.userId, source: 'steam_prices',
@@ -124,7 +124,7 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       const replay = (await pool.query("UPDATE steam_sync_jobs SET status = 'running', cursor = 0, lease_token = $2, locked_at = NOW() WHERE id = $1 RETURNING *", [job.id, lease])).rows[0];
       const before = (await observations(first.userId)).length;
       await prices.processSteamPriceJob(replay);
-      assert.equal((await observations(first.userId)).length, before); assert.equal((await events(first.userId)).length, 4);
+      assert.equal((await observations(first.userId)).length, before); assert.equal((await events(first.userId)).length, 2);
     });
 
     await t.test('partial failures retain good pointers and retry when membership has not changed', async () => {

@@ -7,6 +7,8 @@ import {
   finishGame,
   gameSearch,
   gameIdParam,
+  listGenreSuggestions,
+  applyGenreSuggestions,
   upsertGame,
   reorderGame,
 } from "../validators/games.js";
@@ -43,6 +45,11 @@ import {
   parseLegacyPersonalGenres,
   replaceGamePersonalGenres,
 } from "../services/personalGenreService.js";
+import {
+  applyPersonalGenreSuggestions,
+  getPersonalGenreSuggestionReview,
+  listPersonalGenreSuggestionReviews,
+} from "../services/personalGenreSuggestionReviewService.js";
 
 const router = express.Router();
 
@@ -228,6 +235,67 @@ router.get("/search", verifyToken, gameSearch, async (req, res, next) => {
     res.json({ results, cacheStatus: catalogPayload.cacheStatus });
   } catch (err) {
     next(err);
+  }
+});
+
+// Existing-backlog review queue. It reads only already-cached full metadata;
+// a metadata refresh remains an explicit, per-game action.
+router.get("/genre-suggestions", verifyToken, listGenreSuggestions, async (req, res, next) => {
+  try {
+    const payload = await listPersonalGenreSuggestionReviews(pool, req.user.id, {
+      limit: req.query.limit,
+      offset: req.query.offset,
+      onlyWithoutPersonalGenres: req.query.only_without_personal_genres,
+    });
+    res.setHeader("Cache-Control", "no-store");
+    res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id/genre-suggestions", verifyToken, gameIdParam, async (req, res, next) => {
+  try {
+    const payload = await getPersonalGenreSuggestionReview(
+      pool,
+      req.user.id,
+      Number(req.params.id),
+    );
+    res.setHeader("Cache-Control", "no-store");
+    res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/genre-suggestions", verifyToken, applyGenreSuggestions, async (req, res, next) => {
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query("BEGIN");
+    const gameId = Number(req.params.id);
+    await client.query(
+      "SELECT id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE",
+      [gameId, req.user.id],
+    );
+    await applyPersonalGenreSuggestions(
+      client,
+      req.user.id,
+      gameId,
+      req.body.personalGenreIds,
+      req.body.expectedPersonalGenreIds,
+    );
+    const detailsQuery = selectOwnedGameDetailsQuery(gameId, req.user.id);
+    const details = await client.query(detailsQuery.text, detailsQuery.values);
+    if (!details.rows[0]) throw notFound("Game not found.");
+    await client.query("COMMIT");
+    cacheClear(req.user.id);
+    res.json(decorateGameForClient(details.rows[0]));
+  } catch (error) {
+    try { await client?.query("ROLLBACK"); } catch {}
+    next(error);
+  } finally {
+    client?.release();
   }
 });
 

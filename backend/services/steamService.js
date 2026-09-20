@@ -15,9 +15,17 @@ import {
   readProviderJson,
   readProviderText,
 } from "../utils/providerFetch.js";
-import { searchCatalog } from "./catalogService.js";
-import { enqueueMetadataRepair } from "./metadataRepairService.js";
-import { replaceGamePersonalGenres } from "./personalGenreService.js";
+import { getCatalogGame, searchCatalog } from "./catalogService.js";
+import { enqueueMetadataRepairTx } from "./metadataRepairService.js";
+import {
+  PERSONAL_GENRES_PER_GAME_MAX,
+  replaceGamePersonalGenres,
+  resolvePersonalGenres,
+} from "./personalGenreService.js";
+import {
+  buildPersonalGenreSuggestions,
+  MAX_PERSONAL_GENRE_SUGGESTIONS,
+} from "./personalGenreSuggestionService.js";
 
 const PROVIDER = "steam";
 export const STEAM_LINK_COOKIE = "gb_steam_link_nonce";
@@ -1817,6 +1825,83 @@ async function selectCatalogBrief(catalogGameId) {
   return rows[0] || null;
 }
 
+function candidateGenreSuggestions(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && Number.isInteger(Number(item.id)) && item.name)
+    .map((item) => ({
+      id: Number(item.id),
+      name: String(item.name),
+      reason: String(item.reason || "Metadata match"),
+    }))
+    .slice(0, MAX_PERSONAL_GENRE_SUGGESTIONS);
+}
+
+async function buildCandidateGenreSuggestions(db, userId, catalogGameId) {
+  if (!catalogGameId) return [];
+  const [catalogResult, personalGenresResult] = await Promise.all([
+    db.query(
+      `SELECT id, name, metadata_quality, rawg_playtime_hours, genres_json, tags_json
+         FROM catalog_games WHERE id = $1 LIMIT 1`,
+      [catalogGameId],
+    ),
+    db.query(
+      `SELECT id, name FROM user_personal_genres
+        WHERE user_id = $1 ORDER BY lower(name), id`,
+      [userId],
+    ),
+  ]);
+  return buildPersonalGenreSuggestions({
+    catalog: catalogResult.rows[0] || null,
+    personalGenres: personalGenresResult.rows,
+  });
+}
+
+async function ensureCandidateCatalogMetadata(userId, catalogGameId) {
+  if (!catalogGameId) return;
+  try {
+    await getCatalogGame(catalogGameId, { id: userId, is_guest: false });
+  } catch {
+    // The durable catalog row remains usable for status/import. Suggestions stay
+    // absent until the normal metadata path succeeds on a later attempt.
+  }
+}
+
+async function fillMissingCandidateGenreSuggestions(userId, rows) {
+  const needsSuggestions = rows.filter((row) => (
+    !candidateGenreSuggestions(row.personal_genre_suggestions_json).length &&
+    row.catalog_metadata_quality === "full"
+  ));
+  if (!needsSuggestions.length) return rows;
+  const personalGenres = await pool.query(
+    `SELECT id, name FROM user_personal_genres
+      WHERE user_id = $1 ORDER BY lower(name), id`,
+    [userId],
+  );
+  for (const row of needsSuggestions) {
+    const suggestions = buildPersonalGenreSuggestions({
+      catalog: {
+        name: row.catalog_name,
+        metadata_quality: row.catalog_metadata_quality,
+        rawg_playtime_hours: row.catalog_rawg_playtime_hours,
+        genres_json: row.catalog_genres_json,
+        tags_json: row.catalog_tags_json,
+      },
+      personalGenres: personalGenres.rows,
+    });
+    row.personal_genre_suggestions_json = suggestions;
+    if (suggestions.length) {
+      await pool.query(
+        `UPDATE steam_import_candidates
+            SET personal_genre_suggestions_json = $3::jsonb, updated_at = NOW()
+          WHERE id = $1 AND user_id = $2`,
+        [row.id, userId, JSON.stringify(suggestions)],
+      );
+    }
+  }
+  return rows;
+}
+
 async function findCatalogMatch(app, userId = null) {
   if (userId != null) {
     const wishlistMatch = await pool.query(
@@ -2158,10 +2243,22 @@ async function backfillCandidateRecommendations(userId) {
 export async function prepareSteamLibraryCandidate(userId, app) {
   const filteredReason = likelyFilteredReason(app.name);
   const match = await findCatalogMatch(app, userId);
+  await ensureCandidateCatalogMetadata(userId, match.catalogGameId);
   const catalog = await selectCatalogBrief(match.catalogGameId);
   const recommendation = recommendStatus(app, catalog, filteredReason);
   const duplicate = await findDuplicateGame(userId, app, match.catalogGameId);
-  return { filteredReason, match, recommendation, duplicate };
+  const personalGenreSuggestions = await buildCandidateGenreSuggestions(
+    pool,
+    userId,
+    match.catalogGameId,
+  );
+  return {
+    filteredReason,
+    match,
+    recommendation,
+    duplicate,
+    personalGenreSuggestions,
+  };
 }
 
 export async function listSteamImportCandidates(
@@ -2238,6 +2335,11 @@ export async function listSteamImportCandidates(
            pc.rawg_playtime_hours AS proposed_catalog_rawg_playtime_hours,
            uc.name AS user_selected_catalog_name,
            uc.rawg_playtime_hours AS user_selected_catalog_rawg_playtime_hours,
+           catalog.name AS catalog_name,
+           catalog.metadata_quality AS catalog_metadata_quality,
+           catalog.rawg_playtime_hours AS catalog_rawg_playtime_hours,
+           catalog.genres_json AS catalog_genres_json,
+           catalog.tags_json AS catalog_tags_json,
            ugs.playtime_minutes_forever AS source_playtime_minutes_forever,
            ugs.last_played_at AS source_last_played_at,
            ugs.first_play_observed_at,
@@ -2259,6 +2361,8 @@ export async function listSteamImportCandidates(
      AND ugs.source_status = 'owned'
     LEFT JOIN catalog_games pc ON pc.id = c.proposed_catalog_game_id
     LEFT JOIN catalog_games uc ON uc.id = c.user_selected_catalog_game_id
+    LEFT JOIN catalog_games catalog
+      ON catalog.id = COALESCE(c.user_selected_catalog_game_id, c.proposed_catalog_game_id)
     LEFT JOIN games g ON g.id = c.duplicate_game_id AND g.user_id = c.user_id
     WHERE ${where.join(" AND ")}
     ORDER BY ${orderBy}
@@ -2267,6 +2371,7 @@ export async function listSteamImportCandidates(
     `,
     params
   );
+  await fillMissingCandidateGenreSuggestions(userId, rows);
   const summaries = await summarizeAllCandidateStates(userId);
   const stateRows =
     status === "all"
@@ -2572,6 +2677,7 @@ function serializeCandidate(row) {
       row.suggested_status_reason || fallbackRecommendation?.reason || null,
     suggestedStatusConfidence:
       row.suggested_status_confidence || fallbackRecommendation?.confidence || null,
+    personalGenreSuggestions: candidateGenreSuggestions(row.personal_genre_suggestions_json),
     selectedStatus: row.selected_status,
     decisionAt: row.decision_at,
   };
@@ -2596,6 +2702,7 @@ function serializeSteamLinkCandidate(row) {
     proposedCatalogGameId: row.user_selected_catalog_game_id || row.proposed_catalog_game_id,
     proposedCatalogName: row.user_selected_catalog_name || row.proposed_catalog_name,
     importStatus: row.import_status,
+    personalGenreSuggestions: candidateGenreSuggestions(row.personal_genre_suggestions_json),
   };
 }
 
@@ -2930,7 +3037,12 @@ export async function listSteamLinkCandidates(
            ugs.achievements_last_error_message,
            ugs.game_id AS linked_game_id,
            g.name AS linked_game_name,
-           g.status AS linked_game_status
+           g.status AS linked_game_status,
+           catalog.name AS catalog_name,
+           catalog.metadata_quality AS catalog_metadata_quality,
+           catalog.rawg_playtime_hours AS catalog_rawg_playtime_hours,
+           catalog.genres_json AS catalog_genres_json,
+           catalog.tags_json AS catalog_tags_json
     FROM steam_import_candidates c
     LEFT JOIN user_game_sources ugs
       ON ugs.user_id = c.user_id
@@ -2940,6 +3052,8 @@ export async function listSteamLinkCandidates(
     LEFT JOIN games g ON g.id = ugs.game_id AND g.user_id = c.user_id
     LEFT JOIN catalog_games pc ON pc.id = c.proposed_catalog_game_id
     LEFT JOIN catalog_games uc ON uc.id = c.user_selected_catalog_game_id
+    LEFT JOIN catalog_games catalog
+      ON catalog.id = COALESCE(c.user_selected_catalog_game_id, c.proposed_catalog_game_id)
     WHERE ${where.join(" AND ")}
     ORDER BY
       CASE
@@ -2952,6 +3066,7 @@ export async function listSteamLinkCandidates(
     `,
     params
   );
+  await fillMissingCandidateGenreSuggestions(userId, rows);
   return { results: rows.map(serializeSteamLinkCandidate) };
 }
 
@@ -3107,6 +3222,9 @@ export async function unlinkSteamAppFromGame(userId, gameId, steamAppId) {
 export async function updateSteamImportCandidate(userId, candidateId, action, payload = {}) {
   const id = Number(candidateId);
   if (!Number.isInteger(id)) throw badRequest("Invalid candidate id.");
+  if (action === "select_catalog") {
+    await ensureCandidateCatalogMetadata(userId, Number(payload.catalog_game_id));
+  }
 
   return withTransaction(async (client) => {
   await lockCurrentSteamCandidates(client, userId, [id]);
@@ -3195,6 +3313,11 @@ export async function updateSteamImportCandidate(userId, candidateId, action, pa
       [catalogGameId]
     );
     if (!catalog.rows[0]) throw badRequest("Selected catalog game was not found.");
+    const personalGenreSuggestions = await buildCandidateGenreSuggestions(
+      client,
+      userId,
+      catalogGameId,
+    );
 
     const { rows } = await client.query(
       `
@@ -3204,12 +3327,13 @@ export async function updateSteamImportCandidate(userId, candidateId, action, pa
              match_confidence = 'exact',
              match_reason = 'User selected catalog match.',
              import_status = 'pending',
+             personal_genre_suggestions_json = $4::jsonb,
              decision_at = NOW(),
              updated_at = NOW()
        WHERE id = $1 AND user_id = $2
        RETURNING *
       `,
-      [id, userId, catalogGameId]
+      [id, userId, catalogGameId, JSON.stringify(personalGenreSuggestions)]
     );
     if (!rows[0]) return null;
     await client.query(
@@ -3455,6 +3579,7 @@ export async function autoMatchSteamCandidates(
     }
     if (!first?.id) continue;
     if (score < 0.74) continue;
+    await ensureCandidateCatalogMetadata(user.id, first.id);
     const catalog = await selectCatalogBrief(first.id);
     const app = {
       appid: row.steam_app_id,
@@ -3464,6 +3589,11 @@ export async function autoMatchSteamCandidates(
     };
     const recommendation = recommendStatus(app, catalog, null);
     const duplicate = await findDuplicateGame(user.id, app, first.id);
+    const personalGenreSuggestions = await buildCandidateGenreSuggestions(
+      pool,
+      user.id,
+      first.id,
+    );
     const updated = await (writeGuard || withTransaction)(async (client) => {
     await lockCurrentSteamCandidates(client, user.id, [row.id], row.steam_account_id);
     const candidate = await client.query(
@@ -3473,10 +3603,11 @@ export async function autoMatchSteamCandidates(
              match_confidence = $4,
              match_reason = $5,
              suggested_status = $6,
-             suggested_status_reason = $7,
-             suggested_status_confidence = $8,
-             duplicate_game_id = $9,
-             updated_at = NOW()
+              suggested_status_reason = $7,
+              suggested_status_confidence = $8,
+              duplicate_game_id = $9,
+              personal_genre_suggestions_json = $10::jsonb,
+              updated_at = NOW()
        WHERE id = $1 AND user_id = $2 AND import_status IN ('pending', 'accepted') AND user_selected_catalog_game_id IS NULL
        RETURNING id
       `,
@@ -3490,6 +3621,7 @@ export async function autoMatchSteamCandidates(
         recommendation.reason,
         recommendation.confidence,
         duplicate?.id || null,
+        JSON.stringify(personalGenreSuggestions),
       ]
     );
     if (!candidate.rows.length) return false;
@@ -3659,6 +3791,12 @@ async function importSteamCandidateRowsTx(client, userId, rows) {
       ]
     );
     const gameId = inserted.rows[0].id;
+    const personalGenreIds = Array.isArray(row.personal_genre_ids)
+      ? row.personal_genre_ids
+      : [];
+    if (personalGenreIds.length) {
+      await replaceGamePersonalGenres(client, userId, gameId, personalGenreIds);
+    }
 
     await client.query(
       `
@@ -3685,9 +3823,36 @@ async function importSteamCandidateRowsTx(client, userId, rows) {
   return { imported, attached, skipped };
 }
 
-export async function importSteamCandidates(userId, candidateIds = []) {
+export async function importSteamCandidates(
+  userId,
+  candidateIds = [],
+  candidateReviews = [],
+  { useStoredGenreSuggestions = false } = {},
+) {
   const ids = candidateIds.map(Number).filter(Number.isInteger);
   if (!ids.length) throw badRequest("Choose at least one Steam import candidate.");
+  if (!Array.isArray(candidateReviews)) {
+    throw badRequest("candidateReviews must be an array.");
+  }
+  const idSet = new Set(ids);
+  const reviewsByCandidateId = new Map();
+  for (const review of candidateReviews) {
+    const candidateId = Number(review?.candidateId);
+    const personalGenreIds = [...new Set(
+      (Array.isArray(review?.personalGenreIds) ? review.personalGenreIds : []).map(Number),
+    )];
+    if (!idSet.has(candidateId)) {
+      throw badRequest("Genre choices must belong to a selected Steam candidate.");
+    }
+    if (
+      reviewsByCandidateId.has(candidateId) ||
+      personalGenreIds.length > PERSONAL_GENRES_PER_GAME_MAX ||
+      personalGenreIds.some((genreId) => !Number.isInteger(genreId) || genreId <= 0)
+    ) {
+      throw badRequest(`Choose up to ${PERSONAL_GENRES_PER_GAME_MAX} personal genres per game.`);
+    }
+    reviewsByCandidateId.set(candidateId, personalGenreIds);
+  }
 
   const client = await pool.connect();
   try {
@@ -3710,9 +3875,77 @@ export async function importSteamCandidates(userId, candidateIds = []) {
       [userId, ids]
     );
 
-    const result = await importSteamCandidateRowsTx(client, userId, rows);
+    const storedGenreIdsByCandidate = new Map(
+      useStoredGenreSuggestions
+        ? rows.map((row) => [
+            Number(row.id),
+            candidateGenreSuggestions(row.personal_genre_suggestions_json)
+              .map((genre) => Number(genre.id)),
+          ])
+        : [],
+    );
+    const requestedPersonalGenreIds = [...new Set([
+      ...[...reviewsByCandidateId.values()].flat(),
+      ...[...storedGenreIdsByCandidate.values()].flat(),
+    ])];
+    const ownedPersonalGenreIds = new Set();
+    if (requestedPersonalGenreIds.length) {
+      const ownedGenres = await client.query(
+        `SELECT id FROM user_personal_genres
+          WHERE user_id = $1 AND id = ANY($2::int[])`,
+        [userId, requestedPersonalGenreIds],
+      );
+      ownedGenres.rows.forEach((genre) => ownedPersonalGenreIds.add(Number(genre.id)));
+      const explicitGenreIds = [...new Set([...reviewsByCandidateId.values()].flat())];
+      if (explicitGenreIds.some((genreId) => !ownedPersonalGenreIds.has(genreId))) {
+        throw badRequest("One or more selected personal genres are unavailable.");
+      }
+    }
+    const reviewedRows = rows.map((row) => ({
+      ...row,
+      personal_genre_ids: reviewsByCandidateId.has(Number(row.id))
+        ? reviewsByCandidateId.get(Number(row.id))
+        : (storedGenreIdsByCandidate.get(Number(row.id)) || [])
+            .filter((genreId) => ownedPersonalGenreIds.has(genreId)),
+    }));
+    const result = await importSteamCandidateRowsTx(client, userId, reviewedRows);
+    const completedCandidateIds = new Set([
+      ...result.imported.map((item) => Number(item.candidateId)),
+      ...result.attached.map(Number),
+    ]);
+    const resolvedActivityEventIds = [];
+    for (const row of reviewedRows) {
+      if (!completedCandidateIds.has(Number(row.id))) continue;
+      resolvedActivityEventIds.push(
+        ...(await resolveCurrentSteamAcquisitionEventsTx(
+          client,
+          userId,
+          row.steam_app_id,
+        )),
+      );
+    }
+    const completedSteamAppIds = reviewedRows
+      .filter((row) => completedCandidateIds.has(Number(row.id)))
+      .map((row) => String(row.steam_app_id));
+    let metadataRepairQueued = false;
+    if (completedSteamAppIds.length) {
+      const linkedGames = await client.query(
+        `SELECT DISTINCT game_id
+           FROM user_game_sources
+          WHERE user_id = $1
+            AND provider = 'steam'
+            AND provider_app_id = ANY($2::text[])
+            AND game_id IS NOT NULL`,
+        [userId, completedSteamAppIds],
+      );
+      const priorityGameIds = linkedGames.rows.map((row) => Number(row.game_id));
+      if (priorityGameIds.length) {
+        await enqueueMetadataRepairTx(userId, client, { priorityGameIds });
+        metadataRepairQueued = true;
+      }
+    }
     await client.query("COMMIT");
-    return result;
+    return { ...result, resolvedActivityEventIds, metadataRepairQueued };
   } catch (err) {
     try {
       await client.query("ROLLBACK");
@@ -3726,12 +3959,22 @@ export async function importSteamCandidates(userId, candidateIds = []) {
 export async function addSteamCandidateToBacklog(
   userId,
   candidateId,
-  { status, activityEventId = null } = {},
+  { status, activityEventId = null, personalGenreIds = [] } = {},
 ) {
   const id = Number(candidateId);
   if (!Number.isInteger(id)) throw badRequest("Invalid Steam candidate id.");
   if (activityEventId != null && !Number.isInteger(Number(activityEventId)))
     throw badRequest("Invalid activity event id.");
+  if (!Array.isArray(personalGenreIds)) {
+    throw badRequest("personalGenreIds must be an array.");
+  }
+  const selectedPersonalGenreIds = [...new Set(personalGenreIds.map(Number))];
+  if (
+    selectedPersonalGenreIds.length > PERSONAL_GENRES_PER_GAME_MAX ||
+    selectedPersonalGenreIds.some((genreId) => !Number.isInteger(genreId) || genreId <= 0)
+  ) {
+    throw badRequest(`Choose up to ${PERSONAL_GENRES_PER_GAME_MAX} personal genres.`);
+  }
 
   const client = await pool.connect();
   try {
@@ -3758,7 +4001,6 @@ export async function addSteamCandidateToBacklog(
     if (!candidate) throw badRequest("Steam import candidate was not found.");
     if (candidate.import_status === "ignored")
       throw badRequest("Restore this Steam game before adding it to Backlog.");
-
     let result;
     let gameId = candidate.source_game_id || candidate.duplicate_game_id || null;
     if (["imported", "attached"].includes(candidate.import_status)) {
@@ -3779,13 +4021,18 @@ export async function addSteamCandidateToBacklog(
         alreadyCompleted: true,
       };
     } else {
+      await resolvePersonalGenres(client, userId, selectedPersonalGenreIds);
       await client.query(
         `UPDATE steam_import_candidates
             SET selected_status = $3, decision_at = NOW(), updated_at = NOW()
           WHERE id = $1 AND user_id = $2`,
         [id, userId, selectedStatus],
       );
-      const importRow = { ...candidate, selected_status: selectedStatus };
+      const importRow = {
+        ...candidate,
+        selected_status: selectedStatus,
+        personal_genre_ids: selectedPersonalGenreIds,
+      };
       result = await importSteamCandidateRowsTx(client, userId, [importRow]);
       gameId = result.imported[0]?.gameId || null;
       if (!gameId && result.attached.length) {
@@ -3811,15 +4058,14 @@ export async function addSteamCandidateToBacklog(
       candidate.steam_app_id,
       activityEventId == null ? null : Number(activityEventId),
     );
+    await enqueueMetadataRepairTx(userId, client, { priorityGameIds: [Number(gameId)] });
     await client.query("COMMIT");
-    let metadataRepairQueued = false;
-    try {
-      await enqueueMetadataRepair(userId, pool, { priorityGameIds: [Number(gameId)] });
-      metadataRepairQueued = true;
-    } catch (error) {
-      console.error("Steam Backlog metadata repair enqueue failed:", error?.code || error?.message);
-    }
-    return { ...result, gameId: Number(gameId), resolvedActivityEventIds, metadataRepairQueued };
+    return {
+      ...result,
+      gameId: Number(gameId),
+      resolvedActivityEventIds,
+      metadataRepairQueued: true,
+    };
   } catch (err) {
     try {
       await client.query("ROLLBACK");
@@ -3833,7 +4079,7 @@ export async function addSteamCandidateToBacklog(
 export async function importSteamCandidatesForScope(userId, scope = {}) {
   const ids = await resolveBulkCandidateIds(userId, [], scope);
   if (!ids.length) throw badRequest("Choose a Steam import group with importable candidates.");
-  return importSteamCandidates(userId, ids);
+  return importSteamCandidates(userId, ids, [], { useStoredGenreSuggestions: true });
 }
 
 export { frontendSteamUrl };

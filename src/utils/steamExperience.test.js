@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { sortGames, buildDisplayGames } from "./gameList.js";
 import { relativeSavedTime, steamPriceDisplay } from "./steamPrice.js";
-import { activityLabel, groupActivityDigests } from "./activityInbox.js";
+import {
+  activityLabel,
+  activityPriceChange,
+  activitySummary,
+  groupActivityDigests,
+} from "./activityInbox.js";
 import {
   clearWishlistCache,
   writeWishlistCache,
@@ -107,6 +112,26 @@ test("inbox labels observations accurately and combines price transitions into a
   assert.equal(
     activityLabel({ eventType: "wishlist_removed", nowOwned: true }),
     "Now owned · removed from Steam Wishlist",
+  );
+  assert.equal(
+    activitySummary([
+      { source: "steam_prices", eventType: "steam_price_drop" },
+      { source: "steam_prices", eventType: "steam_sale_started" },
+    ]),
+    "New sale",
+  );
+  assert.match(
+    activityPriceChange({
+      source: "steam_prices",
+      payload: {
+        currency: "ILS",
+        previousMinor: 12900,
+        currentMinor: 7900,
+        discountPercent: 39,
+        sale: true,
+      },
+    }),
+    /^39% off · /,
   );
   const event = { source: "steam_prices", syncRunId: 20 };
   assert.equal(

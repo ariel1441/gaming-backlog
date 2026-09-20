@@ -47,11 +47,18 @@ import { formatAchievementGameSyncMessage } from "../utils/steamSync";
 import { useDismissibleLayer } from "../hooks/useDismissibleLayer";
 import { splitCsv } from "../utils/gameList";
 import { statusOption } from "../utils/statusDisplay";
-import { searchGames } from "../services/gameService";
+import {
+  applyGameGenreSuggestions,
+  getGameGenreSuggestions,
+  refreshGameMetadata,
+  searchGames,
+} from "../services/gameService";
 import GameSearchResult from "./GameSearchResult";
 import EditGameSteamSection from "./EditGameSteamSection";
+import PersonalGenreSuggestionEditor from "./PersonalGenreSuggestionEditor";
 import SteamPrice from "./SteamPrice";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
+import { usePersonalGenres } from "../hooks/usePersonalGenres";
 
 const hourSourceOptions = [
   { value: "auto", label: "Auto" },
@@ -256,11 +263,16 @@ export default function GameModal({
     useState(false);
   const [showSteamSearch, setShowSteamSearch] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [genreSuggestionReview, setGenreSuggestionReview] = useState(null);
+  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState([]);
+  const [genreSuggestionsLoading, setGenreSuggestionsLoading] = useState(false);
+  const [genreSuggestionsApplying, setGenreSuggestionsApplying] = useState(false);
   const modalRef = useRef(null);
   const titleId = `${useId()}-title`;
   const toast = useToast();
   const confirm = useConfirm();
   const { statusGroupOf } = useStatusGroups();
+  const { genres: availablePersonalGenres } = usePersonalGenres(!readOnly && !!onSubmitEdit);
   const dirty = draftKey(draft) !== draftKey(savedDraft);
   const canEdit = !readOnly && !!onSubmitEdit;
   const normalizedStatus = String(game?.status || "").trim().toLowerCase();
@@ -286,6 +298,8 @@ export default function GameModal({
     setSteamResults([]);
     setShowSteamSearch(false);
     setDescriptionExpanded(false);
+    setGenreSuggestionReview(null);
+    setSelectedSuggestionIds([]);
     setIsEditMode(startInEditMode);
   }, [game?.id, startInEditMode]);
 
@@ -483,6 +497,53 @@ export default function GameModal({
       toast.error(error.message || "Could not sync Steam achievements.");
     } finally {
       setSyncingAchievements(false);
+    }
+  };
+
+  const findGenreSuggestions = async () => {
+    if (genreSuggestionsLoading || genreSuggestionsApplying) return;
+    setGenreSuggestionsLoading(true);
+    try {
+      let review = await getGameGenreSuggestions(game.id);
+      if (!review?.metadataReady) {
+        const refreshed = await refreshGameMetadata(game.id);
+        onGameUpdated?.(refreshed);
+        await onGameRefresh?.();
+        review = await getGameGenreSuggestions(game.id);
+      }
+      setGenreSuggestionReview(review);
+      setSelectedSuggestionIds([...new Set([
+        ...(review.currentPersonalGenres || []).map((genre) => genre.id),
+        ...(review.suggestions || []).map((genre) => genre.id),
+      ])].slice(0, 10));
+    } catch (error) {
+      toast.error(error.message || "Could not find genre suggestions.");
+    } finally {
+      setGenreSuggestionsLoading(false);
+    }
+  };
+
+  const applyGenreSuggestions = async () => {
+    if (
+      (!selectedSuggestionIds.length && !genreSuggestionReview?.currentPersonalGenres?.length) ||
+      genreSuggestionsApplying
+    ) return;
+    setGenreSuggestionsApplying(true);
+    try {
+      const updated = await applyGameGenreSuggestions(
+        game.id,
+        selectedSuggestionIds,
+        genreSuggestionReview?.currentPersonalGenres?.map((genre) => genre.id) || [],
+      );
+      onGameUpdated?.(updated);
+      await onGameRefresh?.();
+      setGenreSuggestionReview(null);
+      setSelectedSuggestionIds([]);
+      toast.success("Personal genres updated.");
+    } catch (error) {
+      toast.error(error.message || "Could not add genre suggestions.");
+    } finally {
+      setGenreSuggestionsApplying(false);
     }
   };
 
@@ -807,6 +868,57 @@ export default function GameModal({
               >
                 {formError.message}
               </div>
+            ) : null}
+            {genreSuggestionReview ? (
+              <section className="mb-5 rounded-panel border border-primary/30 bg-primary/7 p-4 shadow-panel">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-content-primary">
+                      <Sparkles className="h-4 w-4 text-primary-light" aria-hidden="true" />
+                      Review personal genres
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-content-muted">
+                      Choose the personal genres this game should use.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setGenreSuggestionReview(null)}
+                    disabled={genreSuggestionsApplying}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <div className="mt-4">
+                  <PersonalGenreSuggestionEditor
+                    suggestions={genreSuggestionReview.suggestions}
+                    currentPersonalGenres={genreSuggestionReview.currentPersonalGenres}
+                    availablePersonalGenres={genreSuggestionReview.availablePersonalGenres || availablePersonalGenres}
+                    selectedIds={selectedSuggestionIds}
+                    onChange={setSelectedSuggestionIds}
+                    disabled={genreSuggestionsApplying}
+                    compact
+                  />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="primary"
+                    onClick={applyGenreSuggestions}
+                    disabled={
+                      (!selectedSuggestionIds.length && !genreSuggestionReview.currentPersonalGenres?.length) ||
+                      genreSuggestionsApplying
+                    }
+                  >
+                    {genreSuggestionsApplying
+                      ? "Adding..."
+                      : "Save genres"}
+                  </Button>
+                </div>
+              </section>
             ) : null}
             {activeTab === "overview" ? (
               <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_250px]">
@@ -1282,6 +1394,12 @@ export default function GameModal({
                         <button type="button" role="menuitem" disabled={metadataRefreshing} onClick={() => { close(); onRefreshMetadata(); }} className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-55">
                           <RefreshCw className="h-4 w-4" aria-hidden="true" />
                           {metadataRefreshing ? "Refreshing..." : "Refresh metadata"}
+                        </button>
+                      ) : null}
+                      {canEdit ? (
+                        <button type="button" role="menuitem" disabled={genreSuggestionsLoading || genreSuggestionsApplying} onClick={() => { close(); findGenreSuggestions(); }} className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-55">
+                          <Sparkles className="h-4 w-4" aria-hidden="true" />
+                          {genreSuggestionsLoading ? "Finding suggestions..." : "Find genre suggestions"}
                         </button>
                       ) : null}
                       {canEdit ? (

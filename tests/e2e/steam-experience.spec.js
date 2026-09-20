@@ -386,9 +386,9 @@ for (const [label, viewport] of [
     await expect(notifications).toBeVisible();
     await notifications
       .locator("summary")
-      .filter({ hasText: "Wishlist price drops" })
+      .filter({ hasText: "Wishlist sales" })
       .click();
-    await expect(notifications.getByText(/Price dropped · Sale observed/)).toBeVisible();
+    await expect(notifications.getByText(/New sale/)).toBeVisible();
     await notifications.getByRole("button", { name: "Mark read", exact: true }).click();
     await expect(
       notifications.getByRole("button", { name: "Mark read", exact: true }),
@@ -404,7 +404,7 @@ for (const [label, viewport] of [
     await notificationBell.click();
     await notifications
       .locator("summary")
-      .filter({ hasText: "Wishlist price drops" })
+      .filter({ hasText: "Wishlist sales" })
       .click();
     await notifications.getByRole("button", { name: "Hide update", exact: true }).click();
     await expect(

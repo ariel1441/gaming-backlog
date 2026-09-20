@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Badge, Button, GameCover, Modal, SelectMenu } from "../../components/ui";
+import PersonalGenreSuggestionEditor from "../../components/PersonalGenreSuggestionEditor";
 import { statusOption } from "../../utils/statusDisplay";
 import {
   formatSteamDate,
@@ -39,6 +40,7 @@ export function SteamSyncReviewModal({
   applyingGameId,
   addingCandidateId,
   statuses = [],
+  availablePersonalGenres = [],
   onClose,
   onApplyStatus,
   onAddCandidate,
@@ -63,6 +65,7 @@ export function SteamSyncReviewModal({
           applyingGameId={applyingGameId}
           addingCandidateId={addingCandidateId}
           statuses={statuses}
+          availablePersonalGenres={availablePersonalGenres}
           onApplyStatus={onApplyStatus}
           onAddCandidate={onAddCandidate}
           onDismissItem={onDismissItem}
@@ -75,6 +78,7 @@ export function SteamSyncReviewModal({
           applyingGameId={applyingGameId}
           addingCandidateId={addingCandidateId}
           statuses={statuses}
+          availablePersonalGenres={availablePersonalGenres}
           onApplyStatus={onApplyStatus}
           onAddCandidate={onAddCandidate}
           onDismissItem={onDismissItem}
@@ -87,6 +91,7 @@ export function SteamSyncReviewModal({
           applyingGameId={applyingGameId}
           addingCandidateId={addingCandidateId}
           statuses={statuses}
+          availablePersonalGenres={availablePersonalGenres}
           onApplyStatus={onApplyStatus}
           onAddCandidate={onAddCandidate}
           onDismissItem={onDismissItem}
@@ -117,6 +122,7 @@ function SyncReviewSection({
   applyingGameId,
   addingCandidateId,
   statuses,
+  availablePersonalGenres,
   onApplyStatus,
   onAddCandidate,
   onDismissItem,
@@ -140,6 +146,7 @@ function SyncReviewSection({
               applying={applyingGameId === item.gameId}
               adding={addingCandidateId === item.candidateId}
               statuses={statuses}
+              availablePersonalGenres={availablePersonalGenres}
               onApplyStatus={onApplyStatus}
               onAddCandidate={onAddCandidate}
               onDismiss={() => onDismissItem(item)}
@@ -161,6 +168,7 @@ function SyncReviewRow({
   applying,
   adding,
   statuses = [],
+  availablePersonalGenres = [],
   onApplyStatus,
   onAddCandidate,
   onDismiss,
@@ -173,6 +181,9 @@ function SyncReviewRow({
   const canApply = Boolean(item.gameId);
   const canAdd = Boolean(item.candidateId && item.canAddToBacklog);
   const [targetStatus, setTargetStatus] = useState(item.selectedStatus || item.suggestedStatus || "");
+  const [selectedPersonalGenreIds, setSelectedPersonalGenreIds] = useState(() =>
+    (item.personalGenreSuggestions || []).map((genre) => Number(genre.id)),
+  );
   const approximateStartedAt = item.firstPlayObservedAt || item.lastPlayedAt;
   const canSetStartedAt =
     canApply &&
@@ -234,26 +245,36 @@ function SyncReviewRow({
             ) : null}
           </>
         ) : canAdd ? (
-          <div className="flex min-w-52 flex-wrap gap-2 md:justify-end">
-            <SelectMenu
-              id={`steam-sync-review-status-${item.candidateId}`}
-              aria-label={`Backlog status for ${title}`}
-              value={targetStatus}
-              onChange={setTargetStatus}
-              options={statuses.filter((status) => status.toLowerCase() !== "wishlist").map(statusOption)}
-              placeholder="Choose status"
-              className="min-w-44"
+          <div className="min-w-64 space-y-2.5">
+            <PersonalGenreSuggestionEditor
+              suggestions={item.personalGenreSuggestions || []}
+              availablePersonalGenres={availablePersonalGenres}
+              selectedIds={selectedPersonalGenreIds}
+              onChange={setSelectedPersonalGenreIds}
               disabled={adding}
+              compact
             />
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              disabled={!targetStatus || adding}
-              onClick={() => onAddCandidate(item, targetStatus)}
-            >
-              {adding ? "Adding..." : "Add to Backlog"}
-            </Button>
+            <div className="flex flex-wrap gap-2 md:justify-end">
+              <SelectMenu
+                id={`steam-sync-review-status-${item.candidateId}`}
+                aria-label={`Backlog status for ${title}`}
+                value={targetStatus}
+                onChange={setTargetStatus}
+                options={statuses.filter((status) => status.toLowerCase() !== "wishlist").map(statusOption)}
+                placeholder="Choose status"
+                className="min-w-44"
+                disabled={adding}
+              />
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={!targetStatus || adding}
+                onClick={() => onAddCandidate(item, targetStatus, selectedPersonalGenreIds)}
+              >
+                {adding ? "Adding..." : "Add to Backlog"}
+              </Button>
+            </div>
           </div>
         ) : (
           <Button

@@ -14,6 +14,12 @@ const routes = [
   ["/settings", "Settings"],
 ];
 
+const fixtureCover = ({ width, height, color, label }) =>
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${color}"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="white" font-family="sans-serif" font-size="${Math.round(Math.min(width, height) / 5)}">${label}</text></svg>`)}`;
+
+const landscapeFixtureCover = fixtureCover({ width: 460, height: 215, color: "#7c2d12", label: "WWH" });
+const portraitFixtureCover = fixtureCover({ width: 264, height: 352, color: "#075985", label: "RL" });
+
 async function fulfillSmokeApi(route) {
   const url = new URL(route.request().url());
   const path = url.pathname;
@@ -25,6 +31,39 @@ async function fulfillSmokeApi(route) {
     return json({
       groups: { planned: [], playing: [], done: [], other: [] },
       buckets: {},
+    });
+  if (path === "/api/personal-genres")
+    return json({
+      genres: [
+        { id: 2, name: "Co-op", usageCount: 4 },
+        { id: 3, name: "Indie", usageCount: 8 },
+        { id: 4, name: "Puzzle night", usageCount: 2 },
+        ...Array.from({ length: 12 }, (_, index) => ({
+          id: index + 10,
+          name: `Personal genre ${index + 1}`,
+          usageCount: 0,
+        })),
+      ],
+    });
+  if (path === "/api/games/genre-suggestions")
+    return json({
+      reviews: [
+        {
+          game: { id: 12, name: "We Were Here Forever", cover: landscapeFixtureCover },
+          metadataReady: true,
+          currentPersonalGenres: [],
+          suggestions: [
+            { id: 2, name: "Co-op", reason: "Matched the normalized RAWG tag co-op." },
+            { id: 3, name: "Indie", reason: "Matched the normalized RAWG genre indie." },
+          ],
+        },
+        {
+          game: { id: 13, name: "Rayman Legends", cover: portraitFixtureCover },
+          metadataReady: true,
+          currentPersonalGenres: [{ id: 3, name: "Indie" }],
+          suggestions: [{ id: 2, name: "Co-op", reason: "Matched the normalized RAWG tag co-op." }],
+        },
+      ],
     });
   if (path === "/api/games") return json([]);
   if (path === "/api/metadata/repair-jobs/latest") return json({
@@ -194,6 +233,58 @@ test("settings game metadata controls render responsively", async ({ page }) => 
       () => document.documentElement.scrollWidth <= window.innerWidth + 1,
     ),
   ).toBe(true);
+});
+
+test("settings genre suggestions supports review choices without desktop overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "smoke-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route("**/api/**", fulfillSmokeApi);
+
+  await page.goto("/settings?section=genre-suggestions", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Genre suggestions", exact: true })).toBeVisible();
+  await expect(page.locator('[role="tablist"][aria-orientation="vertical"]')).toBeVisible();
+  await expect(page.getByText("We Were Here Forever", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply genres to We Were Here Forever" })).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+
+  const firstCard = page.locator("article").filter({ hasText: "We Were Here Forever" });
+  await expect(firstCard.locator("img")).toHaveCount(2);
+  await expect(firstCard.locator("img.object-contain")).toBeVisible();
+  const cardHeightBeforePicker = await firstCard.evaluate((element) => element.getBoundingClientRect().height);
+  await page.getByRole("button", { name: "Add genre" }).first().click();
+  const picker = page.getByRole("listbox");
+  const lastOption = page.getByRole("option", { name: "Personal genre 12" });
+  await lastOption.scrollIntoViewIfNeeded();
+  await expect(lastOption).toBeVisible();
+  const pickerBox = await picker.boundingBox();
+  expect(pickerBox.y).toBeGreaterThanOrEqual(0);
+  expect(pickerBox.y + pickerBox.height).toBeLessThanOrEqual(900);
+  expect(await firstCard.evaluate((element) => element.getBoundingClientRect().height)).toBe(cardHeightBeforePicker);
+  await page.getByRole("option", { name: "Puzzle night" }).click();
+  await expect(page.getByRole("button", { name: "Remove Puzzle night" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const raymanCard = page.locator("article").filter({ hasText: "Rayman Legends" });
+  const existingIndie = raymanCard.getByRole("button", { name: "Indie", exact: true });
+  await expect(existingIndie).toHaveAttribute("aria-pressed", "true");
+  await existingIndie.click();
+  await expect(existingIndie).toHaveAttribute("aria-pressed", "false");
+
+  if (process.env.CAPTURE_UI) {
+    await page.screenshot({ path: "test-results/genre-suggestions-desktop.png", fullPage: true });
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator('[role="tablist"][aria-orientation="horizontal"]')).toBeVisible();
+  await expect(page.locator('[role="tablist"][aria-orientation="vertical"]')).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  if (process.env.CAPTURE_UI) {
+    await page.screenshot({ path: "test-results/genre-suggestions-mobile.png", fullPage: true });
+  }
 });
 
 test("settings game metadata explains enabled refresh without provider configuration", async ({ page }) => {

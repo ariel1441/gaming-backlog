@@ -872,6 +872,37 @@ test("editing a RAWG fallback game keeps its estimate automatic", async ({ page 
   await expect(page.getByRole('dialog').getByText('RAWG playtime fallback')).toBeVisible();
 });
 
+test("game genre picker floats within the modal and exposes its final option", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route(`${API_BASE}/api/personal-genres`, (route) => route.fulfill({
+    json: {
+      genres: Array.from({ length: 18 }, (_, index) => ({
+        id: index + 1,
+        name: index === 0 ? "RPG" : `Modal genre ${index + 1}`,
+        usageCount: 0,
+      })),
+    },
+  }));
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const card = page.locator("article").filter({ has: page.getByRole("heading", { name: "Baldur's Gate 3" }) });
+  await card.getByLabel("Actions for Baldur's Gate 3").click();
+  await page.getByRole("menuitem", { name: "Edit game" }).click();
+  await page.getByLabel("My genres").click();
+
+  const listbox = page.getByRole("listbox").last();
+  const lastOption = page.getByRole("option", { name: "Modal genre 18" });
+  await lastOption.scrollIntoViewIfNeeded();
+  await expect(lastOption).toBeVisible();
+  const box = await listbox.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(600);
+});
+
 test("updates favorite games from public profile settings", async ({
   page,
 }) => {

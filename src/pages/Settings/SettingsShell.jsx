@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   Database,
@@ -7,6 +6,7 @@ import {
   LibraryBig,
   Link as LinkIcon,
   SlidersHorizontal,
+  Sparkles,
   Tags,
   User2,
 } from "lucide-react";
@@ -18,6 +18,7 @@ export const settingsSections = [
   { id: "account", label: "Account", icon: User2 },
   { id: "preferences", label: "Preferences", icon: SlidersHorizontal },
   { id: "genres", label: "Personal genres", icon: Tags },
+  { id: "genre-suggestions", label: "Genre suggestions", icon: Sparkles },
   { id: "public", label: "Public profile", icon: Globe },
   { id: "data", label: "Data", icon: Database },
   { id: "metadata", label: "Game metadata", icon: DatabaseZap },
@@ -36,14 +37,12 @@ function formatDate(value) {
 }
 
 export function SettingsNav({ activeSection, onSelect }) {
-  const tabRefs = useRef([]);
-
-  const moveToTab = (index) => {
+  const moveToTab = (index, tablist) => {
     const section = settingsSections[index];
     if (!section) return;
     onSelect(section.id);
     requestAnimationFrame(() => {
-      const tab = tabRefs.current[index];
+      const tab = tablist?.querySelectorAll('[role="tab"]')[index];
       tab?.focus();
       tab?.scrollIntoView({
         behavior: "smooth",
@@ -55,9 +54,9 @@ export function SettingsNav({ activeSection, onSelect }) {
 
   const handleKeyDown = (event, index) => {
     let nextIndex = index;
-    if (event.key === "ArrowRight") {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
       nextIndex = (index + 1) % settingsSections.length;
-    } else if (event.key === "ArrowLeft") {
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
       nextIndex =
         (index - 1 + settingsSections.length) % settingsSections.length;
     } else if (event.key === "Home") {
@@ -68,12 +67,12 @@ export function SettingsNav({ activeSection, onSelect }) {
       return;
     }
     event.preventDefault();
-    moveToTab(nextIndex);
+    moveToTab(nextIndex, event.currentTarget.parentElement);
   };
 
   return (
-    <nav aria-label="Settings sections">
-      <div className="relative">
+    <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-6">
+      <div className="relative lg:hidden">
         <div
           role="tablist"
           aria-label="Settings sections"
@@ -85,16 +84,13 @@ export function SettingsNav({ activeSection, onSelect }) {
             return (
               <button
                 key={id}
-                ref={(node) => {
-                  tabRefs.current[index] = node;
-                }}
-                id={`settings-tab-${id}`}
+                id={`settings-mobile-tab-${id}`}
                 type="button"
                 role="tab"
                 tabIndex={active ? 0 : -1}
                 aria-selected={active}
                 aria-controls={`settings-panel-${id}`}
-                onClick={() => moveToTab(index)}
+                onClick={() => onSelect(id)}
                 onKeyDown={(event) => handleKeyDown(event, index)}
                 className={[
                   "flex min-h-11 min-w-max items-center gap-2 rounded-control border px-3 py-2.5 text-left text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform]",
@@ -118,6 +114,39 @@ export function SettingsNav({ activeSection, onSelect }) {
       <p className="mt-2 text-xs text-content-muted sm:hidden">
         Swipe or scroll to see every settings section.
       </p>
+      <div
+        role="tablist"
+        aria-label="Settings sections"
+        aria-orientation="vertical"
+        className="hidden rounded-panel border border-surface-border bg-surface-card p-2 shadow-panel lg:flex lg:flex-col lg:gap-1"
+      >
+        {settingsSections.map(({ id, label, icon: Icon }, index) => {
+          const active = id === activeSection;
+          return (
+            <button
+              key={id}
+              id={`settings-tab-${id}`}
+              type="button"
+              role="tab"
+              tabIndex={active ? 0 : -1}
+              aria-selected={active}
+              aria-controls={`settings-panel-${id}`}
+              onClick={() => onSelect(id)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
+              className={[
+                "flex min-h-11 w-full items-center gap-2.5 rounded-control border px-3 py-2.5 text-left text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 active:translate-y-px",
+                active
+                  ? "border-primary/55 bg-surface-selected text-primary-light shadow-sm shadow-primary/10 ring-1 ring-inset ring-primary/20"
+                  : "border-transparent text-content-secondary hover:border-primary/30 hover:bg-surface-selected/55 hover:text-primary-light",
+              ].join(" ")}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
     </nav>
   );
 }
@@ -187,7 +216,7 @@ export function AccountSection({ user, isGuest, games }) {
 
 export function SettingsSkeleton() {
   return (
-    <AppPage width="standard">
+    <AppPage width="wide">
       <PageHeader
         title="Settings"
         description="Manage your account and application preferences."
@@ -202,7 +231,7 @@ export function SettingsSkeleton() {
             </div>
           </div>
         </section>
-        <div className="grid gap-5 lg:grid-cols-[12rem_minmax(0,1fr)]">
+        <div className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
           <Skeleton className="h-52" />
           <div className="space-y-4">
             <Skeleton className="h-44" />

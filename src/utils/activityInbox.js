@@ -1,7 +1,7 @@
 const labels = {
-  steam_price_drop: "Price dropped",
+  steam_price_drop: "Price drop",
   steam_price_increase: "Price increased",
-  steam_sale_started: "Sale observed",
+  steam_sale_started: "New sale",
   steam_sale_ended: "Sale ended",
   wishlist_added: "Added to Steam Wishlist",
   wishlist_removed: "Removed from Steam Wishlist",
@@ -20,6 +20,22 @@ export function activityLabel(event) {
     return "Now owned · removed from Steam Wishlist";
   return labels[event.eventType] || "Steam update";
 }
+
+export function activitySummary(events = []) {
+  const priceEvents = events.filter((event) => event.source === "steam_prices");
+  if (priceEvents.length) {
+    if (priceEvents.some((event) => event.eventType === "steam_sale_started"))
+      return "New sale";
+    if (priceEvents.some((event) => event.eventType === "steam_price_drop"))
+      return "Price drop";
+    if (priceEvents.some((event) => event.eventType === "steam_sale_ended"))
+      return "Sale ended";
+    if (priceEvents.some((event) => event.eventType === "steam_price_increase"))
+      return "Price increased";
+  }
+  return [...new Set(events.map(activityLabel))].join(" · ");
+}
+
 export function activityPriceChange(event) {
   const p = event.payload;
   if (
@@ -34,7 +50,11 @@ export function activityPriceChange(event) {
       style: "currency",
       currency: "ILS",
     }).format(value / 100);
-  return `${money(p.previousMinor)} → ${money(p.currentMinor)}`;
+  const discount = Number(p.discountPercent);
+  const discountLabel = p.sale === true && Number.isInteger(discount) && discount > 0
+    ? `${discount}% off · `
+    : "";
+  return `${discountLabel}${money(p.previousMinor)} → ${money(p.currentMinor)}`;
 }
 
 export function groupActivityDigests(groups = []) {

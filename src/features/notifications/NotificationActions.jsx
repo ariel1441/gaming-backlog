@@ -1,13 +1,16 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ExternalLink } from "lucide-react";
 import {
   Button,
   Checkbox,
+  Chip,
+  PopoverPanel,
   SelectMenu,
   TextInput,
   useConfirm,
 } from "../../components/ui";
+import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { useGames } from "../../hooks/useGames";
 import { useAuth } from "../../contexts/AuthContext";
 import {
@@ -22,9 +25,10 @@ import {
   updateActivityInbox,
 } from "../../services/activityService";
 import { moveWishlistToBacklog, retireWishlistIntention } from "../../services/wishlistService";
+import { listPersonalGenres } from "../../services/personalGenreService";
 import { invalidateWishlistCache } from "../../services/wishlistCache";
 import { buildSteamStatusSuggestionPayload } from "../../utils/steamSync";
-import { activityLabel, activityPriceChange } from "../../utils/activityInbox";
+import { activityPriceChange, activitySummary } from "../../utils/activityInbox";
 import { canEditGame } from "../../utils/permissions";
 import { buildDisplayGames } from "../../utils/gameList";
 import { statusOption, statusDisplayLabel } from "../../utils/statusDisplay";
@@ -61,7 +65,18 @@ export default function NotificationActions({
   const [removeWishlist, setRemoveWishlist] = useState(false);
   const [retirementRetry, setRetirementRetry] = useState(null);
   const [resultExpanded, setResultExpanded] = useState(true);
+  const [selectedGenreIds, setSelectedGenreIds] = useState([]);
+  const [genresExpanded, setGenresExpanded] = useState(false);
+  const [manualGenres, setManualGenres] = useState([]);
+  const [genrePickerOpen, setGenrePickerOpen] = useState(false);
+  const [genrePickerQuery, setGenrePickerQuery] = useState("");
+  const [personalGenres, setPersonalGenres] = useState([]);
+  const [personalGenresLoading, setPersonalGenresLoading] = useState(false);
+  const [personalGenresError, setPersonalGenresError] = useState("");
   const resultRef = useRef(null);
+  const genrePickerRef = useRef(null);
+  const genrePickerInputRef = useRef(null);
+  const personalGenresRequest = useRef(0);
   useEffect(() => {
     setResultExpanded(true);
     if (!result || retirementRetry || busy || result.includes("could not"))
@@ -88,6 +103,50 @@ export default function NotificationActions({
   const matched =
     (legacyWishlist && wishlist?.id) || (candidate?.proposedCatalogGameId &&
     ["pending", "accepted"].includes(candidate.importStatus));
+  const personalGenreSuggestions = Array.isArray(candidate?.personalGenreSuggestions)
+    ? candidate.personalGenreSuggestions.slice(0, 5)
+    : [];
+  const suggestionKey = personalGenreSuggestions.map((genre) => `${genre.id}:${genre.name}`).join("|");
+  const visibleGenres = useMemo(() => {
+    const seen = new Set();
+    return [...personalGenreSuggestions, ...manualGenres].filter((genre) => {
+      if (!genre?.id || seen.has(genre.id)) return false;
+      seen.add(genre.id);
+      return true;
+    });
+  }, [manualGenres, personalGenreSuggestions]);
+  const selectedGenreCount = selectedGenreIds.length;
+  const availablePersonalGenres = useMemo(() => {
+    const visibleIds = new Set(visibleGenres.map((genre) => genre.id));
+    const query = genrePickerQuery.trim().toLocaleLowerCase();
+    return personalGenres.filter((genre) =>
+      !visibleIds.has(genre.id) &&
+      (!query || genre.name.toLocaleLowerCase().includes(query)),
+    );
+  }, [genrePickerQuery, personalGenres, visibleGenres]);
+  useEffect(() => {
+    setSelectedGenreIds(
+      suggestionKey
+        ? suggestionKey.split("|").map((entry) => Number(entry.split(":", 1)[0]))
+        : [],
+    );
+    setGenresExpanded(false);
+    setManualGenres([]);
+    setGenrePickerOpen(false);
+    setGenrePickerQuery("");
+    setPersonalGenresError("");
+    personalGenresRequest.current += 1;
+  }, [candidate?.id, suggestionKey]);
+  useDismissibleLayer({
+    open: genrePickerOpen,
+    layerRef: genrePickerRef,
+    onDismiss: () => setGenrePickerOpen(false),
+    restoreFocus: true,
+  });
+  useEffect(() => {
+    if (!genrePickerOpen) return;
+    requestAnimationFrame(() => genrePickerInputRef.current?.focus());
+  }, [genrePickerOpen]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -194,10 +253,12 @@ export default function NotificationActions({
         const response = await moveWishlistToBacklog(wishlist.id, targetStatus);
         return finishAcquisition(`Added to Backlog · ${statusDisplayLabel(targetStatus)}`, response.gameId);
       }
-      const response = await addSteamCandidateToBacklog(candidate.id, {
+      const payload = {
         status: targetStatus,
         activityEventId: event.id,
-      });
+      };
+      if (visibleGenres.length) payload.personalGenreIds = selectedGenreIds;
+      const response = await addSteamCandidateToBacklog(candidate.id, payload);
       if (!response.imported?.length && !response.attached?.length)
         throw new Error(
           "This game could not be added. Check its match in More options.",
@@ -210,6 +271,39 @@ export default function NotificationActions({
         { decisionResolved: true },
       );
     });
+  const loadPersonalGenres = async () => {
+    const request = ++personalGenresRequest.current;
+    setPersonalGenresLoading(true);
+    setPersonalGenresError("");
+    try {
+      const payload = await listPersonalGenres();
+      if (!mounted.current || request !== personalGenresRequest.current) return;
+      setPersonalGenres(Array.isArray(payload?.genres) ? payload.genres : []);
+    } catch (nextError) {
+      if (!mounted.current || request !== personalGenresRequest.current) return;
+      setPersonalGenresError(nextError.message || "Could not load your genres.");
+    } finally {
+      if (mounted.current && request === personalGenresRequest.current) {
+        setPersonalGenresLoading(false);
+      }
+    }
+  };
+  const openGenrePicker = () => {
+    if (busy || selectedGenreCount >= 10) return;
+    setGenrePickerOpen(true);
+    if (!personalGenres.length && !personalGenresLoading) void loadPersonalGenres();
+  };
+  const addManualGenre = (genre) => {
+    if (!genre || selectedGenreCount >= 10) return;
+    setManualGenres((current) => (
+      current.some((item) => item.id === genre.id) ? current : [...current, genre]
+    ));
+    setSelectedGenreIds((current) => (
+      current.includes(genre.id) ? current : [...current, genre.id]
+    ));
+    setGenrePickerQuery("");
+    setGenrePickerOpen(false);
+  };
   const availableGames = buildDisplayGames({
     games: games.filter((item) =>
       canEditGame({ user, game: item, isAuthenticated }),
@@ -241,6 +335,55 @@ export default function NotificationActions({
     });
   };
   const ownedContext = wishlist?.removedFromSteam && event.nowOwned;
+  const genrePicker = genrePickerOpen ? (
+    <PopoverPanel
+      role="dialog"
+      aria-label="Add a genre"
+      padding="sm"
+      radius="lg"
+      className="absolute left-0 top-[calc(100%+0.35rem)] z-tooltip w-full max-w-xs"
+    >
+      <label htmlFor={`${id}-genre-search`} className="sr-only">
+        Find a genre
+      </label>
+      <TextInput
+        ref={genrePickerInputRef}
+        id={`${id}-genre-search`}
+        type="search"
+        value={genrePickerQuery}
+        onChange={(event) => setGenrePickerQuery(event.target.value)}
+        placeholder="Find a genre"
+        className="h-9 min-h-9"
+      />
+      <div className="mt-2 max-h-44 space-y-1 overflow-auto pr-1">
+        {personalGenresLoading ? (
+          <p className="px-2 py-1 text-xs text-content-muted">Loading your genres…</p>
+        ) : null}
+        {personalGenresError ? (
+          <div className="space-y-2 px-2 py-1">
+            <p className="text-xs text-state-danger">{personalGenresError}</p>
+            <Button type="button" size="sm" variant="ghost" onClick={loadPersonalGenres}>
+              Try again
+            </Button>
+          </div>
+        ) : null}
+        {!personalGenresLoading && !personalGenresError ? (
+          availablePersonalGenres.length ? availablePersonalGenres.map((genre) => (
+            <button
+              type="button"
+              key={genre.id}
+              onClick={() => addManualGenre(genre)}
+              className="w-full rounded-control px-2.5 py-2 text-left text-sm text-content-secondary transition-colors hover:bg-surface-selected hover:text-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+            >
+              {genre.name}
+            </button>
+          )) : (
+            <p className="px-2 py-1 text-xs text-content-muted">No other genres found.</p>
+          )
+        ) : null}
+      </div>
+    </PopoverPanel>
+  ) : null;
   return (
     <div className="space-y-3">
       {result ? (
@@ -448,6 +591,58 @@ export default function NotificationActions({
                       Backlog status
                     </label>
                   ) : null}
+                  <div ref={genrePickerRef} className="relative space-y-1.5">
+                    {personalGenreSuggestions.length || manualGenres.length ? (
+                      <p className="text-xs text-content-muted">Genres</p>
+                    ) : null}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(genresExpanded ? visibleGenres : visibleGenres.slice(0, 3)).map((genre) => {
+                          const selected = selectedGenreIds.includes(genre.id);
+                          return (
+                            <Chip
+                              as="button"
+                              type="button"
+                              key={genre.id}
+                              variant="personalGenre"
+                              aria-pressed={selected}
+                              title={genre.reason}
+                              disabled={busy}
+                              onClick={() => setSelectedGenreIds((current) => (
+                                current.includes(genre.id)
+                                  ? current.filter((id) => id !== genre.id)
+                                  : [...current, genre.id]
+                              ))}
+                              className={`cursor-pointer focus-visible:ring-2 focus-visible:ring-focus ${selected ? "" : "border-surface-border bg-surface-elevated text-content-muted opacity-60"}`}
+                            >
+                              {selected ? "✓ " : ""}{genre.name}
+                            </Chip>
+                          );
+                      })}
+                      {visibleGenres.length > 3 ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 rounded-full px-2 text-xs"
+                          disabled={busy}
+                          onClick={() => setGenresExpanded((value) => !value)}
+                        >
+                          {genresExpanded ? "Show less" : `+${visibleGenres.length - 3}`}
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 rounded-full px-2 text-xs"
+                        disabled={busy || selectedGenreCount >= 10}
+                        onClick={openGenrePicker}
+                      >
+                        + Add genre
+                      </Button>
+                    </div>
+                    {genrePicker}
+                  </div>
                   <div
                     className={`grid grid-cols-2 items-start gap-2 ${defaultPlaying ? "" : "sm:grid-cols-[minmax(0,1fr)_auto_auto]"}`}
                   >
@@ -624,7 +819,7 @@ export default function NotificationActions({
       ) : (
         <>
           <p className="text-sm text-content-secondary">
-            {[...new Set(group.events.map(activityLabel))].join(" · ")}
+            {activitySummary(group.events)}
             {activityPriceChange(event)
               ? ` · ${activityPriceChange(event)}`
               : ""}

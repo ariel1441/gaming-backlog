@@ -70,6 +70,7 @@ import { ThemeSettings } from "./Settings/ThemeSettings";
 import { PublicProfileSection } from "./Settings/PublicProfileSettings";
 import MetadataSettings from "./Settings/MetadataSettings";
 import { PersonalGenreSettings } from "./Settings/PersonalGenreSettings";
+import { GenreSuggestionSettings } from "./Settings/GenreSuggestionSettings";
 import { NotificationLabSettings } from "./Settings/NotificationLabSettings";
 
 const MAX_FAVORITES = 5;
@@ -161,7 +162,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppPage width="standard">
+    <AppPage width="wide">
       <div className="space-y-5">
         <PageHeader
           title="Settings"
@@ -185,7 +186,7 @@ export default function SettingsPage() {
             retryLabel="Retry"
           />
         ) : (
-          <div className="space-y-5">
+          <div className="grid min-w-0 gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start">
             <SettingsNav
               activeSection={activeSection}
               onSelect={setActiveSection}
@@ -244,6 +245,11 @@ export default function SettingsPage() {
                   <IntegrationsSection isGuest={isGuest} />
                   <NotificationLabSettings isGuest={isGuest} />
                 </>
+              ) : null}
+              {activeSection === "genre-suggestions" ? (
+                <GenreSuggestionSettings
+                  refreshGames={() => refresh({ silent: true })}
+                />
               ) : null}
             </div>
           </div>

@@ -98,6 +98,34 @@ export const gameSchemas = {
         "number.positive": "favoriteIds must contain positive game ids",
       }),
   }),
+  genreSuggestionListQuery: Joi.object({
+    limit: Joi.number().integer().min(1).max(100).default(50),
+    offset: Joi.number().integer().min(0).max(100000).default(0),
+    only_without_personal_genres: Joi.boolean().default(false),
+  }),
+  genreSuggestionApplyBody: Joi.object({
+    personalGenreIds: Joi.array()
+      .items(Joi.number().integer().positive())
+      .max(10)
+      .unique()
+      .required()
+      .messages({
+        "any.required": "personalGenreIds is required",
+        "array.base": "personalGenreIds must be an array",
+        "array.max": "Choose at most 10 personal genres",
+        "array.unique": "personalGenreIds cannot contain duplicates",
+      }),
+    expectedPersonalGenreIds: Joi.array()
+      .items(Joi.number().integer().positive())
+      .max(10)
+      .unique()
+      .optional()
+      .messages({
+        "array.base": "expectedPersonalGenreIds must be an array",
+        "array.max": "expectedPersonalGenreIds must contain at most 10 genres",
+        "array.unique": "expectedPersonalGenreIds cannot contain duplicates",
+      }),
+  }),
   finishBody: Joi.object({
     finished_at: calendarDateSchema.invalid(null).required().messages({
       "any.required": "finished_at is required",
@@ -227,6 +255,21 @@ export const favoriteGames = celebrate(
     [Segments.BODY]: gameSchemas.favoritesBody,
   },
   opts
+);
+
+export const listGenreSuggestions = celebrate(
+  {
+    [Segments.QUERY]: gameSchemas.genreSuggestionListQuery,
+  },
+  opts,
+);
+
+export const applyGenreSuggestions = celebrate(
+  {
+    ...idParamSchema,
+    [Segments.BODY]: gameSchemas.genreSuggestionApplyBody,
+  },
+  opts,
 );
 
 export const finishGame = celebrate(

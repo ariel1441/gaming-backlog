@@ -32,6 +32,7 @@ import {
   updateActivityEvent,
 } from "../services/activityService";
 import { useStatuses } from "../hooks/useStatuses";
+import { usePersonalGenres } from "../hooks/usePersonalGenres";
 import { useGames } from "../hooks/useGames";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
@@ -139,6 +140,9 @@ export default function SteamImportPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const { statuses } = useStatuses();
+  const { genres: availablePersonalGenres } = usePersonalGenres(
+    !authLoading && isAuthenticated && !isGuest,
+  );
   const {
     account,
     setAccount,
@@ -173,6 +177,7 @@ export default function SteamImportPage() {
   });
   const summary = candidateSummary || {};
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [candidateGenreSelections, setCandidateGenreSelections] = useState({});
   const [bulkStatus, setBulkStatus] = useState("");
   const [autoMatching, setAutoMatching] = useState(false);
   const [devSteamId, setDevSteamId] = useState("");
@@ -212,7 +217,19 @@ export default function SteamImportPage() {
         q: debouncedSteamSearch.trim(),
       },
     });
-    if (!append && payload) setSelectedIds(new Set());
+    if (payload) {
+      if (!append) setSelectedIds(new Set());
+      setCandidateGenreSelections((current) => {
+        const next = append ? { ...current } : {};
+        for (const candidate of payload.candidates || []) {
+          if (append && Object.prototype.hasOwnProperty.call(next, candidate.id)) continue;
+          next[candidate.id] = (candidate.personalGenreSuggestions || [])
+            .map((genre) => Number(genre.id))
+            .filter(Number.isInteger);
+        }
+        return next;
+      });
+    }
     return payload;
   };
 
@@ -521,13 +538,14 @@ export default function SteamImportPage() {
     }
   };
 
-  const addSyncReviewCandidate = async (item, status) => {
+  const addSyncReviewCandidate = async (item, status, personalGenreIds = []) => {
     if (!item?.candidateId || !status) return;
     setAddingReviewCandidateId(item.candidateId);
     try {
       const payload = await addSteamCandidateToBacklog(item.candidateId, {
         status,
         activityEventId: item.activityEventId || null,
+        personalGenreIds,
       });
       toast.success(
         payload?.attached?.length
@@ -839,7 +857,12 @@ export default function SteamImportPage() {
 
   const bulkImport = async () => {
     try {
-      const payload = await importSteamCandidates(selectedArray());
+      const candidateIds = selectedArray();
+      const candidateReviews = candidateIds.map((candidateId) => ({
+        candidateId,
+        personalGenreIds: candidateGenreSelections[candidateId] || [],
+      }));
+      const payload = await importSteamCandidates(candidateIds, candidateReviews);
       toast.success(
         `Added ${payload?.imported?.length || 0}, linked ${
           payload?.attached?.length || 0
@@ -873,7 +896,10 @@ export default function SteamImportPage() {
 
   const importCandidate = async (candidate) => {
     try {
-      const payload = await importSteamCandidates([candidate.id]);
+      const payload = await importSteamCandidates([candidate.id], [{
+        candidateId: candidate.id,
+        personalGenreIds: candidateGenreSelections[candidate.id] || [],
+      }]);
       const imported = payload?.imported?.length || 0;
       const attached = payload?.attached?.length || 0;
       if (imported || attached) {
@@ -1024,7 +1050,7 @@ export default function SteamImportPage() {
             >
               {allVisibleSelected
                 ? "Clear visible selection"
-                : "Select visible"}
+                : `Select all ${visibleSelectableIds.length} visible`}
             </Button>
           </div>
 
@@ -1197,6 +1223,14 @@ export default function SteamImportPage() {
                     updateCandidate(candidate, "set_status", { status })
                   }
                   onChangeMatch={() => openMatch(candidate)}
+                  availablePersonalGenres={availablePersonalGenres}
+                  selectedPersonalGenreIds={candidateGenreSelections[candidate.id] || []}
+                  onChangePersonalGenres={(personalGenreIds) =>
+                    setCandidateGenreSelections((current) => ({
+                      ...current,
+                      [candidate.id]: personalGenreIds,
+                    }))
+                  }
                   statusSaving={savingCandidateStatusIds.has(candidate.id)}
                 />
               ))
@@ -1313,6 +1347,7 @@ export default function SteamImportPage() {
           applyingGameId={applyingSuggestionId}
           addingCandidateId={addingReviewCandidateId}
           statuses={statuses}
+          availablePersonalGenres={availablePersonalGenres}
           onClose={() => setSyncReview(null)}
           onApplyStatus={applyStatusSuggestion}
           onAddCandidate={addSyncReviewCandidate}

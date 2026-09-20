@@ -118,7 +118,7 @@ export default function OwnerProfilePage() {
 
   if (gamesError) {
     return (
-      <AppPage width="standard">
+      <AppPage width="wide">
         <PageHeader
           title="My profile"
           description="Your private progress, favorites, and backlog snapshot."
@@ -136,7 +136,7 @@ export default function OwnerProfilePage() {
   }
 
   return (
-    <AppPage width="standard">
+    <AppPage width="wide">
       <div className="space-y-5">
         <ProfileHeader
           user={user}
@@ -193,7 +193,7 @@ export default function OwnerProfilePage() {
 
 function OwnerProfileSkeleton() {
   return (
-    <AppPage width="standard">
+    <AppPage width="wide">
       <PageHeader
         title="My profile"
         description="Your games, favorites, and recent activity."

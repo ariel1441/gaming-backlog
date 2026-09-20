@@ -156,6 +156,7 @@ async function saveResult(job, monitor, result, nextCursor) {
           payload: { version: 1, accountId: job.account_id, groupKey, monitoringEpoch: m.epoch,
             previousObservationId: previous.id, observationId: observation.id, country: o.country, currency: o.currency,
             offerId: o.offerId, previousMinor: Number(previous.current_minor), currentMinor: o.currentMinor,
+            discountPercent: observation.discount_percent, sale: observation.sale,
             intervalStart: previous.observed_at, intervalEnd: o.observedAt } }, client);
         // A successful unavailable observation closes comparability. Old monetary
         // observations remain in the ledger, but return-to-store is a new baseline.

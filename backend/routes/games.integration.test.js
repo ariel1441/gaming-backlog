@@ -66,6 +66,80 @@ async function request(
   return { status: res.status, body: await res.json() };
 }
 
+test("genre suggestion routes return only owner-scoped, missing personal genres", async () => {
+  const writes = [];
+  const suggestionGame = {
+    id: 12,
+    user_id: 7,
+    name: "Hades",
+    status: "playing",
+    catalog_name: "Hades",
+    catalog_cover_url: "https://img.example/hades.jpg",
+    catalog_metadata_quality: "full",
+    catalog_genres_json: ["Action"],
+    catalog_tags_json: ["Roguelite", "Indie"],
+    personal_genres: [{ id: 8, name: "Indie" }],
+  };
+  await withServer(
+    async (text, values) => {
+      const sql = String(text);
+      if (sql.includes("FROM user_personal_genres genre")) {
+        return { rows: [{ id: 2, name: "Roguelike", usage_count: 2 }, { id: 8, name: "Indie", usage_count: 4 }] };
+      }
+      if (sql.includes("SELECT id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE")) {
+        return { rows: [{ id: 12 }] };
+      }
+      if (sql.includes("SELECT id, name FROM user_personal_genres WHERE id = $1")) {
+        return { rows: [{ id: values[0], name: values[0] === 2 ? "Roguelike" : "Indie" }] };
+      }
+      if (sql.includes("SELECT 1 FROM games WHERE id = $1 AND user_id = $2")) {
+        return { rows: [{ "?column?": 1 }] };
+      }
+      if (sql.startsWith("DELETE FROM game_personal_genres") || sql.includes("INSERT INTO game_personal_genres") || sql.startsWith("UPDATE games SET my_genre")) {
+        writes.push(sql);
+        return { rows: [] };
+      }
+      if (sql.includes("cg.metadata_quality = 'full'")) return { rows: [suggestionGame] };
+      if (sql.includes("FROM games g") && sql.includes("catalog_metadata_quality")) return { rows: [suggestionGame] };
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async (baseUrl) => {
+      const queue = await request(baseUrl, "/api/games/genre-suggestions", {
+        authPayload: { is_guest: false },
+      });
+      assert.equal(queue.status, 200);
+      assert.deepEqual(queue.body.reviews[0].suggestions.map((genre) => genre.name), ["Roguelike"]);
+
+      const zeroGenreQueue = await request(baseUrl, "/api/games/genre-suggestions?only_without_personal_genres=true", {
+        authPayload: { is_guest: false },
+      });
+      assert.equal(zeroGenreQueue.status, 200);
+
+      const oneGame = await request(baseUrl, "/api/games/12/genre-suggestions", {
+        authPayload: { is_guest: false },
+      });
+      assert.equal(oneGame.status, 200);
+      assert.deepEqual(oneGame.body.suggestions.map((genre) => genre.name), ["Roguelike"]);
+
+      const invalidApply = await request(baseUrl, "/api/games/12/genre-suggestions", {
+        method: "POST",
+        body: { personalGenreIds: [999] },
+        authPayload: { is_guest: false },
+      });
+      assert.equal(invalidApply.status, 400);
+      assert.equal(invalidApply.body.error.code, "bad_request");
+
+      const validApply = await request(baseUrl, "/api/games/12/genre-suggestions", {
+        method: "POST",
+        body: { personalGenreIds: [2], expectedPersonalGenreIds: [8] },
+        authPayload: { is_guest: false },
+      });
+      assert.equal(validApply.status, 200);
+      assert.ok(writes.some((sql) => sql.includes("INSERT INTO game_personal_genres")));
+    },
+  );
+});
+
 test("GET /api/games never blocks on RAWG provider requests", async () => {
   const originalFetch = globalThis.fetch;
   const originalRawgKey = process.env.RAWG_API_KEY;

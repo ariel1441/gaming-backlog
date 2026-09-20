@@ -80,6 +80,119 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM games WHERE user_id=$1", [f.userId])).rows[0].n, 1);
     });
 
+    await t.test("batch import applies owned genre choices and queues RAWG metadata repair", async () => {
+      const f = await fixture();
+      const genreId = (
+        await pool.query(
+          `INSERT INTO user_personal_genres (user_id, name, normalized_name)
+           VALUES ($1, 'Action', 'action') RETURNING id`,
+          [f.userId],
+        )
+      ).rows[0].id;
+      const otherUserId = (
+        await pool.query(
+          "INSERT INTO users (username, password_hash) VALUES ($1, 'fixture') RETURNING id",
+          [`other-${crypto.randomUUID()}`],
+        )
+      ).rows[0].id;
+      const otherGenreId = (
+        await pool.query(
+          `INSERT INTO user_personal_genres (user_id, name, normalized_name)
+           VALUES ($1, 'Private', 'private') RETURNING id`,
+          [otherUserId],
+        )
+      ).rows[0].id;
+      await f.run(0);
+      const candidateId = await f.candidate();
+
+      await assert.rejects(
+        steam.importSteamCandidates(f.userId, [candidateId], [{
+          candidateId,
+          personalGenreIds: [otherGenreId],
+        }]),
+        (error) => error?.status === 400,
+      );
+      assert.equal(
+        (await pool.query("SELECT COUNT(*)::int AS n FROM games WHERE user_id=$1", [f.userId])).rows[0].n,
+        0,
+      );
+
+      const result = await steam.importSteamCandidates(f.userId, [candidateId], [{
+        candidateId,
+        personalGenreIds: [genreId],
+      }]);
+      const gameId = result.imported[0].gameId;
+      assert.equal(result.metadataRepairQueued, true);
+      assert.deepEqual(
+        (await pool.query(
+          `SELECT genre.name FROM game_personal_genres membership
+             JOIN user_personal_genres genre ON genre.id = membership.personal_genre_id
+            WHERE membership.game_id=$1`,
+          [gameId],
+        )).rows.map((row) => row.name),
+        ["Action"],
+      );
+      const repair = (
+        await pool.query(
+          "SELECT parameters_json FROM metadata_jobs WHERE job_type='backlog_repair' AND scope_user_id=$1 ORDER BY id DESC LIMIT 1",
+          [f.userId],
+        )
+      ).rows[0];
+      assert.ok(repair.parameters_json.priorityGameIds.includes(gameId));
+    });
+
+    await t.test("whole review-lane import applies the candidate's stored genre suggestions", async () => {
+      const f = await fixture();
+      const genreId = (
+        await pool.query(
+          `INSERT INTO user_personal_genres (user_id, name, normalized_name)
+           VALUES ($1, 'Action', 'action') RETURNING id`,
+          [f.userId],
+        )
+      ).rows[0].id;
+      await f.run(0);
+      const candidateId = await f.candidate();
+      await pool.query(
+        `UPDATE steam_import_candidates
+            SET personal_genre_suggestions_json = $2::jsonb
+          WHERE id = $1`,
+        [candidateId, JSON.stringify([{ id: genreId, name: "Action", reason: "Metadata match" }])],
+      );
+
+      const result = await steam.importSteamCandidatesForScope(f.userId, { group: "unplayed" });
+      const gameId = result.imported[0].gameId;
+      assert.equal(result.metadataRepairQueued, true);
+      assert.deepEqual(
+        (await pool.query(
+          `SELECT genre.name FROM game_personal_genres membership
+             JOIN user_personal_genres genre ON genre.id = membership.personal_genre_id
+            WHERE membership.game_id=$1`,
+          [gameId],
+        )).rows.map((row) => row.name),
+        ["Action"],
+      );
+    });
+
+    await t.test("metadata repair enqueue failure rolls back the Steam import", async () => {
+      const f = await fixture();
+      await f.run(0);
+      const candidateId = await f.candidate();
+      await pool.query("ALTER TABLE metadata_jobs RENAME TO metadata_jobs_unavailable");
+      try {
+        await assert.rejects(steam.importSteamCandidates(f.userId, [candidateId]));
+        assert.equal(
+          (await pool.query("SELECT COUNT(*)::int AS n FROM games WHERE user_id=$1", [f.userId])).rows[0].n,
+          0,
+        );
+        assert.equal(
+          (await pool.query("SELECT import_status FROM steam_import_candidates WHERE id=$1", [candidateId])).rows[0].import_status,
+          "pending",
+        );
+      } finally {
+        await pool.query("ALTER TABLE metadata_jobs_unavailable RENAME TO metadata_jobs");
+      }
+    });
+
     await t.test("existing Backlog approval uses event evidence, rejects replay and preserves personal dates", async () => {
       for (const personalDate of [null, "2020-02-03"]) {
         const f = await fixture({ backlog: true, startedAt: personalDate });
@@ -133,6 +246,18 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       const newCatalogId = (
         await pool.query("INSERT INTO catalog_games (name) VALUES ($1) RETURNING id", [newName])
       ).rows[0].id;
+      await pool.query(
+        "UPDATE catalog_games SET metadata_quality='full', tags_json=$2::jsonb WHERE id=$1",
+        [newCatalogId, JSON.stringify(["Roguelite", "Action Roguelike"])],
+      );
+      const personalGenres = await pool.query(
+        `INSERT INTO user_personal_genres (user_id, name, normalized_name)
+         VALUES ($1, 'Roguelike', 'roguelike'), ($1, 'Action', 'action'), ($1, 'Strategy', 'strategy')
+         RETURNING id, name`,
+        [f.userId],
+      );
+      const roguelikeId = personalGenres.rows.find((genre) => genre.name === "Roguelike").id;
+      const strategyId = personalGenres.rows.find((genre) => genre.name === "Strategy").id;
       const wishlistItemId = (
         await pool.query(
           "INSERT INTO user_wishlist_items (user_id, catalog_game_id, display_name) VALUES ($1, $2, $3) RETURNING id",
@@ -156,11 +281,15 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       assert.equal(job.result.notificationDecisions.created, 1);
       const event = (
         await pool.query(
-          "SELECT id, state FROM user_activity_events WHERE user_id=$1 AND external_id=$2 AND event_type='steam_new_game'",
+          "SELECT id, state, payload_json FROM user_activity_events WHERE user_id=$1 AND external_id=$2 AND event_type='steam_new_game'",
           [f.userId, newAppId],
         )
       ).rows[0];
       assert.equal(event.state, "open");
+      assert.deepEqual(
+        event.payload_json.personalGenreSuggestions.map((genre) => genre.name),
+        ["Roguelike", "Action"],
+      );
       const candidate = (
         await pool.query(
           "SELECT id, proposed_catalog_game_id FROM steam_import_candidates WHERE user_id=$1 AND steam_app_id=$2",
@@ -169,9 +298,25 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       ).rows[0];
       assert.equal(candidate.proposed_catalog_game_id, newCatalogId);
       const candidateId = candidate.id;
+      const suggestions = (
+        await pool.query(
+          "SELECT personal_genre_suggestions_json FROM steam_import_candidates WHERE id=$1",
+          [candidateId],
+        )
+      ).rows[0].personal_genre_suggestions_json;
+      assert.deepEqual(suggestions.map((genre) => genre.name), ["Roguelike", "Action"]);
+      await assert.rejects(
+        steam.addSteamCandidateToBacklog(f.userId, candidateId, {
+          status: "playing",
+          activityEventId: event.id,
+          personalGenreIds: [999999],
+        }),
+        (error) => error?.status === 404,
+      );
       const first = await steam.addSteamCandidateToBacklog(f.userId, candidateId, {
         status: "playing",
         activityEventId: event.id,
+        personalGenreIds: [roguelikeId, strategyId],
       });
       assert.deepEqual(first.imported, [{ candidateId, gameId: first.gameId }]);
       assert.equal(first.metadataRepairQueued, true);
@@ -185,6 +330,15 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       assert.equal(
         (await pool.query("SELECT status FROM games WHERE id=$1", [first.gameId])).rows[0].status,
         "playing",
+      );
+      assert.deepEqual(
+        (await pool.query(
+          `SELECT genre.name FROM game_personal_genres membership
+             JOIN user_personal_genres genre ON genre.id = membership.personal_genre_id
+            WHERE membership.game_id=$1 ORDER BY membership.position`,
+          [first.gameId],
+        )).rows.map((row) => row.name),
+        ["Roguelike", "Strategy"],
       );
 
       const replay = await steam.addSteamCandidateToBacklog(f.userId, candidateId, {

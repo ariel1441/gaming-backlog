@@ -800,6 +800,8 @@ CREATE TABLE steam_import_candidates (
       suggested_status_confidence IS NULL OR
       suggested_status_confidence IN ('high', 'medium', 'low')
     ),
+  personal_genre_suggestions_json JSONB NOT NULL DEFAULT '[]'::jsonb
+    CHECK (jsonb_typeof(personal_genre_suggestions_json) = 'array'),
   selected_status TEXT,
   user_selected_catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE SET NULL,
   decision_at TIMESTAMPTZ,

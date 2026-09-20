@@ -166,10 +166,14 @@ test(
             steamActive: false,
             removedFromSteam: true,
           });
-          const factFor = (i, eventType = "steam_price_increase") =>
+          const factFor = (
+            i,
+            eventType = "wishlist_added",
+            source = "steam_wishlist",
+          ) =>
             activity.createFactualActivityEvent({
               userId: who.userId,
-              source: "steam_prices",
+              source,
               eventType,
               externalId: "999",
               syncRunId: pricesRun.saved.id,
@@ -178,9 +182,18 @@ test(
               observedAt: new Date(),
             });
           for (let i = 0; i < 55; i++) await factFor(i);
-          const deal = await factFor("deal", "steam_price_drop");
+          const deal = await factFor("deal", "steam_price_drop", "steam_prices");
+          const ended = await factFor("ended", "steam_sale_ended", "steam_prices");
+          const increased = await factFor("increased", "steam_price_increase", "steam_prices");
+          const reviewed = await factFor("reviewed", "steam_status_suggestion", "steam_library");
           const page = await inbox.listActivityInbox(who.userId, { limit: 50 });
           assert.ok(page.nextCursor);
+          assert.equal(
+            page.groups.some((group) =>
+              group.events.some((event) => [ended.id, increased.id, reviewed.id].includes(event.id)),
+            ),
+            false,
+          );
           const future = await factFor("future");
           assert.equal(
             (
@@ -240,7 +253,7 @@ test(
                 [who.userId],
               )
             ).rows[0].n,
-            60,
+            63,
           );
           const game = (
             await pool.query(

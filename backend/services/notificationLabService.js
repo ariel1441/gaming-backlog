@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "../db.js";
 import { badRequest } from "../utils/httpError.js";
+import { buildPersonalGenreSuggestions } from "./personalGenreSuggestionService.js";
 
 const LAB_PREFIX = "notification-lab:";
 const LAB_ACCOUNT_NAME = "Notification Lab (local)";
@@ -27,6 +28,8 @@ const fixtures = {
     name: "Echoes of the Lab",
     eventType: "steam_new_game",
     playtimeMinutes: 0,
+    genres: ["Indie"],
+    tags: ["Roguelite", "Action Roguelike", "Co-op", "Survival", "Metroidvania"],
   },
   "started-playing": {
     appId: "9900000002",
@@ -34,6 +37,8 @@ const fixtures = {
     name: "Skyline Drift: Lab Edition",
     eventType: "steam_started_playing",
     playtimeMinutes: 146,
+    genres: ["Indie", "Strategy"],
+    tags: ["Roguelite", "Deck Building", "Co-op"],
   },
   unmatched: {
     appId: "9900000003",
@@ -94,6 +99,10 @@ const fixtures = {
   },
 };
 
+const LAB_STEAM_APP_IDS = Object.freeze(
+  [...new Set(Object.values(fixtures).map((fixture) => fixture.appId))],
+);
+
 function selectedFixtureKeys(scenario) {
   if (!notificationLabScenarios.includes(scenario)) {
     throw badRequest("Unknown Notification Lab scenario.");
@@ -121,14 +130,29 @@ async function createCatalogFixture(client, fixture) {
       LIMIT 1`,
     [catalogMarker(fixture.key)],
   );
-  if (existing.rows[0]) return existing.rows[0].id;
+  if (existing.rows[0]) {
+    await client.query(
+      `UPDATE catalog_games
+          SET metadata_quality = 'full',
+              genres_json = $2::jsonb,
+              tags_json = $3::jsonb,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [
+        existing.rows[0].id,
+        JSON.stringify(fixture.genres || []),
+        JSON.stringify(fixture.tags || []),
+      ],
+    );
+    return existing.rows[0].id;
+  }
   const { rows } = await client.query(
     `INSERT INTO catalog_games (
       name, canonical_title, slug, metadata_source, metadata_quality,
       genres_json, stores_json, tags_json
-    ) VALUES ($1, $1, $2, 'notification_lab', 'full', '[]'::jsonb, '[]'::jsonb, '[]'::jsonb)
+    ) VALUES ($1, $1, $2, 'notification_lab', 'full', $3::jsonb, '[]'::jsonb, $4::jsonb)
     RETURNING id`,
-    [fixture.name, slug],
+    [fixture.name, slug, JSON.stringify(fixture.genres || []), JSON.stringify(fixture.tags || [])],
   );
   const catalogGameId = rows[0].id;
   await client.query(
@@ -212,14 +236,30 @@ async function createSteamSource(client, userId, fixture, catalogGameId, gameId 
 }
 
 async function createCandidate(client, userId, fixture, catalogGameId) {
+  const personalGenres = await client.query(
+    "SELECT id, name FROM user_personal_genres WHERE user_id = $1 ORDER BY lower(name), id",
+    [userId],
+  );
+  const personalGenreSuggestions = buildPersonalGenreSuggestions({
+    catalog: catalogGameId
+      ? {
+        name: fixture.name,
+        metadata_quality: "full",
+        genres_json: fixture.genres || [],
+        tags_json: fixture.tags || [],
+      }
+      : null,
+    personalGenres: personalGenres.rows,
+  });
   const { rows } = await client.query(
     `INSERT INTO steam_import_candidates (
       user_id, steam_app_id, steam_name, playtime_minutes_forever, last_played_at,
       proposed_catalog_game_id, match_confidence, match_reason,
-      suggested_status, suggested_status_reason, suggested_status_confidence
+      suggested_status, suggested_status_reason, suggested_status_confidence,
+      personal_genre_suggestions_json
     ) VALUES ($1, $2, $3, $4,
       CASE WHEN $4 > 0 THEN NOW() - INTERVAL '2 hours' ELSE NULL END,
-      $5, $6, $7, $8, $9, 'high'
+      $5, $6, $7, $8, $9, 'high', $10::jsonb
     ) RETURNING id`,
     [
       userId,
@@ -233,6 +273,7 @@ async function createCandidate(client, userId, fixture, catalogGameId) {
       fixture.eventType === "steam_started_playing"
         ? "Steam shows play activity."
         : "No Steam playtime observed.",
+      JSON.stringify(personalGenreSuggestions),
     ],
   );
   return rows[0].id;
@@ -313,13 +354,13 @@ async function resetNotificationLabTx(client, userId) {
   );
   await client.query(
     `DELETE FROM steam_import_candidates
-      WHERE user_id = $1 AND steam_app_id LIKE '990000000%'`,
-    [userId],
+      WHERE user_id = $1 AND steam_app_id = ANY($2::text[])`,
+    [userId, LAB_STEAM_APP_IDS],
   );
   await client.query(
     `DELETE FROM user_game_sources
-      WHERE user_id = $1 AND provider = 'steam' AND provider_app_id LIKE '990000000%'`,
-    [userId],
+      WHERE user_id = $1 AND provider = 'steam' AND provider_app_id = ANY($2::text[])`,
+    [userId, LAB_STEAM_APP_IDS],
   );
   if (labGames.rows.length) {
     await client.query(
@@ -421,7 +462,14 @@ export async function seedNotificationLab(userId, scenario = "all") {
           state: "resolved",
           eventType: saleStarted ? "steam_price_drop" : "steam_price_increase",
           keySuffix: "price",
-          payload: { groupKey, currency: "ILS", previousMinor, currentMinor },
+          payload: {
+            groupKey,
+            currency: "ILS",
+            previousMinor,
+            currentMinor,
+            discountPercent: saleStarted ? 39 : 0,
+            sale: saleStarted,
+          },
         });
         await createEvent(client, {
           userId,
@@ -432,7 +480,14 @@ export async function seedNotificationLab(userId, scenario = "all") {
           state: "resolved",
           eventType: saleStarted ? "steam_sale_started" : "steam_sale_ended",
           keySuffix: "sale",
-          payload: { groupKey, currency: "ILS", previousMinor, currentMinor },
+          payload: {
+            groupKey,
+            currency: "ILS",
+            previousMinor,
+            currentMinor,
+            discountPercent: saleStarted ? 39 : 0,
+            sale: saleStarted,
+          },
         });
       } else if (key === "purchase-pair") {
         const catalogGameId = await createCatalogFixture(client, fixture);
@@ -469,7 +524,7 @@ export async function seedNotificationLab(userId, scenario = "all") {
           eventKind: key === "price-drop" ? "fact" : "decision",
           state: key === "price-drop" ? "resolved" : "open",
           payload: key === "price-drop"
-            ? { currency: "ILS", previousMinor: 12900, currentMinor: 7900 }
+            ? { currency: "ILS", previousMinor: 12900, currentMinor: 7900, sale: false }
             : {},
         });
       } else {
