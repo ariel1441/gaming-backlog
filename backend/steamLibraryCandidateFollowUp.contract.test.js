@@ -47,9 +47,26 @@ test("Steam candidate matching drains durable work without crossing interruption
       INSERT INTO steam_import_candidates (user_id, steam_app_id, steam_name)
       SELECT ${userId}, (50000 + n)::text, 'Library Game ' || n FROM generate_series(1, 251) n;
     `);
+    await pool.query(
+      `INSERT INTO user_personal_genres (user_id, name, normalized_name)
+       VALUES ($1, 'Roguelike', 'roguelike')`,
+      [userId],
+    );
+    await pool.query(
+      `UPDATE catalog_games
+          SET metadata_quality = 'full', tags_json = '["Roguelite"]'::jsonb
+        WHERE id = 10001`,
+    );
 
     const first = await autoMatchSteamCandidates({ id: userId }, { limit: 250, useCatalogSearch: false });
     assert.deepEqual(first, { reviewed: 250, matched: 250, limit: 250 });
+    assert.deepEqual(
+      (await pool.query(
+        "SELECT personal_genre_suggestions_json FROM steam_import_candidates WHERE user_id=$1 AND steam_app_id='50001'",
+        [userId],
+      )).rows[0].personal_genre_suggestions_json.map((genre) => genre.name),
+      ["Roguelike"],
+    );
     assert.equal((await pool.query(
       "SELECT COUNT(*)::int AS count FROM steam_import_candidates WHERE user_id = $1 AND proposed_catalog_game_id IS NULL",
       [userId],

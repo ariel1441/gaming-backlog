@@ -173,7 +173,7 @@ test('only compatible observations create events, including repeated genuine sal
   assert.deepEqual(compareSteamPrices(null, sale), []);
   assert.deepEqual(compareSteamPrices(old, old), []);
   assert.deepEqual(compareSteamPrices(old, sale), ['steam_price_drop', 'steam_sale_started']);
-  assert.deepEqual(compareSteamPrices(sale, old), ['steam_price_increase', 'steam_sale_ended']);
+  assert.deepEqual(compareSteamPrices(sale, old), []);
   for (const change of [{ epoch: 'b' }, { country: 'US' }, { currency: 'USD' }, { offer_id: 'package:2' },
     { normalizer_version: 2 }, { availability: 'unavailable' }]) assert.deepEqual(compareSteamPrices(old, { ...sale, ...change }), []);
   assert.deepEqual(compareSteamPrices({ ...old, sale: null }, sale), ['steam_price_drop']);

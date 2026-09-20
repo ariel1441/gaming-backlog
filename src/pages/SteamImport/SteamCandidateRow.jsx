@@ -8,6 +8,7 @@ import {
 } from "../../components/ui";
 import { filteredReasonLabel } from "../../utils/steamImport";
 import { statusOption } from "../../utils/statusDisplay";
+import PersonalGenreSuggestionEditor from "../../components/PersonalGenreSuggestionEditor";
 import {
   formatSteamDate,
   formatSteamPlaytime,
@@ -100,6 +101,9 @@ export function CandidateRow({
   onImport,
   onSetStatus,
   onChangeMatch,
+  availablePersonalGenres = [],
+  selectedPersonalGenreIds = [],
+  onChangePersonalGenres,
   statusSaving = false,
 }) {
   const canImport =
@@ -198,6 +202,21 @@ export function CandidateRow({
               title={matchHint}
             >
               {matchHint}
+            </div>
+          ) : null}
+          {!candidate.duplicateGameId && candidate.proposedCatalogGameId ? (
+            <div className="mt-3 border-t border-surface-border/75 pt-2.5">
+              <div className="mb-2 text-xs font-medium text-content-muted">
+                My genres
+              </div>
+              <PersonalGenreSuggestionEditor
+                suggestions={candidate.personalGenreSuggestions || []}
+                availablePersonalGenres={availablePersonalGenres}
+                selectedIds={selectedPersonalGenreIds}
+                onChange={onChangePersonalGenres}
+                disabled={isIgnored}
+                compact
+              />
             </div>
           ) : null}
         </div>

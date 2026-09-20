@@ -32,6 +32,31 @@ export function refreshGameMetadata(id, opts = {}) {
   return api.post(`/api/games/${id}/metadata/refresh`, {}, opts);
 }
 
+export function getGameGenreSuggestions(id, opts = {}) {
+  return api.get(`/api/games/${id}/genre-suggestions`, opts);
+}
+
+export function applyGameGenreSuggestions(id, personalGenreIds, expectedPersonalGenreIds, opts = {}) {
+  return api.post(
+    `/api/games/${id}/genre-suggestions`,
+    { personalGenreIds, expectedPersonalGenreIds },
+    opts,
+  );
+}
+
+export function listGameGenreSuggestions(opts = {}) {
+  const search = new URLSearchParams();
+  if (Number.isInteger(opts.limit)) search.set("limit", String(opts.limit));
+  if (Number.isInteger(opts.offset) && opts.offset > 0) search.set("offset", String(opts.offset));
+  if (opts.onlyWithoutPersonalGenres) search.set("only_without_personal_genres", "true");
+  const requestOpts = { ...opts };
+  delete requestOpts.limit;
+  delete requestOpts.offset;
+  delete requestOpts.onlyWithoutPersonalGenres;
+  const query = search.toString();
+  return api.get(`/api/games/genre-suggestions${query ? `?${query}` : ""}`, requestOpts);
+}
+
 export function finishGame(id, payload, opts = {}) {
   return api.post(`/api/games/${id}/finish`, payload, opts);
 }

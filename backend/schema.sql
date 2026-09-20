@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS integration_sync_runs;
 DROP TABLE IF EXISTS user_external_accounts;
 DROP TABLE IF EXISTS steam_link_transactions;
 DROP TABLE IF EXISTS user_next_up_games;
+DROP TABLE IF EXISTS user_play_focus_games;
 DROP TABLE IF EXISTS user_list_games;
 DROP TABLE IF EXISTS user_lists;
 DROP TABLE IF EXISTS games;
@@ -527,6 +528,22 @@ CREATE INDEX idx_user_next_up_games_user_position
 CREATE INDEX idx_user_next_up_games_game_id
   ON user_next_up_games (game_id);
 
+CREATE TABLE user_play_focus_games (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  focus_role TEXT NOT NULL
+    CHECK (focus_role IN ('main', 'side', 'occasional')),
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, game_id)
+);
+
+CREATE UNIQUE INDEX idx_user_play_focus_single_slot
+  ON user_play_focus_games (user_id, focus_role)
+  WHERE focus_role IN ('main', 'side');
+
+CREATE INDEX idx_user_play_focus_user_role
+  ON user_play_focus_games (user_id, focus_role, assigned_at, game_id);
+
 CREATE TABLE user_external_accounts (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -800,6 +817,8 @@ CREATE TABLE steam_import_candidates (
       suggested_status_confidence IS NULL OR
       suggested_status_confidence IN ('high', 'medium', 'low')
     ),
+  personal_genre_suggestions_json JSONB NOT NULL DEFAULT '[]'::jsonb
+    CHECK (jsonb_typeof(personal_genre_suggestions_json) = 'array'),
   selected_status TEXT,
   user_selected_catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE SET NULL,
   decision_at TIMESTAMPTZ,
@@ -1069,6 +1088,10 @@ CREATE TRIGGER user_next_up_games_owner_guard
   BEFORE INSERT OR UPDATE OF user_id, game_id ON user_next_up_games
   FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
 
+CREATE TRIGGER user_play_focus_games_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, game_id ON user_play_focus_games
+  FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
+
 CREATE OR REPLACE FUNCTION prevent_game_owner_change_with_relationships()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -1079,6 +1102,7 @@ BEGIN
      OR EXISTS (SELECT 1 FROM user_activity_events WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM game_metadata_candidates WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM user_next_up_games WHERE game_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM user_play_focus_games WHERE game_id = OLD.id)
      OR EXISTS (SELECT 1 FROM game_personal_genres WHERE game_id = OLD.id) THEN
     RAISE EXCEPTION 'cannot change game owner while owned relationships exist'
       USING ERRCODE = '23514';

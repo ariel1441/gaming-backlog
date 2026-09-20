@@ -16,6 +16,7 @@ test("changing a chosen backlog status keeps a Steam review candidate in its sug
     suggestedStatus: "plan to play",
     selectedStatus: null,
     playtimeMinutes: 0,
+    personalGenreSuggestions: [{ id: 7, name: "Action", reason: "RAWG genre match" }],
   };
 
   await page.addInitScript(() => {
@@ -41,6 +42,8 @@ test("changing a chosen backlog status keeps a Steam review candidate in its sug
     }
     if (pathname === "/api/games/statuses-list")
       return json(["plan to play", "playing", "finished"]);
+    if (pathname === "/api/personal-genres")
+      return json({ genres: [{ id: 7, name: "Action" }, { id: 8, name: "Cozy" }] });
     if (pathname === "/api/meta/status-groups")
       return json({
         groups: {
@@ -81,7 +84,10 @@ test("changing a chosen backlog status keeps a Steam review candidate in its sug
       return json({ id: 1, selectedStatus: "playing" });
     }
     if (pathname === "/api/steam/import" && method === "POST") {
-      expect(route.request().postDataJSON()).toEqual({ candidateIds: [1] });
+      expect(route.request().postDataJSON()).toEqual({
+        candidateIds: [1],
+        candidateReviews: [{ candidateId: 1, personalGenreIds: [7] }],
+      });
       imported = true;
       return json({ imported: [{ candidateId: 1, gameId: 42 }], attached: [], skipped: [] });
     }
@@ -104,12 +110,9 @@ test("changing a chosen backlog status keeps a Steam review candidate in its sug
   await page.waitForTimeout(100);
   expect(candidateReads).toBe(readsBeforeChange);
 
-  await page
-    .locator("label")
-    .filter({
-      has: page.getByRole("checkbox", { name: "Select Stable review game" }),
-    })
-    .click();
+  await expect(page.getByText("0 of 1 visible selected")).toBeVisible();
+  await page.getByRole("button", { name: "Select all 1 visible" }).first().click();
+  await expect(page.getByText("1 of 1 visible selected")).toBeVisible();
   const readsBeforeImport = gamesReads;
   await page.getByRole("button", { name: "Add selected to Backlog" }).click();
   await expect.poll(() => gamesReads).toBeGreaterThan(readsBeforeImport);

@@ -51,93 +51,101 @@ function serializeJob(row) {
   };
 }
 
-export async function enqueueMetadataRepair(
+export async function enqueueMetadataRepairTx(
   userId,
-  db = pool,
+  client,
   { priorityGameIds: requestedPriorityGameIds = [] } = {},
 ) {
   const requestedPriorityIds = priorityGameIds(requestedPriorityGameIds);
+  await client.query("SELECT pg_advisory_xact_lock($1, $2)", [
+    Number(userId),
+    73421,
+  ]);
+  const active = await client.query(
+    `
+    SELECT * FROM metadata_jobs
+     WHERE job_type = $1
+       AND scope_user_id = $2
+       AND status IN ('queued', 'running', 'paused')
+     ORDER BY id DESC LIMIT 1
+    `,
+    [JOB_TYPE, userId],
+  );
+  if (active.rows[0]) {
+    const parameters = jsonObject(active.rows[0].parameters_json);
+    const currentPriorityIds = priorityGameIds(parameters.priorityGameIds);
+    const mergedPriorityIds = priorityGameIds([...currentPriorityIds, ...requestedPriorityIds]);
+    if (mergedPriorityIds.length !== currentPriorityIds.length) {
+      const updated = await client.query(
+        `UPDATE metadata_jobs
+            SET parameters_json = $2::jsonb, updated_at = NOW()
+          WHERE id = $1
+        RETURNING *`,
+        [active.rows[0].id, JSON.stringify({ ...parameters, priorityGameIds: mergedPriorityIds })],
+      );
+      active.rows[0] = updated.rows[0];
+    }
+    return serializeJob(active.rows[0]);
+  }
+
+  const total = await client.query(
+    `
+    SELECT COUNT(*)::int AS count
+      FROM games game
+      LEFT JOIN catalog_games catalog ON catalog.id = game.catalog_game_id
+     WHERE game.user_id = $1
+       AND LOWER(TRIM(game.status)) <> 'wishlist'
+       AND NOT EXISTS (
+         SELECT 1 FROM game_metadata_candidates candidate
+          WHERE candidate.game_id = game.id
+            AND candidate.user_id = $1
+            AND candidate.decision = 'pending'
+       )
+       AND (
+         game.catalog_game_id IS NULL OR
+         catalog.metadata_quality IS DISTINCT FROM 'full'
+       )
+    `,
+    [userId],
+  );
+  const created = await client.query(
+    `
+    INSERT INTO metadata_jobs (
+      job_type, scope_user_id, requested_by_user_id, status,
+      parameters_json, cursor_json, total_count, next_attempt_at
+    )
+    VALUES ($1, $2, $2, 'queued', $3::jsonb, $4::jsonb, $5, NOW())
+    RETURNING *
+    `,
+    [
+      JOB_TYPE,
+      userId,
+      JSON.stringify({
+        providerSearchBudget: positiveInt(
+          process.env.METADATA_REPAIR_PROVIDER_BUDGET,
+          DEFAULT_PROVIDER_BUDGET,
+          250,
+        ),
+        priorityGameIds: requestedPriorityIds,
+      }),
+      JSON.stringify({ lastGameId: 0, providerSearches: 0 }),
+      total.rows[0].count,
+    ],
+  );
+  return serializeJob(created.rows[0]);
+}
+
+export async function enqueueMetadataRepair(
+  userId,
+  db = pool,
+  options = {},
+) {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock($1, $2)", [
-      Number(userId),
-      73421,
-    ]);
-    const active = await client.query(
-      `
-      SELECT * FROM metadata_jobs
-       WHERE job_type = $1
-         AND scope_user_id = $2
-         AND status IN ('queued', 'running', 'paused')
-       ORDER BY id DESC LIMIT 1
-      `,
-      [JOB_TYPE, userId],
-    );
-    if (active.rows[0]) {
-      const parameters = jsonObject(active.rows[0].parameters_json);
-      const currentPriorityIds = priorityGameIds(parameters.priorityGameIds);
-      const mergedPriorityIds = priorityGameIds([...currentPriorityIds, ...requestedPriorityIds]);
-      if (mergedPriorityIds.length !== currentPriorityIds.length) {
-        const updated = await client.query(
-          `UPDATE metadata_jobs
-              SET parameters_json = $2::jsonb, updated_at = NOW()
-            WHERE id = $1
-          RETURNING *`,
-          [active.rows[0].id, JSON.stringify({ ...parameters, priorityGameIds: mergedPriorityIds })],
-        );
-        active.rows[0] = updated.rows[0];
-      }
-      await client.query("COMMIT");
-      return serializeJob(active.rows[0]);
-    }
-
-    const total = await client.query(
-      `
-      SELECT COUNT(*)::int AS count
-        FROM games game
-        LEFT JOIN catalog_games catalog ON catalog.id = game.catalog_game_id
-       WHERE game.user_id = $1
-         AND LOWER(TRIM(game.status)) <> 'wishlist'
-         AND NOT EXISTS (
-           SELECT 1 FROM game_metadata_candidates candidate
-            WHERE candidate.game_id = game.id
-              AND candidate.user_id = $1
-              AND candidate.decision = 'pending'
-         )
-         AND (
-           game.catalog_game_id IS NULL OR
-           catalog.metadata_quality IS DISTINCT FROM 'full'
-         )
-      `,
-      [userId],
-    );
-    const created = await client.query(
-      `
-      INSERT INTO metadata_jobs (
-        job_type, scope_user_id, requested_by_user_id, status,
-        parameters_json, cursor_json, total_count, next_attempt_at
-      )
-      VALUES ($1, $2, $2, 'queued', $3::jsonb, $4::jsonb, $5, NOW())
-      RETURNING *
-      `,
-      [
-        JOB_TYPE,
-        userId,
-        JSON.stringify({
-          providerSearchBudget: positiveInt(
-            process.env.METADATA_REPAIR_PROVIDER_BUDGET,
-            DEFAULT_PROVIDER_BUDGET,
-            250,
-          ),
-          priorityGameIds: requestedPriorityIds,
-        }),
-        JSON.stringify({ lastGameId: 0, providerSearches: 0 }),
-        total.rows[0].count,
-      ],
-    );
+    const job = await enqueueMetadataRepairTx(userId, client, options);
     await client.query("COMMIT");
-    return serializeJob(created.rows[0]);
+    return job;
   } catch (error) {
     try {
       await client.query("ROLLBACK");

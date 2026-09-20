@@ -8,6 +8,7 @@ export { DataTableFrame, DataTableSortButton } from "./DataTable";
 export { default as DropdownChevron } from "./DropdownChevron";
 export { default as EmptyState } from "./EmptyState";
 export { default as Field } from "./Field";
+export { default as FloatingPopoverPanel } from "./FloatingPopoverPanel";
 export { default as GameCover } from "./GameCover";
 export { default as IconButton } from "./IconButton";
 export { default as Modal } from "./Modal";

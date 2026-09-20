@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  focusRoleCandidates,
+  focusSuggestionGroups,
   moveQueueItem,
   playNextStatusGroup,
   recommendationCandidates,
@@ -146,4 +148,99 @@ test("queue movement supports accessible relative and absolute moves", () => {
   assert.deepEqual(moveQueueItem([1, 2, 3], 3, "top"), [3, 1, 2]);
   assert.deepEqual(moveQueueItem([1, 2, 3], 2, "down"), [1, 3, 2]);
   assert.deepEqual(moveQueueItem([1, 2, 3], 1, 2), [2, 3, 1]);
+});
+
+test("focus role candidates use total length and genres as explainable nudges, not hard rules", () => {
+  const games = [
+    { id: 1, status: "plan", my_genre: "RPG, Story focus", how_long_to_beat: 45 },
+    { id: 2, status: "plan", my_genre: "Indie, Story focus", how_long_to_beat: 5 },
+    { id: 3, status: "plan", my_genre: "Roguelike", how_long_to_beat: 50 },
+  ];
+  const main = focusRoleCandidates({ games, role: "main", statusGroupOf: groups });
+  assert.equal(main[0].game.id, 1);
+  assert.match(main[0].reason, /45h/);
+
+  const side = focusRoleCandidates({
+    games,
+    role: "side",
+    partnerGame: games[0],
+    statusGroupOf: groups,
+  });
+  assert.equal(side[0].game.id, 2);
+  assert.match(side[0].reason, /5h/);
+  assert.equal(side.some(({ game }) => game.id === 3), true);
+});
+
+test("focus suggestions preserve backlog priority within the same role fit", () => {
+  const result = focusRoleCandidates({
+    games: [
+      { id: 30, status: "plan", status_rank: 2, position: 4000, my_genre: "Story focus", displayHLTB: 24 },
+      { id: 10, status: "plan", status_rank: 2, position: 1000, my_genre: "RPG", displayHLTB: 27 },
+      { id: 20, status: "plan", status_rank: 2, position: 2000, my_genre: "Open world", displayHLTB: 40 },
+    ],
+    role: "main",
+    queueIds: [30],
+    statusGroupOf: groups,
+  });
+  assert.deepEqual(result.map(({ game }) => game.id), [10, 20, 30]);
+  assert.match(result[0].reason, /27h/);
+});
+
+test("focus suggestions show one shortlist and one backlog source by default", () => {
+  const candidates = focusRoleCandidates({
+    games: [
+      { id: 1, status: "plan", status_rank: 2, position: 1000, my_genre: "RPG", displayHLTB: 40 },
+      { id: 2, status: "plan", status_rank: 2, position: 2000, my_genre: "Story focus", displayHLTB: 30 },
+      { id: 3, status: "plan", status_rank: 2, position: 3000, my_genre: "Open world", displayHLTB: 50 },
+    ],
+    role: "main",
+    queueIds: [3, 2],
+    statusGroupOf: groups,
+  });
+  const suggestions = focusSuggestionGroups({ candidates, queueIds: [3, 2] });
+  assert.deepEqual(
+    suggestions.recommended.map(({ game, source }) => [game.id, source]),
+    [
+      [3, "shortlist"],
+      [1, "backlog"],
+    ],
+  );
+  assert.equal(suggestions.shortlist[0].sourceLabel, "Shortlist #1");
+  assert.equal(suggestions.backlog[0].sourceLabel, "Backlog priority #1");
+});
+
+test("Play Next uses the same resolved estimate as backlog cards", () => {
+  const result = focusRoleCandidates({
+    games: [
+      { id: 1, status: "plan", my_genre: "RPG", how_long_to_beat: null, displayHLTB: 32 },
+    ],
+    role: "main",
+    statusGroupOf: groups,
+  });
+  assert.match(result[0].reason, /32h/);
+});
+
+test("RAWG playtime fallback is not described as a completion estimate", () => {
+  const result = focusRoleCandidates({
+    games: [
+      { id: 1, status: "plan", my_genre: "RPG", displayHLTB: 27, estimateSource: "rawg_playtime" },
+    ],
+    role: "main",
+    statusGroupOf: groups,
+  });
+  assert.match(result[0].reason, /RAWG playtime signal/);
+  assert.match(result[0].reason, /not a completion estimate/);
+});
+
+test("already-playing games stay available ahead of automatic role guesses", () => {
+  const result = focusRoleCandidates({
+    games: [
+      { id: 1, status: "playing", my_genre: "Action" },
+      { id: 2, status: "plan", my_genre: "RPG", how_long_to_beat: 80 },
+    ],
+    role: "main",
+    statusGroupOf: groups,
+  });
+  assert.equal(result[0].game.id, 1);
+  assert.equal(result[0].reason, "Already in Playing.");
 });

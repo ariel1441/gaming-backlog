@@ -20,14 +20,16 @@ async function withServer(queryImpl, fn, connectImpl, appLocals = {}) {
   const originalQuery = pool.query;
   const originalConnect = pool.connect;
   pool.query = queryImpl;
-  pool.connect = connectImpl || (async () => ({
-    query: async (text, values) => {
-      const sql = String(text).trim();
-      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
-      return queryImpl(text, values);
-    },
-    release: () => {},
-  }));
+  pool.connect =
+    connectImpl ||
+    (async () => ({
+      query: async (text, values) => {
+        const sql = String(text).trim();
+        if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+        return queryImpl(text, values);
+      },
+      release: () => {},
+    }));
 
   const app = express();
   app.locals.rawgCache = {};
@@ -65,6 +67,128 @@ async function request(
   });
   return { status: res.status, body: await res.json() };
 }
+
+test("genre suggestion routes return only owner-scoped, missing personal genres", async () => {
+  const writes = [];
+  const suggestionGame = {
+    id: 12,
+    user_id: 7,
+    name: "Hades",
+    status: "playing",
+    catalog_name: "Hades",
+    catalog_cover_url: "https://img.example/hades.jpg",
+    catalog_metadata_quality: "full",
+    catalog_genres_json: ["Action"],
+    catalog_tags_json: ["Roguelite", "Indie"],
+    personal_genres: [{ id: 8, name: "Indie" }],
+  };
+  await withServer(
+    async (text, values) => {
+      const sql = String(text);
+      if (sql.includes("FROM user_personal_genres genre")) {
+        return {
+          rows: [
+            { id: 2, name: "Roguelike", usage_count: 2 },
+            { id: 8, name: "Indie", usage_count: 4 },
+          ],
+        };
+      }
+      if (
+        sql.includes(
+          "SELECT id FROM games WHERE id = $1 AND user_id = $2 FOR UPDATE",
+        )
+      ) {
+        return { rows: [{ id: 12 }] };
+      }
+      if (
+        sql.includes("SELECT id, name FROM user_personal_genres WHERE id = $1")
+      ) {
+        return {
+          rows: [
+            { id: values[0], name: values[0] === 2 ? "Roguelike" : "Indie" },
+          ],
+        };
+      }
+      if (sql.includes("SELECT 1 FROM games WHERE id = $1 AND user_id = $2")) {
+        return { rows: [{ "?column?": 1 }] };
+      }
+      if (
+        sql.startsWith("DELETE FROM game_personal_genres") ||
+        sql.includes("INSERT INTO game_personal_genres") ||
+        sql.startsWith("UPDATE games SET my_genre")
+      ) {
+        writes.push(sql);
+        return { rows: [] };
+      }
+      if (sql.includes("cg.metadata_quality = 'full'"))
+        return { rows: [suggestionGame] };
+      if (
+        sql.includes("FROM games g") &&
+        sql.includes("catalog_metadata_quality")
+      )
+        return { rows: [suggestionGame] };
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async (baseUrl) => {
+      const queue = await request(baseUrl, "/api/games/genre-suggestions", {
+        authPayload: { is_guest: false },
+      });
+      assert.equal(queue.status, 200);
+      assert.deepEqual(
+        queue.body.reviews[0].suggestions.map((genre) => genre.name),
+        ["Roguelike"],
+      );
+
+      const zeroGenreQueue = await request(
+        baseUrl,
+        "/api/games/genre-suggestions?only_without_personal_genres=true",
+        {
+          authPayload: { is_guest: false },
+        },
+      );
+      assert.equal(zeroGenreQueue.status, 200);
+
+      const oneGame = await request(
+        baseUrl,
+        "/api/games/12/genre-suggestions",
+        {
+          authPayload: { is_guest: false },
+        },
+      );
+      assert.equal(oneGame.status, 200);
+      assert.deepEqual(
+        oneGame.body.suggestions.map((genre) => genre.name),
+        ["Roguelike"],
+      );
+
+      const invalidApply = await request(
+        baseUrl,
+        "/api/games/12/genre-suggestions",
+        {
+          method: "POST",
+          body: { personalGenreIds: [999] },
+          authPayload: { is_guest: false },
+        },
+      );
+      assert.equal(invalidApply.status, 400);
+      assert.equal(invalidApply.body.error.code, "bad_request");
+
+      const validApply = await request(
+        baseUrl,
+        "/api/games/12/genre-suggestions",
+        {
+          method: "POST",
+          body: { personalGenreIds: [2], expectedPersonalGenreIds: [8] },
+          authPayload: { is_guest: false },
+        },
+      );
+      assert.equal(validApply.status, 200);
+      assert.ok(
+        writes.some((sql) => sql.includes("INSERT INTO game_personal_genres")),
+      );
+    },
+  );
+});
 
 test("GET /api/games never blocks on RAWG provider requests", async () => {
   const originalFetch = globalThis.fetch;
@@ -446,46 +570,57 @@ test("PUT /api/games/:id rejects duplicate title excluding current row", async (
 test("GET /api/games/search marks Wishlist RAWG duplicates and excludes the current item", async () => {
   let catalogRowsSql = "";
   let catalogRowsValues = null;
-  await withServer(async (text, values) => {
-    const sql = String(text);
-    if (sql.includes("FROM catalog_search_cache")) {
-      return {
-        rows: [{
-          result_catalog_game_ids_json: [12],
-          expires_at: new Date(Date.now() + 60_000),
-        }],
-      };
-    }
-    if (sql.includes("SELECT cg.*")) {
-      catalogRowsSql = sql;
-      catalogRowsValues = values;
-      return {
-        rows: [{
-          id: 12,
-          name: "Portal",
-          rawg_external_id: "101",
-          rawg_external_slug: "portal",
-          cover_url: "https://img.example/portal.jpg",
-          already_in_backlog: false,
-          already_in_wishlist: true,
-          genres_json: [],
-          stores_json: [],
-          tags_json: [],
-          metadata_quality: "search_result",
-        }],
-      };
-    }
-    return { rows: [] };
-  }, async (baseUrl) => {
-    const res = await request(baseUrl, "/api/games/search?q=portal&wishlist_item_id=20", {
-      authPayload: { is_guest: false },
-    });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.results[0].alreadyInWishlist, true);
-    assert.match(catalogRowsSql, /user_wishlist_items/);
-    assert.match(catalogRowsSql, /\$3::int IS NULL OR wishlist\.id <> \$3/);
-    assert.equal(catalogRowsValues[2], 20);
-  });
+  await withServer(
+    async (text, values) => {
+      const sql = String(text);
+      if (sql.includes("FROM catalog_search_cache")) {
+        return {
+          rows: [
+            {
+              result_catalog_game_ids_json: [12],
+              expires_at: new Date(Date.now() + 60_000),
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT cg.*")) {
+        catalogRowsSql = sql;
+        catalogRowsValues = values;
+        return {
+          rows: [
+            {
+              id: 12,
+              name: "Portal",
+              rawg_external_id: "101",
+              rawg_external_slug: "portal",
+              cover_url: "https://img.example/portal.jpg",
+              already_in_backlog: false,
+              already_in_wishlist: true,
+              genres_json: [],
+              stores_json: [],
+              tags_json: [],
+              metadata_quality: "search_result",
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    async (baseUrl) => {
+      const res = await request(
+        baseUrl,
+        "/api/games/search?q=portal&wishlist_item_id=20",
+        {
+          authPayload: { is_guest: false },
+        },
+      );
+      assert.equal(res.status, 200);
+      assert.equal(res.body.results[0].alreadyInWishlist, true);
+      assert.match(catalogRowsSql, /user_wishlist_items/);
+      assert.match(catalogRowsSql, /\$3::int IS NULL OR wishlist\.id <> \$3/);
+      assert.equal(catalogRowsValues[2], 20);
+    },
+  );
 });
 
 test("POST /api/games/:id/metadata/refresh refreshes the owned RAWG identity", async () => {
@@ -496,23 +631,27 @@ test("POST /api/games/:id/metadata/refresh refreshes the owned RAWG identity", a
       const sql = String(text);
       if (sql.includes("external_game_ids")) {
         return {
-          rows: [{ id: 12, rawg_id: 42, rawg_slug: "hades", catalog_game_id: 10 }],
+          rows: [
+            { id: 12, rawg_id: 42, rawg_slug: "hades", catalog_game_id: 10 },
+          ],
         };
       }
       if (sql.includes("UPDATE games")) return { rows: [] };
       if (sql.includes("FROM games g")) {
         return {
-          rows: [{
-            id: 12,
-            user_id: 7,
-            name: "Hades",
-            status: "playing",
-            rawg_id: 42,
-            rawg_slug: "hades",
-            catalog_game_id: 10,
-            catalog_name: "Hades",
-            personal_genres: [],
-          }],
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Hades",
+              status: "playing",
+              rawg_id: 42,
+              rawg_slug: "hades",
+              catalog_game_id: 10,
+              catalog_name: "Hades",
+              personal_genres: [],
+            },
+          ],
         };
       }
       return { rows: [] };
@@ -539,22 +678,48 @@ test("POST /api/games/:id/metadata/refresh refreshes the owned RAWG identity", a
 
 test("rename with omitted hours preserves saved estimate even when local HLTB matches", async () => {
   let savedHours;
-  await withServer(async (text, values) => {
-    const sql = String(text);
-    if (sql.includes('SELECT 1 FROM statuses')) return { rows: [{}] };
-    if (sql.includes('SELECT * FROM games')) return { rows: [{ id: 12, user_id: 7, name: 'Old title', status: 'playing', position: 1000, how_long_to_beat: 27 }] };
-    if (sql.includes('SELECT id, name FROM games')) return { rows: [{ id: 12, name: 'Old title' }] };
-    if (sql.includes('UPDATE games g')) {
-      savedHours = values[5];
-      return { rows: [{ id: 12, name: 'New title', how_long_to_beat: savedHours }] };
-    }
-    if (sql.includes('LEFT JOIN catalog_games')) return { rows: [{ id: 12, name: 'New title', how_long_to_beat: savedHours }] };
-    return { rows: [] };
-  }, async (baseUrl) => {
-    const res = await request(baseUrl, '/api/games/12', { method: 'PUT', body: { name: 'New title', status: 'playing' } });
-    assert.equal(res.status, 200);
-    assert.equal(savedHours, 27);
-  }, undefined, { hltbLookup: { 'new title': { main: 99 } } });
+  await withServer(
+    async (text, values) => {
+      const sql = String(text);
+      if (sql.includes("SELECT 1 FROM statuses")) return { rows: [{}] };
+      if (sql.includes("SELECT * FROM games"))
+        return {
+          rows: [
+            {
+              id: 12,
+              user_id: 7,
+              name: "Old title",
+              status: "playing",
+              position: 1000,
+              how_long_to_beat: 27,
+            },
+          ],
+        };
+      if (sql.includes("SELECT id, name FROM games"))
+        return { rows: [{ id: 12, name: "Old title" }] };
+      if (sql.includes("UPDATE games g")) {
+        savedHours = values[5];
+        return {
+          rows: [{ id: 12, name: "New title", how_long_to_beat: savedHours }],
+        };
+      }
+      if (sql.includes("LEFT JOIN catalog_games"))
+        return {
+          rows: [{ id: 12, name: "New title", how_long_to_beat: savedHours }],
+        };
+      return { rows: [] };
+    },
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/12", {
+        method: "PUT",
+        body: { name: "New title", status: "playing" },
+      });
+      assert.equal(res.status, 200);
+      assert.equal(savedHours, 27);
+    },
+    undefined,
+    { hltbLookup: { "new title": { main: 99 } } },
+  );
 });
 
 test("PUT /api/games/:id normalizes blank resume notes and removes stale eligible-state membership atomically", async () => {
@@ -842,7 +1007,7 @@ test("PATCH /api/games/:id/position returns enriched Steam metadata", async () =
   );
 });
 
-test("POST /api/games/:id/finish updates completion fields and removes Next Up atomically", async () => {
+test("POST /api/games/:id/finish updates completion fields and clears planning relationships atomically", async () => {
   const calls = [];
   const client = {
     query: async (text, values) => {
@@ -866,6 +1031,9 @@ test("POST /api/games/:id/finish updates completion fields and removes Next Up a
       }
       if (sql.includes("UPDATE games") && sql.includes("status = 'finished'")) {
         return { rows: [{ id: 12, user_id: 7, status: "finished" }] };
+      }
+      if (sql.includes("DELETE FROM user_play_focus_games")) {
+        return { rows: [{ focus_role: "main" }] };
       }
       if (sql.includes("LEFT JOIN LATERAL")) {
         return {
@@ -905,6 +1073,7 @@ test("POST /api/games/:id/finish updates completion fields and removes Next Up a
       assert.equal(res.body.outcome, "finished");
       assert.equal(res.body.game.status, "finished");
       assert.equal(res.body.game.finished_at, "2026-07-18");
+      assert.equal(res.body.clearedFocusRole, "main");
       const update = calls.find((call) =>
         call.text.includes("status = 'finished'"),
       );
@@ -918,6 +1087,12 @@ test("POST /api/games/:id/finish updates completion fields and removes Next Up a
       assert.equal(
         calls.some((call) =>
           call.text.includes("DELETE FROM user_next_up_games"),
+        ),
+        true,
+      );
+      assert.equal(
+        calls.some((call) =>
+          call.text.includes("DELETE FROM user_play_focus_games"),
         ),
         true,
       );

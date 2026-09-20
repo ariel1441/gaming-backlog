@@ -165,8 +165,6 @@ export function compareSteamPrices(previous, current) {
       !['available', 'free'].includes(previous.availability) || !['available', 'free'].includes(current.availability)) return [];
   const events = [];
   if (Number(current.current_minor) < Number(previous.current_minor)) events.push('steam_price_drop');
-  if (Number(current.current_minor) > Number(previous.current_minor)) events.push('steam_price_increase');
   if (previous.sale === false && current.sale === true) events.push('steam_sale_started');
-  if (previous.sale === true && current.sale === false) events.push('steam_sale_ended');
   return events;
 }

@@ -443,7 +443,11 @@ router.post("/import", verifyToken, validateImportSteam, async (req, res, next) 
   try {
     const payload = req.body?.scope
       ? await importSteamCandidatesForScope(req.user.id, req.body.scope)
-      : await importSteamCandidates(req.user.id, req.body?.candidateIds || []);
+      : await importSteamCandidates(
+          req.user.id,
+          req.body?.candidateIds || [],
+          req.body?.candidateReviews || [],
+        );
     cacheClear(req.user.id);
     res.status(201).json(payload);
   } catch (err) {

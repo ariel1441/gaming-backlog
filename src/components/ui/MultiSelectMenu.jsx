@@ -3,8 +3,7 @@ import { Check, Plus, X } from "lucide-react";
 import Button from "./Button";
 import Chip from "./Chip";
 import { TextInput } from "./inputs";
-import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
-import PopoverPanel from "./PopoverPanel";
+import FloatingPopoverPanel from "./FloatingPopoverPanel";
 import DropdownChevron from "./DropdownChevron";
 
 function normalizeOption(value) {
@@ -27,7 +26,7 @@ export default function MultiSelectMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const ref = useRef(null);
+  const triggerRef = useRef(null);
   const optionRefs = useRef([]);
   const typeaheadRef = useRef({ value: "", timer: null });
   const [announcement, setAnnouncement] = useState("");
@@ -67,13 +66,6 @@ export default function MultiSelectMenu({
     !allOptions.some(
       (option) => option.toLowerCase() === query.trim().toLowerCase(),
     );
-
-  useDismissibleLayer({
-    open,
-    layerRef: ref,
-    onDismiss: () => setOpen(false),
-    restoreFocus: true,
-  });
 
   useEffect(() => {
     if (!open) return;
@@ -151,11 +143,12 @@ export default function MultiSelectMenu({
     : placeholder;
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <span className="sr-only" aria-live="polite">
         {announcement}
       </span>
       <button
+        ref={triggerRef}
         {...props}
         id={controlId}
         type="button"
@@ -207,12 +200,11 @@ export default function MultiSelectMenu({
         </div>
       ) : null}
 
-      {open ? (
-        <PopoverPanel
-          padding="sm"
-          radius="lg"
-          className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-tooltip"
-        >
+      <FloatingPopoverPanel
+        anchorRef={triggerRef}
+        open={open}
+        onDismiss={() => setOpen(false)}
+      >
           <TextInput
             type="search"
             value={query}
@@ -230,7 +222,7 @@ export default function MultiSelectMenu({
 
           <div
             id={listboxId}
-            className="max-h-56 space-y-1 overflow-auto pr-1"
+            className="min-h-0 flex-1 space-y-1 overflow-auto pr-1"
             role="listbox"
             aria-labelledby={controlId}
             aria-multiselectable="true"
@@ -291,8 +283,7 @@ export default function MultiSelectMenu({
               Add "{query.trim()}"
             </Button>
           ) : null}
-        </PopoverPanel>
-      ) : null}
+      </FloatingPopoverPanel>
     </div>
   );
 }

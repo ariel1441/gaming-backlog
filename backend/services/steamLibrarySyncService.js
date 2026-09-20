@@ -426,6 +426,9 @@ function reviewItem(app, source, candidate, game, activityEventId) {
       (game ? "Steam shows new play activity." : null),
     suggestedStatusConfidence:
       candidate?.suggested_status_confidence || (game ? "medium" : null),
+    personalGenreSuggestions: Array.isArray(candidate?.personal_genre_suggestions_json)
+      ? candidate.personal_genre_suggestions_json.slice(0, 5)
+      : [],
   };
 }
 
@@ -578,9 +581,9 @@ async function persistWorkItem(job, item, prepared) {
           playtime_minutes_forever, last_played_at, proposed_catalog_game_id,
           duplicate_game_id, match_confidence, match_reason, filtered_reason,
           suggested_status, suggested_status_reason,
-          suggested_status_confidence, updated_at
+          suggested_status_confidence, personal_genre_suggestions_json, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, NOW())
         ON CONFLICT (user_id, steam_app_id)
         DO UPDATE SET
           steam_name = EXCLUDED.steam_name,
@@ -633,6 +636,11 @@ async function persistWorkItem(job, item, prepared) {
               THEN steam_import_candidates.suggested_status_confidence
             ELSE EXCLUDED.suggested_status_confidence
           END,
+          personal_genre_suggestions_json = CASE
+            WHEN steam_import_candidates.import_status = 'ignored'
+              THEN steam_import_candidates.personal_genre_suggestions_json
+            ELSE EXCLUDED.personal_genre_suggestions_json
+          END,
           updated_at = NOW()
         WHERE steam_import_candidates.import_status IN ('pending', 'accepted', 'attached', 'ignored')
         RETURNING *
@@ -652,6 +660,7 @@ async function persistWorkItem(job, item, prepared) {
           prepared.recommendation?.status || null,
           prepared.recommendation?.reason || null,
           prepared.recommendation?.confidence || null,
+          JSON.stringify(prepared.personalGenreSuggestions || []),
         ],
       );
       candidate = rows[0] || beforeCandidate.rows[0] || null;

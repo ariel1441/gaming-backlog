@@ -54,8 +54,8 @@ const labels = {
   owned: "New games on Steam",
   started: "Started on Steam",
   playing: "Move to Playing?",
-  prices: "Wishlist price drops & sales",
-  updates: "Other updates",
+  prices: "Wishlist sales",
+  updates: "Other activity",
 };
 const icons = {
   owned: Gamepad2,
@@ -312,7 +312,7 @@ function NotificationController({ scope, publish }) {
         error: "",
       }));
       setNotice(
-        `${result.updated} updates hidden. Your game decisions are still open.`,
+        `${result.updated} activity updates hidden. Your game decisions are still open.`,
       );
     } catch (error) {
       if (request === sequence.current)
@@ -446,7 +446,7 @@ function NotificationController({ scope, publish }) {
                         disabled={reading}
                         onClick={hideOther}
                       >
-                        Hide all updates
+                        Hide all activity
                       </Button>
                     ) : null}
                   </div>

@@ -57,7 +57,13 @@ for (const [label, viewport] of [
       state: "resolved",
       eventKind: "fact",
       wishlistItemId: 9,
-      payload: { currency: "ILS", previousMinor: 10000, currentMinor: 5000 },
+      payload: {
+        currency: "ILS",
+        previousMinor: 10000,
+        currentMinor: 5000,
+        discountPercent: 50,
+        sale: true,
+      },
     };
     const dismissed = new Set(),
       read = new Set();
@@ -100,6 +106,17 @@ for (const [label, viewport] of [
       if (path === "/api/games") return json(games);
       if (path === "/api/games/statuses-list")
         return json(["plan to play", "playing", "finished"]);
+      if (path === "/api/personal-genres")
+        return json({
+          genres: [
+            { id: 101, name: "Roguelike", usageCount: 4 },
+            { id: 102, name: "Action", usageCount: 8 },
+            { id: 103, name: "Indie", usageCount: 12 },
+            { id: 104, name: "Co op", usageCount: 2 },
+            { id: 105, name: "Survival", usageCount: 2 },
+            { id: 106, name: "Story focus", usageCount: 6 },
+          ],
+        });
       if (path === "/api/steam/sync-health")
         return json({ account, activeJob: null, runs: [] });
       if (path === "/api/steam/account") return json({ account });
@@ -169,6 +186,15 @@ for (const [label, viewport] of [
               importStatus: "pending",
               proposedCatalogGameId: id === 15 ? null : id,
               proposedCatalogName: id === 11 ? "Hollow Knight" : "Celeste",
+              ...(id === 11 && label !== "legacy wishlist" ? {
+                personalGenreSuggestions: [
+                  { id: 101, name: "Roguelike", reason: "RAWG: Roguelite" },
+                  { id: 102, name: "Action", reason: "Action Roguelike metadata" },
+                  { id: 103, name: "Indie", reason: "RAWG: Indie" },
+                  { id: 104, name: "Co op", reason: "Explicit co-op metadata" },
+                  { id: 105, name: "Survival", reason: "RAWG: Survival" },
+                ],
+              } : {}),
               ...(label === 'legacy wishlist' && id === 11 ? { linkedGameId: 3, linkedGameStatus: 'wishlist', linkedGameName: 'Hollow Knight' } : {}),
             },
           ],
@@ -184,6 +210,7 @@ for (const [label, viewport] of [
         expect(data).toEqual({
           status: candidateId === 16 ? "playing" : "finished",
           activityEventId: candidateId,
+          ...(candidateId === 11 ? { personalGenreIds: [102, 103, 104, 105, 106] } : {}),
         });
         dismissed.add(candidateId);
         return json({
@@ -286,6 +313,20 @@ for (const [label, viewport] of [
       path: testInfo.outputPath(`notifications-${label}-status.png`),
     });
     await hollow.getByRole("option", { name: "finished", exact: true }).click();
+    if (label !== "legacy wishlist") {
+      await expect(hollow.getByText("Genres", { exact: true })).toBeVisible();
+      const roguelike = hollow.getByRole("button", { name: /Roguelike/ });
+      await expect(roguelike).toHaveAttribute("aria-pressed", "true");
+      await roguelike.click();
+      await expect(roguelike).toHaveAttribute("aria-pressed", "false");
+      await hollow.getByRole("button", { name: "+2", exact: true }).click();
+      await expect(hollow.getByRole("button", { name: /Survival/ })).toBeVisible();
+      await hollow.getByRole("button", { name: "+ Add genre", exact: true }).click();
+      const genrePicker = hollow.getByRole("dialog", { name: "Add a genre", exact: true });
+      await expect(genrePicker).toBeVisible();
+      await genrePicker.getByRole("button", { name: "Story focus", exact: true }).click();
+      await expect(hollow.getByRole("button", { name: /Story focus/ })).toBeVisible();
+    }
     await hollow
       .getByText("Also remove from my Wishlist", { exact: true })
       .click();
@@ -382,9 +423,9 @@ for (const [label, viewport] of [
     await expect(portal.getByRole("status")).toContainText(
       "Added to Backlog · playing",
     );
-    await panel.locator("summary").filter({ hasText: "Other updates" }).click();
-    await panel.getByRole("button", { name: "Hide all updates" }).click();
-    await expect(panel.getByText(/51 updates hidden/)).toBeVisible();
+    await panel.locator("summary").filter({ hasText: "Other activity" }).click();
+    await panel.getByRole("button", { name: "Hide all activity" }).click();
+    await expect(panel.getByText(/51 activity updates hidden/)).toBeVisible();
     await panel
       .locator("summary")
       .filter({ hasText: "Move to Playing?" })
@@ -398,8 +439,9 @@ for (const [label, viewport] of [
     );
     await panel
       .locator("summary")
-      .filter({ hasText: "Wishlist price drops" })
+      .filter({ hasText: "Wishlist sales" })
       .click();
+    await expect(panel.getByText(/New sale · 50% off/)).toBeVisible();
     await panel.getByRole("button", { name: "Mark read", exact: true }).click();
     await expect(
       panel.getByRole("button", { name: "Mark read", exact: true }),
@@ -418,7 +460,7 @@ for (const [label, viewport] of [
     ).toHaveCount(0);
     await panel
       .locator("summary")
-      .filter({ hasText: "Wishlist price drops" })
+      .filter({ hasText: "Wishlist sales" })
       .click();
     await panel.getByRole("button", { name: "Hide update" }).click();
     await expect(panel.getByRole("article").getByRole("status")).toContainText(

@@ -29,6 +29,7 @@ export function listOwnedGamesQuery(userId) {
              ugs.achievements_last_error_code AS steam_achievements_last_error_code,
              ugs.achievements_last_error_message AS steam_achievements_last_error_message,
              (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned,
+             focus.focus_role,
              personal.personal_genres
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
@@ -49,6 +50,9 @@ export function listOwnedGamesQuery(userId) {
       LEFT JOIN steam_import_candidates sic
         ON sic.user_id = g.user_id
        AND sic.steam_app_id = ugs.provider_app_id
+      LEFT JOIN user_play_focus_games focus
+        ON focus.user_id = g.user_id
+       AND focus.game_id = g.id
       LEFT JOIN LATERAL (
         SELECT COALESCE(
           json_agg(json_build_object('id', genre.id, 'name', genre.name)
@@ -100,6 +104,7 @@ export function selectOwnedGameDetailsQuery(gameId, userId) {
              ugs.achievements_last_error_code AS steam_achievements_last_error_code,
              ugs.achievements_last_error_message AS steam_achievements_last_error_message,
              (ugs.id IS NOT NULL AND ugs.source_status = 'owned') AS steam_owned,
+             focus.focus_role,
              personal.personal_genres
       FROM games g
       LEFT JOIN statuses s ON s.status = g.status
@@ -120,6 +125,9 @@ export function selectOwnedGameDetailsQuery(gameId, userId) {
       LEFT JOIN steam_import_candidates sic
         ON sic.user_id = g.user_id
        AND sic.steam_app_id = ugs.provider_app_id
+      LEFT JOIN user_play_focus_games focus
+        ON focus.user_id = g.user_id
+       AND focus.game_id = g.id
       LEFT JOIN LATERAL (
         SELECT COALESCE(
           json_agg(json_build_object('id', genre.id, 'name', genre.name)
@@ -165,6 +173,7 @@ export function updateOwnedGameStatusQuery(
   userId,
   status,
   removeNextUp = false,
+  removePlayFocus = false,
 ) {
   return {
     text: `
@@ -178,9 +187,14 @@ export function updateOwnedGameStatusQuery(
         DELETE FROM user_next_up_games
          WHERE user_id = $2 AND game_id = $1 AND $4
          RETURNING game_id
+      ),
+      unfocused AS (
+        DELETE FROM user_play_focus_games
+         WHERE user_id = $2 AND game_id = $1 AND $5
+         RETURNING game_id
       )
       SELECT * FROM updated
     `,
-    values: [gameId, userId, status, removeNextUp],
+    values: [gameId, userId, status, removeNextUp, removePlayFocus],
   };
 }

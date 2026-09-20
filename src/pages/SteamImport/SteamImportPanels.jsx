@@ -379,14 +379,12 @@ export function SelectionActionBar({
 }) {
   const statusOptions = statuses.map(statusOption);
 
-  if (!selectedCount) return null;
-
   return (
-    <div className="sticky top-3 z-20 mt-4 rounded-lg border border-primary/45 bg-surface-card/95 px-3 py-3 shadow-elevated backdrop-blur">
+    <div className={`sticky top-3 z-20 mt-4 rounded-lg border px-3 py-3 backdrop-blur ${selectedCount ? "border-primary/45 bg-surface-card/95 shadow-elevated" : "border-surface-border bg-surface-card/90"}`}>
       <div className="flex flex-wrap items-center gap-2">
         <div className="mr-auto">
           <div className="text-sm font-semibold text-content-primary">
-            {selectedCount} selected
+            {selectedCount} of {visibleSelectableCount} visible selected
           </div>
           <button
             type="button"
@@ -406,13 +404,14 @@ export function SelectionActionBar({
           placeholder="Set status"
           className="h-9 min-w-48"
           options={statusOptions}
+          disabled={!selectedCount}
         />
         <Button
           type="button"
           variant="secondary"
           size="sm"
           onClick={onBulkSetStatus}
-          disabled={!bulkStatus}
+          disabled={!selectedCount || !bulkStatus}
         >
           Apply status
         </Button>
@@ -422,6 +421,7 @@ export function SelectionActionBar({
             variant="secondary"
             size="sm"
             onClick={onBulkAccept}
+            disabled={!selectedCount}
           >
             Approve matches only
           </Button>
@@ -431,6 +431,7 @@ export function SelectionActionBar({
             variant="secondary"
             size="sm"
             onClick={onBulkRestore}
+            disabled={!selectedCount}
           >
             Restore
           </Button>
@@ -441,18 +442,22 @@ export function SelectionActionBar({
             variant="ghost"
             size="sm"
             onClick={onBulkIgnore}
+            disabled={!selectedCount}
           >
             Ignore
           </Button>
         ) : null}
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          onClick={onBulkImport}
-        >
-          Add selected to Backlog
-        </Button>
+        {!isIgnoredView ? (
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={onBulkImport}
+            disabled={!selectedCount}
+          >
+            Add selected to Backlog
+          </Button>
+        ) : null}
       </div>
     </div>
   );

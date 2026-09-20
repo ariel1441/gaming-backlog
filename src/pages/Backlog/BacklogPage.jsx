@@ -323,10 +323,10 @@ export default function BacklogPage() {
     try {
       const payload = await addToNextUp(game.id);
       toast.success(
-        `${game.displayName || game.name} added at position ${payload.position + 1}.`,
+        `${game.displayName || game.name} added to the shortlist at position ${payload.position + 1}.`,
       );
     } catch (error) {
-      toast.error(error.message || "Could not add this game to Next Up.");
+      toast.error(error.message || "Could not add this game to the shortlist.");
     }
   };
 

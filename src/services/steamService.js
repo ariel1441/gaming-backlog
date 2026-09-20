@@ -140,8 +140,8 @@ export function mergeSteamDuplicateGames(payload, opts = {}) {
   return api.post("/api/steam/duplicate-games/merge", payload, opts);
 }
 
-export function importSteamCandidates(candidateIds, opts = {}) {
-  return api.post("/api/steam/import", { candidateIds }, opts);
+export function importSteamCandidates(candidateIds, candidateReviews = [], opts = {}) {
+  return api.post("/api/steam/import", { candidateIds, candidateReviews }, opts);
 }
 
 export function importSteamCandidateScope(scope, opts = {}) {

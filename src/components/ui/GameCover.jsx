@@ -32,6 +32,7 @@ export default function GameCover({
   alt = "",
   variant = "custom",
   fit = "cover",
+  backdrop = false,
   loading = "lazy",
   className = "",
   imageClassName = "",
@@ -59,6 +60,7 @@ export default function GameCover({
       {...props}
       className={[
         "min-w-0 overflow-hidden bg-surface-elevated",
+        backdrop ? "relative isolate" : "",
         variantClasses[variant] || variantClasses.custom,
         className,
       ].join(" ")}
@@ -67,18 +69,34 @@ export default function GameCover({
       aria-hidden={decorative ? "true" : undefined}
     >
       {!failed ? (
-        <img
-          src={activeSrc}
-          alt={decorative ? "" : alt || name || ""}
-          loading={loading}
-          decoding="async"
-          onError={() => setFailedSources((previous) => [...previous, activeSrc])}
-          className={[
-            "h-full w-full",
-            contain ? "object-contain" : "object-cover",
-            imageClassName,
-          ].join(" ")}
-        />
+        <>
+          {backdrop ? (
+            <>
+              <img
+                src={activeSrc}
+                alt=""
+                aria-hidden="true"
+                loading={loading}
+                decoding="async"
+                className="absolute inset-0 h-full w-full scale-110 object-cover opacity-35 blur-md"
+              />
+              <span className="absolute inset-0 bg-surface-bg/30" aria-hidden="true" />
+            </>
+          ) : null}
+          <img
+            src={activeSrc}
+            alt={decorative ? "" : alt || name || ""}
+            loading={loading}
+            decoding="async"
+            onError={() => setFailedSources((previous) => [...previous, activeSrc])}
+            className={[
+              "h-full w-full",
+              backdrop ? "relative z-10" : "",
+              contain ? "object-contain" : "object-cover",
+              imageClassName,
+            ].join(" ")}
+          />
+        </>
       ) : (
         <div
           className={[

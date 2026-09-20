@@ -30,6 +30,22 @@ export function groupNotifications(groups = []) {
     bucket.groups.push(group);
     bucket.unseen ||= Boolean(group.unseen);
   }
+  const otherActivityPriority = (group) => {
+    const event = primaryNotificationEvent(group);
+    if (event?.eventType === "wishlist_added") return 0;
+    if (["wishlist_removed", "wishlist_likely_purchased"].includes(event?.eventType))
+      return 1;
+    if (event?.eventType === "wishlist_priority_changed") return 2;
+    return 3;
+  };
+  const newestFirst = (left, right) =>
+    Number(right.id) - Number(left.id);
+  if (buckets.has("updates")) {
+    buckets.get("updates").groups.sort((left, right) =>
+      otherActivityPriority(left) - otherActivityPriority(right) || newestFirst(left, right),
+    );
+  }
+  if (buckets.has("prices")) buckets.get("prices").groups.sort(newestFirst);
   return ["owned", "started", "playing", "prices", "updates"].flatMap((key) =>
     buckets.has(key) ? [buckets.get(key)] : [],
   );

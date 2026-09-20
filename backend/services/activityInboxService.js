@@ -30,6 +30,9 @@ const scope = `FROM user_activity_events e
   ) related_wishlist ON TRUE
   WHERE e.user_id = $1 AND e.state <> 'dismissed' AND e.source IN ('steam_library', 'steam_wishlist', 'steam_prices')`;
 const attention = `(e.source = 'steam_library' AND e.event_kind = 'decision' AND e.state = 'open')`;
+const reviewedSteamActivity = `(e.source = 'steam_library' AND e.state = 'resolved')`;
+const mutedPriceTransition = `(e.source = 'steam_prices'
+  AND e.event_type IN ('steam_price_increase', 'steam_sale_ended'))`;
 const attentionScope = `FROM user_activity_events e
   JOIN steam_sync_jobs job ON job.sync_run_id = e.sync_run_id AND job.user_id = e.user_id
   JOIN user_external_accounts account ON account.id = job.account_id AND account.user_id = e.user_id
@@ -53,7 +56,8 @@ const pairedRemoval = `(owned.id IS NOT NULL AND e.source = 'steam_wishlist'
       AND acquisition.event_type IN ('steam_new_game', 'steam_started_playing', 'steam_status_suggestion')
       AND acquisition_job.account_id = account.id AND acquisition_job.provider_user_id = account.provider_user_id
   ))`;
-const visibleUpdate = `NOT ${attention} AND receipt.dismissed_at IS NULL
+const visibleUpdate = `NOT ${attention} AND NOT ${reviewedSteamActivity}
+  AND NOT ${mutedPriceTransition} AND receipt.dismissed_at IS NULL
   AND NOT (e.source = 'steam_prices' AND owned.id IS NOT NULL) AND NOT ${pairedRemoval}`;
 const currentOwned = `EXISTS (
   SELECT 1 FROM user_game_sources owned
@@ -71,7 +75,8 @@ const pairedRemovalFast = `EXISTS (
     AND acquisition_job.account_id = account.id
     AND acquisition_job.provider_user_id = account.provider_user_id
 )`;
-const visibleUpdateFast = `NOT ${attention} AND receipt.dismissed_at IS NULL
+const visibleUpdateFast = `NOT ${attention} AND NOT ${reviewedSteamActivity}
+  AND NOT ${mutedPriceTransition} AND receipt.dismissed_at IS NULL
   AND NOT (e.source = 'steam_prices' AND ${currentOwned})
   AND NOT (e.source = 'steam_wishlist'
     AND e.event_type IN ('wishlist_removed', 'wishlist_likely_purchased')

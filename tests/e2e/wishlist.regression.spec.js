@@ -145,7 +145,7 @@ test("Backlog preference merges all 444 intentions into normal filtering without
   await page.goto("/");
   await expect(page.locator("article")).toHaveCount(444);
   await expect(
-    page.getByRole("button", { name: /Actions for|Reorder|Add to Next Up/ }),
+    page.getByRole("button", { name: /Actions for|Reorder|Add to shortlist/ }),
   ).toHaveCount(0);
   await page.getByPlaceholder(/Search/).fill("Wishlist title 443");
   await expect(

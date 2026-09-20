@@ -158,11 +158,30 @@ export const steamSchemas = {
       .min(1)
       .max(250)
       .unique(),
+    candidateReviews: Joi.array()
+      .items(
+        Joi.object({
+          candidateId: Joi.number().integer().positive().required(),
+          personalGenreIds: Joi.array()
+            .items(Joi.number().integer().positive())
+            .max(10)
+            .unique()
+            .default([]),
+        }),
+      )
+      .max(250)
+      .unique("candidateId")
+      .default([]),
     scope: scopeSchema.optional(),
   }).or("candidateIds", "scope"),
   addCandidateToBacklogBody: Joi.object({
     status: Joi.string().trim().max(80).required(),
     activityEventId: Joi.number().integer().positive().allow(null).optional(),
+    personalGenreIds: Joi.array()
+      .items(Joi.number().integer().positive())
+      .max(10)
+      .unique()
+      .default([]),
   }),
 };
 
