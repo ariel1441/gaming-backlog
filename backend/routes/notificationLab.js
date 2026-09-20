@@ -2,6 +2,7 @@ import express from "express";
 import { celebrate, Joi, Segments } from "celebrate";
 import { verifyToken } from "../middleware/auth.js";
 import { badRequest, notFound } from "../utils/httpError.js";
+import { notificationLabEnabled } from "../config/notificationLab.js";
 import {
   notificationLabScenarios,
   resetNotificationLab,
@@ -19,7 +20,7 @@ function isLocalRequest(req) {
 }
 
 function localLabOnly(req, _res, next) {
-  if (process.env.NODE_ENV === "production" || !isLocalRequest(req)) {
+  if (!notificationLabEnabled() || !isLocalRequest(req)) {
     return next(notFound("Not found"));
   }
   if (req.user?.is_guest) {

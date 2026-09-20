@@ -28,7 +28,9 @@ export function NotificationLabSettings({ isGuest }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
 
-  if (!import.meta.env.DEV || isGuest) return null;
+  const labEnabled =
+    import.meta.env.DEV && import.meta.env.VITE_NOTIFICATION_LAB_ENABLED === "true";
+  if (!labEnabled || isGuest) return null;
 
   const seed = async () => {
     try {

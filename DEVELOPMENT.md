@@ -59,6 +59,8 @@ PGSSL=false
 JWT_SECRET=your_local_jwt_secret
 VITE_API_BASE_URL=http://localhost:5000
 ALLOWED_ORIGINS=http://localhost:5173
+NOTIFICATION_LAB_ENABLED=false
+VITE_NOTIFICATION_LAB_ENABLED=false
 MICROCACHE_TTL_MS=300000
 DEMO_ENABLED=true
 DEMO_TEMPLATE_USERNAME=demo_template
@@ -71,6 +73,12 @@ STEAM_OPENID_REALM=http://localhost:5000
 STEAM_OPENID_RETURN_URL=http://localhost:5000/api/steam/auth/callback
 STEAM_DEV_SYNC_SAMPLE=false
 ```
+
+The Notification Lab is disabled by default. For a deliberate local session,
+set both `NOTIFICATION_LAB_ENABLED=true` and
+`VITE_NOTIFICATION_LAB_ENABLED=true`, then restart the backend and frontend.
+The backend refuses to start with the server flag enabled unless
+`NODE_ENV=development`; keep both flags false or unset in every deployment.
 
 For local Steam UI testing, `STEAM_WEB_API_KEY` is optional. You can either set
 `STEAM_MOCK_OWNED_GAMES_JSON` to a mock Steam payload, or set

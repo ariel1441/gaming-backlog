@@ -25,10 +25,11 @@ import { startWishlistMetadataScheduler } from "./services/wishlistMetadataServi
 import { startSteamSyncJobScheduler } from "./services/steamLibrarySyncService.js";
 import errorHandler from "./middleware/errorHandler.js";
 import demoRouter from "./routes/demo.js";
-import notificationLabRouter from "./routes/notificationLab.js";
+import { assertNotificationLabConfiguration } from "./config/notificationLab.js";
 import { pool } from "./db.js";
 
 const app = express();
+const notificationLabEnabled = assertNotificationLabConfiguration();
 
 registerSecurity(app);
 
@@ -57,7 +58,10 @@ app.use("/api/insights", insightsRouter);
 app.use("/api/meta", metaRouter);
 app.use("/api/metadata", metadataRouter);
 app.use("/api/demo", publicLimiter, demoRouter);
-app.use("/api/dev/notification-lab", notificationLabRouter);
+if (notificationLabEnabled) {
+  const { default: notificationLabRouter } = await import("./routes/notificationLab.js");
+  app.use("/api/dev/notification-lab", notificationLabRouter);
+}
 
 // 404 for any unmatched route (forward to error handler)
 app.use((req, _res, next) => {
