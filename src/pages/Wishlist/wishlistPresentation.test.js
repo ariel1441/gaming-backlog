@@ -7,7 +7,15 @@ import {
   summarizeWishlistMetadataResults,
   wishlistArtwork,
   wishlistMetadataBatchMessage,
+  wishlistApiSort,
 } from "./wishlistPresentation.js";
+
+test("wishlist UI sorts map to stable API keys", () => {
+  assert.equal(wishlistApiSort("providerOrder"), "provider_order");
+  assert.equal(wishlistApiSort("estimatedHours"), "estimated_hours");
+  assert.equal(wishlistApiSort("releaseDate"), "release_date");
+  assert.equal(wishlistApiSort("unknown"), "provider_order");
+});
 
 test("saved Steam portraits use landscape art with an original-image fallback", () => {
   const cover = "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3321460/hash/library_capsule.jpg?t=123";

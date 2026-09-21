@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useGames } from "../../hooks/useGames";
+import { invalidateGamesCache } from "../../services/gamesCache";
 import { getSteamSyncHealth } from "../../services/steamService";
 import {
   clearWishlistCache,
@@ -27,11 +27,8 @@ export const useSteamExperience = () => useContext(Context);
 
 export function SteamExperienceProvider({ children }) {
   const { user, isAuthenticated, isGuest } = useAuth();
-  const { refresh: refreshGames } = useGames();
   const [state, setState] = useState(null);
   const reloadRef = useRef(async () => {});
-  const refreshGamesRef = useRef(refreshGames);
-  refreshGamesRef.current = refreshGames;
   const reload = useCallback(() => reloadRef.current(), []);
   useEffect(() => {
     setState(null);
@@ -56,22 +53,28 @@ export function SteamExperienceProvider({ children }) {
             signal: controller.signal,
           });
           if (stopped) return;
+          const hasAccountState = Object.prototype.hasOwnProperty.call(
+            payload,
+            "account",
+          );
           const account = payload.account;
-          reconcileWishlistConnection(user.id, account?.id);
-          if (previous && previous.account?.id !== account?.id)
-            clearWishlistCache();
-          else if (
-            previous &&
-            (previous.account?.priceRevision !== account?.priceRevision ||
-              previous.account?.lastWishlistSyncAt !==
-                account?.lastWishlistSyncAt)
-          )
-            invalidateWishlistCache();
-          if (
-            previous &&
-            previous.account?.lastLibrarySyncAt !== account?.lastLibrarySyncAt
-          )
-            void refreshGamesRef.current({ silent: true });
+          if (hasAccountState) {
+            reconcileWishlistConnection(user.id, account?.id);
+            if (previous && previous.account?.id !== account?.id)
+              clearWishlistCache();
+            else if (
+              previous &&
+              (previous.account?.priceRevision !== account?.priceRevision ||
+                previous.account?.lastWishlistSyncAt !==
+                  account?.lastWishlistSyncAt)
+            )
+              invalidateWishlistCache();
+            if (
+              previous &&
+              previous.account?.lastLibrarySyncAt !== account?.lastLibrarySyncAt
+            )
+              invalidateGamesCache(user.id);
+          }
           previous = payload;
           setState({ ...payload, userId: user.id, error: "" });
           if (payload.activeJob) delay = 5_000;

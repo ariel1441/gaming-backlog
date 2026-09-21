@@ -2,6 +2,52 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
+function isCurrentSale(item, now = Date.now()) {
+  const price = item.steamPrice;
+  return Boolean(
+    price?.monitoring && !price.stale && !price.errorCode &&
+    ["available", "free"].includes(price.status) && price.currency === "ILS" &&
+    Number.isSafeInteger(price.currentMinor) && price.currentMinor >= 0 &&
+    Number.isFinite(Date.parse(price.observedAt)) &&
+    now - Date.parse(price.observedAt) <= 36 * 60 * 60 * 1000 &&
+    price.discountPercent > 0 && price.regularMinor > price.currentMinor
+  );
+}
+
+function wishlistPage(items, uri) {
+  const params = uri.searchParams;
+  let filtered = [...items];
+  if (params.get("on_sale") === "true") filtered = filtered.filter((item) => isCurrentSale(item));
+  const direction = params.get("direction") === "desc" ? -1 : 1;
+  const sort = params.get("sort") || "provider_order";
+  filtered.sort((left, right) => {
+    let result;
+    if (sort === "price") {
+      result = Number(left.steamPrice?.currentMinor ?? Number.MAX_SAFE_INTEGER) -
+        Number(right.steamPrice?.currentMinor ?? Number.MAX_SAFE_INTEGER);
+    } else if (sort === "discount") {
+      result = Number(left.steamPrice?.discountPercent ?? -1) - Number(right.steamPrice?.discountPercent ?? -1);
+    } else if (sort === "name") result = left.name.localeCompare(right.name);
+    else result = Number(left.providerOrder ?? Number.MAX_SAFE_INTEGER) - Number(right.providerOrder ?? Number.MAX_SAFE_INTEGER);
+    return result * direction || Number(left.id) - Number(right.id);
+  });
+  const total = filtered.length;
+  const limit = Number(params.get("limit") || 50);
+  const offset = Number(params.get("offset") || 0);
+  return {
+    items: filtered.slice(offset, offset + limit),
+    total,
+    snapshotVersion: "m1",
+    facets: params.get("include_summary") === "false" ? undefined : {
+      collectionTotal: items.length,
+      genres: ["Adventure"],
+      hoursBounds: { min: 12, max: 12 },
+    },
+    limit,
+    offset,
+  };
+}
+
 for (const [label, viewport] of [
   ["desktop", { width: 1920, height: 1000 }],
   ["mobile", { width: 390, height: 844 }],
@@ -164,10 +210,8 @@ for (const [label, viewport] of [
             json: { error: { message: "Saved read unavailable" } },
           });
         return json({
-          items,
-          total: items.length,
+          ...wishlistPage(items, uri),
           account: account(),
-          snapshotVersion: "m1",
           priceRevision: revision,
           priceHealth: {
             eligible: 8,

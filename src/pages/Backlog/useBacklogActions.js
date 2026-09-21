@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useConfirm, useToast } from "../../components/ui";
 import { refreshGameMetadata } from "../../services/gameService";
+import { getFullBacklogCollection } from "./useInfiniteGames";
 import {
   apiErrorMessage,
   buildAddGamePayload,
@@ -10,6 +11,7 @@ import {
 
 export default function useBacklogActions({
   games,
+  userId,
   isAuthenticated,
   isGuest,
   addGame,
@@ -71,9 +73,16 @@ export default function useBacklogActions({
     }
   };
 
-  const handleSurpriseMe = () => {
-    if (games.length > 0) {
-      setSurpriseGame(games[Math.floor(Math.random() * games.length)]);
+  const handleSurpriseMe = async () => {
+    try {
+      const collection = userId
+        ? await getFullBacklogCollection(userId)
+        : games;
+      if (collection.length > 0) {
+        setSurpriseGame(collection[Math.floor(Math.random() * collection.length)]);
+      }
+    } catch (error) {
+      toast.error(error.message || "Could not pick a surprise game.");
     }
   };
 
@@ -163,7 +172,7 @@ export default function useBacklogActions({
     setMetadataRefreshingId(game.id);
     try {
       const updated = await refreshGameMetadata(game.id);
-      await refresh({ silent: true });
+      await refresh({ silent: true, preserveLoaded: true });
       toast.success(`${game.name} metadata refreshed.`);
       return updated;
     } catch (error) {

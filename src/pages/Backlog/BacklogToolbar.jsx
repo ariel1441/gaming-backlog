@@ -93,9 +93,13 @@ export default function BacklogToolbar({
   collectionControl = null,
   utilityControl = null,
   sortOptions = backlogSortOptions,
+  mobileControlsOpen: controlledMobileControlsOpen,
+  setMobileControlsOpen: setControlledMobileControlsOpen,
 }) {
   const title = identity?.title || "Backlog";
-  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const [internalMobileControlsOpen, setInternalMobileControlsOpen] = useState(false);
+  const mobileControlsOpen = controlledMobileControlsOpen ?? internalMobileControlsOpen;
+  const setMobileControlsOpen = setControlledMobileControlsOpen ?? setInternalMobileControlsOpen;
   const countLabel = `${totalCount} ${totalCount === 1 ? "game" : "games"}`;
   const filteredCountLabel =
     resultCount !== totalCount && (search.query || filters.count)

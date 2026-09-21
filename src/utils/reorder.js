@@ -41,12 +41,24 @@ export function getManualReorderAvailability({
   canReorder = false,
   sortKey = "",
   isReversed = false,
+  hasPartialFilters = false,
+  hasNonBacklogEntries = false,
+  busy = false,
 } = {}) {
   if (!canReorder) {
     return { enabled: false, reason: "permission" };
   }
+  if (busy) {
+    return { enabled: false, reason: "busy" };
+  }
   if (sortKey || isReversed) {
     return { enabled: false, reason: "sort" };
+  }
+  if (hasPartialFilters) {
+    return { enabled: false, reason: "filters" };
+  }
+  if (hasNonBacklogEntries) {
+    return { enabled: false, reason: "mixed-collection" };
   }
   if (!canReorderVisibleGames(allGames, visibleGames)) {
     return { enabled: false, reason: "incomplete-ranks" };

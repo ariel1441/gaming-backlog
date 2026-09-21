@@ -130,6 +130,80 @@ const insights = {
   },
 };
 
+function gameHours(game) {
+  const value = Number(game.displayHLTB ?? game.how_long_to_beat);
+  return Number.isFinite(value) ? value : null;
+}
+
+function pagedGamesPayload(collection, requestUrl) {
+  const url = new URL(requestUrl);
+  const params = url.searchParams;
+  let filtered = [...collection];
+  const query = (params.get("q") || "").trim().toLowerCase();
+  const statuses = params.getAll("status").map((value) => value.toLowerCase());
+  const genres = params.getAll("genre").map((value) => value.toLowerCase());
+  const personalGenres = params.getAll("personal_genre").map((value) => value.toLowerCase());
+  if (query) filtered = filtered.filter((game) => game.name.toLowerCase().includes(query));
+  if (statuses.length) filtered = filtered.filter((game) => statuses.includes(game.status.toLowerCase()));
+  if (genres.length) filtered = filtered.filter((game) => {
+    const values = String(game.genres || "").split(",").map((value) => value.trim().toLowerCase());
+    return genres.some((genre) => values.includes(genre));
+  });
+  if (personalGenres.length) filtered = filtered.filter((game) => {
+    const values = String(game.my_genre || "").split(",").map((value) => value.trim().toLowerCase());
+    return personalGenres.some((genre) => values.includes(genre));
+  });
+  if (params.get("score") != null) filtered = filtered.filter((game) => Number(game.my_score) === Number(params.get("score")));
+  if (params.get("rated") === "true") filtered = filtered.filter((game) => game.my_score != null);
+  const minHours = params.get("min_hours");
+  const maxHours = params.get("max_hours");
+  if (minHours != null) filtered = filtered.filter((game) => gameHours(game) >= Number(minHours));
+  if (maxHours != null) filtered = filtered.filter((game) => gameHours(game) <= Number(maxHours));
+  if (params.get("missing_estimates") === "true") filtered = filtered.filter((game) => gameHours(game) == null);
+  const dateType = params.get("date_type");
+  const year = Number(params.get("date_year"));
+  if (dateType === "startedYear") filtered = filtered.filter((game) => new Date(game.started_at).getUTCFullYear() === year);
+  if (dateType === "finishedYear") filtered = filtered.filter((game) => new Date(game.finished_at).getUTCFullYear() === year);
+  if (dateType === "touchedYear") filtered = filtered.filter((game) =>
+    [game.started_at, game.finished_at].some((value) => value && new Date(value).getUTCFullYear() === year));
+
+  const direction = params.get("direction") === "desc" ? -1 : 1;
+  const sort = params.get("sort") || "";
+  const optionalNumber = (value) => value == null ? Number.POSITIVE_INFINITY : Number(value);
+  filtered.sort((left, right) => {
+    let result = 0;
+    if (sort === "name") result = left.name.localeCompare(right.name);
+    else if (sort === "score") result = optionalNumber(left.my_score) - optionalNumber(right.my_score);
+    else if (sort === "estimated_hours") result = optionalNumber(gameHours(left)) - optionalNumber(gameHours(right));
+    else if (sort === "started_date") result = String(left.started_at || "9999").localeCompare(String(right.started_at || "9999"));
+    else if (sort === "finished_date") result = String(left.finished_at || "9999").localeCompare(String(right.finished_at || "9999"));
+    else result = Number(left.status_rank ?? 999) - Number(right.status_rank ?? 999)
+      || Number(left.position ?? Number.MAX_SAFE_INTEGER) - Number(right.position ?? Number.MAX_SAFE_INTEGER)
+      || Number(left.id) - Number(right.id);
+    return result * direction;
+  });
+  const total = filtered.length;
+  const limit = Number(params.get("limit") || total || 50);
+  const offset = Number(params.get("offset") || 0);
+  const allGenres = [...new Set(collection.flatMap((game) => String(game.genres || "").split(",").map((value) => value.trim()).filter(Boolean)))].sort();
+  const allHours = collection.map(gameHours).filter((value) => value != null);
+  return {
+    games: filtered.slice(offset, offset + limit),
+    total,
+    snapshotVersion: JSON.stringify(filtered.map((game) => [game.id, game.status, game.position, game.my_score])),
+    facets: params.get("include_summary") === "false" ? undefined : {
+      collectionTotal: collection.length,
+      genres: allGenres,
+      hoursBounds: {
+        min: allHours.length ? Math.floor(Math.min(...allHours)) : 0,
+        max: allHours.length ? Math.ceil(Math.max(...allHours)) : 0,
+      },
+    },
+    limit,
+    offset,
+  };
+}
+
 async function mockApi(page) {
   let serverGames = games.map((game) => ({ ...game }));
   const catalogGames = [
@@ -153,6 +227,9 @@ async function mockApi(page) {
   const state = {
     favoritePayloads: [],
     gamesListRequests: 0,
+    fullGamesListRequests: 0,
+    pagedGamesListRequests: 0,
+    finishPayloads: [],
     reorderPayloads: [],
   };
   const rankForStatus = (status) =>
@@ -319,7 +396,7 @@ async function mockApi(page) {
     catalogGames[0] = { ...catalogGames[0], alreadyInBacklog: true };
     return route.fulfill({ status: 201, json: created });
   });
-  await page.route(`${API_BASE}/api/games`, (route) => {
+  await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), (route) => {
     if (route.request().method() === "POST") {
       return route.fulfill({
           json: (() => {
@@ -340,6 +417,12 @@ async function mockApi(page) {
         });
     }
     state.gamesListRequests += 1;
+    const requestUrl = route.request().url();
+    if (new URL(requestUrl).searchParams.has("limit")) {
+      state.pagedGamesListRequests += 1;
+      return route.fulfill({ json: pagedGamesPayload(serverGames, requestUrl) });
+    }
+    state.fullGamesListRequests += 1;
     return route.fulfill({ json: serverGames });
   });
   await page.route(`${API_BASE}/api/games/favorites`, (route) => {
@@ -383,6 +466,27 @@ async function mockApi(page) {
     }
 
     return route.fulfill({ json: serverGames.find((game) => game.id === id) });
+  });
+  await page.route(`${API_BASE}/api/games/*/finish`, (route) => {
+    const id = Number(route.request().url().match(/\/games\/(\d+)\/finish/)?.[1]);
+    const body = route.request().postDataJSON();
+    state.finishPayloads.push({ id, body });
+    const current = serverGames.find((game) => Number(game.id) === id);
+    const completionStatus = body.completion_status || "finished";
+    const updated = {
+      ...current,
+      ...body,
+      status: completionStatus,
+      status_rank: rankForStatus(completionStatus),
+    };
+    serverGames = serverGames.map((game) => Number(game.id) === id ? updated : game);
+    return route.fulfill({
+      json: {
+        game: updated,
+        outcome: completionStatus === "finished" ? "finished" : "completed",
+        clearedFocusRole: "",
+      },
+    });
   });
   await page.route(`${API_BASE}/api/games/*/position`, (route) => {
     const id = Number(
@@ -469,6 +573,11 @@ test("starts the demo and renders the backlog", async ({ page }) => {
   await page.getByRole("button", { name: /try the full demo/i }).click();
 
   await expect(page.getByText("Baldur's Gate 3")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Sign in" })).toHaveCount(0);
+  if ((page.viewportSize()?.width || 0) < 768) {
+    await page.getByRole("button", { name: "Filters and view", exact: true }).click();
+  }
+  await expect(page.getByRole("button", { name: "Status", exact: true })).toBeVisible();
 });
 
 test("renders a public profile as read-only", async ({ page }) => {
@@ -652,24 +761,23 @@ test("the Insights Other status filter never opens the full backlog", async ({ p
       ],
     }),
   );
-  await page.route(`${API_BASE}/api/games`, (route) =>
-    route.fulfill({
-      json: [
-        ...games,
-        {
-          id: 50,
-          name: "Paused Game",
-          status: "on hold",
-          status_rank: 5,
-          position: 1000,
-          my_genre: "Adventure",
-          genres: "Adventure",
-          how_long_to_beat: 12,
-          cover: "",
-        },
-      ],
-    }),
-  );
+  await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), (route) => {
+    const collection = [
+      ...games,
+      {
+        id: 50,
+        name: "Paused Game",
+        status: "on hold",
+        status_rank: 5,
+        position: 1000,
+        my_genre: "Adventure",
+        genres: "Adventure",
+        how_long_to_beat: 12,
+        cover: "",
+      },
+    ];
+    return route.fulfill({ json: pagedGamesPayload(collection, route.request().url()) });
+  });
   await page.goto("/?group=other", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("Paused Game")).toBeVisible();
@@ -697,7 +805,7 @@ test("opens the restored Reviews page from application navigation", async ({
   );
 });
 
-test("reuses one games collection while navigating between private pages", async ({
+test("loads the paged backlog once and reuses the full collection between legacy private pages", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -708,13 +816,17 @@ test("reuses one games collection while navigating between private pages", async
 
   await expect(page.getByText("Baldur's Gate 3")).toBeVisible();
   await expect.poll(() => page.apiState.gamesListRequests).toBe(1);
+  expect(page.apiState.pagedGamesListRequests).toBe(1);
+  expect(page.apiState.fullGamesListRequests).toBe(0);
 
   await page.getByRole("link", { name: "Timeline", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await page.getByRole("link", { name: "Reviews", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible();
 
-  expect(page.apiState.gamesListRequests).toBe(1);
+  expect(page.apiState.gamesListRequests).toBe(2);
+  expect(page.apiState.pagedGamesListRequests).toBe(1);
+  expect(page.apiState.fullGamesListRequests).toBe(1);
 });
 
 test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
@@ -822,7 +934,51 @@ test("reorders same-rank games without sending a status change", async ({
       "Baldur's Gate 3",
       "Returnal",
       "Clair Obscur: Expedition 33",
-    ]);
+  ]);
+});
+
+test("reorders games when a status-only filter keeps the complete rank visible", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", { name: "Status", exact: true }).click();
+  await page.getByRole("button", { name: "playing", exact: true }).click();
+  await page.keyboard.press("Escape");
+
+  const baldursGate = page.locator("article").filter({
+    has: page.getByRole("heading", { name: "Baldur's Gate 3" }),
+  });
+  const disco = page.locator("article").filter({
+    has: page.getByRole("heading", { name: "Disco Elysium" }),
+  });
+  await expect(baldursGate).toBeVisible();
+  await expect(disco).toBeVisible();
+  await expect(page.getByText(/Clear search and filters to reorder games/i)).toHaveCount(0);
+
+  const source = await disco.boundingBox();
+  const target = await baldursGate.boundingBox();
+  expect(source).not.toBeNull();
+  expect(target).not.toBeNull();
+  await page.mouse.move(
+    source.x + source.width / 2,
+    source.y + source.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    target.x + target.width / 2,
+    target.y + target.height / 2,
+    { steps: 12 },
+  );
+  await page.mouse.up();
+
+  await expect
+    .poll(() => page.apiState.reorderPayloads.at(-1))
+    .toEqual({ id: 4, body: { targetIndex: 0 } });
 });
 
 test("derived backlog views cannot mutate canonical manual order", async ({
@@ -835,9 +991,7 @@ test("derived backlog views cannot mutate canonical manual order", async ({
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByPlaceholder(/search/i).fill("r");
   await expect(
-    page.getByText(
-      /Manual reordering is unavailable because this view hides other games/i,
-    ),
+    page.getByText(/Clear search and filters to reorder games/i),
   ).toBeVisible();
   await page.getByPlaceholder(/search/i).press("Escape");
   expect(page.apiState.reorderPayloads).toEqual([]);
@@ -847,13 +1001,198 @@ test("derived backlog views cannot mutate canonical manual order", async ({
   ).toBeVisible();
 });
 
+test("finishing a game keeps the completion result open during backlog refresh", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const card = page.locator("article").filter({
+    has: page.getByRole("heading", { name: "Baldur's Gate 3" }),
+  });
+  await card.getByLabel("Actions for Baldur's Gate 3").click();
+  await page.getByRole("menuitem", { name: "Finish game" }).click();
+  const dialog = page.getByRole("dialog", { name: "Finish Baldur's Gate 3" });
+  await dialog.getByRole("button", { name: "Finish game" }).click();
+
+  await expect(page.getByRole("dialog", { name: "Completion saved" })).toBeVisible();
+  await expect(page.getByText("Baldur's Gate 3 is now Finished.")).toBeVisible();
+  expect(page.apiState.finishPayloads).toHaveLength(1);
+});
+
+test("backlog filters stay open while server results update", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("limit") && url.searchParams.has("status")) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return route.fulfill({
+      json: url.searchParams.has("limit")
+        ? pagedGamesPayload(games, route.request().url())
+        : games,
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const firstCard = page.locator("article").first();
+  const beforeFilter = await firstCard.boundingBox();
+  await page.getByRole("button", { name: "Status", exact: true }).click();
+  const playingOption = page.getByRole("button", { name: "playing", exact: true });
+  await playingOption.click();
+  await page.waitForTimeout(200);
+
+  const duringFilter = await firstCard.boundingBox();
+  await expect(playingOption).toBeVisible();
+  await expect(page.getByRole("button", { name: /Status 1/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Baldur's Gate 3" })).toBeVisible();
+  expect(duringFilter?.y).toBe(beforeFilter?.y);
+});
+
+test("a failed background filter refresh keeps the loaded backlog usable", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("limit") && url.searchParams.has("status")) {
+      return route.fulfill({ status: 503, json: { error: { message: "Try again later" } } });
+    }
+    return route.fulfill({
+      json: url.searchParams.has("limit")
+        ? pagedGamesPayload(games, route.request().url())
+        : games,
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", { name: "Status", exact: true }).click();
+  const playingOption = page.getByRole("button", { name: "playing", exact: true });
+  await playingOption.click();
+
+  await expect(page.getByText("Could not refresh this view. Your loaded games are still available."))
+    .toBeVisible({ timeout: 10_000 });
+  await expect(playingOption).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Baldur's Gate 3" })).toBeVisible();
+});
+
+test("game details keep their active tab during a metadata refresh", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route(`${API_BASE}/api/games/1/metadata/refresh`, (route) =>
+    route.fulfill({ json: { ...games[0], rating: 4.8 } }),
+  );
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const card = page.locator("article").filter({
+    has: page.getByRole("heading", { name: "Baldur's Gate 3" }),
+  });
+  await card.getByRole("heading", { name: "Baldur's Gate 3" }).click();
+  const dialog = page.getByRole("dialog", { name: "Baldur's Gate 3" });
+  const thoughtsTab = dialog.getByRole("button", { name: "Your thoughts" });
+  await thoughtsTab.click();
+  await dialog.getByRole("button", { name: "More actions for Baldur's Gate 3" }).click();
+  await page.getByRole("menuitem", { name: "Refresh metadata" }).click();
+
+  await expect(page.getByText("Baldur's Gate 3 metadata refreshed.")).toBeVisible();
+  await expect(thoughtsTab).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog).toBeVisible();
+});
+
+test("backlog search keeps fuzzy matching after pagination", async ({ page }) => {
+  const collection = [
+    ...games,
+    {
+      ...games[0],
+      id: 55,
+      name: "Metaphor: ReFantazio",
+      position: 5000,
+    },
+  ];
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), (route) => {
+    const url = new URL(route.request().url());
+    return route.fulfill({
+      json: url.searchParams.has("limit")
+        ? pagedGamesPayload(collection, route.request().url())
+        : collection,
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.getByPlaceholder(/Search/).fill("Metapor");
+  await expect(page.getByRole("heading", { name: "Metaphor: ReFantazio" })).toBeVisible();
+});
+
+test("Surprise me can choose beyond the first backlog page", async ({ page }) => {
+  const collection = Array.from({ length: 51 }, (_, index) => ({
+    ...games[0],
+    id: index + 1,
+    name: index === 50 ? "Beyond Page Fifty" : `Paged game ${index + 1}`,
+    position: (index + 1) * 1000,
+  }));
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+    Math.random = () => 0.999;
+  });
+  await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), (route) => {
+    const url = new URL(route.request().url());
+    return route.fulfill({
+      json: url.searchParams.has("limit")
+        ? pagedGamesPayload(collection, route.request().url())
+        : collection,
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", { name: "Surprise me" }).click();
+  await expect(page.getByRole("dialog", { name: "Beyond Page Fifty" })).toBeVisible();
+});
+
+test("a game can be completed without marking it finished", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("token", "demo-token");
+    window.localStorage.setItem("seen_onboarding_v1", "1");
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const card = page.locator("article").filter({
+    has: page.getByRole("heading", { name: "Baldur's Gate 3" }),
+  });
+  await card.getByLabel("Actions for Baldur's Gate 3").click();
+  await page.getByRole("menuitem", { name: "Finish game" }).click();
+  const dialog = page.getByRole("dialog", { name: "Finish Baldur's Gate 3" });
+  await dialog.getByText("Mark as played a lot, but not finished").click();
+  await dialog.getByRole("button", { name: "Save completion" }).click();
+
+  await expect(page.getByRole("dialog", { name: "Completion saved" })).toBeVisible();
+  await expect(page.getByText(
+    "Baldur's Gate 3 is now Played a lot, but didn’t finish.",
+  )).toBeVisible();
+  expect(page.apiState.finishPayloads).toHaveLength(1);
+  expect(page.apiState.finishPayloads[0].body.completion_status)
+    .toBe("played alot but didnt finish");
+});
+
 test("editing a RAWG fallback game keeps its estimate automatic", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('token', 'demo-token');
     window.localStorage.setItem('seen_onboarding_v1', '1');
   });
   const fallbackGame = { ...games[0], estimateSource: 'rawg_playtime', displayHLTB: 70 };
-  await page.route(`${API_BASE}/api/games`, route => route.fulfill({ json: [fallbackGame] }));
+  await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), route =>
+    route.fulfill({ json: pagedGamesPayload([fallbackGame], route.request().url()) }));
   let update;
   await page.route(`${API_BASE}/api/games/1`, route => {
     update = route.request().postDataJSON();
