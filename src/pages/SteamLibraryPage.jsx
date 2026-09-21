@@ -793,7 +793,7 @@ export default function SteamLibraryPage() {
                     onClick={() =>
                       loadApps({
                         append: true,
-                        offset: page.offset + apps.length,
+                        offset: apps.length,
                       })
                     }
                     disabled={loadingMore}
