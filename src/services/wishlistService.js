@@ -76,6 +76,25 @@ export async function syncWishlist({ confirmEmpty = false, prices = false, onJob
   throw error;
 }
 
+export async function refreshWishlistPriceItem(itemId, { onJob, ...opts } = {}) {
+  const started = await api.post(`/api/wishlist/${itemId}/price/refresh`, {}, opts);
+  let job = started?.job;
+  if (!job?.id) throw new Error("Price refresh did not return a job ID.");
+  onJob?.(job);
+  while (["queued", "running"].includes(job.status)) {
+    await wait(750, opts.signal);
+    job = (await api.get(`/api/steam/sync/${job.id}`, opts))?.job;
+    onJob?.(job);
+  }
+  if (job?.status === "completed") {
+    invalidateWishlistCache();
+    return job.result || {};
+  }
+  const error = new Error(job?.errorMessage || "Price refresh failed.");
+  error.code = job?.errorCode || "steam_price_refresh_failed";
+  throw error;
+}
+
 export function cancelWishlistSync(jobId, opts = {}) {
   return api.del(`/api/steam/sync/${jobId}`, opts);
 }

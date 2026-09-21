@@ -26,6 +26,7 @@ export const listWishlist = celebrate({
     min_hours: Joi.number().min(0),
     max_hours: Joi.number().min(0),
     on_sale: Joi.boolean().default(false),
+    price_attention: Joi.boolean().default(false),
     include_summary: Joi.boolean().default(true),
     item_id: Joi.number().integer().positive(),
     limit: Joi.number().integer().min(1).max(100).default(50),
@@ -42,6 +43,11 @@ export const wishlistItemAction = celebrate({
 
 export const wishlistMetadataItem = celebrate({
   [Segments.PARAMS]: Joi.object({ itemId }),
+}, opts);
+
+export const wishlistPriceItem = celebrate({
+  [Segments.PARAMS]: Joi.object({ itemId }),
+  [Segments.BODY]: Joi.object({}).default({}),
 }, opts);
 
 export const wishlistMetadataMatch = celebrate({

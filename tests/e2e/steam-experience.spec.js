@@ -18,6 +18,8 @@ function wishlistPage(items, uri) {
   const params = uri.searchParams;
   let filtered = [...items];
   if (params.get("on_sale") === "true") filtered = filtered.filter((item) => isCurrentSale(item));
+  if (params.get("price_attention") === "true") filtered = filtered.filter((item) =>
+    item.steamPrice?.errorCode && item.steamPrice.errorCode !== "steam_price_unsupported_type");
   const direction = params.get("direction") === "desc" ? -1 : 1;
   const sort = params.get("sort") || "provider_order";
   filtered.sort((left, right) => {
@@ -328,6 +330,9 @@ for (const [label, viewport] of [
       page.getByRole("dialog").getByText("A saved description."),
     ).toBeVisible();
     await expect(
+      page.getByRole("dialog").getByRole("button", { name: "Refresh price", exact: true }),
+    ).toBeVisible();
+    await expect(
       page
         .getByRole("dialog")
         .getByRole("button", { name: "Edit game", exact: true }),
@@ -372,10 +377,19 @@ for (const [label, viewport] of [
     await page
       .getByRole("button", { name: "Manage Steam Wishlist updates", exact: true })
       .click();
+    await expect(page.getByText("Membership Updated today", { exact: true })).toBeVisible();
     await expect(page.getByText(/1 price needs attention/)).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'Steam sync settings' })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Show 1 price needing attention", exact: true }).click();
+    await expect(page.locator("article")).toHaveCount(1);
+    await expect(page.locator("article").getByRole("heading")).toHaveText("Game 3");
+    await page.getByRole("button", { name: "Show all prices", exact: true }).click();
+    await expect(page.locator("article")).toHaveCount(8);
     background = true;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page
+      .getByRole("button", { name: "Manage Steam Wishlist updates", exact: true })
+      .click();
     await expect(
       page.getByText("Steam is updating in the background", { exact: true }),
     ).toBeVisible();

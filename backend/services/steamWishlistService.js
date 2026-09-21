@@ -153,6 +153,28 @@ export async function assertSavedAccountUser(userId) {
   if (rows[0].is_guest) throw forbidden("Steam wishlist sync is unavailable for demo accounts.");
 }
 
+export async function requestWishlistPriceRefresh(userId, itemId) {
+  const { rows } = await pool.query(
+    `UPDATE steam_price_monitors monitor
+        SET next_attempt_at = NOW()
+       FROM steam_price_targets target
+      WHERE target.user_id = $1
+        AND target.wishlist_item_id = $2
+        AND target.reason = 'eligible'
+        AND monitor.user_id = target.user_id
+        AND monitor.account_id = target.account_id
+        AND monitor.wishlist_item_id = target.wishlist_item_id
+        AND monitor.steam_app_id = target.steam_app_id
+        AND monitor.active
+      RETURNING monitor.id`,
+    [userId, itemId],
+  );
+  if (!rows[0]) {
+    throw notFound("This Wishlist item does not have an eligible monitored Steam price.");
+  }
+  return { queued: true };
+}
+
 export async function listWishlistItems(userId, options = {}) {
   await assertSavedAccountUser(userId);
   const active = options.active === "all" ? null : options.active !== "removed";
@@ -233,6 +255,11 @@ export async function listWishlistItems(userId, options = {}) {
       AND (${priceObservationSql}->>'regular_minor')::int > (${priceObservationSql}->>'current_minor')::int
       AND (${priceObservationSql}->>'discount_percent')::int > 0
       AND (${priceObservationSql}->>'observed_at')::timestamptz >= NOW() - INTERVAL '36 hours'`);
+  }
+  if (options.priceAttention) {
+    where.push(`target.reason = 'eligible'
+      AND price.data->>'lastError' IS NOT NULL
+      AND price.data->>'lastError' <> 'steam_price_unsupported_type'`);
   }
   params.push(limit, offset);
   const includeSummary = options.includeSummary !== false;

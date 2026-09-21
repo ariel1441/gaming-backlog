@@ -132,6 +132,8 @@ export default function BacklogPage() {
     initialReverse: userPreferences.default_backlog_sort_reversed,
   });
   const debouncedQuery = useDebouncedValue(searchQuery, 120);
+  const [deletedGameIds, setDeletedGameIds] = useState(() => new Set());
+  useEffect(() => setDeletedGameIds(new Set()), [user?.id]);
   const requestParams = React.useMemo(() => ({
     q: debouncedQuery,
     sort: backlogApiSortKeys[sortKey] || "",
@@ -156,7 +158,9 @@ export default function BacklogPage() {
     rawgStatus, missingEstimatesOnly]);
   const usePagedBacklog = !userPreferences.show_wishlist_in_backlog;
   const paged = useInfiniteGames({ userId: user?.id, enabled: usePagedBacklog && isAuthenticated, params: requestParams });
-  const games = usePagedBacklog ? paged.games : legacyGames;
+  const games = usePagedBacklog
+    ? paged.games.filter((game) => !deletedGameIds.has(String(game.id)))
+    : legacyGames;
   const presentationGames = usePagedBacklog ? games : legacyPresentationGames;
   const gamesLoading = usePagedBacklog ? paged.loading : legacyGamesLoading;
   const gamesError = usePagedBacklog ? paged.error : legacyGamesError;
@@ -185,7 +189,14 @@ export default function BacklogPage() {
   };
   const removeGame = async (...args) => {
     const result = await legacyRemoveGame(...args);
-    if (usePagedBacklog) await refresh({ silent: true });
+    if (usePagedBacklog) {
+      setDeletedGameIds((current) => {
+        const next = new Set(current);
+        next.add(String(args[0]));
+        return next;
+      });
+      await refresh({ silent: true, force: true });
+    }
     return result;
   };
   const reorderGame = async (...args) => {

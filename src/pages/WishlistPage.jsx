@@ -26,6 +26,7 @@ import {
   matchWishlistRawg,
   refreshWishlistMetadata,
   refreshWishlistMetadataItem,
+  refreshWishlistPriceItem,
   syncWishlist,
 } from "../services/wishlistService";
 import { normalizeUserPreferences } from "../utils/userPreferences";
@@ -72,6 +73,7 @@ export default function WishlistPage() {
   const toast = useToast();
   const experience = useSteamExperience();
   const [onSaleOnly, setOnSaleOnly] = useState(false);
+  const [priceAttentionOnly, setPriceAttentionOnly] = useState(false);
   const confirm = useConfirm();
   const [membership, setMembership] = useState("active");
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
@@ -103,6 +105,7 @@ export default function WishlistPage() {
     min_hours: filters.hoursRange?.min,
     max_hours: filters.hoursRange?.max,
     on_sale: onSaleOnly,
+    price_attention: priceAttentionOnly,
     item_id: requestedItem && /^\d+$/.test(requestedItem) ? requestedItem : undefined,
   }), [
     debouncedQuery,
@@ -112,6 +115,7 @@ export default function WishlistPage() {
     filters.selectedGenres,
     filters.sortKey,
     onSaleOnly,
+    priceAttentionOnly,
     requestedItem,
   ]);
   const state = useInfiniteWishlist({
@@ -129,6 +133,7 @@ export default function WishlistPage() {
   const [metadataRefreshing, setMetadataRefreshing] = useState(false);
   const [metadataBulkRefreshing, setMetadataBulkRefreshing] = useState(false);
   const [metadataItemRefreshing, setMetadataItemRefreshing] = useState(null);
+  const [priceItemRefreshing, setPriceItemRefreshing] = useState(null);
   const [movingId, setMovingId] = useState(null);
   const [moveStatus, setMoveStatus] = useState("plan to play");
   const syncRequest = useRef(null);
@@ -149,7 +154,7 @@ export default function WishlistPage() {
   }, [isDesktop, state.hasMore, state.loading, state.loadingMore, state.loadMore, viewMode]);
   const selected = games.find((game) => game.id === selectedId);
   const filterCount =
-    Number(onSaleOnly) + filters.selectedGenres.length +
+    Number(onSaleOnly) + Number(priceAttentionOnly) + filters.selectedGenres.length +
     Number(filters.rawgStatus !== "all") +
     (isHoursFilterActive(filters.hoursRange, state.facets?.hoursBounds) ? 1 : 0);
   const statusOptions = (statuses || [])
@@ -301,6 +306,25 @@ export default function WishlistPage() {
       setMetadataItemRefreshing(null);
     }
   };
+  const runItemPriceRefresh = async (game) => {
+    if (!game?.wishlistItemId || priceItemRefreshing || syncing) return;
+    setPriceItemRefreshing(game.wishlistItemId);
+    try {
+      const result = await refreshWishlistPriceItem(game.wishlistItemId, {
+        onJob: (job) => {
+          if (["queued", "completed"].includes(job?.status)) void experience.reload();
+        },
+      });
+      const message = priceSyncMessage(result.summary || result.run?.summary);
+      if (["partial", "failed"].includes(result.run?.status)) toast.warning(message);
+      else toast.success(`${game.name}: ${message}`);
+      await Promise.all([state.refresh({ preserveLoaded: true }), experience.reload()]);
+    } catch (error) {
+      toast.error(error.message || "Could not refresh this price.");
+    } finally {
+      setPriceItemRefreshing(null);
+    }
+  };
   if (!isAuthenticated || isGuest)
     return (
       <AppPage>
@@ -350,6 +374,10 @@ export default function WishlistPage() {
             priceHealth={state.priceHealth}
             onMembershipRefresh={() => runSync()}
             onPriceRefresh={() => runSync(false, true)}
+            onPriceAttention={() => {
+              setOnSaleOnly(false);
+              setPriceAttentionOnly(true);
+            }}
             busy={syncing || metadataRefreshing || metadataBulkRefreshing}
             confirmEmpty={confirmEmpty}
             metadata={state.metadata}
@@ -366,6 +394,7 @@ export default function WishlistPage() {
             filters.clearFilters();
             filters.setHoursRange(null);
             setOnSaleOnly(false);
+            setPriceAttentionOnly(false);
           },
           toggleGenre: (value) => {
             filters.toggleGenre(value);
@@ -393,6 +422,12 @@ export default function WishlistPage() {
       />
       </div>
       <div className="mx-auto w-full max-w-[1760px]">
+        {priceAttentionOnly ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-state-warning/30 bg-state-warning/10 px-3 py-2 text-xs text-content-secondary" role="status">
+            <span>Showing prices that need offer verification or a retry.</span>
+            <Button size="sm" variant="ghost" onClick={() => setPriceAttentionOnly(false)}>Show all prices</Button>
+          </div>
+        ) : null}
         {state.refreshError ? (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-control border border-state-warning/30 bg-state-warning/10 px-3 py-2 text-xs text-content-secondary" role="alert">
             <span>Could not update this view. Your loaded Wishlist is still available.</span>
@@ -475,7 +510,9 @@ export default function WishlistPage() {
            footer={<WishlistCardFooter game={selected} statusOptions={statusOptions} moveStatus={moveStatus}
             onMoveStatusChange={setMoveStatus} onMove={move} moving={movingId === selected.wishlistItemId}
             onRefreshMetadata={() => runItemMetadataRefresh(selected)}
+            onRefreshPrice={() => runItemPriceRefresh(selected)}
             onMatchRawg={runWishlistRawgMatch}
+            priceRefreshing={priceItemRefreshing === selected.wishlistItemId}
             metadataRefreshing={metadataItemRefreshing === selected.wishlistItemId || metadataRefreshing || metadataBulkRefreshing} />} />
       ) : null}
     </main>

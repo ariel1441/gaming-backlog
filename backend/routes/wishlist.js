@@ -5,10 +5,11 @@ import {
   assertSavedAccountUser,
   listWishlistItems,
   moveWishlistItemToBacklog,
+  requestWishlistPriceRefresh,
   retireOwnedWishlistIntention,
 } from "../services/steamWishlistService.js";
 import { listWishlistMetadataRuns, refreshWishlistMetadata, refreshWishlistMetadataItem, selectWishlistRawgMatch } from "../services/wishlistMetadataService.js";
-import { listWishlist, wishlistItemAction, wishlistMetadataItem, wishlistMetadataMatch, syncWishlistPrices, retireWishlistIntention } from "../validators/wishlist.js";
+import { listWishlist, wishlistItemAction, wishlistMetadataItem, wishlistMetadataMatch, wishlistPriceItem, syncWishlistPrices, retireWishlistIntention } from "../validators/wishlist.js";
 
 const router = express.Router();
 router.post('/:itemId/retire-intention', verifyToken, retireWishlistIntention, async (req, res, next) => {
@@ -26,6 +27,7 @@ router.get("/", verifyToken, listWishlist, async (req, res, next) => {
       maxHours: req.query.max_hours,
       rawgStatus: req.query.rawg_status,
       onSale: req.query.on_sale,
+      priceAttention: req.query.price_attention,
       includeSummary: req.query.include_summary,
       itemId: req.query.item_id,
       hltbLookup: req.app.locals.hltbLookup,
@@ -44,6 +46,15 @@ router.post("/sync", verifyToken, async (req, res, next) => {
 router.post('/prices/sync', verifyToken, syncWishlistPrices, async (req, res, next) => {
   try {
     await assertSavedAccountUser(req.user.id);
+    const job = await enqueueSteamSync(req.user.id, { trigger: 'manual', syncKind: 'wishlist_prices' });
+    res.status(202).json({ job });
+  } catch (error) { next(error); }
+});
+
+router.post('/:itemId/price/refresh', verifyToken, wishlistPriceItem, async (req, res, next) => {
+  try {
+    await assertSavedAccountUser(req.user.id);
+    await requestWishlistPriceRefresh(req.user.id, req.params.itemId);
     const job = await enqueueSteamSync(req.user.id, { trigger: 'manual', syncKind: 'wishlist_prices' });
     res.status(202).json({ job });
   } catch (error) { next(error); }

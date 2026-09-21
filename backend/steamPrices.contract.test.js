@@ -109,6 +109,27 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM games WHERE user_id = $1', [first.userId])).rows[0].n, 0);
     });
 
+    await t.test('an owner can make one eligible Wishlist price due without crossing user scope', async () => {
+      const itemId = (await pool.query(
+        'SELECT wishlist_item_id FROM steam_price_monitors WHERE user_id = $1 ORDER BY id LIMIT 1',
+        [first.userId],
+      )).rows[0].wishlist_item_id;
+      await pool.query(
+        "UPDATE steam_price_monitors SET next_attempt_at = NOW() + INTERVAL '1 day' WHERE user_id = $1",
+        [first.userId],
+      );
+      assert.deepEqual(await wishlist.requestWishlistPriceRefresh(first.userId, itemId), { queued: true });
+      const refreshed = (await pool.query(
+        'SELECT next_attempt_at <= NOW() AS due FROM steam_price_monitors WHERE user_id = $1 AND wishlist_item_id = $2',
+        [first.userId, itemId],
+      )).rows;
+      assert.ok(refreshed.length > 0 && refreshed.every((row) => row.due));
+      await assert.rejects(
+        wishlist.requestWishlistPriceRefresh(first.userId, 999999999),
+        (error) => error.status === 404,
+      );
+    });
+
     await t.test('sale transitions are atomic and permanently deduplicated after dismissal/replay', async () => {
       amounts.set('1', 1000); amounts.set('2', 500); await due(first.userId);
       const job = await finish(first.userId);

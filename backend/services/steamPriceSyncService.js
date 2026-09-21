@@ -11,7 +11,10 @@ export const PRICE_MAX_REQUESTS = 650;
 export const PRICE_FIRST_ATTEMPT_QUOTA = 25;
 const MAX_RUN_MS = 10 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const PRICE_SAFETY_AUDIT_MS = 3 * DAY_MS;
+// The UI treats observations older than 36 hours as historical. Keep the
+// direct safety audit inside that window so a healthy daily run does not make
+// unchanged offers appear stale between audits.
+export const PRICE_SAFETY_AUDIT_MS = DAY_MS;
 // Keep local recovery practical without shortening Steam's explicit Retry-After.
 // Test/production retain the production policy unless development is explicit.
 export const priceRetryMs = attempts => Math.min(
@@ -47,6 +50,14 @@ async function initialize(job) {
           attempts = CASE WHEN steam_price_monitors.active THEN steam_price_monitors.attempts ELSE 0 END`,
       [job.user_id, job.account_id, target.wishlist_item_id, target.steam_app_id, crypto.randomUUID()]);
     }
+    await client.query(`UPDATE steam_price_monitors monitor
+      SET next_attempt_at = NOW()
+      FROM steam_price_observations observation
+      WHERE monitor.account_id = $1 AND monitor.user_id = $2 AND monitor.active
+        AND observation.id = monitor.latest_observation_id
+        AND observation.observed_at <= NOW() - ($3::double precision * INTERVAL '1 millisecond')
+        AND monitor.next_attempt_at > NOW()`,
+    [job.account_id, job.user_id, PRICE_SAFETY_AUDIT_MS]);
     const { rows: selected } = await client.query(`
       WITH eligible AS (
         SELECT m.id, m.steam_app_id, m.epoch, m.next_attempt_at, a.price_next_attempt_at,
