@@ -5,6 +5,8 @@ import { verifyToken } from "../middleware/auth.js";
 import {
   favoriteGames,
   finishGame,
+  listGames,
+  lookupGames,
   gameSearch,
   gameIdParam,
   listGenreSuggestions,
@@ -39,7 +41,10 @@ import {
 import {
   deleteOwnedGameQuery,
   listOwnedGamesQuery,
+  listOwnedGamesPageQuery,
   listOwnedGameTitlesQuery,
+  lookupOwnedGamesQuery,
+  ownedGamesFacetsQuery,
   selectOwnedGameDetailsQuery,
   selectOwnedGameQuery,
   updateOwnedGameStatusQuery,
@@ -206,11 +211,51 @@ export const decorateGameForClient = (game) => {
 
 /* ----------------------------------- Routes ---------------------------------- */
 
-// GET all games for the authenticated user. This hot path is intentionally
-// database-only: optional RAWG refreshes must never affect core user data.
-router.get("/", verifyToken, async (req, res, next) => {
+// GET games for the authenticated user. Supplying a limit opts into the paged
+// Backlog contract; callers without it retain the legacy complete-array shape.
+// This hot path is database-only: optional RAWG refreshes never gate user data.
+router.get("/", verifyToken, listGames, async (req, res, next) => {
   try {
     const userId = req.user.id;
+
+    if (req.query.limit != null) {
+      const options = {
+        ...req.query,
+        query: req.query.q,
+        personalGenre: req.query.personal_genre,
+        noGenre: req.query.no_genre,
+        noPersonalGenre: req.query.no_personal_genre,
+        minHours: req.query.min_hours,
+        maxHours: req.query.max_hours,
+        missingEstimates: req.query.missing_estimates,
+        dateType: req.query.date_type,
+        dateYear: req.query.date_year,
+        dateMonths: req.query.date_months,
+        ratedOnly: req.query.rated,
+        rawgStatus: req.query.rawg_status,
+      };
+      const pageQuery = listOwnedGamesPageQuery(userId, options);
+      const { rows } = await pool.query(pageQuery.text, pageQuery.values);
+      const includeSummary = req.query.include_summary !== false;
+      const facetQuery = includeSummary ? ownedGamesFacetsQuery(userId) : null;
+      const facets = facetQuery
+        ? (await pool.query(facetQuery.text, facetQuery.values)).rows[0]
+        : null;
+      const games = rows.map(({ total_count, snapshot_version, ...game }) => decorateGameForClient(game));
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({
+        games,
+        total: Number(rows[0]?.total_count || 0),
+        snapshotVersion: rows[0]?.snapshot_version || facets?.snapshot_version || null,
+        facets: facets ? {
+          collectionTotal: Number(facets.collection_total || 0),
+          genres: Array.isArray(facets.genres) ? facets.genres : [],
+          hoursBounds: { min: Number(facets.min_hours || 0), max: Number(facets.max_hours || 0) },
+        } : undefined,
+        limit: Number(req.query.limit),
+        offset: Number(req.query.offset || 0),
+      });
+    }
 
     const { text, values } = listOwnedGamesQuery(userId);
     const { rows } = await pool.query(text, values);
@@ -221,6 +266,23 @@ router.get("/", verifyToken, async (req, res, next) => {
     res.json(out);
   } catch (err) {
     next(err);
+  }
+});
+
+// Minimal private lookup for owner-only interactions that do not need the full
+// Backlog collection (for example Steam notification linking and status review).
+router.get("/lookup", verifyToken, lookupGames, async (req, res, next) => {
+  try {
+    const query = lookupOwnedGamesQuery(req.user.id, {
+      query: req.query.q,
+      gameId: req.query.id,
+      limit: req.query.limit,
+    });
+    const { rows } = await pool.query(query.text, query.values);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ games: rows });
+  } catch (error) {
+    next(error);
   }
 });
 

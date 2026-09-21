@@ -1,10 +1,34 @@
 // src/services/gameService.js
-import { api, getLatest } from "./apiClient";
+import { api, getLatest } from "./apiClient.js";
 
 // List all games for the logged-in user
 // Use getLatest with a shared key so only the newest list load can resolve
 export function listGames(opts = {}) {
   return getLatest("/api/games", opts, "games-list");
+}
+
+export function listGamesPage(params = {}, opts = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((entry) => {
+        if (entry !== undefined && entry !== null && entry !== "") query.append(key, String(entry));
+      });
+    } else if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  });
+  return api.get(`/api/games?${query}`, opts);
+}
+
+export function lookupGames(params = {}, opts = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  });
+  return api.get(`/api/games/lookup?${query}`, opts);
 }
 
 // Create a game

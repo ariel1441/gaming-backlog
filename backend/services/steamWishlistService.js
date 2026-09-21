@@ -157,17 +157,31 @@ export async function listWishlistItems(userId, options = {}) {
   await assertSavedAccountUser(userId);
   const active = options.active === "all" ? null : options.active !== "removed";
   const query = String(options.query || "").trim();
+  const genres = (Array.isArray(options.genre) ? options.genre : [options.genre])
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
   const limit = Math.min(Math.max(Number(options.limit) || 50, 1), 100);
   const offset = Math.max(Number(options.offset) || 0, 0);
+  const requestedItemId = Number.isInteger(Number(options.itemId)) && Number(options.itemId) > 0
+    ? Number(options.itemId)
+    : null;
   const direction = options.direction === "desc" ? "DESC" : "ASC";
+  const hoursSql = "COALESCE(NULLIF(game.how_long_to_beat, 0), NULLIF(catalog.rawg_playtime_hours, 0))";
+  const priceObservationSql = "price.data->'observation'";
   const sortMap = {
     provider_order: `CASE WHEN steam.is_active THEN steam.provider_order END ${direction} NULLS LAST`,
     priority: `NULLIF(steam.priority, 0) ${direction} NULLS LAST`,
     date_added: `steam.date_added ${direction} NULLS LAST`,
     changed: `COALESCE(steam.last_changed_at, wishlist.updated_at) ${direction}`,
     name: `LOWER(COALESCE(catalog.name, game.name, candidate.steam_name, wishlist.display_name)) ${direction}`,
+    price: `(${priceObservationSql}->>'current_minor')::int ${direction} NULLS LAST`,
+    discount: `(${priceObservationSql}->>'discount_percent')::int ${direction} NULLS LAST`,
+    estimated_hours: `${hoursSql} ${direction} NULLS LAST`,
+    rawg_rating: `catalog.rawg_rating ${direction} NULLS LAST`,
+    metacritic: `catalog.metacritic ${direction} NULLS LAST`,
+    release_date: `catalog.released_at ${direction} NULLS LAST`,
   };
-  const order = `${sortMap[options.sort] || sortMap.provider_order}, wishlist.id ASC, steam.steam_app_id ASC`;
+  const order = `${requestedItemId ? `CASE WHEN wishlist.id = ${requestedItemId} THEN 0 ELSE 1 END, ` : ""}${sortMap[options.sort] || sortMap.provider_order}, wishlist.id ASC, steam.steam_app_id ASC`;
   const params = [userId];
   const where = ["wishlist.user_id = $1"];
   if (active === true) where.push("(wishlist.local_intent_active OR COALESCE(steam.is_active, FALSE))");
@@ -176,8 +190,53 @@ export async function listWishlistItems(userId, options = {}) {
     params.push(`%${query}%`);
     where.push(`COALESCE(catalog.name, game.name, candidate.steam_name, wishlist.display_name) ILIKE $${params.length}`);
   }
+  if (genres.length || options.no_genre) {
+    params.push(genres);
+    const genreParam = `$${params.length}`;
+    const itemGenres = `COALESCE(NULLIF(catalog.genres_json, '[]'::jsonb), wishlist.tags_json, '[]'::jsonb)`;
+    where.push(`(
+      (${Boolean(options.no_genre)} AND jsonb_array_length(${itemGenres}) = 0)
+      OR EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(${itemGenres}) item_genre
+        WHERE LOWER(item_genre) = ANY(${genreParam}::text[])
+      )
+    )`);
+  }
+  if (options.rawgStatus && options.rawgStatus !== "all") {
+    const metadataState = `CASE
+      WHEN metadata_work.status IS NULL OR metadata_work.status IN ('queued', 'running') THEN 'pending'
+      WHEN metadata_work.status = 'review' THEN 'review'
+      WHEN metadata_work.status = 'failed' THEN 'failed'
+      WHEN metadata_work.status = 'unmatched' AND metadata_work.identity_reason = 'rawg_metadata_incomplete' THEN 'incomplete'
+      WHEN rawg.external_id IS NOT NULL AND (catalog.metadata_quality IS DISTINCT FROM 'full' OR metadata_work.identity_reason = 'rawg_metadata_incomplete') THEN 'incomplete'
+      WHEN rawg.external_id IS NOT NULL THEN 'linked'
+      ELSE 'missing'
+    END`;
+    params.push(options.rawgStatus);
+    where.push(`${metadataState} = $${params.length}`);
+  }
+  if (options.minHours != null) {
+    params.push(Number(options.minHours));
+    where.push(`${hoursSql} >= $${params.length}`);
+  }
+  if (options.maxHours != null) {
+    params.push(Number(options.maxHours));
+    where.push(`${hoursSql} <= $${params.length}`);
+  }
+  if (options.onSale) {
+    where.push(`target.reason = 'eligible'
+      AND price.data->>'lastError' IS NULL
+      AND ${priceObservationSql}->>'epoch' = price.data->>'epoch'
+      AND ${priceObservationSql}->>'currency' = 'ILS'
+      AND ${priceObservationSql}->>'availability' IN ('available', 'free')
+      AND (${priceObservationSql}->>'current_minor')::int IS NOT NULL
+      AND (${priceObservationSql}->>'regular_minor')::int > (${priceObservationSql}->>'current_minor')::int
+      AND (${priceObservationSql}->>'discount_percent')::int > 0
+      AND (${priceObservationSql}->>'observed_at')::timestamptz >= NOW() - INTERVAL '36 hours'`);
+  }
   params.push(limit, offset);
-  const { rows, account, priceHealth, metadataHealth } = await withTransaction(async (client) => {
+  const includeSummary = options.includeSummary !== false;
+  const { rows, account, priceHealth, metadataHealth, facets } = await withTransaction(async (client) => {
     await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const { rows } = await client.query(
     `SELECT wishlist.*, steam.wishlist_item_id, steam.steam_app_id, steam.priority,
@@ -231,7 +290,7 @@ export async function listWishlistItems(userId, options = {}) {
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );
-    const health = await client.query(`SELECT
+    const health = includeSummary ? await client.query(`SELECT
       COUNT(*) FILTER (WHERE t.reason = 'eligible')::int AS eligible,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.latest_observation_id IS NOT NULL)::int AS observed,
       COUNT(*) FILTER (WHERE t.reason = 'eligible' AND m.last_error IS NOT NULL)::int AS failed,
@@ -246,12 +305,41 @@ export async function listWishlistItems(userId, options = {}) {
       FROM steam_price_targets t
       LEFT JOIN steam_price_monitors m ON m.account_id = t.account_id AND m.wishlist_item_id = t.wishlist_item_id AND m.steam_app_id = t.steam_app_id
       LEFT JOIN steam_price_observations o ON o.id = m.latest_observation_id
-      WHERE t.user_id = $1`, [userId]);
+      WHERE t.user_id = $1`, [userId]) : { rows: [] };
+    const facetResult = includeSummary ? await client.query(`
+      WITH collection AS (
+        SELECT wishlist.id,
+               COALESCE(NULLIF(game.how_long_to_beat, 0), NULLIF(catalog.rawg_playtime_hours, 0)) AS hours,
+               COALESCE(NULLIF(catalog.genres_json, '[]'::jsonb), wishlist.tags_json, '[]'::jsonb) AS genres
+          FROM user_wishlist_items wishlist
+          LEFT JOIN LATERAL (
+            SELECT membership.* FROM steam_wishlist_items membership
+             WHERE membership.wishlist_item_id = wishlist.id AND membership.user_id = wishlist.user_id
+             ORDER BY membership.is_active DESC, membership.provider_order ASC NULLS LAST,
+                      membership.last_seen_at DESC, membership.steam_app_id
+             LIMIT 1
+          ) steam ON TRUE
+          LEFT JOIN games game ON game.id = wishlist.game_id AND game.user_id = wishlist.user_id
+          LEFT JOIN catalog_games catalog ON catalog.id = wishlist.catalog_game_id
+         WHERE wishlist.user_id = $1
+           AND ($2::boolean IS NULL
+             OR ($2::boolean AND (wishlist.local_intent_active OR COALESCE(steam.is_active, FALSE)))
+             OR (NOT $2::boolean AND NOT wishlist.local_intent_active AND steam.is_active = FALSE))
+      )
+      SELECT COUNT(DISTINCT collection.id)::int AS collection_total,
+             FLOOR(MIN(collection.hours))::int AS min_hours,
+             CEIL(MAX(collection.hours))::int AS max_hours,
+             COALESCE(jsonb_agg(DISTINCT genre.value ORDER BY genre.value)
+               FILTER (WHERE genre.value IS NOT NULL), '[]'::jsonb) AS genres
+        FROM collection
+        LEFT JOIN LATERAL jsonb_array_elements_text(collection.genres) genre(value) ON TRUE`,
+      [userId, active]) : { rows: [] };
     return {
       rows,
       account: await getSteamAccount(userId, client),
-      priceHealth: health.rows[0],
-      metadataHealth: await getWishlistMetadataStatus(userId, client),
+      priceHealth: includeSummary ? health.rows[0] : undefined,
+      metadataHealth: includeSummary ? await getWishlistMetadataStatus(userId, client) : undefined,
+      facets: includeSummary ? facetResult.rows[0] : undefined,
     };
   });
   const items = rows.map((row) => serializeWishlistItem(row, { hltbLookup: options.hltbLookup }));
@@ -268,6 +356,14 @@ export async function listWishlistItems(userId, options = {}) {
       incompleteItems: items.filter((item) => !item.metadataComplete).length,
       ...(metadataHealth || {}),
     },
+    facets: facets ? {
+      collectionTotal: Number(facets.collection_total || 0),
+      genres: Array.isArray(facets.genres) ? facets.genres : [],
+      hoursBounds: {
+        min: Number(facets.min_hours || 0),
+        max: Number(facets.max_hours || 0),
+      },
+    } : undefined,
     limit,
     offset,
   };

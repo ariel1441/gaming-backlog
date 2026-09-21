@@ -4,7 +4,13 @@ import { invalidateWishlistCache } from './wishlistCache.js';
 export function listWishlist(params = {}, opts = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    if (Array.isArray(value)) {
+      value.forEach((entry) => {
+        if (entry !== undefined && entry !== null && entry !== "") query.append(key, String(entry));
+      });
+    } else if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
   });
   const suffix = query.toString() ? `?${query}` : "";
   return api.get(`/api/wishlist${suffix}`, opts);

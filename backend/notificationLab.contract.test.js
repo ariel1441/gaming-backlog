@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-test("Notification Lab reset removes every reserved Steam source before a repeated seed", { timeout: 60_000 }, async () => {
+test("Notification Lab supports the real inbox lookup/action path and a clean repeated seed", { timeout: 60_000 }, async () => {
   const url = new URL(process.env.DATABASE_URL);
   assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(url.hostname));
   const database = `notification_lab_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -32,6 +32,36 @@ test("Notification Lab reset removes every reserved Steam source before a repeat
     const lab = await import("./services/notificationLabService.js");
 
     await lab.seedNotificationLab(userId, "all");
+    const { listActivityInbox } = await import("./services/activityInboxService.js");
+    const { applySteamStatusSuggestion } = await import("./services/steamService.js");
+    const { lookupOwnedGamesQuery } = await import("./utils/gameAccess.js");
+    const inbox = await listActivityInbox(userId, { section: "attention", limit: 20 });
+    const existingGameEvent = inbox.groups
+      .flatMap((group) => group.events)
+      .find((event) => event.externalId === "9900000004");
+    assert.ok(existingGameEvent?.gameId);
+
+    const lookup = lookupOwnedGamesQuery(userId, {
+      gameId: existingGameEvent.gameId,
+      limit: 1,
+    });
+    const lookupResult = await pool.query(lookup.text, lookup.values);
+    assert.deepEqual(
+      lookupResult.rows.map((game) => Number(game.id)),
+      [Number(existingGameEvent.gameId)],
+    );
+
+    const accepted = await applySteamStatusSuggestion(
+      userId,
+      Number(existingGameEvent.gameId),
+      {
+        status: "playing",
+        activityEventId: Number(existingGameEvent.id),
+      },
+    );
+    assert.equal(accepted.game.status, "playing");
+    assert.equal(accepted.activityEventResolved, true);
+
     await lab.resetNotificationLab(userId);
     const repeated = await lab.seedNotificationLab(userId, "all");
 

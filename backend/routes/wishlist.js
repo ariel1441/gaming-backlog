@@ -22,6 +22,12 @@ router.get("/", verifyToken, listWishlist, async (req, res, next) => {
     res.json(await listWishlistItems(req.user.id, {
       ...req.query,
       query: req.query.q,
+      minHours: req.query.min_hours,
+      maxHours: req.query.max_hours,
+      rawgStatus: req.query.rawg_status,
+      onSale: req.query.on_sale,
+      includeSummary: req.query.include_summary,
+      itemId: req.query.item_id,
       hltbLookup: req.app.locals.hltbLookup,
     }));
   } catch (error) { next(error); }

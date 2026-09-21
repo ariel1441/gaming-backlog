@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { listAllWishlist, syncWishlist } from './wishlistService.js';
+import { listAllWishlist, listWishlist, syncWishlist } from './wishlistService.js';
+
+test('wishlist pages preserve repeated server-side filter values', async () => {
+  const original = globalThis.fetch;
+  let requested;
+  try {
+    globalThis.fetch = async (input) => {
+      requested = new URL(input instanceof Request ? input.url : String(input), 'http://test.local');
+      return Response.json({ items: [], total: 0 });
+    };
+    await listWishlist({ genre: ['Action', 'Role Playing'], on_sale: true, limit: 50 });
+    assert.deepEqual(requested.searchParams.getAll('genre'), ['Action', 'Role Playing']);
+    assert.equal(requested.searchParams.get('on_sale'), 'true');
+    assert.equal(requested.searchParams.get('limit'), '50');
+  } finally { globalThis.fetch = original; }
+});
 
 test('price commits between membership pages reject mixed saved data', async () => {
   const original = globalThis.fetch;

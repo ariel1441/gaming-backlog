@@ -140,6 +140,13 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       const callCount = calls.length; await finish(first.userId); assert.equal(calls.length, callCount);
       failures.delete('1'); await due(first.userId); await finish(first.userId);
       assert.equal((await monitors(first.userId))[0].last_error, null);
+      assert.deepEqual(
+        (await wishlist.listWishlistItems(first.userId, { onSale: true })).items.map(item => item.steamAppId),
+        ['2'],
+      );
+      failures.add('2'); await due(first.userId); await finish(first.userId);
+      assert.equal((await wishlist.listWishlistItems(first.userId, { onSale: true })).total, 0);
+      failures.delete('2'); await due(first.userId); await finish(first.userId);
     });
 
     await t.test('rate limiting preserves unfinished work and repeated refresh reports cooldown without provider calls', async () => {
