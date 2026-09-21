@@ -57,8 +57,8 @@ test("GET /api/next-up scopes queue membership to the authenticated user", async
         }
         return {
           rows: [
-            { game_id: 3, position: 0 },
-            { game_id: 8, position: 1000 },
+            { game_id: 3, position: 0, candidate_role: "main" },
+            { game_id: 8, position: 1000, candidate_role: "side" },
           ],
         };
       },
@@ -91,7 +91,9 @@ test("PUT /api/next-up/focus/:role replaces one slot without changing game statu
       if (sql.includes("SELECT id, status FROM games")) {
         return { rows: [{ id: 4, status: "playing" }] };
       }
-      if (sql.includes("SELECT n.game_id")) return { rows: [{ game_id: 8 }] };
+      if (sql.includes("SELECT n.game_id")) {
+        return { rows: [{ game_id: 8, candidate_role: "main", position: 0 }] };
+      }
       if (sql.includes("FROM user_play_focus_games focus")) {
         return { rows: [{ game_id: 4, focus_role: "side" }] };
       }
@@ -170,7 +172,13 @@ test("PUT /api/next-up/reorder requires the complete queue and saves canonical p
     query: async (text, values) => {
       calls.push({ text, values });
       if (String(text).includes("SELECT n.game_id")) {
-        return { rows: [{ game_id: 2 }, { game_id: 5 }, { game_id: 9 }] };
+        return {
+          rows: [
+            { game_id: 2, candidate_role: "main" },
+            { game_id: 5, candidate_role: "main" },
+            { game_id: 9, candidate_role: "main" },
+          ],
+        };
       }
       return { rows: [] };
     },
@@ -185,7 +193,7 @@ test("PUT /api/next-up/reorder requires the complete queue and saves canonical p
     const update = calls.find((call) =>
       String(call.text).includes("UPDATE user_next_up_games AS n"),
     );
-    assert.deepEqual(update.values, [[9, 2, 5], [0, 1000, 2000], 7]);
+    assert.deepEqual(update.values, [[9, 2, 5], [0, 1000, 2000], 7, "main"]);
     assert.match(String(calls.at(-1).text), /COMMIT/);
   });
 });
@@ -243,7 +251,12 @@ test("Start playing preserves an existing date, removes membership, and compacts
         };
       }
       if (sql.includes("SELECT n.game_id")) {
-        return { rows: [{ game_id: 8 }, { game_id: 9 }] };
+        return {
+          rows: [
+            { game_id: 8, candidate_role: "main", position: 0 },
+            { game_id: 9, candidate_role: "main", position: 1000 },
+          ],
+        };
       }
       return { rows: [] };
     },

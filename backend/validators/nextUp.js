@@ -12,6 +12,7 @@ export const nextUpSchemas = {
     }),
   }),
   reorderBody: Joi.object({
+    role: Joi.string().valid("main", "side").default("main"),
     gameIds: Joi.array()
       .items(Joi.number().integer().positive())
       .unique()
@@ -21,6 +22,9 @@ export const nextUpSchemas = {
         "array.unique": "gameIds cannot contain duplicates",
         "any.required": "gameIds is required",
       }),
+  }),
+  candidateBody: Joi.object({
+    role: Joi.string().valid("main", "side").default("main"),
   }),
   focusRoleParams: Joi.object({
     role: Joi.string().valid("main", "side", "occasional").required(),
@@ -37,6 +41,11 @@ export const nextUpGameId = celebrate(
 
 export const reorderNextUp = celebrate(
   { [Segments.BODY]: nextUpSchemas.reorderBody },
+  opts,
+);
+
+export const addNextUpCandidate = celebrate(
+  { [Segments.BODY]: nextUpSchemas.candidateBody },
   opts,
 );
 

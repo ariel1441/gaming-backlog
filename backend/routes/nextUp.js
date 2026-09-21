@@ -2,6 +2,7 @@ import express from "express";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
 import {
+  addNextUpCandidate,
   assignPlayFocus,
   nextUpGameId,
   reorderNextUp,
@@ -23,22 +24,23 @@ async function lockQueue(client, userId) {
   ]);
 }
 
-async function lockedQueueRows(client, userId) {
+async function lockedQueueRows(client, userId, role) {
   const result = await client.query(
-    `SELECT n.game_id, n.position
+    `SELECT n.game_id, n.position, n.candidate_role
        FROM user_next_up_games n
        JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
-      WHERE n.user_id = $1
+       WHERE n.user_id = $1
+        AND n.candidate_role = $2
         AND LOWER(TRIM(g.status)) <> 'wishlist'
       ORDER BY n.position, n.game_id
       FOR UPDATE OF n`,
-    [userId],
+    [userId, role],
   );
   return result.rows;
 }
 
-async function compactQueue(client, userId, rows = null) {
-  const ordered = rows || (await lockedQueueRows(client, userId));
+async function compactQueue(client, userId, role, rows = null) {
+  const ordered = rows || (await lockedQueueRows(client, userId, role));
   if (ordered.length) {
     const ids = ordered.map((row) => Number(row.game_id));
     const positions = ordered.map((_, index) => index * POSITION_SPACING);
@@ -49,11 +51,49 @@ async function compactQueue(client, userId, rows = null) {
            SELECT unnest($1::int[]) AS game_id,
                   unnest($2::int[]) AS position
          ) AS v
-        WHERE n.user_id = $3 AND n.game_id = v.game_id`,
-      [ids, positions, userId],
+        WHERE n.user_id = $3 AND n.candidate_role = $4 AND n.game_id = v.game_id`,
+      [ids, positions, userId, role],
     );
   }
   return ordered.map((row) => Number(row.game_id));
+}
+
+function candidatePayload(rows = []) {
+  const candidates = { main: [], side: [] };
+  rows.forEach((row) => {
+    if (candidates[row.candidate_role]) {
+      candidates[row.candidate_role].push(Number(row.game_id));
+    }
+  });
+  return candidates;
+}
+
+async function readCandidates(queryable, userId) {
+  const result = await queryable.query(
+    `SELECT n.game_id, n.position, n.candidate_role, n.added_at
+       FROM user_next_up_games n
+       JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
+      WHERE n.user_id = $1
+        AND LOWER(TRIM(g.status)) <> 'wishlist'
+      ORDER BY CASE n.candidate_role WHEN 'main' THEN 0 ELSE 1 END,
+               n.position, n.game_id`,
+    [userId],
+  );
+  return result.rows;
+}
+
+function candidateResponse(rows) {
+  const candidates = candidatePayload(rows);
+  return {
+    gameIds: [...candidates.main, ...candidates.side],
+    candidates,
+    queue: rows.map((row) => ({
+      gameId: Number(row.game_id),
+      position: Number(row.position),
+      role: row.candidate_role,
+      addedAt: row.added_at,
+    })),
+  };
 }
 
 function focusPayload(rows = []) {
@@ -84,25 +124,12 @@ async function readFocus(queryable, userId) {
 router.get("/", verifyToken, async (req, res, next) => {
   try {
     const [result, focus] = await Promise.all([
-      pool.query(
-        `SELECT n.game_id, n.position, n.added_at
-         FROM user_next_up_games n
-         JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
-        WHERE n.user_id = $1
-          AND LOWER(TRIM(g.status)) <> 'wishlist'
-        ORDER BY n.position, n.game_id`,
-        [req.user.id],
-      ),
+      readCandidates(pool, req.user.id),
       readFocus(pool, req.user.id),
     ]);
     res.setHeader("Cache-Control", "no-store");
     res.json({
-      gameIds: result.rows.map((row) => Number(row.game_id)),
-      queue: result.rows.map((row, index) => ({
-        gameId: Number(row.game_id),
-        position: index,
-        addedAt: row.added_at,
-      })),
+      ...candidateResponse(result),
       focus,
     });
   } catch (error) {
@@ -151,14 +178,19 @@ router.put(
          VALUES ($1, $2, $3)`,
         [userId, gameId, role],
       );
-      await client.query(
-        "DELETE FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
+      const removedCandidate = await client.query(
+        `DELETE FROM user_next_up_games
+          WHERE user_id = $1 AND game_id = $2
+          RETURNING candidate_role`,
         [userId, gameId],
       );
-      const gameIds = await compactQueue(client, userId);
+      if (removedCandidate.rows[0]?.candidate_role) {
+        await compactQueue(client, userId, removedCandidate.rows[0].candidate_role);
+      }
+      const candidateState = candidateResponse(await readCandidates(client, userId));
       const focus = await readFocus(client, userId);
       await client.query("COMMIT");
-      res.json({ focus, gameIds });
+      res.json({ focus, ...candidateState });
     } catch (error) {
       try {
         await client?.query("ROLLBACK");
@@ -192,11 +224,12 @@ router.delete(
   },
 );
 
-router.post("/:gameId", verifyToken, nextUpGameId, async (req, res, next) => {
+router.post("/:gameId", verifyToken, nextUpGameId, addNextUpCandidate, async (req, res, next) => {
   let client;
   try {
     const userId = req.user.id;
     const gameId = Number(req.params.gameId);
+    const role = req.body?.role || "main";
     client = await pool.connect();
     await client.query("BEGIN");
     await lockQueue(client, userId);
@@ -217,26 +250,37 @@ router.post("/:gameId", verifyToken, nextUpGameId, async (req, res, next) => {
       throw badRequest("Playing and done games cannot be added to Next Up.");
     }
     const existing = await client.query(
-      "SELECT 1 FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
+      "SELECT candidate_role FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
       [userId, gameId],
     );
-    if (existing.rows[0]) throw conflict("Game is already in Next Up.");
-    const queue = await lockedQueueRows(client, userId);
+    if (existing.rows[0]?.candidate_role === role) {
+      throw conflict(`Game is already in your ${role} candidates.`);
+    }
+    if (existing.rows[0]) {
+      await client.query(
+        "DELETE FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
+        [userId, gameId],
+      );
+      await compactQueue(client, userId, existing.rows[0].candidate_role);
+    }
+    const queue = await lockedQueueRows(client, userId, role);
     const maxPosition = queue.reduce(
       (max, row) => Math.max(max, Number(row.position) || 0),
       -POSITION_SPACING,
     );
     const position = maxPosition + POSITION_SPACING;
     await client.query(
-      `INSERT INTO user_next_up_games (user_id, game_id, position)
-       VALUES ($1, $2, $3)`,
-      [userId, gameId, position],
+      `INSERT INTO user_next_up_games (user_id, game_id, candidate_role, position)
+       VALUES ($1, $2, $3, $4)`,
+      [userId, gameId, role, position],
     );
+    const state = candidateResponse(await readCandidates(client, userId));
     await client.query("COMMIT");
-    res.status(201).json({
+    res.status(existing.rows[0] ? 200 : 201).json({
       gameId,
+      role,
       position: queue.length,
-      gameIds: [...queue.map((row) => Number(row.game_id)), gameId],
+      ...state,
     });
   } catch (error) {
     try {
@@ -259,13 +303,14 @@ router.delete("/:gameId", verifyToken, nextUpGameId, async (req, res, next) => {
     const removed = await client.query(
       `DELETE FROM user_next_up_games
         WHERE user_id = $1 AND game_id = $2
-        RETURNING game_id`,
+        RETURNING game_id, candidate_role`,
       [userId, gameId],
     );
     if (!removed.rows[0]) throw notFound("Game is not in Next Up.");
-    const gameIds = await compactQueue(client, userId);
+    await compactQueue(client, userId, removed.rows[0].candidate_role);
+    const state = candidateResponse(await readCandidates(client, userId));
     await client.query("COMMIT");
-    res.json({ gameId, gameIds });
+    res.json({ gameId, ...state });
   } catch (error) {
     try {
       await client?.query("ROLLBACK");
@@ -281,10 +326,11 @@ router.put("/reorder", verifyToken, reorderNextUp, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const gameIds = req.body.gameIds.map(Number);
+    const role = req.body?.role || "main";
     client = await pool.connect();
     await client.query("BEGIN");
     await lockQueue(client, userId);
-    const current = await lockedQueueRows(client, userId);
+    const current = await lockedQueueRows(client, userId, role);
     const currentIds = current.map((row) => Number(row.game_id));
     if (
       gameIds.length !== currentIds.length ||
@@ -295,10 +341,12 @@ router.put("/reorder", verifyToken, reorderNextUp, async (req, res, next) => {
     await compactQueue(
       client,
       userId,
+      role,
       gameIds.map((gameId) => ({ game_id: gameId })),
     );
+    const state = candidateResponse(await readCandidates(client, userId));
     await client.query("COMMIT");
-    res.json({ gameIds });
+    res.json({ ...state, reorderedRole: role });
   } catch (error) {
     try {
       await client?.query("ROLLBACK");
@@ -344,18 +392,23 @@ router.post(
           RETURNING *`,
         [gameId, userId],
       );
-      await client.query(
-        "DELETE FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
+      const removedCandidate = await client.query(
+        `DELETE FROM user_next_up_games
+          WHERE user_id = $1 AND game_id = $2
+          RETURNING candidate_role`,
         [userId, gameId],
       );
-      const gameIds = await compactQueue(client, userId);
+      if (removedCandidate.rows[0]?.candidate_role) {
+        await compactQueue(client, userId, removedCandidate.rows[0].candidate_role);
+      }
+      const candidateState = candidateResponse(await readCandidates(client, userId));
       await client.query("COMMIT");
 
       const detailQuery = selectOwnedGameDetailsQuery(gameId, userId);
       const detail = await pool.query(detailQuery.text, detailQuery.values);
       res.json({
         game: decorateGameForClient(detail.rows[0] || updated.rows[0]),
-        gameIds,
+        ...candidateState,
       });
     } catch (error) {
       try {

@@ -81,6 +81,7 @@ import { apiErrorMessage, buildEditGamePayload } from "./Backlog/backlogForm";
 
 const FOCUSED_QUEUE_LIMIT = 10;
 const EMPTY_FOCUS = Object.freeze({ main: null, side: null, occasional: [] });
+const EMPTY_CANDIDATES = Object.freeze({ main: [], side: [] });
 
 function titleOf(game) {
   return game?.displayName || game?.name || "Untitled game";
@@ -244,8 +245,10 @@ function QueueRow({
   saving,
   reorderDisabled,
   returning,
+  candidateRole,
   onStart,
   onMove,
+  onChangeRole,
   onRemove,
   onOpen,
 }) {
@@ -355,6 +358,18 @@ function QueueRow({
                   role="menuitem"
                   onClick={() => {
                     close();
+                    onChangeRole(game, candidateRole === "main" ? "side" : "main");
+                  }}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-content-secondary hover:bg-surface-elevated"
+                >
+                  <ListPlus className="h-4 w-4" aria-hidden="true" />
+                  Move to {candidateRole === "main" ? "Side" : "Main"} candidates
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
                     onRemove(game.id);
                   }}
                   className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-state-error hover:bg-state-error/10"
@@ -414,7 +429,7 @@ function ReturningRow({ game, busy, onAdd, onNote, onOpen }) {
             className="w-full sm:w-auto"
           >
             <ListPlus className="h-4 w-4" aria-hidden="true" />
-            Add to shortlist
+            Add to candidates
           </Button>
           <Button
             type="button"
@@ -735,11 +750,13 @@ export default function PlayNextPage() {
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const [queueIds, setQueueIds] = useState([]);
+  const [candidateBanks, setCandidateBanks] = useState(EMPTY_CANDIDATES);
   const [focus, setFocus] = useState(EMPTY_FOCUS);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [addingRole, setAddingRole] = useState("main");
   const [addSearch, setAddSearch] = useState("");
   const [noteGame, setNoteGame] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -761,6 +778,7 @@ export default function PlayNextPage() {
   const loadQueue = useCallback(async () => {
     if (!isAuthenticated) {
       setQueueIds([]);
+      setCandidateBanks(EMPTY_CANDIDATES);
       setFocus(EMPTY_FOCUS);
       setQueueLoading(false);
       setQueueError(null);
@@ -771,6 +789,12 @@ export default function PlayNextPage() {
     try {
       const payload = await getNextUp();
       setQueueIds(Array.isArray(payload?.gameIds) ? payload.gameIds : []);
+      setCandidateBanks(
+        payload?.candidates || {
+          main: Array.isArray(payload?.gameIds) ? payload.gameIds : [],
+          side: [],
+        },
+      );
       setFocus(payload?.focus || EMPTY_FOCUS);
     } catch (error) {
       setQueueError(error);
@@ -801,6 +825,14 @@ export default function PlayNextPage() {
   const queueGames = useMemo(
     () => queueIds.map((id) => byId.get(String(id))).filter(Boolean),
     [byId, queueIds],
+  );
+  const mainCandidateGames = useMemo(
+    () => (candidateBanks.main || []).map((id) => byId.get(String(id))).filter(Boolean),
+    [byId, candidateBanks.main],
+  );
+  const sideCandidateGames = useMemo(
+    () => (candidateBanks.side || []).map((id) => byId.get(String(id))).filter(Boolean),
+    [byId, candidateBanks.side],
   );
   const activeGames = useMemo(
     () =>
@@ -861,13 +893,16 @@ export default function PlayNextPage() {
       games: eligible,
       role: assigningRole || "side",
       partnerGame: assigningRole === "main" ? sideGame : mainGame,
-      queueIds,
+      queueIds: candidateBanks[assigningRole] || [],
       statusGroupOf,
     });
-  }, [assigningRole, focusedIds, games, mainGame, queueIds, sideGame, statusGroupOf]);
+  }, [assigningRole, candidateBanks, focusedIds, games, mainGame, sideGame, statusGroupOf]);
   const focusGroups = useMemo(
-    () => focusSuggestionGroups({ candidates: focusCandidates, queueIds }),
-    [focusCandidates, queueIds],
+    () => focusSuggestionGroups({
+      candidates: focusCandidates,
+      queueIds: candidateBanks[assigningRole] || [],
+    }),
+    [assigningRole, candidateBanks, focusCandidates],
   );
   const genreOptions = useMemo(() => {
     const labels = new Map();
@@ -882,9 +917,11 @@ export default function PlayNextPage() {
     );
   }, [games]);
   const queueEntries = useMemo(
-    () =>
-      queueGames.map((game, index) => ({ game, index })),
-    [queueGames],
+    () => [
+      ...mainCandidateGames.map((game, index) => ({ game, index, role: "main" })),
+      ...sideCandidateGames.map((game, index) => ({ game, index, role: "side" })),
+    ],
+    [mainCandidateGames, sideCandidateGames],
   );
   const returningGames = useMemo(
     () =>
@@ -936,16 +973,22 @@ export default function PlayNextPage() {
     }),
   );
 
-  const saveOrder = async (nextIds, previousIds) => {
+  const applyCandidatePayload = (payload, fallbackBanks = candidateBanks) => {
+    if (payload?.candidates) setCandidateBanks(payload.candidates);
+    else setCandidateBanks(fallbackBanks);
+    if (Array.isArray(payload?.gameIds)) setQueueIds(payload.gameIds);
+  };
+
+  const saveOrder = async (nextIds, previousIds, role) => {
     if (nextIds.every((id, index) => String(id) === String(previousIds[index])))
       return;
-    setQueueIds(nextIds);
+    setCandidateBanks((current) => ({ ...current, [role]: nextIds }));
     setBusy(true);
     try {
-      const payload = await reorderNextUp(nextIds);
-      setQueueIds(payload?.gameIds || nextIds);
+      const payload = await reorderNextUp(nextIds, role);
+      applyCandidatePayload(payload, { ...candidateBanks, [role]: nextIds });
     } catch (error) {
-      setQueueIds(previousIds);
+      setCandidateBanks((current) => ({ ...current, [role]: previousIds }));
       toast.error(error.message || "Could not save the queue order.");
       await loadQueue();
     } finally {
@@ -953,21 +996,21 @@ export default function PlayNextPage() {
     }
   };
 
-  const moveGame = (gameId, destination) => {
-    const previous = [...queueIds];
-    void saveOrder(moveQueueItem(previous, gameId, destination), previous);
+  const moveGame = (gameId, destination, role) => {
+    const previous = [...(candidateBanks[role] || [])];
+    void saveOrder(moveQueueItem(previous, gameId, destination), previous, role);
   };
 
-  const addGame = async (game) => {
+  const addGame = async (game, role = addingRole) => {
     setBusy(true);
     try {
-      const payload = await addToNextUp(game.id);
-      setQueueIds(payload.gameIds || [...queueIds, game.id]);
+      const payload = await addToNextUp(game.id, role);
+      applyCandidatePayload(payload);
       toast.success(
-        `${titleOf(game)} added at position ${payload.position + 1}.`,
+        `${titleOf(game)} added to your ${role} candidates.`,
       );
     } catch (error) {
-      toast.error(error.message || "Could not add this game to the shortlist.");
+      toast.error(error.message || "Could not add this game to the candidate bank.");
     } finally {
       setBusy(false);
     }
@@ -979,7 +1022,7 @@ export default function PlayNextPage() {
       const previousId = role === "main" || role === "side" ? focus[role] : null;
       const payload = await assignPlayFocus(role, game.id);
       setFocus(payload.focus || EMPTY_FOCUS);
-      if (Array.isArray(payload.gameIds)) setQueueIds(payload.gameIds);
+      applyCandidatePayload(payload);
       if (previousId && String(previousId) !== String(game.id)) {
         const previousGame = byId.get(String(previousId));
         if (previousGame) upsertGame({ ...previousGame, focusRole: null });
@@ -1032,8 +1075,8 @@ export default function PlayNextPage() {
     setBusy(true);
     try {
       const payload = await removeFromNextUp(gameId);
-      setQueueIds(payload.gameIds || []);
-      toast.success("Removed from the shortlist.");
+      applyCandidatePayload(payload);
+      toast.success("Removed from the candidate bank.");
     } catch (error) {
       setQueueIds(previous);
       toast.error(error.message || "Could not remove this game.");
@@ -1087,7 +1130,7 @@ export default function PlayNextPage() {
     setBusy(true);
     try {
       const payload = await startPlaying(game.id);
-      setQueueIds(payload.gameIds || []);
+      applyCandidatePayload(payload);
       if (payload.game) {
         upsertGame(payload.game);
         setSelectedGame((current) =>
@@ -1242,12 +1285,8 @@ export default function PlayNextPage() {
     );
   }
 
-  const focused = queueEntries.filter(
-    ({ index }) => index < FOCUSED_QUEUE_LIMIT,
-  );
-  const later = queueEntries.filter(
-    ({ index }) => index >= FOCUSED_QUEUE_LIMIT,
-  );
+  const focused = queueEntries;
+  const later = [];
   const selectedGenre = selectedGenres[0] || "";
   const focusQuery = addSearch.trim().toLowerCase();
   const searchedFocusGroups = focusQuery
@@ -1255,7 +1294,8 @@ export default function PlayNextPage() {
         candidates: focusCandidates.filter(({ game }) =>
           titleOf(game).toLowerCase().includes(focusQuery),
         ),
-        queueIds,
+        queueIds: candidateBanks[assigningRole] || [],
+        includeUnrecommended: true,
       })
     : null;
   const visibleFocusSections = (() => {
@@ -1270,7 +1310,7 @@ export default function PlayNextPage() {
     if (showAllFocusCandidates) {
       return [
         { title: "Already playing", candidates: focusGroups.active },
-        { title: "From your shortlist", candidates: focusGroups.shortlist },
+        { title: `From your ${assigningRole} candidates`, candidates: focusGroups.shortlist },
         { title: "From your backlog", candidates: focusGroups.backlog },
       ].filter(({ candidates }) => candidates.length);
     }
@@ -1280,7 +1320,7 @@ export default function PlayNextPage() {
         candidates: focusGroups.active.slice(0, 2),
       },
       {
-        title: "From your shortlist",
+        title: `From your ${assigningRole} candidates`,
         candidates: focusGroups.recommended.filter(
           ({ source }) => source === "shortlist",
         ),
@@ -1298,6 +1338,10 @@ export default function PlayNextPage() {
     (count, section) => count + section.candidates.length,
     0,
   );
+  const recommendedFocusCount =
+    focusGroups.active.length +
+    focusGroups.shortlist.length +
+    focusGroups.backlog.length;
   const randomMoodGame = byId.get(String(randomPickId)) || null;
   const defaultMoodPick = picks.find((pick) => pick.lane === "priority") || null;
   const moodPick = randomMoodGame
@@ -1320,18 +1364,24 @@ export default function PlayNextPage() {
           description="Keep two games in focus, then make starting the easy part."
           meta={`${[mainGame, sideGame].filter(Boolean).length}/2 focus slots filled`}
           actions={
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => {
-                setAssigningRole("");
-                setShowAllFocusCandidates(false);
-                setAddOpen(true);
-              }}
-            >
-              <ListPlus className="h-4 w-4" aria-hidden="true" />
-              Add to shortlist
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {["main", "side"].map((role) => (
+                <Button
+                  key={role}
+                  type="button"
+                  variant={role === "main" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setAddingRole(role);
+                    setAssigningRole("");
+                    setShowAllFocusCandidates(false);
+                    setAddOpen(true);
+                  }}
+                >
+                  <ListPlus className="h-4 w-4" aria-hidden="true" />
+                  Add {role} candidate
+                </Button>
+              ))}
+            </div>
           }
         />
 
@@ -1430,7 +1480,7 @@ export default function PlayNextPage() {
         <section>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <SectionHeader
-              title={`Next Up shortlist (${queueGames.length})`}
+              title={`Candidate banks (${queueGames.length})`}
               className="mb-0"
             />
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1445,7 +1495,7 @@ export default function PlayNextPage() {
                 ) : (
                   <ChevronDown className="h-4 w-4" aria-hidden="true" />
                 )}
-                {candidatesOpen ? "Hide shortlist" : "Show shortlist"}
+                {candidatesOpen ? "Hide candidates" : "Show candidates"}
               </Button>
             </div>
           </div>
@@ -1458,17 +1508,27 @@ export default function PlayNextPage() {
                 modifiers={[restrictToVerticalAxis]}
                 onDragEnd={({ active, over }) => {
                   if (!over || String(active.id) === String(over.id)) return;
-                  const from = queueIds.findIndex(
+                  const activeEntry = queueEntries.find(
+                    ({ game }) => String(game.id) === String(active.id),
+                  );
+                  const overEntry = queueEntries.find(
+                    ({ game }) => String(game.id) === String(over.id),
+                  );
+                  if (!activeEntry || activeEntry.role !== overEntry?.role) return;
+                  const role = activeEntry.role;
+                  const roleIds = candidateBanks[role] || [];
+                  const from = roleIds.findIndex(
                     (id) => String(id) === String(active.id),
                   );
-                  const to = queueIds.findIndex(
+                  const to = roleIds.findIndex(
                     (id) => String(id) === String(over.id),
                   );
                   if (from < 0 || to < 0) return;
-                  const previous = [...queueIds];
+                  const previous = [...roleIds];
                   void saveOrder(
                     moveQueueItem(previous, active.id, to),
                     previous,
+                    role,
                   );
                 }}
               >
@@ -1479,24 +1539,40 @@ export default function PlayNextPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="space-y-3">
-                    {focused.map(({ game, index }) => (
-                      <QueueRow
-                        key={game.id}
-                        game={game}
-                        index={index}
-                        count={queueGames.length}
-                        saving={busy}
-                        reorderDisabled={false}
-                        returning={
-                          playNextStatusGroup(game.status, statusGroupOf) ===
-                          "returning"
-                        }
-                        onStart={startGame}
-                        onMove={moveGame}
-                        onRemove={removeGame}
-                        onOpen={setSelectedGame}
-                      />
-                    ))}
+                    {["main", "side"].map((role) => {
+                      const entries = focused.filter((entry) => entry.role === role);
+                      return (
+                        <div key={role} className="space-y-3">
+                          <div className="flex items-center justify-between px-1 pt-2">
+                            <h3 className="font-semibold capitalize text-content-primary">
+                              {role} candidates
+                            </h3>
+                            <span className="text-sm text-content-muted">{entries.length}</span>
+                          </div>
+                          {entries.length ? entries.map(({ game, index }) => (
+                            <QueueRow
+                              key={game.id}
+                              game={game}
+                              index={index}
+                              count={entries.length}
+                              saving={busy}
+                              reorderDisabled={false}
+                              returning={playNextStatusGroup(game.status, statusGroupOf) === "returning"}
+                              candidateRole={role}
+                              onStart={startGame}
+                              onMove={(gameId, destination) => moveGame(gameId, destination, role)}
+                              onChangeRole={addGame}
+                              onRemove={removeGame}
+                              onOpen={setSelectedGame}
+                            />
+                          )) : (
+                            <p className="rounded-xl border border-dashed border-surface-border p-4 text-sm text-content-muted">
+                              No {role} candidates saved yet.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                     {later.length ? (
                       <div className="rounded-2xl border border-surface-border bg-surface-card/65">
                         <button
@@ -1517,7 +1593,7 @@ export default function PlayNextPage() {
                         </button>
                         {laterOpen ? (
                           <div className="space-y-3 border-t border-surface-border p-3">
-                            {later.map(({ game, index }) => (
+                            {later.map(({ game, index, role }) => (
                               <QueueRow
                                 key={game.id}
                                 game={game}
@@ -1531,8 +1607,10 @@ export default function PlayNextPage() {
                                     statusGroupOf,
                                   ) === "returning"
                                 }
+                                candidateRole={role}
                                 onStart={startGame}
-                                onMove={moveGame}
+                                onMove={(gameId, destination) => moveGame(gameId, destination, role)}
+                                onChangeRole={addGame}
                                 onRemove={removeGame}
                                 onOpen={setSelectedGame}
                               />
@@ -1549,7 +1627,7 @@ export default function PlayNextPage() {
                 icon={LibraryBig}
                 title={
                   activeGames.length
-                    ? "Build a small shortlist."
+                    ? "Build small candidate banks."
                     : "Choose your next game."
                 }
                 description={
@@ -1564,7 +1642,7 @@ export default function PlayNextPage() {
                     onClick={() => setAddOpen(true)}
                   >
                     <ListPlus className="h-4 w-4" aria-hidden="true" />
-                    Add to shortlist
+                    Add candidates
                   </Button>
                 }
               />
@@ -1577,8 +1655,8 @@ export default function PlayNextPage() {
             >
               <span>
                 {queueGames.length
-                  ? "Your shortlist is saved and out of the way until you need it."
-                  : "Add a few games you genuinely want considered soon."}
+                  ? "Your Main and Side candidates are saved until a focus slot opens."
+                  : "Save a few Main and Side candidates for later."}
               </span>
               <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
             </button>
@@ -1662,7 +1740,7 @@ export default function PlayNextPage() {
                       key={game.id}
                       game={game}
                       busy={busy}
-                      onAdd={addGame}
+                      onAdd={(game) => addGame(game, "main")}
                       onNote={openNote}
                       onOpen={setSelectedGame}
                     />
@@ -1679,12 +1757,12 @@ export default function PlayNextPage() {
         title={
           assigningRole
             ? `Choose your ${assigningRole} game`
-            : "Add to Next Up shortlist"
+            : `Add ${addingRole} candidates`
         }
         description={
           assigningRole
-            ? "Compare an already-playing game, one shortlist recommendation, and one backlog recommendation."
-            : "Add games you genuinely want considered soon."
+            ? `Compare what you are already playing, your ${assigningRole} bank, and a strict backlog recommendation.`
+            : `Save games you want considered for your next ${addingRole} slot.`
         }
         size="sm"
         className="max-h-[min(80dvh,44rem)]"
@@ -1699,7 +1777,7 @@ export default function PlayNextPage() {
           <TextInput
             value={addSearch}
             onChange={(event) => setAddSearch(event.target.value)}
-            placeholder="Search eligible games"
+            placeholder="Search all games to override suggestions"
             className="pl-9"
             autoFocus
           />
@@ -1762,20 +1840,20 @@ export default function PlayNextPage() {
                 ? "No eligible games match this search."
                 : assigningRole
                   ? "No eligible games are available for this slot."
-                  : "Every eligible game is already shortlisted, or your remaining games are Playing or Done."}
+                  : "Every eligible game is already saved as a candidate, or your remaining games are Playing or Done."}
             </p>
           ) : null}
           {assigningRole &&
           !showAllFocusCandidates &&
           !addSearch.trim() &&
-          focusCandidates.length > visibleFocusCount ? (
+          recommendedFocusCount > visibleFocusCount ? (
             <Button
               type="button"
               variant="ghost"
               className="w-full"
               onClick={() => setShowAllFocusCandidates(true)}
             >
-              Show all {focusCandidates.length} eligible games
+              Show all {recommendedFocusCount} recommended games
             </Button>
           ) : null}
         </div>

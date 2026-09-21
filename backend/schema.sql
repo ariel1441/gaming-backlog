@@ -517,13 +517,15 @@ CREATE INDEX idx_user_list_games_game_id
 CREATE TABLE user_next_up_games (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  candidate_role TEXT NOT NULL DEFAULT 'main'
+    CHECK (candidate_role IN ('main', 'side')),
   position INTEGER NOT NULL CHECK (position >= 0),
   added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (user_id, game_id)
 );
 
-CREATE INDEX idx_user_next_up_games_user_position
-  ON user_next_up_games (user_id, position, game_id);
+CREATE INDEX idx_user_next_up_games_user_role_position
+  ON user_next_up_games (user_id, candidate_role, position, game_id);
 
 CREATE INDEX idx_user_next_up_games_game_id
   ON user_next_up_games (game_id);
