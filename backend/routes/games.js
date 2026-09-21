@@ -752,6 +752,7 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const gameId = Number(req.params.id);
+    const completionStatus = req.body.completion_status || "finished";
     const finishedAt = req.body.finished_at;
     const score = normalizeScore(req.body.my_score);
     const thoughts = req.body.thoughts?.trim() || null;
@@ -767,8 +768,8 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
     const row = existing.rows[0];
     if (!row) throw notFound("Not found");
 
-    let outcome = "finished";
-    if (normStatus(row.status) !== "finished") {
+    let outcome = completionStatus === "finished" ? "finished" : "completed";
+    if (normStatus(row.status) !== completionStatus) {
       const startedAt = toDateOrNull(row.started_at);
       if (startedAt && finishedAt < startedAt) {
         throw httpError(
@@ -781,18 +782,20 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
       const updated = await client.query(
         `
           UPDATE games
-             SET status = 'finished',
-                 finished_at = $3,
-                 my_score = $4,
-                 thoughts = $5
+             SET status = $3,
+                 finished_at = $4,
+                 my_score = $5,
+                 thoughts = $6
            WHERE id = $1 AND user_id = $2
            RETURNING *
           `,
-        [gameId, userId, finishedAt, score, thoughts],
+        [gameId, userId, completionStatus, finishedAt, score, thoughts],
       );
       if (!updated.rows[0]) throw notFound("Not found");
     } else {
-      outcome = "already_finished";
+      outcome = completionStatus === "finished"
+        ? "already_finished"
+        : "already_completed";
     }
 
     await client.query(

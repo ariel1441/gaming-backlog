@@ -1,5 +1,7 @@
 const STATUS_DISPLAY_LABELS = Object.freeze({
   "played and wont come back": "Dropped",
+  "played alot but didnt finish": "Played a lot, but didn’t finish",
+  "played a lot but didn't finish": "Played a lot, but didn’t finish",
 });
 
 export function statusDisplayLabel(status) {

@@ -14,3 +14,10 @@ test("passes other status labels through unchanged", () => {
   assert.equal(statusDisplayLabel("playing"), "playing");
   assert.equal(statusDisplayLabel(null), "");
 });
+
+test("polishes the alternate completed status", () => {
+  assert.equal(
+    statusDisplayLabel("played alot but didnt finish"),
+    "Played a lot, but didn’t finish",
+  );
+});
