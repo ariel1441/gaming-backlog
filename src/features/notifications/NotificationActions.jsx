@@ -11,8 +11,10 @@ import {
   useConfirm,
 } from "../../components/ui";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
-import { useGames } from "../../hooks/useGames";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useAuth } from "../../contexts/AuthContext";
+import { lookupGames } from "../../services/gameService";
+import { invalidateGamesCache } from "../../services/gamesCache";
 import {
   applySteamStatusSuggestion,
   addSteamCandidateToBacklog,
@@ -29,8 +31,6 @@ import { listPersonalGenres } from "../../services/personalGenreService";
 import { invalidateWishlistCache } from "../../services/wishlistCache";
 import { buildSteamStatusSuggestionPayload } from "../../utils/steamSync";
 import { activityPriceChange, activitySummary } from "../../utils/activityInbox";
-import { canEditGame } from "../../utils/permissions";
-import { buildDisplayGames } from "../../utils/gameList";
 import { statusOption, statusDisplayLabel } from "../../utils/statusDisplay";
 import {
   notificationCategory,
@@ -47,8 +47,7 @@ export default function NotificationActions({
   const event = primaryNotificationEvent(group);
   const category = notificationCategory(group);
   const acquisition = ["owned", "started"].includes(category);
-  const { games, refresh } = useGames();
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const confirm = useConfirm();
   const id = useId();
   const [status, setStatus] = useState("");
@@ -56,6 +55,10 @@ export default function NotificationActions({
   const [target, setTarget] = useState("");
   const [query, setQuery] = useState("");
   const [linking, setLinking] = useState(false);
+  const [savedGame, setSavedGame] = useState(null);
+  const [savedGameLoading, setSavedGameLoading] = useState(false);
+  const [linkGames, setLinkGames] = useState([]);
+  const [linkGamesLoading, setLinkGamesLoading] = useState(false);
   const [candidate, setCandidate] = useState(null);
   const [checking, setChecking] = useState(acquisition);
   const [lookupAttempt, setLookupAttempt] = useState(0);
@@ -91,7 +94,8 @@ export default function NotificationActions({
   const locked = useRef(false);
   const mounted = useRef(true);
   const gameId = event.gameId || event.payload?.gameId;
-  const game = games.find((item) => Number(item.id) === Number(gameId));
+  const game = savedGame;
+  const debouncedLinkQuery = useDebouncedValue(query, 150);
   const appId = String(event.externalId || event.payload?.steamAppId || "");
   const wishlist = event.wishlistContext;
   const legacyWishlist = candidate?.linkedGameStatus?.trim().toLowerCase() === 'wishlist';
@@ -178,6 +182,54 @@ export default function NotificationActions({
     return () => controller.abort();
   }, [appId, acquisition, expanded, lookupAttempt]);
 
+  useEffect(() => {
+    if (category !== "playing" || !expanded || !gameId) {
+      setSavedGame(null);
+      setSavedGameLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSavedGameLoading(true);
+    lookupGames({ id: gameId, limit: 1 }, { signal: controller.signal })
+      .then((payload) => {
+        if (!controller.signal.aborted) {
+          setSavedGame(payload?.games?.[0] || null);
+          setError("");
+        }
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(err.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSavedGameLoading(false);
+      });
+    return () => controller.abort();
+  }, [category, expanded, gameId, lookupAttempt]);
+
+  useEffect(() => {
+    if (!expanded || !linking) {
+      setLinkGames([]);
+      setLinkGamesLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setLinkGamesLoading(true);
+    lookupGames(
+      { q: debouncedLinkQuery, limit: 25 },
+      { signal: controller.signal },
+    )
+      .then((payload) => {
+        if (!controller.signal.aborted) setLinkGames(payload?.games || []);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(err.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLinkGamesLoading(false);
+      });
+    return () => controller.abort();
+  }, [debouncedLinkQuery, expanded, linking, lookupAttempt]);
+
   const dismissDecision = async () => {
     for (const item of group.events.filter(
       (item) => item.source === "steam_library" && item.state === "open",
@@ -196,7 +248,7 @@ export default function NotificationActions({
       if (!mounted.current) return;
       setResult(message);
       onDone(group.id);
-      void refresh({ silent: true }).catch(() => {});
+      invalidateGamesCache(user?.id);
     } catch (err) {
       if (mounted.current)
         setError(err.message || "Could not save. Try again.");
@@ -304,13 +356,6 @@ export default function NotificationActions({
     setGenrePickerQuery("");
     setGenrePickerOpen(false);
   };
-  const availableGames = buildDisplayGames({
-    games: games.filter((item) =>
-      canEditGame({ user, game: item, isAuthenticated }),
-    ),
-    searchQuery: query,
-    sortKey: "name",
-  });
   const dontAdd = () =>
     perform(async () => {
       await dismissDecision();
@@ -457,14 +502,15 @@ export default function NotificationActions({
           <p className="text-sm text-content-secondary">
             Current status:{" "}
             <span className="font-medium">
-              {game
+              {savedGameLoading
+                ? "Checking saved game…"
+                : game
                 ? statusDisplayLabel(game.status)
                 : "Game no longer in Backlog"}
             </span>
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {canEditGame({ user, game, isAuthenticated }) &&
-            game.status !== "playing" ? (
+            {game && game.status !== "playing" ? (
               <Button
                 size="sm"
                 variant="primary"
@@ -779,9 +825,9 @@ export default function NotificationActions({
                         aria-label="Existing Backlog game"
                         value={target}
                         onChange={setTarget}
-                        disabled={busy}
-                        placeholder="Choose game"
-                        options={availableGames.map((item) => ({
+                        disabled={busy || linkGamesLoading}
+                        placeholder={linkGamesLoading ? "Loading games…" : "Choose game"}
+                        options={linkGames.map((item) => ({
                           value: String(item.id),
                           label: `${item.name} · ${statusDisplayLabel(item.status)}`,
                         }))}

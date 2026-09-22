@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   listGames as listGamesApi,
@@ -18,6 +19,7 @@ import {
   deleteGame as deleteGameApi,
   reorderGames as reorderGamesApi, // PATCH /api/games/:id/position
 } from "../services/gameService";
+import { subscribeGamesInvalidation } from "../services/gamesCache";
 
 function inferStatusRank(status, list) {
   const sample = list.find(
@@ -82,7 +84,10 @@ function applyRankOrder(prevList, payload) {
 const GamesContext = createContext(null);
 
 function useGamesState() {
-  const { getAuthHeaders, isAuthenticated, loading: authLoading } = useAuth();
+  const { getAuthHeaders, isAuthenticated, loading: authLoading, user } = useAuth();
+  const { pathname } = useLocation();
+  const deferFullCollection = pathname === "/wishlist" ||
+    (pathname === "/" && !user?.preferences?.show_wishlist_in_backlog);
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -118,6 +123,13 @@ function useGamesState() {
       return undefined;
     }
 
+    if (deferFullCollection) {
+      reqSeq.current += 1;
+      setError(null);
+      setLoading(false);
+      return undefined;
+    }
+
     const ac = new AbortController();
     const seq = ++reqSeq.current;
 
@@ -145,7 +157,7 @@ function useGamesState() {
         if (seq === reqSeq.current) setLoading(false);
       });
     return () => ac.abort();
-  }, [authLoading, getAuthHeaders, isAuthenticated]);
+  }, [authLoading, deferFullCollection, getAuthHeaders, isAuthenticated]);
 
   // Refresh; can run "silent" so UI doesn't flicker, and uses latest-wins
   const refresh = useCallback(
@@ -207,6 +219,15 @@ function useGamesState() {
     },
     [getAuthHeaders, isAuthenticated],
   );
+
+  useEffect(() => subscribeGamesInvalidation((scope) => {
+    if (
+      !isAuthenticated ||
+      deferFullCollection ||
+      String(user?.id || "") !== scope
+    ) return;
+    void refresh({ silent: true }).catch(() => {});
+  }), [deferFullCollection, isAuthenticated, refresh, user?.id]);
 
   // Merge a game created by another private workflow (for example Discover)
   // into the shared collection without refetching the full backlog.

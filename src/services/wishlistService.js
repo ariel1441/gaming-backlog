@@ -4,7 +4,13 @@ import { invalidateWishlistCache } from './wishlistCache.js';
 export function listWishlist(params = {}, opts = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    if (Array.isArray(value)) {
+      value.forEach((entry) => {
+        if (entry !== undefined && entry !== null && entry !== "") query.append(key, String(entry));
+      });
+    } else if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
   });
   const suffix = query.toString() ? `?${query}` : "";
   return api.get(`/api/wishlist${suffix}`, opts);
@@ -67,6 +73,25 @@ export async function syncWishlist({ confirmEmpty = false, prices = false, onJob
   if (job?.status === "completed") return job.result || {};
   const error = new Error(job?.errorMessage || (job?.status === "cancelled" ? "Wishlist sync was cancelled." : "Wishlist sync failed."));
   error.code = job?.errorCode || "steam_wishlist_sync_failed";
+  throw error;
+}
+
+export async function refreshWishlistPriceItem(itemId, { onJob, ...opts } = {}) {
+  const started = await api.post(`/api/wishlist/${itemId}/price/refresh`, {}, opts);
+  let job = started?.job;
+  if (!job?.id) throw new Error("Price refresh did not return a job ID.");
+  onJob?.(job);
+  while (["queued", "running"].includes(job.status)) {
+    await wait(750, opts.signal);
+    job = (await api.get(`/api/steam/sync/${job.id}`, opts))?.job;
+    onJob?.(job);
+  }
+  if (job?.status === "completed") {
+    invalidateWishlistCache();
+    return job.result || {};
+  }
+  const error = new Error(job?.errorMessage || "Price refresh failed.");
+  error.code = job?.errorCode || "steam_price_refresh_failed";
   throw error;
 }
 

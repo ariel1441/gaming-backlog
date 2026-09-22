@@ -94,3 +94,20 @@ export const wishlistSortOptions = [
   { value: "metacritic", label: "Metacritic" },
   { value: "releaseDate", label: "Release date" },
 ];
+
+const wishlistApiSortKeys = {
+  price: "price",
+  discount: "discount",
+  providerOrder: "provider_order",
+  name: "name",
+  dateAdded: "date_added",
+  changedAt: "changed",
+  estimatedHours: "estimated_hours",
+  rawgRating: "rawg_rating",
+  metacritic: "metacritic",
+  releaseDate: "release_date",
+};
+
+export function wishlistApiSort(value) {
+  return wishlistApiSortKeys[value] || "provider_order";
+}

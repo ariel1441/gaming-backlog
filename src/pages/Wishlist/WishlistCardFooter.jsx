@@ -1,5 +1,5 @@
 import React from "react";
-import { CalendarDays, ExternalLink, Heart, ListPlus, RefreshCw } from "lucide-react";
+import { CalendarDays, CircleDollarSign, ExternalLink, Heart, ListPlus, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button, SelectMenu, TextInput } from "../../components/ui";
 import GameSearchResult from "../../components/GameSearchResult";
@@ -33,6 +33,8 @@ export default function WishlistCardFooter({
   onRefreshMetadata,
   metadataRefreshing = false,
   onMatchRawg,
+  onRefreshPrice,
+  priceRefreshing = false,
 }) {
   const metadataState = rawgMetadataState(game);
   const metadataLabel = rawgMetadataStateLabel(metadataState);
@@ -107,8 +109,9 @@ export default function WishlistCardFooter({
           </span>
         ) : null}
       </div>
-      {!preview && !game.inBacklog ? (
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {!preview && !game.inBacklog ? (
+          <>
           <Button size="sm" variant="primary" onClick={() => onMove?.(game)} disabled={moving} className="min-w-40 flex-1 sm:flex-none">
             <ListPlus className="h-4 w-4" aria-hidden="true" />
             {moving ? "Moving..." : "Move to backlog"}
@@ -120,9 +123,14 @@ export default function WishlistCardFooter({
             aria-label={`Backlog status for ${game.name}`}
             className="min-w-36 flex-1 sm:w-44 sm:flex-none"
           />
-        </div>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
+          </>
+        ) : null}
+        {onRefreshPrice && game.steamPrice?.monitoring ? (
+          <Button type="button" size="sm" variant="secondary" onClick={onRefreshPrice} disabled={priceRefreshing}>
+            <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+            {priceRefreshing ? "Refreshing price..." : "Refresh price"}
+          </Button>
+        ) : null}
         {onRefreshMetadata ? (
           <Button
             type="button"

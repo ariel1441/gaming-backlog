@@ -5,6 +5,8 @@ import { verifyToken } from "../middleware/auth.js";
 import {
   favoriteGames,
   finishGame,
+  listGames,
+  lookupGames,
   gameSearch,
   gameIdParam,
   listGenreSuggestions,
@@ -39,7 +41,10 @@ import {
 import {
   deleteOwnedGameQuery,
   listOwnedGamesQuery,
+  listOwnedGamesPageQuery,
   listOwnedGameTitlesQuery,
+  lookupOwnedGamesQuery,
+  ownedGamesFacetsQuery,
   selectOwnedGameDetailsQuery,
   selectOwnedGameQuery,
   updateOwnedGameStatusQuery,
@@ -206,11 +211,52 @@ export const decorateGameForClient = (game) => {
 
 /* ----------------------------------- Routes ---------------------------------- */
 
-// GET all games for the authenticated user. This hot path is intentionally
-// database-only: optional RAWG refreshes must never affect core user data.
-router.get("/", verifyToken, async (req, res, next) => {
+// GET games for the authenticated user. Supplying a limit opts into the paged
+// Backlog contract; callers without it retain the legacy complete-array shape.
+// This hot path is database-only: optional RAWG refreshes never gate user data.
+router.get("/", verifyToken, listGames, async (req, res, next) => {
   try {
     const userId = req.user.id;
+
+    if (req.query.limit != null) {
+      const options = {
+        ...req.query,
+        query: req.query.q,
+        personalGenre: req.query.personal_genre,
+        noGenre: req.query.no_genre,
+        noPersonalGenre: req.query.no_personal_genre,
+        minHours: req.query.min_hours,
+        maxHours: req.query.max_hours,
+        missingEstimates: req.query.missing_estimates,
+        dateType: req.query.date_type,
+        dateYear: req.query.date_year,
+        dateMonths: req.query.date_months,
+        dateDays: req.query.date_days,
+        ratedOnly: req.query.rated,
+        rawgStatus: req.query.rawg_status,
+      };
+      const pageQuery = listOwnedGamesPageQuery(userId, options);
+      const { rows } = await pool.query(pageQuery.text, pageQuery.values);
+      const includeSummary = req.query.include_summary !== false;
+      const facetQuery = includeSummary ? ownedGamesFacetsQuery(userId) : null;
+      const facets = facetQuery
+        ? (await pool.query(facetQuery.text, facetQuery.values)).rows[0]
+        : null;
+      const games = rows.map(({ total_count, snapshot_version, ...game }) => decorateGameForClient(game));
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({
+        games,
+        total: Number(rows[0]?.total_count || 0),
+        snapshotVersion: rows[0]?.snapshot_version || facets?.snapshot_version || null,
+        facets: facets ? {
+          collectionTotal: Number(facets.collection_total || 0),
+          genres: Array.isArray(facets.genres) ? facets.genres : [],
+          hoursBounds: { min: Number(facets.min_hours || 0), max: Number(facets.max_hours || 0) },
+        } : undefined,
+        limit: Number(req.query.limit),
+        offset: Number(req.query.offset || 0),
+      });
+    }
 
     const { text, values } = listOwnedGamesQuery(userId);
     const { rows } = await pool.query(text, values);
@@ -221,6 +267,23 @@ router.get("/", verifyToken, async (req, res, next) => {
     res.json(out);
   } catch (err) {
     next(err);
+  }
+});
+
+// Minimal private lookup for owner-only interactions that do not need the full
+// Backlog collection (for example Steam notification linking and status review).
+router.get("/lookup", verifyToken, lookupGames, async (req, res, next) => {
+  try {
+    const query = lookupOwnedGamesQuery(req.user.id, {
+      query: req.query.q,
+      gameId: req.query.id,
+      limit: req.query.limit,
+    });
+    const { rows } = await pool.query(query.text, query.values);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ games: rows });
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -752,6 +815,7 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
   try {
     const userId = req.user.id;
     const gameId = Number(req.params.id);
+    const completionStatus = req.body.completion_status || "finished";
     const finishedAt = req.body.finished_at;
     const score = normalizeScore(req.body.my_score);
     const thoughts = req.body.thoughts?.trim() || null;
@@ -767,8 +831,8 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
     const row = existing.rows[0];
     if (!row) throw notFound("Not found");
 
-    let outcome = "finished";
-    if (normStatus(row.status) !== "finished") {
+    let outcome = completionStatus === "finished" ? "finished" : "completed";
+    if (normStatus(row.status) !== completionStatus) {
       const startedAt = toDateOrNull(row.started_at);
       if (startedAt && finishedAt < startedAt) {
         throw httpError(
@@ -781,18 +845,20 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
       const updated = await client.query(
         `
           UPDATE games
-             SET status = 'finished',
-                 finished_at = $3,
-                 my_score = $4,
-                 thoughts = $5
+             SET status = $3,
+                 finished_at = $4,
+                 my_score = $5,
+                 thoughts = $6
            WHERE id = $1 AND user_id = $2
            RETURNING *
           `,
-        [gameId, userId, finishedAt, score, thoughts],
+        [gameId, userId, completionStatus, finishedAt, score, thoughts],
       );
       if (!updated.rows[0]) throw notFound("Not found");
     } else {
-      outcome = "already_finished";
+      outcome = completionStatus === "finished"
+        ? "already_finished"
+        : "already_completed";
     }
 
     await client.query(
@@ -1017,6 +1083,16 @@ router.put(
          rawg_slug = $16,
          catalog_game_id = $17,
          resume_note = $22,
+         backlog_added_at = CASE
+           WHEN LOWER(TRIM(g.status)) = 'wishlist' AND LOWER(TRIM($2)) <> 'wishlist'
+             THEN COALESCE(g.backlog_added_at, NOW())
+           ELSE g.backlog_added_at
+         END,
+         backlog_added_at_source = CASE
+           WHEN LOWER(TRIM(g.status)) = 'wishlist' AND LOWER(TRIM($2)) <> 'wishlist'
+                AND g.backlog_added_at IS NULL THEN 'app'
+           ELSE g.backlog_added_at_source
+         END,
 
          started_at = CASE
            WHEN $11 THEN $18

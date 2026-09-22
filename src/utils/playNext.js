@@ -53,13 +53,15 @@ const MAIN_SUPPORTING_GENRES = new Set([
   "metroidvania",
 ]);
 const SIDE_GENRES = new Set([
-  "roguelike",
   "platformer",
   "beat em up",
   "card game",
   "relaxing",
+  "casual",
+  "cozy",
+  "puzzle",
 ]);
-const SIDE_SUPPORTING_GENRES = new Set(["action", "shooter"]);
+const SIDE_SUPPORTING_GENRES = new Set(["indie"]);
 const DROP_IN_GENRES = new Set([
   "roguelike",
   "platformer",
@@ -68,6 +70,14 @@ const DROP_IN_GENRES = new Set([
   "shooter",
 ]);
 const INTENSE_GENRES = new Set(["soulslike", "action", "horror", "shooter"]);
+const ATTENTION_HEAVY_GENRES = new Set([
+  "soulslike",
+  "strategy",
+  "open world",
+  "rpg",
+  "survival",
+]);
+const EASY_RETURN_GENRES = new Set(["relaxing", "casual", "cozy", "puzzle"]);
 
 function intersects(values, expected) {
   return values.some((value) => expected.has(value));
@@ -96,11 +106,12 @@ export function focusRoleCandidates({
       const hours = knownHours(game);
       const active = playNextStatusGroup(game.status, statusGroupOf) === "playing";
       let score = 0;
+      let recommended = true;
       let reason = active ? "Already in Playing." : "Available from your backlog.";
 
       const position = queuePosition.get(String(game.id));
       if (position != null) {
-        if (!active) reason = position === 0 ? "First in your shortlist." : "Saved in your shortlist.";
+        if (!active) reason = position === 0 ? "First in this candidate bank." : "Saved in this candidate bank.";
       }
 
       if (role === "main") {
@@ -113,12 +124,21 @@ export function focusRoleCandidates({
           if (!active && hours == null) reason = "Your genres suggest a substantial, continuity-friendly game.";
         } else if (intersects(genres, MAIN_SUPPORTING_GENRES)) score += 1;
       } else {
-        if (hours != null && hours <= 12) {
-          score += 6;
+        const attentionHeavy = intersects(genres, ATTENTION_HEAVY_GENRES);
+        const easyReturn = intersects(genres, EASY_RETURN_GENRES);
+        const indie = genres.includes("indie");
+        if (hours != null && hours <= 10) {
+          score += 7;
           if (!active) reason = lengthReason(game, "Shorter total");
-        } else if (hours != null && hours <= 20) score += 2;
+        } else if (hours != null && hours <= 15) {
+          score += 5;
+          if (!active) reason = lengthReason(game, "Shorter total");
+        } else if (hours != null && hours <= 20 && easyReturn) score += 2;
+        if (hours != null && hours > 20) score -= 6;
+        if (attentionHeavy) score -= 4;
+        if (indie) score += 1;
         if (intersects(genres, SIDE_GENRES)) {
-          score += 3;
+          score += 2;
           if (!active && hours == null) reason = "Your genres suggest a flexible Side-game fit.";
         } else if (intersects(genres, SIDE_SUPPORTING_GENRES)) score += 1;
         if (partnerNeedsContext && intersects(genres, DROP_IN_GENRES)) {
@@ -129,6 +149,11 @@ export function focusRoleCandidates({
           score += 2;
           if (!active) reason = "A calmer contrast to your current Main game.";
         }
+        recommended =
+          hours != null &&
+          hours <= 20 &&
+          !attentionHeavy &&
+          (hours <= 15 || easyReturn);
       }
 
       const strongThreshold = role === "main" ? 4 : 5;
@@ -149,7 +174,15 @@ export function focusRoleCandidates({
             ? 2
             : 3;
 
-      return { game, score, reason, active, fitLabel, fitRank };
+      return {
+        game,
+        score,
+        reason,
+        active,
+        fitLabel,
+        fitRank,
+        recommended: role === "main" || active ? true : recommended,
+      };
     })
     .sort(
       (a, b) =>
@@ -164,7 +197,7 @@ export function focusRoleCandidates({
     );
 }
 
-export function focusSuggestionGroups({ candidates = [], queueIds = [] }) {
+export function focusSuggestionGroups({ candidates = [], queueIds = [], includeUnrecommended = false }) {
   const queuePosition = new Map(
     queueIds.map((id, index) => [String(id), index]),
   );
@@ -194,7 +227,7 @@ export function focusSuggestionGroups({ candidates = [], queueIds = [] }) {
         source === "playing"
           ? "Already playing"
           : source === "shortlist"
-            ? `Shortlist #${sourcePosition + 1}`
+            ? `Candidate #${sourcePosition + 1}`
             : `Backlog priority #${sourcePosition + 1}`,
     };
   };
@@ -212,6 +245,7 @@ export function focusSuggestionGroups({ candidates = [], queueIds = [] }) {
     .map((candidate) => decorate(candidate, "shortlist"));
   const backlog = backlogPool
     .filter(({ game }) => !queuePosition.has(String(game.id)))
+    .filter((candidate) => includeUnrecommended || candidate.recommended)
     .sort(
       (a, b) =>
         a.fitRank - b.fitRank ||

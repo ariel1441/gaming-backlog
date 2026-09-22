@@ -29,7 +29,19 @@ const items = Array.from({ length: 444 }, (_, index) => ({
   releaseDate: "2026-08-01",
   dateAdded: "2026-08-01T00:00:00Z",
 }));
-async function fixture(page, showWishlist = false) {
+const backlogGames = Array.from({ length: 120 }, (_, index) => ({
+  id: index + 1,
+  name: index === 119 ? "Backlog final game" : `Backlog title ${String(index).padStart(3, "0")}`,
+  displayName: index === 119 ? "Backlog final game" : `Backlog title ${String(index).padStart(3, "0")}`,
+  status: "plan to play",
+  status_rank: 3,
+  position: index * 1000,
+  genres: index % 2 ? "Adventure" : "RPG",
+  personal_genres: [],
+  displayHLTB: 20,
+  how_long_to_beat: 20,
+}));
+async function fixture(page, showWishlist = false, wishlistReads = [], backlog = null) {
   await page.route("https://**.steamstatic.com/**", (route) => route.fulfill({
     contentType: "image/svg+xml",
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="920" height="430"><rect width="920" height="430" fill="#214769"/></svg>',
@@ -40,6 +52,16 @@ async function fixture(page, showWishlist = false) {
   });
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    if (route.request().method() === "PATCH" && /\/api\/games\/\d+\/position$/.test(url.pathname) && backlog) {
+      const gameId = Number(url.pathname.match(/\/games\/(\d+)\/position$/)?.[1]);
+      const { targetIndex } = route.request().postDataJSON();
+      const collection = backlog.collection;
+      const fromIndex = collection.findIndex((game) => game.id === gameId);
+      const [game] = collection.splice(fromIndex, 1);
+      collection.splice(targetIndex, 0, game);
+      backlog.reorderPayloads.push({ id: gameId, targetIndex });
+      return route.fulfill({ json: { game, rank_order: collection } });
+    }
     if (route.request().method() !== "GET")
       throw new Error(`Unexpected mutation: ${url.pathname}`);
     let json = {};
@@ -50,12 +72,31 @@ async function fixture(page, showWishlist = false) {
         preferences: { show_wishlist_in_backlog: showWishlist },
       };
     else if (url.pathname === "/api/wishlist") {
-      const offset = Number(url.searchParams.get("offset"));
+      wishlistReads.push(url.search);
+      const query = String(url.searchParams.get("q") || "").trim().toLowerCase();
+      const direction = url.searchParams.get("direction") || "asc";
+      const offset = Number(url.searchParams.get("offset") || 0);
+      const limit = Number(url.searchParams.get("limit") || 50);
+      let filtered = query
+        ? items.filter((item) => item.name.toLowerCase().includes(query))
+        : [...items];
+      if (direction === "desc") {
+        filtered = [
+          ...filtered.filter((item) => item.steamActive).reverse(),
+          ...filtered.filter((item) => !item.steamActive),
+        ];
+      }
       json = {
-        items: items.slice(offset, offset + 100),
-        total: 444,
+        items: filtered.slice(offset, offset + limit),
+        total: filtered.length,
         snapshotVersion: "stable",
+        priceRevision: "account:1",
         account: { wishlistSyncStatus: "synced" },
+        facets: {
+          collectionTotal: 444,
+          genres: ["Adventure"],
+          hoursBounds: { min: 24, max: 24 },
+        },
       };
     } else if (url.pathname === "/api/meta/status-groups")
       json = {
@@ -64,15 +105,81 @@ async function fixture(page, showWishlist = false) {
       };
     else if (url.pathname === "/api/games/statuses-list")
       json = ["plan to play"];
-    else if (
-      ["/api/games", "/api/personal-genres", "/api/next-up"].includes(
-        url.pathname,
-      )
+    else if (url.pathname === "/api/games" && backlog && url.searchParams.has("limit")) {
+      backlog.reads.push(url.search);
+      const query = String(url.searchParams.get("q") || "").trim().toLowerCase();
+      const offset = Number(url.searchParams.get("offset") || 0);
+      const limit = Number(url.searchParams.get("limit") || 50);
+      const filtered = query
+        ? backlog.collection.filter((game) => game.name.toLowerCase().includes(query))
+        : backlog.collection;
+      json = {
+        games: filtered.slice(offset, offset + limit),
+        total: filtered.length,
+        snapshotVersion: `backlog-${filtered.length}`,
+        facets: {
+          collectionTotal: backlog.collection.length,
+          genres: ["Adventure", "RPG"],
+          hoursBounds: { min: 20, max: 20 },
+        },
+      };
+    } else if (
+      ["/api/games", "/api/personal-genres", "/api/next-up"].includes(url.pathname)
     )
       json = [];
     await route.fulfill({ json });
   });
 }
+
+test("Backlog renders one server page, appends on scroll, and filters on the server", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const backlog = {
+    reads: [],
+    reorderPayloads: [],
+    collection: backlogGames.map((game) => ({ ...game })),
+  };
+  await fixture(page, false, [], backlog);
+  await page.goto("/");
+  await expect(page.locator("article")).toHaveCount(50);
+  expect(backlog.reads.filter((search) => search.includes("limit=50"))).toHaveLength(1);
+
+  const first = page.locator("article").filter({ hasText: "Backlog title 000" });
+  const second = page.locator("article").filter({ hasText: "Backlog title 001" });
+  const source = await second.boundingBox();
+  const target = await first.boundingBox();
+  expect(source).not.toBeNull();
+  expect(target).not.toBeNull();
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(() => backlog.reorderPayloads).toEqual([{ id: 2, targetIndex: 0 }]);
+  await expect(page.locator("article h3").first()).toHaveText("Backlog title 001");
+
+  await page.getByRole("button", { name: /Load more/ }).scrollIntoViewIfNeeded();
+  await expect(page.locator("article")).toHaveCount(100);
+  expect(backlog.reads.some((search) => search.includes("offset=50") && search.includes("include_summary=false"))).toBe(true);
+
+  await page.getByPlaceholder(/Search/).fill("final game");
+  await expect(page.locator("article h3")).toHaveText(["Backlog final game"]);
+  expect(backlog.reads.some((search) => search.includes("q=final+game"))).toBe(true);
+});
+
+test("Wishlist renders the first server page before loading more on scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const wishlistReads = [];
+  await fixture(page, false, wishlistReads);
+  await page.goto("/wishlist");
+  await expect(page.locator("article")).toHaveCount(50);
+  expect(wishlistReads.filter((search) => search.includes("limit=50"))).toHaveLength(1);
+  await page.getByRole("button", { name: /Load more/ }).scrollIntoViewIfNeeded();
+  await expect(page.locator("article")).toHaveCount(100);
+  expect(wishlistReads.some((search) => search.includes("offset=50") && search.includes("include_summary=false"))).toBe(true);
+  await page.getByRole("button", { name: "Table", exact: true }).click();
+  await page.getByRole("button", { name: /Load more/ }).scrollIntoViewIfNeeded();
+  await expect(page.locator("tbody tr")).toHaveCount(151);
+  expect(wishlistReads.some((search) => search.includes("offset=100"))).toBe(true);
+});
 
 for (const width of [1440, 375]) {
   test(`Wishlist parity and decoded Steam artwork fixtures at ${width}px`, async ({

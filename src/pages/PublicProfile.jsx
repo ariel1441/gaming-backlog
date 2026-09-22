@@ -23,6 +23,11 @@ import { useStatuses } from "../hooks/useStatuses";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { getPublicProfile, listPublicGames } from "../services/publicService";
 import { buildDisplayGames } from "../utils/gameList";
+import { backlogSortOptions } from "../utils/userPreferences";
+
+const publicBacklogSortOptions = backlogSortOptions.filter(
+  (option) => !["addedDate", "hoursPlayed", "steamLastPlayed"].includes(option.value),
+);
 
 export default function PublicProfile() {
   const { username } = useParams();
@@ -384,6 +389,7 @@ function PublicGamesView({
   return (
     <>
       <BacklogToolbar
+        sortOptions={publicBacklogSortOptions}
         identity={{
           title: `@${profile.username}`,
           subtitle: `${profile.game_count} public games${

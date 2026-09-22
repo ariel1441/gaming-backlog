@@ -11,6 +11,7 @@ import {
 } from "../../components/ui";
 import {
   backlogSortOptions,
+  defaultBacklogSortReversed,
   backlogViewOptions,
   landingPathOptions,
   normalizeUserPreferences,
@@ -109,7 +110,13 @@ export function PreferencesSection({ user, isGuest, updatePreferences }) {
           <SelectMenu
             id="default-backlog-sort"
             value={draft.default_backlog_sort_key}
-            onChange={(value) => updateDraft("default_backlog_sort_key", value)}
+            onChange={(value) => {
+              updateDraft("default_backlog_sort_key", value);
+              updateDraft(
+                "default_backlog_sort_reversed",
+                defaultBacklogSortReversed(value),
+              );
+            }}
             options={backlogSortOptions}
             disabled={disabled || saving}
           />

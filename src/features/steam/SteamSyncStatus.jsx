@@ -57,6 +57,7 @@ export default function SteamSyncStatus({
   priceHealth,
   onMembershipRefresh,
   onPriceRefresh,
+  onPriceAttention,
   busy = false,
   confirmEmpty,
   hasMissingMetadata = false,
@@ -128,7 +129,7 @@ export default function SteamSyncStatus({
           <div className="space-y-3 p-1">
             <div className="space-y-1 px-2 pt-1 text-xs text-content-muted">
               <p className="font-medium text-content-primary">
-                {working ? "Steam is updating in the background" : `Wishlist ${relativeSavedTime(account.lastWishlistSyncAt)}`}
+                {working ? "Steam is updating in the background" : `Membership ${relativeSavedTime(account.lastWishlistSyncAt)}`}
               </p>
               {verification + retrying > 0 ? (
                 <p className="text-state-warning">
@@ -149,6 +150,11 @@ export default function SteamSyncStatus({
               {onPriceRefresh ? (
                 <Button role="menuitem" size="sm" variant="ghost" className="w-full justify-start" disabled={working} onClick={() => { close(); onPriceRefresh(); }}>
                   Refresh prices
+                </Button>
+              ) : null}
+              {verification + retrying > 0 && onPriceAttention ? (
+                <Button role="menuitem" size="sm" variant="ghost" className="w-full justify-start text-state-warning" onClick={() => { close(); onPriceAttention(); }}>
+                  Show {verification + retrying} {verification + retrying === 1 ? "price" : "prices"} needing attention
                 </Button>
               ) : null}
               {onMetadataRefresh ? (

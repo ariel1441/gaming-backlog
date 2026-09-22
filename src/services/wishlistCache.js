@@ -10,8 +10,8 @@ export const EMPTY_WISHLIST = Object.freeze({
   error: "",
   saved: false,
 });
-export const wishlistCacheKey = (userId, membership = "active") =>
-  JSON.stringify([String(userId), membership]);
+export const wishlistCacheKey = (userId, membership = "active", query = null) =>
+  JSON.stringify([String(userId), membership, query]);
 export const wishlistCacheGeneration = () => generation;
 export const readWishlistCache = (key) => entries.get(key) || EMPTY_WISHLIST;
 export function writeWishlistCache(

@@ -205,7 +205,7 @@ test("focus suggestions show one shortlist and one backlog source by default", (
       [1, "backlog"],
     ],
   );
-  assert.equal(suggestions.shortlist[0].sourceLabel, "Shortlist #1");
+  assert.equal(suggestions.shortlist[0].sourceLabel, "Candidate #1");
   assert.equal(suggestions.backlog[0].sourceLabel, "Backlog priority #1");
 });
 
@@ -243,4 +243,25 @@ test("already-playing games stay available ahead of automatic role guesses", () 
   });
   assert.equal(result[0].game.id, 1);
   assert.equal(result[0].reason, "Already in Playing.");
+});
+
+test("Side recommendations require a short, lower-attention shape and treat roguelike as neutral", () => {
+  const candidates = focusRoleCandidates({
+    games: [
+      { id: 1, status: "plan", my_genre: "Indie, Story focus", displayHLTB: 8 },
+      { id: 2, status: "plan", my_genre: "Roguelike", displayHLTB: 45 },
+      { id: 3, status: "plan", my_genre: "RPG, Open world", displayHLTB: 18 },
+      { id: 4, status: "plan", my_genre: "Relaxing, Indie", displayHLTB: 18 },
+    ],
+    role: "side",
+    statusGroupOf: groups,
+  });
+  const byId = new Map(candidates.map((candidate) => [candidate.game.id, candidate]));
+  assert.equal(byId.get(1).recommended, true);
+  assert.equal(byId.get(2).recommended, false);
+  assert.equal(byId.get(3).recommended, false);
+  assert.equal(byId.get(4).recommended, true);
+
+  const suggestions = focusSuggestionGroups({ candidates, queueIds: [] });
+  assert.deepEqual(suggestions.backlog.map(({ game }) => game.id).sort(), [1, 4]);
 });

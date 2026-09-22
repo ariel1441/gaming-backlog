@@ -1,4 +1,4 @@
-import { parseGameDate } from "./gameDateInsights.js";
+import { parseBacklogAddedDate, parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
 import { personalGenreNames, sortByDefaultOrder, splitCsv } from "./gameList.js";
 import { defaultStatusSemantics } from "./statusSemantics.js";
@@ -9,6 +9,7 @@ const titleCollator = new Intl.Collator(undefined, {
 });
 
 export const SMART_SORT_OPTIONS = [
+  { value: "addedDate", label: "Date added, newest first" },
   { value: "score", label: "Your score, highest first" },
   { value: "finishedDate", label: "Finish date, newest first" },
   { value: "releaseDate", label: "Release date, newest first" },
@@ -26,6 +27,7 @@ export const SMART_STATUS_OPTIONS = [
 
 export const SMART_CONTROL_OPTIONS = [
   { value: "status", label: "Game status" },
+  { value: "addedYear", label: "Added year" },
   { value: "finishedYear", label: "Finished year" },
   { value: "releasedYear", label: "Release year" },
   { value: "genre", label: "Genre" },
@@ -76,6 +78,13 @@ export const SMART_LIST_TEMPLATES = [
       exposedControls: ["maxHours"],
     }),
     sortKey: "hours",
+  },
+  {
+    key: "recently-added",
+    name: "Recently added",
+    description: "Backlog games ordered by the newest added date.",
+    query: () => ({ exposedControls: ["addedYear"] }),
+    sortKey: "addedDate",
   },
   {
     key: "recently-finished",
@@ -138,6 +147,13 @@ export function normalizeSmartQuery(query = {}) {
     integer: true,
   });
   if (finishedYear != null) normalized.finishedYear = finishedYear;
+
+  const addedYear = numberOrNull(query?.addedYear, {
+    min: 1970,
+    max: 2200,
+    integer: true,
+  });
+  if (addedYear != null) normalized.addedYear = addedYear;
 
   const releasedYear = numberOrNull(query?.releasedYear, {
     min: 1970,
@@ -237,7 +253,9 @@ export function smartListYears(games = [], field = "finished") {
     const date =
       field === "release"
         ? parseGameDate(game?.releaseDate || game?.released || game?.released_at)
-        : parseGameDate(game?.finished_at);
+        : field === "added"
+          ? parseBacklogAddedDate(game?.backlog_added_at)
+          : parseGameDate(game?.finished_at);
     if (date?.year) years.add(date.year);
   }
   return Array.from(years).sort((a, b) => b - a);
@@ -287,6 +305,12 @@ function smartListEmptyState(query = {}) {
     return {
       emptyTitle: `No finished games in ${query.finishedYear}.`,
       emptyDescription: "Choose another year, or add finish dates to games you completed then.",
+    };
+  }
+  if (query.addedYear) {
+    return {
+      emptyTitle: `No games were added in ${query.addedYear}.`,
+      emptyDescription: "Choose another year, or clear the added-year filter.",
     };
   }
   if (query.releasedYear) {
@@ -347,6 +371,7 @@ export function resolveSmartList(
   const filtered = (Array.isArray(games) ? games : []).filter((game) => {
     if (normalize(game?.status) === "wishlist") return false;
     if (!matchesStatus(game, query.status, statusGroupOf)) return false;
+    if (query.addedYear && parseBacklogAddedDate(game?.backlog_added_at)?.year !== Number(query.addedYear)) return false;
     if (query.finishedYear && parseGameDate(game?.finished_at)?.year !== Number(query.finishedYear)) return false;
     if (query.releasedYear && parseGameDate(game?.releaseDate || game?.released || game?.released_at)?.year !== Number(query.releasedYear)) return false;
     if (query.genre && !genreMatches(game, query.genre)) return false;
@@ -366,6 +391,11 @@ export function resolveSmartList(
   });
 
   const sorted = [...filtered].sort((a, b) => {
+    if (sortKey === "addedDate") {
+      return (parseBacklogAddedDate(b?.backlog_added_at)?.timestamp || 0)
+        - (parseBacklogAddedDate(a?.backlog_added_at)?.timestamp || 0)
+        || sortByDefaultOrder(a, b);
+    }
     if (sortKey === "score") return compareScore(a, b);
     if (sortKey === "finishedDate") {
       return dateTime(b?.finished_at) - dateTime(a?.finished_at) || sortByDefaultOrder(a, b);
@@ -398,6 +428,7 @@ export function describeSmartQuery(query = {}, sortKey = "score") {
   const status = SMART_STATUS_OPTIONS.find((item) => item.value === (normalizedQuery.status || ""));
   if (status?.value) parts.push(status.label);
   if (normalizedQuery.finishedYear) parts.push(`Finished in ${normalizedQuery.finishedYear}`);
+  if (normalizedQuery.addedYear) parts.push(`Added in ${normalizedQuery.addedYear}`);
   if (normalizedQuery.releasedYear) parts.push(`Released in ${normalizedQuery.releasedYear}`);
   if (normalizedQuery.genre) parts.push(`Genre: ${normalizedQuery.genre}`);
   if (normalizedQuery.maxHours != null) parts.push(`Under ${normalizedQuery.maxHours} hours`);

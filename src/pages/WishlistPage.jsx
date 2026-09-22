@@ -6,7 +6,7 @@ import GameGrid from "../components/GameGrid";
 import GameModal from "../components/GameModal";
 import SteamSyncStatus from "../features/steam/SteamSyncStatus";
 import { useSteamExperience } from "../features/steam/SteamExperienceContext";
-import { AppPage, PageError, PageLoading } from "../components/layout";
+import { AppPage, CollectionLoadingSkeleton, PageError } from "../components/layout";
 import {
   Button,
   EmptyState,
@@ -16,23 +16,26 @@ import {
 } from "../components/ui";
 import { useAuth } from "../contexts/AuthContext";
 import { useStatuses } from "../hooks/useStatuses";
-import { useGames } from "../hooks/useGames";
 import { useFilters } from "../hooks/useFilters";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import useMedia from "../hooks/useMedia";
-import { buildDisplayGames, isHoursFilterActive } from "../utils/gameList";
+import { isHoursFilterActive } from "../utils/gameList";
+import { NO_RAWG_GENRE_FILTER } from "../utils/filterOptions";
 import {
   moveWishlistToBacklog,
   matchWishlistRawg,
   refreshWishlistMetadata,
   refreshWishlistMetadataItem,
+  refreshWishlistPriceItem,
   syncWishlist,
 } from "../services/wishlistService";
 import { normalizeUserPreferences } from "../utils/userPreferences";
 import BacklogToolbar from "./Backlog/BacklogToolbar";
 import BacklogTable from "./Backlog/BacklogTable";
 import WishlistCardFooter from "./Wishlist/WishlistCardFooter";
-import useWishlist from "./Wishlist/useWishlist";
+import useInfiniteWishlist from "./Wishlist/useInfiniteWishlist";
 import {
+  wishlistApiSort,
   wishlistItemsToGames,
   wishlistMetadataBatchMessage,
   wishlistSortOptions,
@@ -52,7 +55,6 @@ function metadataOutcomeMessage(outcome) {
   return "No safe RAWG match was found. You can choose one with Match RAWG.";
 }
 
-const PAGE_SIZE = 50;
 const membershipOptions = [
   { value: "active", label: "Active wishlist" },
   { value: "removed", label: "Removed from Steam" },
@@ -68,23 +70,22 @@ function possessiveName(value) {
 export default function WishlistPage() {
   const { user, isAuthenticated, isGuest } = useAuth();
   const { statuses } = useStatuses();
-  const { refresh: refreshGames } = useGames();
   const toast = useToast();
   const experience = useSteamExperience();
   const [onSaleOnly, setOnSaleOnly] = useState(false);
+  const [priceAttentionOnly, setPriceAttentionOnly] = useState(false);
   const confirm = useConfirm();
   const [membership, setMembership] = useState("active");
-  const state = useWishlist({
-    userId: user?.id,
-    enabled: isAuthenticated && !isGuest,
-    membership,
-  });
-  const games = useMemo(() => wishlistItemsToGames(state.items), [state.items]);
-  const filters = useFilters(games, { initialSortKey: "providerOrder" });
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const filters = useFilters([], { initialSortKey: "providerOrder" });
+  const debouncedQuery = useDebouncedValue(filters.searchQuery, 250);
   const [viewMode, setViewMode] = useState(
     normalizeUserPreferences(user?.preferences).default_backlog_view,
   );
-  const [page, setPage] = useState(0);
+  useEffect(() => {
+    if (!user?.id) return;
+    setViewMode(normalizeUserPreferences(user.preferences).default_backlog_view);
+  }, [user?.id, user?.preferences?.default_backlog_view]);
   const [selectedId, setSelectedId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedItem = searchParams.get('item');
@@ -94,6 +95,36 @@ export default function WishlistPage() {
       setSelectedId(`wishlist-${requestedItem}`);
     }
   }, [requestedItem]);
+  const requestParams = useMemo(() => ({
+    q: debouncedQuery,
+    sort: wishlistApiSort(filters.sortKey),
+    direction: filters.isReversed ? "desc" : "asc",
+    genre: filters.selectedGenres.filter((genre) => genre !== NO_RAWG_GENRE_FILTER),
+    no_genre: filters.selectedGenres.includes(NO_RAWG_GENRE_FILTER),
+    rawg_status: filters.rawgStatus,
+    min_hours: filters.hoursRange?.min,
+    max_hours: filters.hoursRange?.max,
+    on_sale: onSaleOnly,
+    price_attention: priceAttentionOnly,
+    item_id: requestedItem && /^\d+$/.test(requestedItem) ? requestedItem : undefined,
+  }), [
+    debouncedQuery,
+    filters.hoursRange,
+    filters.isReversed,
+    filters.rawgStatus,
+    filters.selectedGenres,
+    filters.sortKey,
+    onSaleOnly,
+    priceAttentionOnly,
+    requestedItem,
+  ]);
+  const state = useInfiniteWishlist({
+    userId: user?.id,
+    enabled: isAuthenticated && !isGuest,
+    membership,
+    params: requestParams,
+  });
+  const games = useMemo(() => wishlistItemsToGames(state.items), [state.items]);
   const closeDetails = () => {
     setSelectedId(null);
     if (requestedItem) setSearchParams({}, { replace: true });
@@ -102,40 +133,41 @@ export default function WishlistPage() {
   const [metadataRefreshing, setMetadataRefreshing] = useState(false);
   const [metadataBulkRefreshing, setMetadataBulkRefreshing] = useState(false);
   const [metadataItemRefreshing, setMetadataItemRefreshing] = useState(null);
+  const [priceItemRefreshing, setPriceItemRefreshing] = useState(null);
   const [movingId, setMovingId] = useState(null);
   const [moveStatus, setMoveStatus] = useState("plan to play");
   const syncRequest = useRef(null);
+  const loadMoreRef = useRef(null);
   useEffect(() => () => syncRequest.current?.abort(), []);
   const isDesktop = useMedia("(min-width: 1024px)");
-  const displayGames = useMemo(
-    () => buildDisplayGames({ games, ...filters, onSaleOnly }),
-    [games, filters, onSaleOnly],
-  );
-  const pageCount = Math.max(1, Math.ceil(displayGames.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount - 1);
-  const shown = displayGames.slice(
-    currentPage * PAGE_SIZE,
-    (currentPage + 1) * PAGE_SIZE,
-  );
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !state.hasMore || state.loading || state.loadingMore) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void state.loadMore();
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isDesktop, state.hasMore, state.loading, state.loadingMore, state.loadMore, viewMode]);
   const selected = games.find((game) => game.id === selectedId);
   const filterCount =
-    Number(onSaleOnly) + filters.selectedGenres.length +
+    Number(onSaleOnly) + Number(priceAttentionOnly) + filters.selectedGenres.length +
     Number(filters.rawgStatus !== "all") +
-    (isHoursFilterActive(filters.hoursRange, filters.hoursBounds) ? 1 : 0);
+    (isHoursFilterActive(filters.hoursRange, state.facets?.hoursBounds) ? 1 : 0);
   const statusOptions = (statuses || [])
     .filter((status) => status.toLowerCase().trim() !== "wishlist")
     .map((status) => ({ value: status, label: status }));
   const setQuery = (value) => {
-    setPage(0);
     filters.setSearchQuery(value);
   };
   const setSort = (value) => {
-    setPage(0);
     filters.setSortKey(value);
     if (value === "discount") filters.setIsReversed(true);
   };
   const setReverse = (value) => {
-    setPage(0);
     filters.setIsReversed(value);
   };
 
@@ -196,7 +228,7 @@ export default function WishlistPage() {
     setMovingId(game.wishlistItemId);
     try {
       await moveWishlistToBacklog(game.wishlistItemId, moveStatus);
-      await Promise.all([state.refresh(), refreshGames({ silent: true })]);
+      await state.refresh();
       toast.success(`${game.name} is now in your backlog.`);
     } catch (error) {
       toast.error(error.message || "Could not move the item.");
@@ -274,6 +306,25 @@ export default function WishlistPage() {
       setMetadataItemRefreshing(null);
     }
   };
+  const runItemPriceRefresh = async (game) => {
+    if (!game?.wishlistItemId || priceItemRefreshing || syncing) return;
+    setPriceItemRefreshing(game.wishlistItemId);
+    try {
+      const result = await refreshWishlistPriceItem(game.wishlistItemId, {
+        onJob: (job) => {
+          if (["queued", "completed"].includes(job?.status)) void experience.reload();
+        },
+      });
+      const message = priceSyncMessage(result.summary || result.run?.summary);
+      if (["partial", "failed"].includes(result.run?.status)) toast.warning(message);
+      else toast.success(`${game.name}: ${message}`);
+      await Promise.all([state.refresh({ preserveLoaded: true }), experience.reload()]);
+    } catch (error) {
+      toast.error(error.message || "Could not refresh this price.");
+    } finally {
+      setPriceItemRefreshing(null);
+    }
+  };
   if (!isAuthenticated || isGuest)
     return (
       <AppPage>
@@ -289,6 +340,10 @@ export default function WishlistPage() {
         />
       </AppPage>
     );
+
+  if (state.loading && !state.saved && !games.length) {
+    return <CollectionLoadingSkeleton collection="wishlist" viewMode={viewMode} />;
+  }
 
   return (
     <main className="min-h-screen overflow-x-clip bg-surface-bg px-3 pb-8 text-content-primary sm:px-6 lg:h-screen lg:min-h-0 lg:overflow-y-auto lg:px-5 lg:pb-8">
@@ -319,6 +374,10 @@ export default function WishlistPage() {
             priceHealth={state.priceHealth}
             onMembershipRefresh={() => runSync()}
             onPriceRefresh={() => runSync(false, true)}
+            onPriceAttention={() => {
+              setOnSaleOnly(false);
+              setPriceAttentionOnly(true);
+            }}
             busy={syncing || metadataRefreshing || metadataBulkRefreshing}
             confirmEmpty={confirmEmpty}
             metadata={state.metadata}
@@ -328,24 +387,25 @@ export default function WishlistPage() {
         }
         filters={{
           ...filters,
+          allGenres: state.facets?.genres || [],
+          hoursBounds: state.facets?.hoursBounds || { min: 0, max: 0 },
           count: filterCount,
           clear: () => {
             filters.clearFilters();
+            filters.setHoursRange(null);
             setOnSaleOnly(false);
-            setPage(0);
+            setPriceAttentionOnly(false);
           },
           toggleGenre: (value) => {
             filters.toggleGenre(value);
-            setPage(0);
           },
         }}
-        collectionControl={<Button variant={onSaleOnly ? 'filterActive' : 'secondary'} aria-pressed={onSaleOnly} onClick={() => { setOnSaleOnly(value => !value); setPage(0); }}><Percent className="h-4 w-4" aria-hidden="true" />On sale</Button>}
+        collectionControl={<Button variant={onSaleOnly ? 'filterActive' : 'secondary'} aria-pressed={onSaleOnly} onClick={() => setOnSaleOnly(value => !value)}><Percent className="h-4 w-4" aria-hidden="true" />On sale</Button>}
         membershipControl={
           <SelectMenu
             value={membership}
             onChange={(value) => {
               setMembership(value);
-              setPage(0);
             }}
             options={membershipOptions}
             aria-label="Wishlist membership"
@@ -353,14 +413,27 @@ export default function WishlistPage() {
         }
         viewMode={viewMode}
         setViewMode={setViewMode}
-        resultCount={displayGames.length}
-        totalCount={games.length}
+        resultCount={state.total || 0}
+        totalCount={state.facets?.collectionTotal ?? state.total ?? 0}
         games={games}
         onSelectGame={(game) => setSelectedId(game.id)}
+        mobileControlsOpen={mobileControlsOpen}
+        setMobileControlsOpen={setMobileControlsOpen}
       />
       </div>
       <div className="mx-auto w-full max-w-[1760px]">
-        {state.loading && !games.length ? <PageLoading rows={5} /> : null}
+        {priceAttentionOnly ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-state-warning/30 bg-state-warning/10 px-3 py-2 text-xs text-content-secondary" role="status">
+            <span>Showing prices that need offer verification or a retry.</span>
+            <Button size="sm" variant="ghost" onClick={() => setPriceAttentionOnly(false)}>Show all prices</Button>
+          </div>
+        ) : null}
+        {state.refreshError ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-control border border-state-warning/30 bg-state-warning/10 px-3 py-2 text-xs text-content-secondary" role="alert">
+            <span>Could not update this view. Your loaded Wishlist is still available.</span>
+            <Button size="sm" variant="ghost" onClick={() => state.refresh({ preserveLoaded: true })}>Retry</Button>
+          </div>
+        ) : null}
         {state.error && state.saved ? <div className="mb-4 flex flex-wrap items-center gap-2 rounded-control border border-state-warning/30 bg-state-warning/10 px-3 py-2 text-xs text-content-secondary" role="alert"><span>Could not check for updates. Showing your saved Wishlist.</span><Button size="sm" variant="ghost" onClick={state.refresh}>Retry</Button></div> : state.error ? (
           <PageError
             title={state.saved ? "Saved Wishlist shown; could not check for updates" : "Could not load wishlist"}
@@ -368,7 +441,7 @@ export default function WishlistPage() {
             onRetry={state.refresh}
           />
         ) : null}
-        {!state.loading && !state.error && !shown.length ? (
+        {!state.loading && !state.error && !games.length ? (
           <EmptyState
             icon={Heart}
             title={
@@ -383,10 +456,10 @@ export default function WishlistPage() {
             }
           />
         ) : null}
-        {shown.length ? (
+        {games.length ? (
           viewMode === "table" && isDesktop ? (
             <BacklogTable
-              games={shown}
+              games={games}
               collection="wishlist"
               sortKey={filters.sortKey}
               setSortKey={setSort}
@@ -402,38 +475,32 @@ export default function WishlistPage() {
                   Details
                 </Button>
               )}
+              loadMore={{
+                hasMore: state.hasMore,
+                loading: state.loadingMore,
+                onLoadMore: state.loadMore,
+                ref: loadMoreRef,
+                label: `Load more (${games.length} of ${state.total})`,
+              }}
             />
           ) : (
             <GameGrid
-              games={shown}
+              games={games}
               viewMode={viewMode === "table" ? "list" : viewMode}
               onSelectGame={(game) => setSelectedId(game.id)}
             />
           )
         ) : null}
-        {displayGames.length > PAGE_SIZE ? (
-          <div className="mt-6 flex items-center justify-between gap-3">
-            <Button
-              variant="secondary"
-              disabled={!currentPage}
-              onClick={() => setPage(currentPage - 1)}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-content-muted">
-              {currentPage * PAGE_SIZE + 1}
-              {" - "}
-              {Math.min(
-                (currentPage + 1) * PAGE_SIZE,
-                displayGames.length,
-              )} of {displayGames.length}
-            </span>
-            <Button
-              variant="secondary"
-              disabled={currentPage + 1 >= pageCount}
-              onClick={() => setPage(currentPage + 1)}
-            >
-              Next
+        {state.loadMoreError ? (
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-sm text-state-warning" role="alert">
+            <span>{state.loadMoreError}</span>
+            <Button size="sm" variant="secondary" onClick={state.loadMore}>Retry</Button>
+          </div>
+        ) : null}
+        {state.hasMore && !(viewMode === "table" && isDesktop) ? (
+          <div ref={loadMoreRef} className="mt-6 flex min-h-16 items-center justify-center">
+            <Button variant="secondary" disabled={state.loadingMore} onClick={state.loadMore}>
+              {state.loadingMore ? "Loading more..." : `Load more (${games.length} of ${state.total})`}
             </Button>
           </div>
         ) : null}
@@ -443,7 +510,9 @@ export default function WishlistPage() {
            footer={<WishlistCardFooter game={selected} statusOptions={statusOptions} moveStatus={moveStatus}
             onMoveStatusChange={setMoveStatus} onMove={move} moving={movingId === selected.wishlistItemId}
             onRefreshMetadata={() => runItemMetadataRefresh(selected)}
+            onRefreshPrice={() => runItemPriceRefresh(selected)}
             onMatchRawg={runWishlistRawgMatch}
+            priceRefreshing={priceItemRefreshing === selected.wishlistItemId}
             metadataRefreshing={metadataItemRefreshing === selected.wishlistItemId || metadataRefreshing || metadataBulkRefreshing} />} />
       ) : null}
     </main>

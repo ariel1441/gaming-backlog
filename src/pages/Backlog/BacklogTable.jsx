@@ -40,11 +40,12 @@ import {
   StatusBadge,
   Button,
 } from "../../components/ui";
-import { parseGameDate } from "../../utils/gameDateInsights";
+import { parseBacklogAddedDate, parseGameDate } from "../../utils/gameDateInsights";
 import { personalGenreNames, splitCsv } from "../../utils/gameList";
 import { canDeleteGame, canEditGame } from "../../utils/permissions";
 import { buildRankReorderRequest } from "../../utils/reorder";
 import { formatAchievementSummary } from "../../utils/steamAchievements";
+import { defaultBacklogSortReversed } from "../../utils/userPreferences";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -61,6 +62,11 @@ function formatDate(value) {
   return Number.isNaN(date.getTime())
     ? String(value)
     : dateFormatter.format(date);
+}
+
+function formatBacklogAddedDate(value) {
+  const parsed = parseBacklogAddedDate(value);
+  return parsed ? dateFormatter.format(parsed.date) : "ג€”";
 }
 
 function estimateHours(game) {
@@ -351,6 +357,11 @@ function BacklogTableRow({
       <td className="whitespace-nowrap px-3 py-3 text-sm font-semibold text-content-primary">
         {collection === "wishlist" ? <>{game.rating != null ? `${game.rating}/5` : "N/A"}{game.metacritic != null ? <span className="block text-xs text-content-muted">Metacritic {game.metacritic}</span> : null}</> : scoreLabel(game)}
       </td>
+      {collection !== "wishlist" ? (
+        <td className="whitespace-nowrap px-3 py-3 text-sm text-content-secondary">
+          {formatBacklogAddedDate(game.backlog_added_at)}
+        </td>
+      ) : null}
       <td className="whitespace-nowrap px-3 py-3 text-sm text-content-secondary">
         {formatDate(collection === "wishlist" ? game.dateAdded : game.started_at)}
       </td>
@@ -390,6 +401,7 @@ export default function BacklogTable({
   setIsReversed,
   collection = "backlog",
   renderItemActions,
+  loadMore,
 }) {
   const [localGames, setLocalGames] = React.useState(games);
   const sensors = useSensors(
@@ -410,6 +422,7 @@ export default function BacklogTable({
   const showSteam = list.some((game) => game.steamOwned);
   const showReorder = canManage;
   const reorderEnabled = Boolean(onReorder);
+  const columnCount = 9 + Number(showReorder) + Number(showSteam);
 
   const handleSort = (nextSortKey) => {
     if (sortKey === nextSortKey) {
@@ -417,7 +430,7 @@ export default function BacklogTable({
       return;
     }
     setSortKey?.(nextSortKey);
-    setIsReversed?.(false);
+    setIsReversed?.(defaultBacklogSortReversed(nextSortKey));
   };
 
   const handleDragEnd = async ({ active, over }) => {
@@ -445,7 +458,7 @@ export default function BacklogTable({
           strategy={verticalListSortingStrategy}
         >
           <table
-            className={`w-full ${collection === "wishlist" ? "min-w-[1380px]" : "min-w-[1260px]"} border-separate border-spacing-0`}
+            className={`w-full ${collection === "wishlist" ? "min-w-[1380px]" : "min-w-[1360px]"} border-separate border-spacing-0`}
             aria-label={collection === "wishlist" ? "Wishlist table" : "Backlog table"}
           >
             <thead className="relative z-20">
@@ -508,6 +521,16 @@ export default function BacklogTable({
                   onSort={handleSort}
                   className="border-b border-surface-border"
                 />
+                {collection !== "wishlist" ? (
+                  <SortableHeader
+                    label="Added"
+                    sortKey="addedDate"
+                    activeSortKey={sortKey}
+                    isReversed={isReversed}
+                    onSort={handleSort}
+                    className="border-b border-surface-border"
+                  />
+                ) : null}
                 <SortableHeader
                   label={collection === "wishlist" ? "Added" : "Started"}
                   sortKey={collection === "wishlist" ? "dateAdded" : "startedDate"}
@@ -559,6 +582,15 @@ export default function BacklogTable({
                   onAddToNextUp={onAddToNextUp}
                 />
               ))}
+              {loadMore?.hasMore ? (
+                <tr ref={loadMore.ref}>
+                  <td colSpan={columnCount} className="bg-surface-card px-3 py-4 text-center">
+                    <Button variant="secondary" disabled={loadMore.loading} onClick={loadMore.onLoadMore}>
+                      {loadMore.loading ? "Loading more..." : loadMore.label}
+                    </Button>
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </SortableContext>

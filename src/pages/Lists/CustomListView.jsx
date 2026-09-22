@@ -87,6 +87,16 @@ export function SmartQuickControls({ games, query, onChange }) {
     })),
     query.finishedYear,
   );
+  const addedYearOptions = controlOptionsWithCurrent(
+    [
+      { value: "", label: "Any year" },
+      ...smartListYears(games, "added").map((year) => ({
+        value: String(year),
+        label: String(year),
+      })),
+    ],
+    query.addedYear,
+  );
   const releaseYearOptions = controlOptionsWithCurrent(
     smartListYears(games, "release").map((year) => ({
       value: String(year),
@@ -129,6 +139,14 @@ export function SmartQuickControls({ games, query, onChange }) {
           value={query.finishedYear ? String(query.finishedYear) : ""}
           options={finishedYearOptions}
           onChange={(value) => update({ finishedYear: Number(value) })}
+        />
+      ) : null}
+      {controls.includes("addedYear") ? (
+        <LabeledQuickSelect
+          label="Added"
+          value={query.addedYear ? String(query.addedYear) : ""}
+          options={addedYearOptions}
+          onChange={(value) => update({ addedYear: value ? Number(value) : null })}
         />
       ) : null}
       {controls.includes("releasedYear") ? (

@@ -6,8 +6,9 @@ import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import GameGrid from "../../components/GameGrid";
 import DemoBanner from "../../components/DemoBanner";
 import { Button, EmptyState, useToast } from "../../components/ui";
-import { AppPage, PageError, PageLoading } from "../../components/layout";
-import { buildDisplayGames } from "../../utils/gameList";
+import { AppPage, CollectionLoadingSkeleton, PageError } from "../../components/layout";
+import { buildDisplayGames, isHoursFilterActive } from "../../utils/gameList";
+import { NO_PERSONAL_GENRE_FILTER, NO_RAWG_GENRE_FILTER } from "../../utils/filterOptions";
 import { canReorderGames } from "../../utils/permissions";
 import { getManualReorderAvailability } from "../../utils/reorder";
 import { normalizeUserPreferences } from "../../utils/userPreferences";
@@ -23,6 +24,7 @@ import BacklogPanels from "./BacklogPanels";
 import BacklogTable from "./BacklogTable";
 import BacklogToolbar from "./BacklogToolbar";
 import useBacklogActions from "./useBacklogActions";
+import useInfiniteGames, { invalidateFullBacklogCollection } from "./useInfiniteGames";
 import { addToNextUp } from "../../services/nextUpService";
 import useWishlist from "../Wishlist/useWishlist";
 import { composeBacklogWishlist } from "../Wishlist/wishlistPresentation";
@@ -32,6 +34,13 @@ function possessiveName(value) {
   if (!name) return "Your";
   return /s$/i.test(name) ? `${name}’` : `${name}’s`;
 }
+
+const backlogApiSortKeys = {
+  name: "name", status: "status", personalGenres: "personal_genres",
+  estimatedHours: "estimated_hours", score: "score", hoursPlayed: "hours_played",
+  rawgRating: "rawg_rating", metacritic: "metacritic", releaseDate: "release_date",
+  addedDate: "added_date", startedDate: "started_date", finishedDate: "finished_date", steamLastPlayed: "steam_last_played",
+};
 
 export default function BacklogPage() {
   const {
@@ -48,15 +57,15 @@ export default function BacklogPage() {
   const { rawStatusesForGroup } = useStatusGroups();
 
   const {
-    games,
-    loading: gamesLoading,
-    error: gamesError,
-    addGame,
-    editGame,
-    completeGame,
-    removeGame,
-    refresh,
-    reorderGame,
+    games: legacyGames,
+    loading: legacyGamesLoading,
+    error: legacyGamesError,
+    addGame: legacyAddGame,
+    editGame: legacyEditGame,
+    completeGame: legacyCompleteGame,
+    removeGame: legacyRemoveGame,
+    refresh: legacyRefresh,
+    reorderGame: legacyReorderGame,
   } = useGames();
   const userPreferences = React.useMemo(
     () => normalizeUserPreferences(user?.preferences),
@@ -65,10 +74,9 @@ export default function BacklogPage() {
   const wishlist = useWishlist({ userId: user?.id,
     enabled: userPreferences.show_wishlist_in_backlog && isAuthenticated && !isGuest,
   });
-  const presentationGames = React.useMemo(() => composeBacklogWishlist(games,
+  const legacyPresentationGames = React.useMemo(() => composeBacklogWishlist(legacyGames,
     userPreferences.show_wishlist_in_backlog && !isGuest ? wishlist.items : []),
-    [games, wishlist.items, userPreferences.show_wishlist_in_backlog, isGuest]);
-  const selectGame = (game) => game.entryKind === "wishlist" ? nav(`/wishlist?item=${game.wishlistItemId}`) : setSelectedGame(game);
+    [legacyGames, wishlist.items, userPreferences.show_wishlist_in_backlog, isGuest]);
   const backlogTitle = React.useMemo(() => {
     if (!isAuthenticated) return "Backlog";
     if (isGuest) return "Your demo backlog";
@@ -119,10 +127,85 @@ export default function BacklogPage() {
     hoursBounds,
     hoursRange,
     setHoursRange,
-  } = useFilters(presentationGames, {
+  } = useFilters(legacyPresentationGames, {
     initialSortKey: userPreferences.default_backlog_sort_key,
     initialReverse: userPreferences.default_backlog_sort_reversed,
   });
+  const debouncedQuery = useDebouncedValue(searchQuery, 120);
+  const [deletedGameIds, setDeletedGameIds] = useState(() => new Set());
+  useEffect(() => setDeletedGameIds(new Set()), [user?.id]);
+  const requestParams = React.useMemo(() => ({
+    q: debouncedQuery,
+    sort: backlogApiSortKeys[sortKey] || "",
+    direction: isReversed ? "desc" : "asc",
+    status: selectedStatuses,
+    genre: selectedGenres.filter((genre) => genre !== NO_RAWG_GENRE_FILTER),
+    no_genre: selectedGenres.includes(NO_RAWG_GENRE_FILTER),
+    personal_genre: selectedMyGenres.filter((genre) => genre !== NO_PERSONAL_GENRE_FILTER),
+    no_personal_genre: selectedMyGenres.includes(NO_PERSONAL_GENRE_FILTER),
+    min_hours: hoursRange?.min,
+    max_hours: hoursRange?.max,
+    date_type: dateFilter?.type,
+    date_year: dateFilter?.year,
+    date_months: dateFilter?.months,
+    date_days: dateFilter?.days,
+    score: scoreFilter,
+    rated: ratedOnly,
+    source: sourceFilter,
+    rawg_status: rawgStatus,
+    missing_estimates: missingEstimatesOnly,
+  }), [debouncedQuery, sortKey, isReversed, selectedStatuses, selectedGenres,
+    selectedMyGenres, hoursRange, dateFilter, scoreFilter, ratedOnly, sourceFilter,
+    rawgStatus, missingEstimatesOnly]);
+  const usePagedBacklog = !userPreferences.show_wishlist_in_backlog;
+  const paged = useInfiniteGames({ userId: user?.id, enabled: usePagedBacklog && isAuthenticated, params: requestParams });
+  const games = usePagedBacklog
+    ? paged.games.filter((game) => !deletedGameIds.has(String(game.id)))
+    : legacyGames;
+  const presentationGames = usePagedBacklog ? games : legacyPresentationGames;
+  const gamesLoading = usePagedBacklog ? paged.loading : legacyGamesLoading;
+  const gamesError = usePagedBacklog ? paged.error : legacyGamesError;
+  const refresh = async (options = {}) => {
+    if (!usePagedBacklog) return legacyRefresh(options);
+    invalidateFullBacklogCollection(user?.id);
+    return paged.refresh({
+      ...options,
+      preserveLoaded: options.preserveLoaded ?? true,
+    });
+  };
+  const addGame = async (payload) => {
+    const created = await legacyAddGame(payload);
+    if (usePagedBacklog && !isGuest) await refresh({ silent: true });
+    return created;
+  };
+  const editGame = async (...args) => {
+    const updated = await legacyEditGame(...args);
+    if (usePagedBacklog) await refresh({ silent: true });
+    return updated;
+  };
+  const completeGame = async (...args) => {
+    const updated = await legacyCompleteGame(...args);
+    if (usePagedBacklog) await refresh({ silent: true });
+    return updated;
+  };
+  const removeGame = async (...args) => {
+    const result = await legacyRemoveGame(...args);
+    if (usePagedBacklog) {
+      setDeletedGameIds((current) => {
+        const next = new Set(current);
+        next.add(String(args[0]));
+        return next;
+      });
+      await refresh({ silent: true, force: true });
+    }
+    return result;
+  };
+  const reorderGame = async (...args) => {
+    const result = await legacyReorderGame(...args);
+    if (usePagedBacklog) await refresh({ silent: true });
+    return result;
+  };
+  const selectGame = (game) => game.entryKind === "wishlist" ? nav(`/wishlist?item=${game.wishlistItemId}`) : setSelectedGame(game);
   const allMyGenres = React.useMemo(
     () =>
       Array.from(
@@ -133,6 +216,10 @@ export default function BacklogPage() {
       ).sort((a, b) => a.localeCompare(b)),
     [reusablePersonalGenres, usedMyGenres],
   );
+  const effectiveAllGenres = usePagedBacklog ? (paged.facets?.genres || []) : allGenres;
+  const effectiveHoursBounds = usePagedBacklog
+    ? (paged.facets?.hoursBounds || { min: 0, max: 0 })
+    : hoursBounds;
 
   const completedStatuses = React.useMemo(
     () => rawStatusesForGroup("done"),
@@ -169,14 +256,14 @@ export default function BacklogPage() {
     allStatuses,
   });
 
-  const debouncedQuery = useDebouncedValue(searchQuery, 120);
-
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
 
   const [selectedGame, setSelectedGame] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showKeepDemo, setShowKeepDemo] = useState(false);
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
   const [viewMode, setViewMode] = useState(
     userPreferences.default_backlog_view,
   );
@@ -201,7 +288,21 @@ export default function BacklogPage() {
   const bannerRef = useRef(null);
   const mainRef = useRef(null);
   const toolbarRef = useRef(null);
+  const loadMoreRef = useRef(null);
   const isDesktopTable = useMedia("(min-width: 1024px)");
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!usePagedBacklog || !node || !paged.hasMore || paged.loading || paged.loadingMore) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void paged.loadMore();
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isDesktopTable, paged.hasMore, paged.loadMore, paged.loading, paged.loadingMore, usePagedBacklog, viewMode]);
 
   const {
     newGame,
@@ -229,6 +330,7 @@ export default function BacklogPage() {
     clearEditFormError,
   } = useBacklogActions({
     games,
+    userId: user?.id,
     isAuthenticated,
     isGuest,
     addGame,
@@ -249,8 +351,14 @@ export default function BacklogPage() {
   }, [isAuthenticated, loc.pathname]);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated && loc.pathname === "/") {
+    let onboardingSeen = false;
+    try {
+      onboardingSeen = !!localStorage.getItem("seen_onboarding_v1");
+    } catch {}
+    if (!authLoading && !isAuthenticated && loc.pathname === "/" && onboardingSeen) {
       setShowAuth(true);
+    } else if (isAuthenticated) {
+      setShowAuth(false);
     }
   }, [authLoading, isAuthenticated, loc.pathname, setShowAuth]);
 
@@ -298,6 +406,7 @@ export default function BacklogPage() {
   // Clear state and remove query params so URL-driven filters do not re-apply.
   const resetFilters = () => {
     clearFilters();
+    if (usePagedBacklog) setHoursRange(null);
     nav(loc.pathname, { replace: true });
   };
   const clearInsightYearFilter = React.useCallback(() => {
@@ -335,12 +444,8 @@ export default function BacklogPage() {
     setSortKey("");
     setIsReversed(false);
   };
-  if (authLoading || gamesLoading) {
-    return (
-      <AppPage width="full" className="py-8">
-        <PageLoading rows={5} />
-      </AppPage>
-    );
+  if (authLoading || (gamesLoading && (!usePagedBacklog || !paged.saved))) {
+    return <CollectionLoadingSkeleton viewMode={viewMode} />;
   }
 
   // NEW: treat auth errors as "guest" (no fatal screen)
@@ -362,7 +467,9 @@ export default function BacklogPage() {
 
   const displayGames = isAuthError
     ? []
-    : buildDisplayGames({
+    : usePagedBacklog
+      ? presentationGames
+      : buildDisplayGames({
         games: presentationGames,
         searchQuery: debouncedQuery,
         selectedStatuses,
@@ -382,9 +489,9 @@ export default function BacklogPage() {
 
   const canReorder = canReorderGames({ user, isAuthenticated });
   const hasHoursFilter = Boolean(
-    hoursBounds?.max > hoursBounds?.min &&
+    effectiveHoursBounds?.max > effectiveHoursBounds?.min &&
       hoursRange &&
-      (hoursRange.min > hoursBounds.min || hoursRange.max < hoursBounds.max),
+      (hoursRange.min > effectiveHoursBounds.min || hoursRange.max < effectiveHoursBounds.max),
   );
   const activeFilterCount =
     selectedStatuses.length +
@@ -410,18 +517,46 @@ export default function BacklogPage() {
       missingEstimatesOnly ||
       hasHoursFilter,
   );
+  const hasPartialReorderFilters = Boolean(
+    searchQuery ||
+      selectedGenres.length ||
+      selectedMyGenres.length ||
+      dateFilter ||
+      scoreFilter != null ||
+      ratedOnly ||
+      sourceFilter !== "all" ||
+      rawgStatus !== "all" ||
+      missingEstimatesOnly ||
+      hasHoursFilter,
+  );
   const manualReorder = getManualReorderAvailability({
     allGames: games,
     visibleGames: displayGames,
     canReorder,
     sortKey,
     isReversed,
+    hasPartialFilters: hasPartialReorderFilters,
+    hasNonBacklogEntries: displayGames.some((game) => game.entryKind === "wishlist"),
+    busy: isReordering || (usePagedBacklog && (paged.loading || paged.loadingMore || paged.transitioning)),
   });
-  const reorderEnabled = manualReorder.enabled && !displayGames.some((game) => game.entryKind === "wishlist");
-  const reorderUnavailableMessage =
-    manualReorder.reason === "sort"
-      ? "Manual reordering uses Default order with descending turned off."
-      : "Manual reordering is unavailable because this view hides other games in the same status group.";
+  const reorderEnabled = manualReorder.enabled;
+  const reorderUnavailableMessages = {
+    busy: "Manual reordering will return when the current update finishes.",
+    filters: "Clear search and filters to reorder games.",
+    "mixed-collection": "Manual reordering is unavailable while Wishlist items are shown in Backlog.",
+    sort: "Manual reordering uses Default order with descending turned off.",
+    "incomplete-ranks": "Manual reordering is unavailable because this view hides other games in the same status group.",
+  };
+  const reorderUnavailableMessage = reorderUnavailableMessages[manualReorder.reason];
+  const performReorder = async (...args) => {
+    if (isReordering) return;
+    setIsReordering(true);
+    try {
+      await handleReorderGames(...args);
+    } finally {
+      setIsReordering(false);
+    }
+  };
 
   // removed guest-only extra top padding; wrapper handles it now
   const mainClass =
@@ -464,7 +599,7 @@ export default function BacklogPage() {
               filters={{
                 count: activeFilterCount,
                 allStatuses: userPreferences.show_wishlist_in_backlog ? [...allStatuses, "wishlist"] : allStatuses,
-                allGenres,
+                allGenres: effectiveAllGenres,
                 allMyGenres,
                 selectedStatuses,
                 selectedGenres,
@@ -486,7 +621,7 @@ export default function BacklogPage() {
                 toggleStatus,
                 toggleGenre,
                 toggleMyGenre,
-                hoursBounds,
+                hoursBounds: effectiveHoursBounds,
                 hoursRange,
                 setHoursRange,
                 missingEstimatesOnly,
@@ -504,10 +639,12 @@ export default function BacklogPage() {
               }}
               viewMode={viewMode}
               setViewMode={setViewMode}
-              resultCount={displayGames.length}
-              totalCount={presentationGames.length}
+              resultCount={usePagedBacklog ? (paged.total || 0) : displayGames.length}
+              totalCount={usePagedBacklog ? (paged.facets?.collectionTotal ?? paged.total ?? 0) : presentationGames.length}
               games={presentationGames}
               onSelectGame={selectGame}
+              mobileControlsOpen={mobileControlsOpen}
+              setMobileControlsOpen={setMobileControlsOpen}
             />
           </div>
           <BacklogPanels
@@ -528,8 +665,16 @@ export default function BacklogPage() {
             }}
           />
           {/* Card views use the page scrollbar; Table uses a bounded sticky-header scroller. */}
-          <div className="mx-auto w-full max-w-[1760px]">
-            {wishlist.loading ? <p className="mb-3 text-sm text-content-muted">Loading wishlist...</p> : null}
+          <div
+            className="mx-auto w-full max-w-[1760px]"
+            aria-busy={usePagedBacklog && paged.transitioning ? "true" : undefined}
+          >
+            {usePagedBacklog && paged.refreshError ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-control border border-state-warning/35 bg-state-warning/10 px-3 py-2 text-sm text-state-warning" role="alert">
+                <span>Could not refresh this view. Your loaded games are still available.</span>
+                <Button size="sm" variant="ghost" onClick={() => refresh({ silent: true })}>Try again</Button>
+              </div>
+            ) : null}
             {wishlist.error ? <PageError title="Could not load wishlist" description={wishlist.error} onRetry={wishlist.refresh} /> : null}
             {displayGames.length ? (
               viewMode === "table" && isDesktopTable ? (
@@ -543,12 +688,19 @@ export default function BacklogPage() {
                   onDeleteGame={handleDeleteGame}
                   onFinishGame={startFinishing}
                   onAddToNextUp={handleAddToNextUp}
-                  onReorder={reorderEnabled ? handleReorderGames : null}
+                  onReorder={reorderEnabled ? performReorder : null}
                   canManage={canReorder}
                   sortKey={sortKey}
                   setSortKey={setSortKey}
                   isReversed={isReversed}
                   setIsReversed={setIsReversed}
+                  loadMore={usePagedBacklog ? {
+                    hasMore: paged.hasMore,
+                    loading: paged.loadingMore,
+                    onLoadMore: paged.loadMore,
+                    ref: loadMoreRef,
+                    label: `Load more (${games.length} of ${paged.total})`,
+                  } : undefined}
                 />
               ) : (
                 <GameGrid
@@ -561,7 +713,7 @@ export default function BacklogPage() {
                   onDeleteGame={handleDeleteGame}
                   onFinishGame={startFinishing}
                   onAddToNextUp={handleAddToNextUp}
-                  onReorder={reorderEnabled ? handleReorderGames : null}
+                  onReorder={reorderEnabled ? performReorder : null}
                   canManage={canReorder}
                   viewMode={viewMode === "table" ? "list" : viewMode}
                 />
@@ -607,7 +759,20 @@ export default function BacklogPage() {
                 className="mx-auto max-w-3xl"
               />
             )}
-            {canReorder && !reorderEnabled && displayGames.length > 1 ? (
+            {usePagedBacklog && paged.loadMoreError ? (
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-sm text-state-warning" role="alert">
+                <span>{paged.loadMoreError}</span>
+                <Button size="sm" variant="secondary" onClick={paged.loadMore}>Retry</Button>
+              </div>
+            ) : null}
+            {usePagedBacklog && paged.hasMore && !(viewMode === "table" && isDesktopTable) ? (
+              <div ref={loadMoreRef} className="mt-6 flex min-h-16 items-center justify-center">
+                <Button variant="secondary" disabled={paged.loadingMore} onClick={paged.loadMore}>
+                  {paged.loadingMore ? "Loading more..." : `Load more (${games.length} of ${paged.total})`}
+                </Button>
+              </div>
+            ) : null}
+            {canReorder && !reorderEnabled && reorderUnavailableMessage && displayGames.length > 1 ? (
               <p className="mx-auto mt-3 max-w-[1760px] px-2 text-xs text-content-muted sm:px-0">
                 {reorderUnavailableMessage}
               </p>

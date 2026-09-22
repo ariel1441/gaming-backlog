@@ -426,6 +426,43 @@ test("applyGameFilters supports date filters", () => {
   );
 });
 
+test("descending score, playtime, rating, and release sorts keep missing values last", () => {
+  const values = [
+    { id: 1, name: "Missing" },
+    { id: 2, name: "Lower", my_score: 7, hoursPlayed: 5, rawgRating: 3, metacritic: 70, releaseDate: "2024-01-01" },
+    { id: 3, name: "Higher", my_score: 9, hoursPlayed: 20, rawgRating: 4.5, metacritic: 90, released: "2026-01-01" },
+  ];
+  for (const sortKey of ["score", "hoursPlayed", "rawgRating", "metacritic", "releaseDate"]) {
+    assert.deepEqual(
+      sortGames(values, { sortKey, isReversed: true }).map((game) => game.name),
+      ["Higher", "Lower", "Missing"],
+    );
+  }
+});
+
+test("sortGames supports added date with missing dates last", () => {
+  const values = [
+    { name: "Older", backlog_added_at: "2024-01-01T00:00:00.000Z" },
+    { name: "Unknown", backlog_added_at: null },
+    { name: "Newer", backlog_added_at: "2026-01-01T00:00:00.000Z" },
+  ];
+  assert.deepEqual(sortGames(values, { sortKey: "addedDate" }).map((game) => game.name), ["Older", "Newer", "Unknown"]);
+});
+
+test("added recent-days filtering uses Jerusalem calendar days", () => {
+  const gamesWithDates = [
+    { name: "Included boundary", backlog_added_at: "2026-09-01T21:00:00.000Z" },
+    { name: "Too old", backlog_added_at: "2026-08-31T20:59:59.000Z" },
+  ];
+  assert.deepEqual(
+    applyGameFilters(gamesWithDates, {
+      dateFilter: { type: "addedRecentDays", days: 22 },
+      now: new Date("2026-09-22T12:00:00.000Z"),
+    }).map((game) => game.name),
+    ["Included boundary"],
+  );
+});
+
 test("applyGameFilters supports an exact score filter", () => {
   assert.deepEqual(
     applyGameFilters([

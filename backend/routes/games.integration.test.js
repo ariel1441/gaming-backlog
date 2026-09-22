@@ -1029,7 +1029,7 @@ test("POST /api/games/:id/finish updates completion fields and clears planning r
           ],
         };
       }
-      if (sql.includes("UPDATE games") && sql.includes("status = 'finished'")) {
+      if (sql.includes("UPDATE games") && sql.includes("SET status = $3")) {
         return { rows: [{ id: 12, user_id: 7, status: "finished" }] };
       }
       if (sql.includes("DELETE FROM user_play_focus_games")) {
@@ -1075,11 +1075,12 @@ test("POST /api/games/:id/finish updates completion fields and clears planning r
       assert.equal(res.body.game.finished_at, "2026-07-18");
       assert.equal(res.body.clearedFocusRole, "main");
       const update = calls.find((call) =>
-        call.text.includes("status = 'finished'"),
+        call.text.includes("SET status = $3"),
       );
       assert.deepEqual(update.values, [
         12,
         7,
+        "finished",
         "2026-07-18",
         9,
         "Great ending.",
@@ -1097,6 +1098,75 @@ test("POST /api/games/:id/finish updates completion fields and clears planning r
         true,
       );
       assert.match(calls.at(-1).text, /COMMIT/);
+    },
+    async () => client,
+  );
+});
+
+test("POST /api/games/:id/finish can save the alternate completed status", async () => {
+  const calls = [];
+  const client = {
+    query: async (text, values) => {
+      const sql = String(text);
+      calls.push({ text: sql, values });
+      if (sql.includes("SELECT * FROM games") && sql.includes("FOR UPDATE")) {
+        return {
+          rows: [{
+            id: 13,
+            user_id: 7,
+            name: "Long RPG",
+            status: "playing",
+            started_at: "2026-07-01",
+          }],
+        };
+      }
+      if (sql.includes("UPDATE games") && sql.includes("SET status = $3")) {
+        return { rows: [{ id: 13, user_id: 7 }] };
+      }
+      if (sql.includes("DELETE FROM user_play_focus_games")) {
+        return { rows: [] };
+      }
+      if (sql.includes("LEFT JOIN LATERAL")) {
+        return {
+          rows: [{
+            id: 13,
+            user_id: 7,
+            name: "Long RPG",
+            status: "played alot but didnt finish",
+            finished_at: "2026-07-20",
+          }],
+        };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+
+  await withServer(
+    async () => ({ rows: [] }),
+    async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/13/finish", {
+        method: "POST",
+        body: {
+          completion_status: "played alot but didnt finish",
+          finished_at: "2026-07-20",
+          my_score: null,
+          thoughts: null,
+        },
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.outcome, "completed");
+      assert.equal(res.body.game.status, "played alot but didnt finish");
+      const update = calls.find((call) => call.text.includes("SET status = $3"));
+      assert.deepEqual(update.values, [
+        13,
+        7,
+        "played alot but didnt finish",
+        "2026-07-20",
+        null,
+        null,
+      ]);
     },
     async () => client,
   );

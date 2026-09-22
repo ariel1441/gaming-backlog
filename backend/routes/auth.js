@@ -38,6 +38,7 @@ const ALLOWED_BACKLOG_SORT_KEYS = new Set([
   "rawgRating",
   "metacritic",
   "releaseDate",
+  "addedDate",
   "startedDate",
   "finishedDate",
   "steamLastPlayed",

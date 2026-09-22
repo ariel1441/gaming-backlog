@@ -93,6 +93,12 @@ test("filterTimelineEvents filters by title search, type, year, and date preset"
     ["Celeste"]
   );
   assert.deepEqual(
+    filterTimelineEvents(events, { eventTypes: ["started"] }).map(
+      (event) => event.title
+    ),
+    ["Hades"]
+  );
+  assert.deepEqual(
     filterTimelineEvents(events, {
       datePreset: "last90",
       now: new Date(Date.UTC(2026, 3, 14)),
@@ -123,6 +129,20 @@ test("summarizeTimeline counts active unfinished games", () => {
     total: 3,
     started: 2,
     finished: 1,
+    added: 0,
     active: 1,
   });
+});
+
+test("added events are opt-in and preserve the Jerusalem calendar day", () => {
+  const game = {
+    id: 9,
+    name: "Observed game",
+    backlog_added_at: "2026-09-20T21:00:00.000Z",
+  };
+  assert.deepEqual(buildTimelineEvents([game]), []);
+  const events = buildTimelineEvents([game], { includeAdded: true });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "added");
+  assert.equal(events[0].dateValue, "2026-09-21");
 });

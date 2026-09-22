@@ -81,7 +81,9 @@ for (const [label, viewport] of [
       source: "steam_wishlist",
       state: "resolved",
     };
-    let failPlaying = true,
+    let fullGamesReads = 0,
+      pagedGamesReads = 0,
+      failPlaying = true,
       failRetirement = true,
       hiddenOther = false;
     await page.route("**/api/**", async (route) => {
@@ -103,7 +105,22 @@ for (const [label, viewport] of [
           },
           buckets: {},
         });
-      if (path === "/api/games") return json(games);
+      if (path === "/api/games/lookup") {
+        const id = Number(url.searchParams.get("id"));
+        const query = (url.searchParams.get("q") || "").trim().toLowerCase();
+        const limit = Number(url.searchParams.get("limit") || 25);
+        return json({
+          games: games
+            .filter((game) => !id || game.id === id)
+            .filter((game) => !query || game.name.toLowerCase().includes(query))
+            .slice(0, limit),
+        });
+      }
+      if (path === "/api/games") {
+        if (url.searchParams.has("limit")) pagedGamesReads += 1;
+        else fullGamesReads += 1;
+        return json(games);
+      }
       if (path === "/api/games/statuses-list")
         return json(["plan to play", "playing", "finished"]);
       if (path === "/api/personal-genres")
@@ -481,6 +498,7 @@ for (const [label, viewport] of [
     expect(writes.filter(({ path }) => path === '/api/wishlist/9/move-to-backlog')).toHaveLength(label === 'legacy wishlist' ? 1 : 0);
     expect(errors).toEqual([]);
     await expect(page).toHaveURL(/\/wishlist$/);
+    expect(fullGamesReads).toBe(0);
     await panel
       .getByRole("button", { name: "Close notifications", exact: true })
       .click();
@@ -512,11 +530,18 @@ for (const [label, viewport] of [
         ({ path }) => path.includes("/sync") || path.includes("/account"),
       ),
     ).toEqual([]);
+    fullGamesReads = 0;
     await page.goto("/");
     await expect(bell).toBeVisible();
+    await expect.poll(() => pagedGamesReads).toBeGreaterThan(0);
+    const readsBeforeLibrarySync = pagedGamesReads;
+    account.lastLibrarySyncAt = "2026-09-21T12:00:00.000Z";
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => pagedGamesReads).toBeGreaterThan(readsBeforeLibrarySync);
     await bell.click();
     await expect(panel).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(bell).toBeFocused();
+    expect(fullGamesReads).toBe(0);
   });
 }

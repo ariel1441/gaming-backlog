@@ -127,6 +127,9 @@ export const gameSchemas = {
       }),
   }),
   finishBody: Joi.object({
+    completion_status: Joi.string()
+      .valid("finished", "played alot but didnt finish")
+      .default("finished"),
     finished_at: calendarDateSchema.invalid(null).required().messages({
       "any.required": "finished_at is required",
       "any.invalid": "finished_at is required",
@@ -231,6 +234,41 @@ export const gameSchemas = {
 };
 
 export const gameIdParam = celebrate(idParamSchema, opts);
+
+export const listGames = celebrate({
+  [Segments.QUERY]: Joi.object({
+    limit: Joi.number().integer().min(1).max(100),
+    offset: Joi.number().integer().min(0).max(100000).default(0),
+    include_summary: Joi.boolean().default(true),
+    q: Joi.string().trim().max(120).allow("").default(""),
+    sort: Joi.string().valid("name", "status", "personal_genres", "estimated_hours", "score", "hours_played", "rawg_rating", "metacritic", "release_date", "added_date", "started_date", "finished_date", "steam_last_played").allow("").default(""),
+    direction: Joi.string().valid("asc", "desc").default("asc"),
+    status: Joi.array().items(Joi.string().trim().max(80)).max(30).single().default([]),
+    genre: Joi.array().items(Joi.string().trim().max(80)).max(30).single().default([]),
+    personal_genre: Joi.array().items(Joi.string().trim().max(80)).max(30).single().default([]),
+    no_genre: Joi.boolean().default(false),
+    no_personal_genre: Joi.boolean().default(false),
+    min_hours: Joi.number().min(0),
+    max_hours: Joi.number().min(0),
+    missing_estimates: Joi.boolean().default(false),
+    date_type: Joi.string().valid("addedYear", "addedRecentDays", "addedUnknown", "startedYear", "finishedYear", "touchedYear", "activeUnfinished", "activeOlderThanMonths"),
+    date_year: Joi.number().integer().min(1900).max(2200),
+    date_months: Joi.number().integer().min(1).max(120),
+    date_days: Joi.number().integer().min(1).max(3650),
+    score: Joi.number().min(0).max(10),
+    rated: Joi.boolean().default(false),
+    source: Joi.string().valid("all", "steam_linked", "steam_unlinked", "steam_playtime", "steam_no_playtime", "steam_recent", "steam_achievements", "steam_achievements_complete", "steam_achievements_close", "steam_achievements_not_synced", "steam_achievements_unavailable").default("all"),
+    rawg_status: Joi.string().valid("all", "linked", "pending", "missing", "review", "incomplete", "failed").default("all"),
+  }),
+}, opts);
+
+export const lookupGames = celebrate({
+  [Segments.QUERY]: Joi.object({
+    q: Joi.string().trim().max(120).allow("").default(""),
+    id: Joi.number().integer().positive(),
+    limit: Joi.number().integer().min(1).max(50).default(25),
+  }),
+}, opts);
 
 export const gameSearch = celebrate(
   {

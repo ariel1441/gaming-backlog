@@ -175,6 +175,63 @@ test(
         [ownerAlpha.id, ownerBeta.id].sort((a, b) => a - b),
       );
 
+      const ownerFirstPage = await apiRequest(
+        server.baseUrl,
+        ownerToken,
+        "/api/games?limit=1&offset=0&include_summary=true",
+      );
+      assert.equal(ownerFirstPage.status, 200);
+      assert.equal(ownerFirstPage.body.games.length, 1);
+      assert.equal(ownerFirstPage.body.total, 2);
+      assert.equal(ownerFirstPage.body.facets.collectionTotal, 2);
+      assert.equal(ownerFirstPage.body.limit, 1);
+      assert.equal(ownerFirstPage.body.offset, 0);
+
+      const ownerSecondPage = await apiRequest(
+        server.baseUrl,
+        ownerToken,
+        "/api/games?limit=1&offset=1&include_summary=false",
+      );
+      assert.equal(ownerSecondPage.status, 200);
+      assert.equal(ownerSecondPage.body.games.length, 1);
+      assert.equal(ownerSecondPage.body.total, 2);
+      assert.equal(ownerSecondPage.body.facets, undefined);
+      assert.equal(ownerSecondPage.body.snapshotVersion, ownerFirstPage.body.snapshotVersion);
+      assert.notEqual(ownerSecondPage.body.games[0].id, ownerFirstPage.body.games[0].id);
+
+      const ownerFilteredPage = await apiRequest(
+        server.baseUrl,
+        ownerToken,
+        "/api/games?limit=50&q=Beta",
+      );
+      assert.equal(ownerFilteredPage.status, 200);
+      assert.equal(ownerFilteredPage.body.total, 1);
+      assert.deepEqual(ownerFilteredPage.body.games.map((game) => game.id), [ownerBeta.id]);
+
+      const ownerLookup = await apiRequest(
+        server.baseUrl,
+        ownerToken,
+        `/api/games/lookup?id=${ownerAlpha.id}&limit=1`,
+      );
+      assert.equal(ownerLookup.status, 200);
+      assert.deepEqual(ownerLookup.body.games.map((game) => game.id), [ownerAlpha.id]);
+
+      const ownerSearchLookup = await apiRequest(
+        server.baseUrl,
+        ownerToken,
+        "/api/games/lookup?q=Beta",
+      );
+      assert.equal(ownerSearchLookup.status, 200);
+      assert.deepEqual(ownerSearchLookup.body.games.map((game) => game.id), [ownerBeta.id]);
+
+      const crossUserLookup = await apiRequest(
+        server.baseUrl,
+        otherToken,
+        `/api/games/lookup?id=${ownerAlpha.id}`,
+      );
+      assert.equal(crossUserLookup.status, 200);
+      assert.deepEqual(crossUserLookup.body.games, []);
+
       const otherList = await apiRequest(
         server.baseUrl,
         otherToken,
@@ -182,6 +239,15 @@ test(
       );
       assert.equal(otherList.status, 200);
       assert.deepEqual(otherList.body.map((game) => game.id), [otherGamma.id]);
+
+      const otherPage = await apiRequest(
+        server.baseUrl,
+        otherToken,
+        "/api/games?limit=50",
+      );
+      assert.equal(otherPage.status, 200);
+      assert.equal(otherPage.body.total, 1);
+      assert.deepEqual(otherPage.body.games.map((game) => game.id), [otherGamma.id]);
 
       const crossUpdate = await apiRequest(
         server.baseUrl,

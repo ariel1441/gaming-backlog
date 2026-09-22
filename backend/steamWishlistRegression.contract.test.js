@@ -151,6 +151,20 @@ test(
           const page = await wishlist.listWishlistItems(userId, { limit: 100 });
           assert.equal(page.total, 444);
           assert.equal(page.items[0].steamAppId, "100435");
+          assert.equal(page.facets.collectionTotal, 444);
+          assert.deepEqual(page.facets.genres, ["Action"]);
+          const actionOnly = await wishlist.listWishlistItems(userId, {
+            genre: ["action"], includeSummary: false,
+          });
+          assert.equal(actionOnly.total, 436);
+          assert.equal(actionOnly.facets, undefined);
+          assert.equal(actionOnly.priceHealth, undefined);
+          assert.equal((await wishlist.listWishlistItems(userId, {
+            no_genre: true, includeSummary: false,
+          })).total, 8);
+          assert.equal((await wishlist.listWishlistItems(userId, {
+            onSale: true, includeSummary: false,
+          })).total, 0);
           firstId = page.items[0].id;
           const ordinals = (
             await pool.query(

@@ -1,23 +1,25 @@
 # System Context
 
-Updated: 2026-09-11. Compact architecture and current handoff; live code/Git wins.
+Updated: 2026-09-22. Compact architecture and current handoff; live code/Git wins.
 Read linked details only for the active task, not as a startup checklist.
 
 ## Current checkpoint
 
-Planning update (2026-09-11): recorded `origin/Dev` is `d624b4a`, merging the
-Steam branch through `716cb5b`. Working branch remains
-`fix/steam-candidate-account-isolation`; local `Dev` is older. These are recorded
-remote-tracking refs, not fresh remote/CI verification. Main promotion is on hold
-at the user's request because of Railway free-tier limitations.
+Release-preparation update (2026-09-22): after a fresh fetch, local `Dev` is eight
+commits ahead of `origin/Dev` (`65f5fbe`), with code candidate `4328a8a` followed
+by this documentation handoff. The candidate
+adds split Play Next banks, alternate completion outcomes, stable Steam candidate
+pagination, paginated private collections and route-aware loading, Wishlist price/
+deletion fixes, and Backlog-added dates. Focused review verification passed 202
+tests with no failures; full CI and browser verification remain release gates.
 
-Current local worktree: Insights 2.0 v1 is implemented but remains uncommitted.
-It is a private Backlog/library-data view with selected-year dates, current status,
-genres, ratings, Wishlist and estimate coverage; it intentionally has no ETA or
-activity-derived analytics. The next product dependencies are the project-wide
-status/genre grouping decision, then verified daily Steam observation collection.
-See [NEXT_TASKS.md](NEXT_TASKS.md), [planning/gaming-activity.md](planning/gaming-activity.md)
-and [AUTOMATION.md](AUTOMATION.md).
+Insights 2.0 v1 has been visually accepted for now. The next product phase is a
+project-wide status-model decision and implementation. After the current candidate
+reaches `main`, verify daily Steam automation and begin retaining timestamped Steam
+observations before building a detailed Activity Center timeline and aggregated
+activity Insights. See [NEXT_TASKS.md](NEXT_TASKS.md),
+[planning/gaming-activity.md](planning/gaming-activity.md) and
+[AUTOMATION.md](AUTOMATION.md).
 
 The preparation bullets below describe the earlier local checkpoint. Their
 unpublished/pending wording is historical, not the current integration state.

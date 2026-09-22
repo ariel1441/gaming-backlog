@@ -47,7 +47,8 @@ async function fixture(page) {
     localStorage.setItem("seen_onboarding_v1", "1");
   });
   let nextUp = {
-    gameIds: [4, 5],
+    gameIds: [5, 4],
+    candidates: { main: [5], side: [4] },
     queue: [
       { gameId: 4, position: 0 },
       { gameId: 5, position: 1 },
@@ -86,7 +87,12 @@ async function fixture(page) {
     else if (url.pathname === "/api/games") json = games;
     else if (url.pathname === "/api/next-up" && method === "GET") json = nextUp;
     else if (url.pathname === "/api/next-up/focus/side" && method === "PUT") {
-      nextUp = { ...nextUp, gameIds: [5], focus: { ...nextUp.focus, side: 4 } };
+      nextUp = {
+        ...nextUp,
+        gameIds: [5],
+        candidates: { main: [5], side: [] },
+        focus: { ...nextUp.focus, side: 4 },
+      };
       json = nextUp;
     } else if (url.pathname === "/api/next-up/focus/3" && method === "DELETE") {
       nextUp = {
@@ -123,7 +129,7 @@ test("Play Next focuses two games while keeping extra active games secondary", a
   await expect(
     page.getByText("Unclassified Active", { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText("Next Up shortlist (2)")).toBeVisible();
+  await expect(page.getByText("Candidate banks (2)")).toBeVisible();
   await expect(
     page.getByText("Run Based Candidate", { exact: true }),
   ).toHaveCount(0);
@@ -131,9 +137,9 @@ test("Play Next focuses two games while keeping extra active games secondary", a
   await page.getByRole("button", { name: "Choose Side" }).click();
   const dialog = page.getByRole("dialog", { name: "Choose your side game" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("From your shortlist", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("From your side candidates", { exact: true })).toBeVisible();
   await expect(dialog.getByText("From your backlog", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Shortlist #1", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Candidate #1", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Strong Side fit", { exact: true }).first()).toBeVisible();
   const row = dialog.locator("div.rounded-xl", {
     hasText: "Run Based Candidate",
@@ -144,7 +150,7 @@ test("Play Next focuses two games while keeping extra active games secondary", a
   await expect(
     page.getByText("Run Based Candidate", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Next Up shortlist (1)")).toBeVisible();
+  await expect(page.getByText("Candidate banks (1)")).toBeVisible();
   await expect(
     page.getByText("Add a Next time note to make returning easier."),
   ).toHaveCount(0);
@@ -217,9 +223,9 @@ test("vibe suggestions advance in place and secondary sections start collapsed",
   await expect(page.getByText("Picked for you", { exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Show shortlist" }).click();
+  await page.getByRole("button", { name: "Show candidates" }).click();
   const shortlist = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Next Up shortlist (2)" }),
+    has: page.getByRole("heading", { name: "Candidate banks (2)" }),
   });
   await expect(
     shortlist.getByText("Run Based Candidate", { exact: true }),

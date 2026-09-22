@@ -99,6 +99,7 @@ CREATE TABLE user_preferences (
         'rawgRating',
         'metacritic',
         'releaseDate',
+        'addedDate',
         'startedDate',
         'finishedDate',
         'steamLastPlayed'
@@ -340,6 +341,14 @@ CREATE TABLE games (
   rawg_id INTEGER,
   rawg_slug TEXT,
   favorite_rank INTEGER CHECK (favorite_rank IS NULL OR favorite_rank BETWEEN 1 AND 5),
+  backlog_added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  backlog_added_at_source TEXT NOT NULL DEFAULT 'app'
+    CHECK (backlog_added_at_source IN (
+      'app',
+      'guest_clone',
+      'steam_observed',
+      'steam_license_history'
+    )),
   started_at DATE,
   finished_at DATE,
   CHECK (started_at IS NULL OR finished_at IS NULL OR finished_at >= started_at)
@@ -351,6 +360,9 @@ CREATE UNIQUE INDEX games_user_favorite_rank_unique
 
 CREATE INDEX idx_games_catalog_game_id ON games (catalog_game_id);
 CREATE INDEX idx_games_rawg_id ON games (rawg_id);
+
+CREATE INDEX games_user_backlog_added_at
+  ON games (user_id, backlog_added_at DESC, id DESC);
 
 CREATE UNIQUE INDEX games_user_catalog_unique
   ON games (user_id, catalog_game_id) WHERE catalog_game_id IS NOT NULL;
@@ -517,13 +529,15 @@ CREATE INDEX idx_user_list_games_game_id
 CREATE TABLE user_next_up_games (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  candidate_role TEXT NOT NULL DEFAULT 'main'
+    CHECK (candidate_role IN ('main', 'side')),
   position INTEGER NOT NULL CHECK (position >= 0),
   added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (user_id, game_id)
 );
 
-CREATE INDEX idx_user_next_up_games_user_position
-  ON user_next_up_games (user_id, position, game_id);
+CREATE INDEX idx_user_next_up_games_user_role_position
+  ON user_next_up_games (user_id, candidate_role, position, game_id);
 
 CREATE INDEX idx_user_next_up_games_game_id
   ON user_next_up_games (game_id);

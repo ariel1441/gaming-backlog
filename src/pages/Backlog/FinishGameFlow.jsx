@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import useMedia from "../../hooks/useMedia";
 import {
   Button,
+  Checkbox,
   Field,
   GameCover,
   Modal,
@@ -35,6 +36,7 @@ function initialDraft(game) {
       : appToday(),
     my_score: game?.my_score ?? "",
     thoughts: game?.thoughts || "",
+    did_not_finish: false,
   };
 }
 
@@ -121,6 +123,9 @@ export default function FinishGameFlow({
     setMessage("");
     try {
       const response = await onSubmit({
+        completion_status: draft.did_not_finish
+          ? "played alot but didnt finish"
+          : "finished",
         finished_at: draft.finished_at,
         my_score: draft.my_score === "" ? null : Number(draft.my_score),
         thoughts: draft.thoughts.trim() || null,
@@ -145,12 +150,18 @@ export default function FinishGameFlow({
   const title =
     outcome === "already_finished"
       ? "Already finished"
-      : outcome
-        ? "Game finished"
-        : `Finish ${game.displayName || game.name}`;
+      : outcome === "already_completed"
+        ? "Already completed"
+        : outcome
+          ? "Completion saved"
+          : `Finish ${game.displayName || game.name}`;
   const description = outcome
     ? undefined
-    : "Mark this game Finished and save a few final details. Everything here is private.";
+    : "Save how this game ended and a few final details. Everything here is private.";
+  const targetStatus = draft.did_not_finish
+    ? "played alot but didnt finish"
+    : "finished";
+  const savedStatusLabel = statusDisplayLabel(finishedGame?.status || targetStatus);
 
   const body = outcome ? (
     <div className="flex min-h-64 flex-col items-center justify-center px-2 py-8 text-center">
@@ -159,12 +170,12 @@ export default function FinishGameFlow({
       </div>
       <div className="mt-5" role="status" aria-live="polite">
         <h3 className="text-xl font-semibold text-content-primary">
-          {outcome === "already_finished"
-            ? "This game was already marked Finished."
-            : `${finishedGame?.displayName || finishedGame?.name || game.name} is now Finished.`}
+          {outcome === "already_finished" || outcome === "already_completed"
+            ? `This game was already marked ${savedStatusLabel}.`
+            : `${finishedGame?.displayName || finishedGame?.name || game.name} is now ${savedStatusLabel}.`}
         </h3>
         <p className="mt-2 text-sm leading-6 text-content-muted">
-          {outcome === "already_finished"
+          {outcome === "already_finished" || outcome === "already_completed"
             ? "We refreshed it with the latest saved details."
             : "Your completion details have been saved."}
         </p>
@@ -184,7 +195,7 @@ export default function FinishGameFlow({
             <span>Ready to wrap this one up?</span>
           </div>
           <p className="mt-1 break-words text-sm text-content-secondary">
-            {statusDisplayLabel(game.status)} → Finished
+            {statusDisplayLabel(game.status)} → {statusDisplayLabel(targetStatus)}
           </p>
           {!game.started_at ? (
             <p className="mt-1 text-xs leading-5 text-content-muted">
@@ -270,6 +281,17 @@ export default function FinishGameFlow({
           placeholder="What stayed with you about this game?"
         />
       </Field>
+
+      <Checkbox
+        checked={draft.did_not_finish}
+        onChange={(checked) =>
+          setDraft((current) => ({ ...current, did_not_finish: checked }))
+        }
+        disabled={isSubmitting}
+        label="Mark as played a lot, but not finished"
+        description="Keeps it in Completed instead of marking it Finished."
+        className="max-w-md"
+      />
     </div>
   );
 
@@ -311,7 +333,11 @@ export default function FinishGameFlow({
         aria-busy={isSubmitting}
       >
         <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-        {isSubmitting ? "Finishing…" : "Finish game"}
+        {isSubmitting
+          ? "Saving…"
+          : draft.did_not_finish
+            ? "Save completion"
+            : "Finish game"}
       </Button>
     </>
   );

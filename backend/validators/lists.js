@@ -18,6 +18,7 @@ const gameIdParam = Joi.number().integer().positive().required().messages({
 
 const smartQuery = Joi.object({
   status: Joi.string().trim().max(80).allow("", null).optional(),
+  addedYear: Joi.number().integer().min(1970).max(2200).allow(null).optional(),
   finishedYear: Joi.number().integer().min(1970).max(2200).allow(null).optional(),
   releasedYear: Joi.number().integer().min(1970).max(2200).allow(null).optional(),
   genre: Joi.string().trim().max(80).allow("", null).optional(),
@@ -25,7 +26,7 @@ const smartQuery = Joi.object({
   minScore: Joi.number().min(0).max(10).allow(null).optional(),
   missingHours: Joi.boolean().optional(),
   exposedControls: Joi.array()
-    .items(Joi.string().valid("status", "finishedYear", "releasedYear", "genre", "maxHours"))
+    .items(Joi.string().valid("status", "addedYear", "finishedYear", "releasedYear", "genre", "maxHours"))
     .unique()
     .max(5)
     .optional(),
@@ -56,7 +57,7 @@ const listMetadataBody = Joi.object({
   listType: Joi.string().valid("manual", "smart").optional(),
   query: smartQuery.allow(null).optional(),
   sortKey: Joi.string()
-    .valid("manual", "score", "finishedDate", "releaseDate", "hours", "default")
+    .valid("manual", "score", "addedDate", "finishedDate", "releaseDate", "hours", "default")
     .allow(null)
     .optional(),
 });

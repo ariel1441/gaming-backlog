@@ -2,8 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   deleteOwnedGameQuery,
+  listOwnedGamesPageQuery,
   listOwnedGamesQuery,
   listOwnedGameTitlesQuery,
+  lookupOwnedGamesQuery,
+  ownedGamesFacetsQuery,
   selectOwnedGameDetailsQuery,
   selectOwnedGameQuery,
   updateOwnedGameStatusQuery,
@@ -32,6 +35,53 @@ test("owned game list keeps Steam fields private-route only", () => {
   assert.match(query, /steam_achievements_status/);
   assert.match(query, /user_game_sources/);
   assert.match(query, /source\.user_id = g\.user_id/);
+});
+
+test("owned game page query keeps filters parameterized and user scoped", () => {
+  const query = listOwnedGamesPageQuery(7, {
+    query: "alpha",
+    status: ["playing"],
+    genre: ["RPG"],
+    personalGenre: ["Cozy"],
+    minHours: 3,
+    sort: "name",
+    direction: "desc",
+    limit: 25,
+    offset: 50,
+  });
+  const sql = compact(query.text);
+  assert.match(sql, /WHERE g\.user_id = \$1/);
+  assert.match(sql, /ILIKE \$2/);
+  assert.match(sql, /AS total_count/);
+  assert.match(sql, /hashtextextended/);
+  assert.match(sql, /hours_preferred_source = 'steam_actual'/);
+  assert.match(sql, /FROM filtered backlog/);
+  assert.match(sql, /LIMIT \$7 OFFSET \$8/);
+  assert.deepEqual(query.values, [7, "%alpha%", ["playing"], ["rpg"], ["cozy"], 3, 25, 50]);
+});
+
+test("owned game facets use the same user-scoped collection", () => {
+  const query = ownedGamesFacetsQuery(7);
+  const sql = compact(query.text);
+  assert.match(sql, /WHERE g\.user_id = \$1/);
+  assert.match(sql, /COUNT\(\*\)::int AS collection_total/);
+  assert.match(sql, /jsonb_array_elements_text/);
+  assert.deepEqual(query.values, [7]);
+});
+
+test("minimal game lookup is owner scoped, excludes legacy wishlist rows, and parameterizes filters", () => {
+  const query = lookupOwnedGamesQuery(7, {
+    query: "alpha",
+    gameId: 12,
+    limit: 75,
+  });
+  const sql = compact(query.text);
+  assert.match(sql, /g\.user_id = \$1/);
+  assert.match(sql, /LOWER\(TRIM\(g\.status\)\) <> 'wishlist'/);
+  assert.match(sql, /g\.id = \$2/);
+  assert.match(sql, /g\.name ILIKE \$3/);
+  assert.match(sql, /LIMIT \$4/);
+  assert.deepEqual(query.values, [7, 12, "%alpha%", 50]);
 });
 
 test("owned game reads expose user-scoped Play Next focus roles", () => {
@@ -80,5 +130,7 @@ test("owned status update requires id and user_id and can clear private planning
   assert.match(compact(query.text), /WHERE id = \$1 AND user_id = \$2/);
   assert.match(compact(query.text), /DELETE FROM user_next_up_games/);
   assert.match(compact(query.text), /DELETE FROM user_play_focus_games/);
+  assert.match(compact(query.text), /backlog_added_at = CASE/);
+  assert.match(compact(query.text), /LOWER\(TRIM\(status\)\) = 'wishlist'/);
   assert.deepEqual(query.values, [12, 7, "finished", true, true]);
 });

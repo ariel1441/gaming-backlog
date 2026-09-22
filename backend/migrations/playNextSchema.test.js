@@ -17,6 +17,10 @@ const focusMigration = fs.readFileSync(
   path.join(root, "backend/migrations/044_add_play_focus_roles.sql"),
   "utf8",
 );
+const candidateBanksMigration = fs.readFileSync(
+  path.join(root, "backend/migrations/045_split_play_candidate_banks.sql"),
+  "utf8",
+);
 
 test("Play Next migration and reset schema enforce private note and owner relationship integrity", () => {
   for (const sql of [migration, schema]) {
@@ -40,4 +44,14 @@ test("Play focus migration and reset schema enforce owner-scoped roles and singl
     assert.match(sql, /user_play_focus_games WHERE game_id = OLD\.id/);
   }
   assert.doesNotMatch(focusMigration, /INSERT INTO user_play_focus_games/);
+});
+
+test("candidate-bank migration preserves existing rows and constrains Main and Side roles", () => {
+  for (const sql of [candidateBanksMigration, schema]) {
+    assert.match(sql, /candidate_role/);
+    assert.match(sql, /candidate_role IN \('main', 'side'\)/);
+    assert.match(sql, /idx_user_next_up_games_user_role_position/);
+  }
+  assert.match(candidateBanksMigration, /WHERE candidate_role IS NULL/);
+  assert.doesNotMatch(candidateBanksMigration, /DELETE FROM user_next_up_games/);
 });

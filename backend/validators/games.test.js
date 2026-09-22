@@ -121,6 +121,16 @@ test("finish body requires a date and accepts optional values as null", () => {
     thoughts: null,
   });
   assert.equal(valid.error, undefined);
+  assert.equal(valid.value.completion_status, "finished");
+  assert.equal(
+    gameSchemas.finishBody.validate({
+      completion_status: "played alot but didnt finish",
+      finished_at: "2026-07-18",
+      my_score: null,
+      thoughts: null,
+    }).error,
+    undefined,
+  );
   assert.ok(
     gameSchemas.finishBody.validate({
       finished_at: null,

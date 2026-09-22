@@ -55,6 +55,15 @@ test("manual backlog ordering requires permission, default sort, and complete ra
   assert.deepEqual(
     getManualReorderAvailability({
       allGames: games,
+      visibleGames: games,
+      canReorder: true,
+      busy: true,
+    }),
+    { enabled: false, reason: "busy" },
+  );
+  assert.deepEqual(
+    getManualReorderAvailability({
+      allGames: games,
       visibleGames: games.slice(0, 2),
       canReorder: false,
     }),
@@ -68,6 +77,24 @@ test("manual backlog ordering requires permission, default sort, and complete ra
       sortKey: "score",
     }),
     { enabled: false, reason: "sort" },
+  );
+  assert.deepEqual(
+    getManualReorderAvailability({
+      allGames: games,
+      visibleGames: games,
+      canReorder: true,
+      hasPartialFilters: true,
+    }),
+    { enabled: false, reason: "filters" },
+  );
+  assert.deepEqual(
+    getManualReorderAvailability({
+      allGames: games,
+      visibleGames: games,
+      canReorder: true,
+      hasNonBacklogEntries: true,
+    }),
+    { enabled: false, reason: "mixed-collection" },
   );
   assert.deepEqual(
     getManualReorderAvailability({

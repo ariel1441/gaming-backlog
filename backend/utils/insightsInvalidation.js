@@ -4,6 +4,7 @@ const INSIGHTS_FIELDS = [
   "how_long_to_beat",
   "hours_preferred_source",
   "hours_locked",
+  "backlog_added_at",
   "started_at",
   "finished_at",
   "my_genre",

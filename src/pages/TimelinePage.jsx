@@ -49,7 +49,7 @@ export default function TimelinePage() {
   const { games, loading, error, refresh } = useGames();
   const navigate = useNavigate();
   const [selectedGame, setSelectedGame] = useState(null);
-  const [eventFilter, setEventFilter] = useState("all");
+  const [eventTypes, setEventTypes] = useState(["Started", "Finished"]);
   const [yearFilter, setYearFilter] = useState("all");
   const [datePreset, setDatePreset] = useState("all");
   const [search, setSearch] = useState("");
@@ -68,7 +68,8 @@ export default function TimelinePage() {
     } catch {}
   }, [viewMode]);
 
-  const events = useMemo(() => buildTimelineEvents(games), [games]);
+  const includeAdded = eventTypes.includes("Added");
+  const events = useMemo(() => buildTimelineEvents(games, { includeAdded }), [games, includeAdded]);
   const summary = useMemo(
     () => summarizeTimeline(games, events),
     [games, events],
@@ -78,12 +79,14 @@ export default function TimelinePage() {
     [events],
   );
   const hasActiveFilters =
-    eventFilter !== "all" ||
+    eventTypes.length !== 2 ||
+    !eventTypes.includes("Started") ||
+    !eventTypes.includes("Finished") ||
     yearFilter !== "all" ||
     datePreset !== "all" ||
     search.trim() !== "";
   const clearFilters = () => {
-    setEventFilter("all");
+    setEventTypes(["Started", "Finished"]);
     setYearFilter("all");
     setDatePreset("all");
     setSearch("");
@@ -91,12 +94,12 @@ export default function TimelinePage() {
   const visibleEvents = useMemo(
     () =>
       filterTimelineEvents(events, {
-        eventType: eventFilter,
+        eventTypes: eventTypes.map((value) => value.toLowerCase()),
         year: yearFilter,
         datePreset,
         search,
       }),
-    [datePreset, eventFilter, events, search, yearFilter],
+    [datePreset, eventTypes, events, search, yearFilter],
   );
   const filteredSummary = useMemo(() => {
     const started = visibleEvents.filter(
@@ -105,6 +108,7 @@ export default function TimelinePage() {
     const finished = visibleEvents.filter(
       (event) => event.type === "finished",
     ).length;
+    const added = visibleEvents.filter((event) => event.type === "added").length;
     const activeGameIds = new Set(
       visibleEvents
         .filter((event) =>
@@ -119,6 +123,7 @@ export default function TimelinePage() {
       total: visibleEvents.length,
       started,
       finished,
+      added,
       active: activeGameIds.size,
     };
   }, [visibleEvents]);
@@ -182,8 +187,8 @@ export default function TimelinePage() {
         <TimelineHeader summary={filteredSummary} />
 
         <TimelineFilters
-          eventFilter={eventFilter}
-          setEventFilter={setEventFilter}
+          eventTypes={eventTypes}
+          setEventTypes={setEventTypes}
           yearFilter={yearFilter}
           setYearFilter={setYearFilter}
           datePreset={datePreset}

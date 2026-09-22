@@ -93,9 +93,13 @@ export default function BacklogToolbar({
   collectionControl = null,
   utilityControl = null,
   sortOptions = backlogSortOptions,
+  mobileControlsOpen: controlledMobileControlsOpen,
+  setMobileControlsOpen: setControlledMobileControlsOpen,
 }) {
   const title = identity?.title || "Backlog";
-  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const [internalMobileControlsOpen, setInternalMobileControlsOpen] = useState(false);
+  const mobileControlsOpen = controlledMobileControlsOpen ?? internalMobileControlsOpen;
+  const setMobileControlsOpen = setControlledMobileControlsOpen ?? setInternalMobileControlsOpen;
   const countLabel = `${totalCount} ${totalCount === 1 ? "game" : "games"}`;
   const filteredCountLabel =
     resultCount !== totalCount && (search.query || filters.count)
@@ -296,7 +300,18 @@ export default function BacklogToolbar({
                 <SelectMenu
                   id="backlog-sort"
                   value={sort.key}
-                  onChange={sort.setKey}
+                  onChange={(nextSortKey) => {
+                    sort.setKey(nextSortKey);
+                    const selectedOption = sortOptions.find(
+                      (option) => option.value === nextSortKey,
+                    );
+                    if (
+                      sort.key !== nextSortKey &&
+                      typeof selectedOption?.defaultReversed === "boolean"
+                    ) {
+                      sort.setIsReversed(selectedOption.defaultReversed);
+                    }
+                  }}
                   options={sortOptions}
                   className="h-10 min-w-0 flex-1 sm:w-[190px] sm:flex-none"
                   placeholder="Default order"

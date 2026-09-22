@@ -14,20 +14,24 @@ export const backlogViewOptions = [
 ];
 
 export const backlogSortOptions = [
-  { value: "", label: "Default order" },
-  { value: "name", label: "Name" },
-  { value: "status", label: "Status" },
-  { value: "personalGenres", label: "Personal genres" },
-  { value: "estimatedHours", label: "Estimated hours" },
-  { value: "score", label: "My score" },
-  { value: "hoursPlayed", label: "Hours" },
-  { value: "rawgRating", label: "RAWG rating" },
-  { value: "metacritic", label: "Metacritic" },
-  { value: "releaseDate", label: "Release date" },
-  { value: "startedDate", label: "Started date" },
-  { value: "finishedDate", label: "Finished date" },
-  { value: "steamLastPlayed", label: "Steam last played" },
+  { value: "", label: "Default order", defaultReversed: false },
+  { value: "name", label: "Name", defaultReversed: false },
+  { value: "addedDate", label: "Date added", defaultReversed: true },
+  { value: "startedDate", label: "Started date", defaultReversed: true },
+  { value: "finishedDate", label: "Finished date", defaultReversed: true },
+  { value: "releaseDate", label: "Release date", defaultReversed: true },
+  { value: "score", label: "My score", defaultReversed: true },
+  { value: "estimatedHours", label: "Estimated time", defaultReversed: false },
+  { value: "hoursPlayed", label: "Steam playtime", defaultReversed: true },
+  { value: "metacritic", label: "Metacritic", defaultReversed: true },
+  { value: "rawgRating", label: "RAWG rating", defaultReversed: true },
+  { value: "steamLastPlayed", label: "Steam last played", defaultReversed: true },
+  { value: "personalGenres", label: "Personal genres", defaultReversed: false },
 ];
+
+export function defaultBacklogSortReversed(sortKey) {
+  return backlogSortOptions.find((option) => option.value === sortKey)?.defaultReversed ?? false;
+}
 
 export const landingPathOptions = [
   { value: "/", label: "Backlog" },
