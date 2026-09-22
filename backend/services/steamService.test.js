@@ -812,7 +812,7 @@ test("importSteamCandidates attaches marked duplicates instead of creating a new
   );
 });
 
-test("importSteamCandidates uses the Jerusalem first observed day instead of latest play", async () => {
+test("importSteamCandidates preserves first ownership observation and Jerusalem first-play day", async () => {
   await withMockClient(
     async (text) => {
       const sql = compact(text);
@@ -828,6 +828,7 @@ test("importSteamCandidates uses the Jerusalem first observed day instead of lat
               playtime_minutes_forever: 240,
               last_played_at: "2026-09-14T00:00:00.000Z",
               source_first_play_observed_at: "2026-09-11T22:00:00.000Z",
+              source_first_imported_at: "2026-09-12T03:15:00.000Z",
               proposed_catalog_game_id: 56,
               user_selected_catalog_game_id: null,
               duplicate_game_id: null,
@@ -852,7 +853,19 @@ test("importSteamCandidates uses the Jerusalem first observed day instead of lat
 
       assert.deepEqual(result.imported, [{ candidateId: 11, gameId: 77 }]);
       const insert = calls.find((call) => call.text.includes("INSERT INTO games"));
-      assert.deepEqual(insert.values, [7, 56, "Delayed Import Game", "playing", 1000, "2026-09-12"]);
+      assert.match(
+        compact(insert.text),
+        /AT TIME ZONE 'Asia\/Jerusalem'\)::date - 1/,
+      );
+      assert.deepEqual(insert.values, [
+        7,
+        56,
+        "Delayed Import Game",
+        "playing",
+        1000,
+        "2026-09-12",
+        "2026-09-12T03:15:00.000Z",
+      ]);
     },
   );
 });

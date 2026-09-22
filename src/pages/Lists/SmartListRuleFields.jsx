@@ -21,6 +21,7 @@ export default function SmartListRuleFields({
   disabled = false,
 }) {
   const finishedYears = smartListYears(games);
+  const addedYears = smartListYears(games, "added");
   const releaseYears = smartListYears(games, "release");
   const genres = smartListGenres(games);
 
@@ -67,6 +68,20 @@ export default function SmartListRuleFields({
             options={[
               { value: "", label: "Any year" },
               ...finishedYears.map((year) => ({ value: String(year), label: String(year) })),
+            ]}
+            disabled={disabled}
+          />
+        </Field>
+
+        <Field id="smart-added-year" label="Added year">
+          <SelectMenu
+            id="smart-added-year"
+            value={numberValue(query?.addedYear)}
+            onChange={(value) => update({ addedYear: value ? Number(value) : null })}
+            placeholder="Any year"
+            options={[
+              { value: "", label: "Any year" },
+              ...addedYears.map((year) => ({ value: String(year), label: String(year) })),
             ]}
             disabled={disabled}
           />

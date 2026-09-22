@@ -13,8 +13,9 @@ import { fmtInt } from "../../utils/format";
 
 function DateLegend() {
   return <div className="mt-3 flex items-center justify-center gap-4 text-xs text-content-muted">
-    <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-[var(--chart-1)]" />Started</span>
-    <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-[var(--chart-2)]" />Finished</span>
+    <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-[var(--chart-1)]" />Added</span>
+    <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-[var(--chart-2)]" />Started</span>
+    <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-[var(--chart-3)]" />Finished</span>
   </div>;
 }
 
@@ -23,15 +24,17 @@ function DateTooltip({ active, payload, label }) {
   const values = Object.fromEntries(payload.map((item) => [item.dataKey, item.value]));
   return <div className="rounded-lg border border-surface-border bg-surface-card px-3 py-2 text-sm shadow-menu">
     <p className="font-medium text-content-primary">{label}</p>
-    <p className="mt-1 text-content-secondary">Started: {fmtInt(values.started)}</p>
+    <p className="mt-1 text-content-secondary">Added: {fmtInt(values.added)}</p>
+    <p className="text-content-secondary">Started: {fmtInt(values.started)}</p>
     <p className="text-content-secondary">Finished: {fmtInt(values.finished)}</p>
   </div>;
 }
 
 function YearSummary({ row, onBarClick }) {
   const metrics = [
-    { key: "started", label: "Started", color: "bg-[var(--chart-1)]" },
-    { key: "finished", label: "Finished", color: "bg-[var(--chart-2)]" },
+    { key: "added", label: "Added", color: "bg-[var(--chart-1)]" },
+    { key: "started", label: "Started", color: "bg-[var(--chart-2)]" },
+    { key: "finished", label: "Finished", color: "bg-[var(--chart-3)]" },
   ];
   const max = Math.max(1, ...metrics.map(({ key }) => row[key] || 0));
   return <div className="flex min-h-64 flex-col justify-center gap-5">
@@ -76,9 +79,17 @@ export default function DateTimelineChart({
             />
             <RTooltip cursor={{ fill: "transparent" }} wrapperStyle={{ outline: "none" }} content={<DateTooltip />} />
             <Bar
+              dataKey="added"
+              name="Added"
+              fill="var(--chart-1)"
+              radius={[6, 6, 0, 0]}
+              cursor="pointer"
+              onClick={(row) => handleBarClick("added", row)}
+            />
+            <Bar
               dataKey="started"
               name="Started"
-              fill="var(--chart-1)"
+              fill="var(--chart-2)"
               radius={[6, 6, 0, 0]}
               cursor="pointer"
               onClick={(row) => handleBarClick("started", row)}
@@ -86,7 +97,7 @@ export default function DateTimelineChart({
             <Bar
               dataKey="finished"
               name="Finished"
-              fill="var(--chart-2)"
+              fill="var(--chart-3)"
               radius={[6, 6, 0, 0]}
               cursor="pointer"
               onClick={(row) => handleBarClick("finished", row)}
@@ -97,7 +108,7 @@ export default function DateTimelineChart({
         <DateLegend />
         </>
       ) : (
-        <ChartEmpty message="Add start or finish dates to see a timeline." />
+        <ChartEmpty message="Add games or save start and finish dates to see a timeline." />
       )}
     </div>
   );

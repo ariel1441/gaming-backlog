@@ -7,6 +7,7 @@ import {
   PlayCircle,
   Search,
   X,
+  LibraryBig,
 } from "lucide-react";
 import {
   AppPage,
@@ -16,6 +17,7 @@ import {
 import {
   Button,
   GameCover,
+  MultiSelectMenu,
   SearchClearButton,
   SegmentedControl,
   SelectMenu,
@@ -28,6 +30,17 @@ import {
   formatTimelineGroupSummary,
 } from "../../utils/gameTimeline";
 const eventCopy = {
+  added: {
+    label: "Added to backlog",
+    shortLabel: "Added",
+    icon: LibraryBig,
+    badge: "info",
+    text: "text-primary-light",
+    border: "border-primary/35",
+    bg: "bg-primary/10",
+    dot: "bg-primary",
+    accent: "bg-primary",
+  },
   started: {
     label: "Started playing",
     shortLabel: "Started",
@@ -68,11 +81,7 @@ export const timelineViews = {
   },
 };
 
-const eventFilterOptions = [
-  { value: "all", label: "All events" },
-  { value: "started", label: "Started" },
-  { value: "finished", label: "Finished" },
-];
+const eventTypeOptions = ["Started", "Finished", "Added"];
 
 const datePresetOptions = [
   { value: "all", label: "All time" },
@@ -171,6 +180,7 @@ export function TimelineHeader({ summary }) {
       />
       <div className="flex flex-wrap gap-3">
         <StatPill icon={Clock3} label="Events" value={summary.total} />
+        {summary.added ? <StatPill icon={LibraryBig} label="Added" value={summary.added} /> : null}
         <StatPill icon={PlayCircle} label="Started" value={summary.started} />
         <StatPill
           icon={CheckCircle2}
@@ -184,8 +194,8 @@ export function TimelineHeader({ summary }) {
 }
 
 export function TimelineFilters({
-  eventFilter,
-  setEventFilter,
+  eventTypes,
+  setEventTypes,
   yearFilter,
   setYearFilter,
   datePreset,
@@ -243,24 +253,23 @@ export function TimelineFilters({
             />
           ) : null}
           <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto">
-            <div className="flex flex-wrap gap-2">
-              {eventFilterOptions.map((option) => (
-                <Button
-                  key={option.value}
-                  type="button"
-                  size="sm"
-                  variant={
-                    eventFilter === option.value
-                      ? "filterActive"
-                      : "secondary"
-                  }
-                  onClick={() => setEventFilter(option.value)}
-                  aria-pressed={eventFilter === option.value}
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
+            <MultiSelectMenu
+              id="timeline-event-types"
+              values={eventTypes}
+              options={eventTypeOptions}
+              onChange={setEventTypes}
+              placeholder="Choose events"
+              triggerLabel={eventTypes.length === eventTypeOptions.length
+                ? "All events"
+                : eventTypes.length
+                  ? `Events: ${eventTypes.join(", ")}`
+                  : "No events"}
+              searchable={false}
+              showSelectedChips={false}
+              maxSelections={eventTypeOptions.length}
+              aria-label="Timeline event types"
+              className="w-full sm:w-52"
+            />
             <ViewModeToggle
               viewMode={viewMode}
               setViewMode={setViewMode}

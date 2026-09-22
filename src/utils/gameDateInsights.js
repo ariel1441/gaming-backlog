@@ -21,6 +21,22 @@ export function parseGameDate(value) {
   return { date, year, timestamp: date.getTime(), value };
 }
 
+export function parseBacklogAddedDate(value) {
+  if (!value) return null;
+  const direct = parseGameDate(value);
+  if (direct) return direct;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const valueByType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return parseGameDate(`${valueByType.year}-${valueByType.month}-${valueByType.day}`);
+}
+
 export function computeGameDateInsights(games = [], now = new Date()) {
   const currentYear = now.getFullYear();
   const yearly = new Map();

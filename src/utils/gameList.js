@@ -1,5 +1,5 @@
 import { smartFuzzySearch } from "./fuzzySearch.js";
-import { parseGameDate } from "./gameDateInsights.js";
+import { parseBacklogAddedDate, parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
 import { currentSteamPrice, isSteamSale, listedSteamPrice } from "./steamPrice.js";
 import {
@@ -72,16 +72,11 @@ export function personalGenreNames(game) {
 const numberOrMax = (value) =>
   Number.isFinite(Number(value)) ? Number(value) : Number.MAX_SAFE_INTEGER;
 
-const numberOrNegativeInfinity = (value) =>
-  value == null || Number.isNaN(Number(value)) ? -Infinity : Number(value);
-
 const optionalNumber = (value) => {
   if (value === "" || value == null) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 };
-
-const dateValue = (value) => (value ? Date.parse(value) || 0 : 0);
 
 const validDateValue = (value) => {
   const parsed = parseGameDate(value);
@@ -91,8 +86,9 @@ const validDateValue = (value) => {
 };
 
 const compareOptionalDates = (a, b, field, isReversed) => {
-  const valueA = validDateValue(a?.[field]);
-  const valueB = validDateValue(b?.[field]);
+  const getValue = typeof field === "function" ? field : (item) => item?.[field];
+  const valueA = validDateValue(getValue(a));
+  const valueB = validDateValue(getValue(b));
   const hasA = valueA != null;
   const hasB = valueB != null;
 
@@ -148,11 +144,16 @@ export function sortGames(
 ) {
   const directionAwareSortKey =
     sortKey === "startedDate" ||
+    sortKey === "addedDate" ||
     sortKey === "finishedDate" ||
     sortKey === "steamLastPlayed" ||
     sortKey === "personalGenres" ||
     sortKey === "estimatedHours" ||
     sortKey === "score" ||
+    sortKey === "hoursPlayed" ||
+    sortKey === "rawgRating" ||
+    sortKey === "metacritic" ||
+    sortKey === "releaseDate" ||
     ["providerOrder", "dateAdded", "changedAt", "genres", "price", "discount"].includes(sortKey)
       ? sortKey
       : "";
@@ -208,27 +209,37 @@ export function sortGames(
           isReversed,
         );
       case "hoursPlayed":
-        return (
-          numberOrNegativeInfinity(a?.hoursPlayed ?? hoursValueForList(a)) -
-          numberOrNegativeInfinity(b?.hoursPlayed ?? hoursValueForList(b))
+        return compareOptionalNumbers(
+          a,
+          b,
+          (game) => game?.hoursPlayed ?? game?.steamPlaytimeHours,
+          isReversed,
         );
       case "rawgRating":
-        return (
-          numberOrNegativeInfinity(a?.rawgRating ?? a?.rating) -
-          numberOrNegativeInfinity(b?.rawgRating ?? b?.rating)
+        return compareOptionalNumbers(
+          a,
+          b,
+          (game) => game?.rawgRating ?? game?.rating,
+          isReversed,
         );
       case "metacritic":
-        return (
-          numberOrNegativeInfinity(a?.metacritic) -
-          numberOrNegativeInfinity(b?.metacritic)
+        return compareOptionalNumbers(
+          a,
+          b,
+          (game) => game?.metacritic,
+          isReversed,
         );
       case "releaseDate":
-        return (
-          dateValue(a?.releaseDate ?? a?.released) -
-          dateValue(b?.releaseDate ?? b?.released)
+        return compareOptionalDates(
+          a,
+          b,
+          (game) => game?.releaseDate ?? game?.released,
+          isReversed,
         );
       case "startedDate":
         return compareOptionalDates(a, b, "started_at", isReversed);
+      case "addedDate":
+        return compareOptionalDates(a, b, "backlog_added_at", isReversed);
       case "finishedDate":
         return compareOptionalDates(a, b, "finished_at", isReversed);
       case "steamLastPlayed":
@@ -261,8 +272,21 @@ export function matchesDateFilter(game, dateFilter, now = new Date()) {
 
   const started = parseGameDate(game?.started_at);
   const finished = parseGameDate(game?.finished_at);
+  const added = parseBacklogAddedDate(game?.backlog_added_at);
 
   switch (dateFilter.type) {
+    case "addedYear":
+      return added?.year === Number(dateFilter.year);
+    case "addedRecentDays": {
+      if (!added) return false;
+      const days = Number.isFinite(Number(dateFilter.days)) ? Math.max(1, Number(dateFilter.days)) : 30;
+      const today = parseBacklogAddedDate(now);
+      return today
+        ? added.timestamp >= today.timestamp - (days - 1) * 24 * 60 * 60 * 1000
+        : false;
+    }
+    case "addedUnknown":
+      return !added;
     case "startedYear":
       return started?.year === Number(dateFilter.year);
     case "finishedYear":

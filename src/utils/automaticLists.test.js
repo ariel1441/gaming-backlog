@@ -220,3 +220,22 @@ test("smart list empty states explain the active rule", () => {
   );
   assert.equal(missingHours.emptyTitle, "No games are missing hours.");
 });
+
+test("recently added template sorts known dates newest first without dropping unknown dates", () => {
+  const preset = buildSmartQueryFromTemplate("recently-added", []);
+  assert.deepEqual(preset.query.exposedControls, ["addedYear"]);
+  const result = resolveSmartList(preset, [
+    { id: 1, name: "Unknown", status: "plan to play", backlog_added_at: null },
+    { id: 2, name: "Older", status: "plan to play", backlog_added_at: "2024-01-01T00:00:00Z" },
+    { id: 3, name: "Newer", status: "plan to play", backlog_added_at: "2026-01-01T00:00:00Z" },
+  ]);
+  assert.deepEqual(result.games.map((game) => game.name), ["Newer", "Older", "Unknown"]);
+});
+
+test("added year smart lists explain an empty result", () => {
+  const result = resolveSmartList(
+    { query: { addedYear: 2026 }, sortKey: "addedDate" },
+    [{ id: 1, name: "Older", status: "plan to play", backlog_added_at: "2025-01-01T00:00:00Z" }],
+  );
+  assert.equal(result.emptyTitle, "No games were added in 2026.");
+});

@@ -687,7 +687,12 @@ export async function moveWishlistItemToBacklog(userId, wishlistItemId, status) 
     }
     let gameId = item.rows[0].game_id;
     if (gameId) {
-      await client.query("UPDATE games SET status = $3, started_at = COALESCE(started_at, $4::date) WHERE id = $1 AND user_id = $2 AND LOWER(TRIM(status)) = 'wishlist'", [gameId, userId, status, startedAt]);
+      await client.query(`UPDATE games
+        SET status = $3,
+            started_at = COALESCE(started_at, $4::date),
+            backlog_added_at = COALESCE(backlog_added_at, NOW()),
+            backlog_added_at_source = CASE WHEN backlog_added_at IS NULL THEN 'app' ELSE backlog_added_at_source END
+        WHERE id = $1 AND user_id = $2 AND LOWER(TRIM(status)) = 'wishlist'`, [gameId, userId, status, startedAt]);
     } else {
       const duplicate = await client.query(
         `SELECT id FROM games WHERE user_id = $1 AND (

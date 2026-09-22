@@ -22,6 +22,9 @@ export default function MultiSelectMenu({
   customMaxLength,
   maxSelections,
   selectedChipVariant = "personalGenre",
+  showSelectedChips = true,
+  triggerLabel,
+  searchable = true,
   ...props
 }) {
   const [open, setOpen] = useState(false);
@@ -136,11 +139,11 @@ export default function MultiSelectMenu({
     setQuery("");
   };
 
-  const label = selected.length
+  const label = triggerLabel ?? (selected.length
     ? selected.length === 1
       ? selected[0]
       : `${selected.length} selected`
-    : placeholder;
+    : placeholder);
 
   return (
     <div className="relative">
@@ -180,7 +183,7 @@ export default function MultiSelectMenu({
         <DropdownChevron open={open} />
       </button>
 
-      {selected.length ? (
+      {showSelectedChips && selected.length ? (
         <div className="mt-2 flex flex-wrap gap-2">
           {selected.map((value) => (
             <Chip
@@ -205,20 +208,22 @@ export default function MultiSelectMenu({
         open={open}
         onDismiss={() => setOpen(false)}
       >
-          <TextInput
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={customPlaceholder}
-            maxLength={customMaxLength}
-            className="mb-3 h-9"
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && canAddCustom) {
-                event.preventDefault();
-                addCustom();
-              }
-            }}
-          />
+          {searchable ? (
+            <TextInput
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={customPlaceholder}
+              maxLength={customMaxLength}
+              className="mb-3 h-9"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && canAddCustom) {
+                  event.preventDefault();
+                  addCustom();
+                }
+              }}
+            />
+          ) : null}
 
           <div
             id={listboxId}

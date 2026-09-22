@@ -22,7 +22,7 @@ function names(value) {
 async function fetchRows(userId) {
   const { rows } = await pool.query(
     `SELECT g.id, g.name, g.status, s.rank, g.how_long_to_beat,
-       g.hours_preferred_source, g.my_score, g.started_at, g.finished_at,
+       g.hours_preferred_source, g.my_score, g.backlog_added_at, g.started_at, g.finished_at,
        cg.rawg_playtime_hours AS catalog_rawg_playtime_hours, cg.genres_json AS rawg_genres,
        personal.personal_genres, steam.playtime_minutes_forever AS steam_playtime_minutes
      FROM games g
@@ -74,7 +74,30 @@ function hasHoursVisibleInBacklog(row) {
   );
 }
 
+function backlogAddedDay(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const valueByType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${valueByType.year}-${valueByType.month}-${valueByType.day}`;
+}
+
+function jerusalemYear(value = new Date()) {
+  const year = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+  }).format(value);
+  return Number(year);
+}
+
 export function buildInsightsPayload(rows, app, selectedYear = null) {
+  const currentYear = jerusalemYear();
   const sources = { saved: 0, hltb: 0, rawg: 0, steam: 0 };
   const games = rows.map((row) => {
     const resolved = resolveHours(app, row);
@@ -82,6 +105,7 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
     return {
       id: Number(row.id), name: row.name, status: row.status, rank: Number(row.rank),
       score: row.my_score == null ? null : Number(row.my_score),
+      addedAt: backlogAddedDay(row.backlog_added_at),
       startedAt: row.started_at || null, finishedAt: row.finished_at || null,
       personalGenres: names(row.personal_genres), rawgGenres: names(row.rawg_genres),
       hours: resolved.hours, hoursSource: resolved.source,
@@ -95,13 +119,13 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
     const match = String(date || "").match(/^(\d{4})-\d{2}-\d{2}$/);
     if (!match) return;
     const year = Number(match[1]);
-    const value = yearly.get(year) || { year, started: 0, finished: 0 };
+    const value = yearly.get(year) || { year, added: 0, started: 0, finished: 0 };
     value[key] += 1;
     yearly.set(year, value);
   };
-  games.forEach((game) => { bump(game.startedAt, "started"); bump(game.finishedAt, "finished"); });
+  games.forEach((game) => { bump(game.addedAt, "added"); bump(game.startedAt, "started"); bump(game.finishedAt, "finished"); });
   const focusedGames = selectedYear
-    ? games.filter((game) => String(game.startedAt || "").startsWith(`${selectedYear}-`) || String(game.finishedAt || "").startsWith(`${selectedYear}-`))
+    ? games.filter((game) => String(game.addedAt || "").startsWith(`${selectedYear}-`) || String(game.startedAt || "").startsWith(`${selectedYear}-`) || String(game.finishedAt || "").startsWith(`${selectedYear}-`))
     : games;
   const byStatus = new Map();
   games.forEach((game) => {
@@ -127,12 +151,16 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
       finished: games.filter((game) => statusGroupOf(game.status) === "done").length,
       playing: games.filter((game) => statusGroupOf(game.status) === "playing").length,
       startedUnfinished: startedUnfinished.length,
+      addedKnown: games.filter((game) => game.addedAt).length,
+      addedThisYearYear: currentYear,
+      addedThisYear: games.filter((game) => String(game.addedAt || "").startsWith(`${currentYear}-`)).length,
     },
     coverage: { sources },
     byStatus: [...byStatus.values()].sort((a, b) => a.rank - b.rank),
     yearly: [...yearly.values()].sort((a, b) => a.year - b.year),
     focused: {
       year: selectedYear, games: focusedGames.length,
+      added: selectedYear ? focusedGames.filter((game) => String(game.addedAt || "").startsWith(`${selectedYear}-`)).length : games.filter((game) => game.addedAt).length,
       started: selectedYear ? focusedGames.filter((game) => String(game.startedAt || "").startsWith(`${selectedYear}-`)).length : games.filter((game) => game.startedAt).length,
       finished: selectedYear ? focusedGames.filter((game) => String(game.finishedAt || "").startsWith(`${selectedYear}-`)).length : games.filter((game) => game.finishedAt).length,
       playing: focusedGames.filter((game) => statusGroupOf(game.status) === "playing").length,
@@ -164,7 +192,7 @@ async function fetchWishlistCount(userId) {
 router.get("/", verifyToken, insightsQuery, async (req, res, next) => {
   try {
     const year = req.query.year ?? null;
-    const cacheKey = `v8|year=${year || "all"}`;
+    const cacheKey = `v11|year=${year || "all"}`;
     const cached = cacheGet(req.user.id, cacheKey);
     if (cached) return res.json(cached);
     const [rows, wishlistCount] = await Promise.all([

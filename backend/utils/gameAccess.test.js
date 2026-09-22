@@ -130,5 +130,7 @@ test("owned status update requires id and user_id and can clear private planning
   assert.match(compact(query.text), /WHERE id = \$1 AND user_id = \$2/);
   assert.match(compact(query.text), /DELETE FROM user_next_up_games/);
   assert.match(compact(query.text), /DELETE FROM user_play_focus_games/);
+  assert.match(compact(query.text), /backlog_added_at = CASE/);
+  assert.match(compact(query.text), /LOWER\(TRIM\(status\)\) = 'wishlist'/);
   assert.deepEqual(query.values, [12, 7, "finished", true, true]);
 });

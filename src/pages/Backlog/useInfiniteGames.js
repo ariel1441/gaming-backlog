@@ -18,7 +18,7 @@ const clientSortKeys = {
   name: "name", status: "status", personal_genres: "personalGenres",
   estimated_hours: "estimatedHours", score: "score", hours_played: "hoursPlayed",
   rawg_rating: "rawgRating", metacritic: "metacritic", release_date: "releaseDate",
-  started_date: "startedDate", finished_date: "finishedDate", steam_last_played: "steamLastPlayed",
+  added_date: "addedDate", started_date: "startedDate", finished_date: "finishedDate", steam_last_played: "steamLastPlayed",
 };
 
 export function invalidateFullBacklogCollection(userId) {

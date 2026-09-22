@@ -43,11 +43,11 @@ export default function useApplyFiltersFromQuery({
 
     if (setDateFilter) {
       if (
-        (dateType === "started" || dateType === "finished") &&
+        (dateType === "added" || dateType === "started" || dateType === "finished") &&
         /^\d{4}$/.test(year || "")
       ) {
         setDateFilter({
-          type: dateType === "started" ? "startedYear" : "finishedYear",
+          type: dateType === "added" ? "addedYear" : dateType === "started" ? "startedYear" : "finishedYear",
           year: Number(year),
         });
       } else if (active === "unfinished") {

@@ -68,9 +68,10 @@ async function cloneTemplateGames(client, templateUserId, toUserId) {
     INSERT INTO games (
       user_id, catalog_game_id, name, status, position, my_genre,
       how_long_to_beat, my_score, thoughts, cover, rawg_id, rawg_slug,
-      started_at, finished_at
+      started_at, finished_at, backlog_added_at, backlog_added_at_source
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+      NOW(), 'guest_clone')
     RETURNING id
   `,
       [

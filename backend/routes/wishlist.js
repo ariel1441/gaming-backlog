@@ -10,6 +10,7 @@ import {
 } from "../services/steamWishlistService.js";
 import { listWishlistMetadataRuns, refreshWishlistMetadata, refreshWishlistMetadataItem, selectWishlistRawgMatch } from "../services/wishlistMetadataService.js";
 import { listWishlist, wishlistItemAction, wishlistMetadataItem, wishlistMetadataMatch, wishlistPriceItem, syncWishlistPrices, retireWishlistIntention } from "../validators/wishlist.js";
+import { cacheClear } from "../utils/microCache.js";
 
 const router = express.Router();
 router.post('/:itemId/retire-intention', verifyToken, retireWishlistIntention, async (req, res, next) => {
@@ -113,6 +114,7 @@ router.post("/:itemId/move-to-backlog", verifyToken, wishlistItemAction, async (
   try {
     await assertSavedAccountUser(req.user.id);
     const result = await moveWishlistItemToBacklog(req.user.id, req.params.itemId, req.body.status);
+    cacheClear(req.user.id);
     res.status(201).json(result);
   } catch (error) { next(error); }
 });

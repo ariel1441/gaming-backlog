@@ -3777,8 +3777,20 @@ async function importSteamCandidateRowsTx(client, userId, rows) {
         : null;
     const inserted = await client.query(
       `
-      INSERT INTO games (user_id, catalog_game_id, name, status, position, started_at)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO games (
+        user_id, catalog_game_id, name, status, position, started_at,
+        backlog_added_at, backlog_added_at_source
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6,
+        -- Daily Steam discovery happens after the ownership day. Preserve the
+        -- inferred Jerusalem calendar day even if review happens days later.
+        COALESCE(
+          ((($7::timestamptz AT TIME ZONE 'Asia/Jerusalem')::date - 1)::timestamp AT TIME ZONE 'Asia/Jerusalem'),
+          NOW()
+        ),
+        'steam_observed'
+      )
       RETURNING id
       `,
       [
@@ -3788,6 +3800,7 @@ async function importSteamCandidateRowsTx(client, userId, rows) {
         importStatus,
         position,
         startedAt,
+        row.source_first_imported_at,
       ]
     );
     const gameId = inserted.rows[0].id;
@@ -3860,7 +3873,8 @@ export async function importSteamCandidates(
     await lockCurrentSteamCandidates(client, userId, ids);
     const { rows } = await client.query(
       `
-      SELECT candidate.*, source.first_play_observed_at AS source_first_play_observed_at
+      SELECT candidate.*, source.first_play_observed_at AS source_first_play_observed_at,
+             source.first_imported_at AS source_first_imported_at
       FROM steam_import_candidates candidate
       LEFT JOIN user_game_sources source
         ON source.user_id = candidate.user_id
@@ -3984,6 +3998,7 @@ export async function addSteamCandidateToBacklog(
     const { rows } = await client.query(
       `
       SELECT candidate.*, source.first_play_observed_at AS source_first_play_observed_at,
+             source.first_imported_at AS source_first_imported_at,
              source.game_id AS source_game_id
       FROM steam_import_candidates candidate
       LEFT JOIN user_game_sources source

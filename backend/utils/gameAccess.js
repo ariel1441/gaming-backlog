@@ -148,6 +148,12 @@ export function listOwnedGamesPageQuery(userId, options = {}) {
   if (options.missingEstimates) where.push(`${listHoursSql} IS NULL`);
   if (options.score != null) where.push(`backlog.my_score = ${add(Number(options.score))}`);
   if (options.ratedOnly) where.push("backlog.my_score IS NOT NULL");
+  if (options.dateType === "addedYear") where.push(`EXTRACT(YEAR FROM backlog.backlog_added_at AT TIME ZONE 'Asia/Jerusalem') = ${add(Number(options.dateYear))}`);
+  if (options.dateType === "addedRecentDays") {
+    const days = Math.min(Math.max(Number(options.dateDays) || 30, 1), 3650);
+    where.push(`backlog.backlog_added_at >= (((NOW() AT TIME ZONE 'Asia/Jerusalem')::date - (${add(days)}::int - 1))::timestamp AT TIME ZONE 'Asia/Jerusalem')`);
+  }
+  if (options.dateType === "addedUnknown") where.push("backlog.backlog_added_at IS NULL");
   if (options.dateType === "startedYear") where.push(`EXTRACT(YEAR FROM backlog.started_at) = ${add(Number(options.dateYear))}`);
   if (options.dateType === "finishedYear") where.push(`EXTRACT(YEAR FROM backlog.finished_at) = ${add(Number(options.dateYear))}`);
   if (options.dateType === "touchedYear") {
@@ -190,6 +196,7 @@ export function listOwnedGamesPageQuery(userId, options = {}) {
     rawg_rating: optional("backlog.catalog_rawg_rating"),
     metacritic: optional("backlog.catalog_metacritic"),
     release_date: optional("backlog.catalog_released_at"),
+    added_date: optional("backlog.backlog_added_at"),
     started_date: optional("backlog.started_at"),
     finished_date: optional("backlog.finished_at"),
     steam_last_played: optional("backlog.steam_last_played_at"),
@@ -349,7 +356,17 @@ export function updateOwnedGameStatusQuery(
     text: `
       WITH updated AS (
         UPDATE games
-           SET status = $3
+           SET status = $3,
+               backlog_added_at = CASE
+                 WHEN LOWER(TRIM(status)) = 'wishlist' AND LOWER(TRIM($3)) <> 'wishlist'
+                   THEN COALESCE(backlog_added_at, NOW())
+                 ELSE backlog_added_at
+               END,
+               backlog_added_at_source = CASE
+                 WHEN LOWER(TRIM(status)) = 'wishlist' AND LOWER(TRIM($3)) <> 'wishlist'
+                      AND backlog_added_at IS NULL THEN 'app'
+                 ELSE backlog_added_at_source
+               END
          WHERE id = $1 AND user_id = $2
          RETURNING *
       ),

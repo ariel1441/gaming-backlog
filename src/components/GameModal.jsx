@@ -61,6 +61,7 @@ import PersonalGenreSuggestionEditor from "./PersonalGenreSuggestionEditor";
 import SteamPrice from "./SteamPrice";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { usePersonalGenres } from "../hooks/usePersonalGenres";
+import { parseBacklogAddedDate } from "../utils/gameDateInsights";
 
 const hourSourceOptions = [
   { value: "auto", label: "Auto" },
@@ -117,6 +118,17 @@ function fmtDate(value) {
     month: "short",
     day: "numeric",
   });
+}
+
+function fmtBacklogAddedDate(value) {
+  const parsed = parseBacklogAddedDate(value);
+  if (!parsed) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(parsed.date);
 }
 
 function Metric({ icon: Icon, label, value, tone = "default" }) {
@@ -435,6 +447,7 @@ export default function GameModal({
   );
   const startedAt = fmtDate(displayGame.started_at);
   const finishedAt = fmtDate(displayGame.finished_at);
+  const backlogAddedAt = fmtBacklogAddedDate(displayGame.backlog_added_at);
   const steamLastPlayed = fmtDate(game.steamLastPlayedAt);
   const steamFirstObserved = fmtDate(game.steamFirstPlayObservedAt);
   const hours = resolveGameHours(displayGame);
@@ -1180,6 +1193,11 @@ export default function GameModal({
 
             {activeTab === "activity" ? (
               <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                <DetailRow
+                  icon={CalendarDays}
+                  label="Added to backlog"
+                  value={backlogAddedAt}
+                />
                 {isEditMode ? (
                   <>
                     <Field
@@ -1237,7 +1255,8 @@ export default function GameModal({
                   label="Steam activity first observed"
                   value={steamFirstObserved}
                 />
-                {!startedAt &&
+                {!backlogAddedAt &&
+                !startedAt &&
                 !finishedAt &&
                 !steamLastPlayed &&
                 !steamFirstObserved ? (

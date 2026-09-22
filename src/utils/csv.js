@@ -15,6 +15,8 @@ export function backlogCsv(games = []) {
     ["id", "id"], ["name", "name"], ["status", "status"],
     ["genre", "my_genre"], ["score", "my_score"],
     ["estimated_hours", "how_long_to_beat"], ["started_at", "started_at"],
+    ["backlog_added_at", "backlog_added_at"],
+    ["backlog_added_at_source", "backlog_added_at_source"],
     ["finished_at", "finished_at"], ["thoughts", "thoughts"],
     ["rawg_id", "rawg_id"], ["rawg_slug", "rawg_slug"],
     ["release_date", "releaseDate"], ["cover", "cover"],

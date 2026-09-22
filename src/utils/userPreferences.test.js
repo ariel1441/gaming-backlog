@@ -1,10 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  backlogSortOptions,
   DEFAULT_USER_PREFERENCES,
+  defaultBacklogSortReversed,
   normalizeUserPreferences,
   preferredLandingPath,
 } from "./userPreferences.js";
+
+test("backlog sort options use natural directions and keep niche genre sorting last", () => {
+  assert.equal(backlogSortOptions.some((option) => option.value === "status"), false);
+  assert.equal(backlogSortOptions.at(-1)?.value, "personalGenres");
+  assert.equal(defaultBacklogSortReversed("score"), true);
+  assert.equal(defaultBacklogSortReversed("addedDate"), true);
+  assert.equal(defaultBacklogSortReversed("estimatedHours"), false);
+  assert.equal(defaultBacklogSortReversed("name"), false);
+});
 
 test("normalizeUserPreferences fills defaults for missing preferences", () => {
   assert.deepEqual(normalizeUserPreferences(null), DEFAULT_USER_PREFERENCES);

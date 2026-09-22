@@ -39,7 +39,7 @@ const backlogApiSortKeys = {
   name: "name", status: "status", personalGenres: "personal_genres",
   estimatedHours: "estimated_hours", score: "score", hoursPlayed: "hours_played",
   rawgRating: "rawg_rating", metacritic: "metacritic", releaseDate: "release_date",
-  startedDate: "started_date", finishedDate: "finished_date", steamLastPlayed: "steam_last_played",
+  addedDate: "added_date", startedDate: "started_date", finishedDate: "finished_date", steamLastPlayed: "steam_last_played",
 };
 
 export default function BacklogPage() {
@@ -148,6 +148,7 @@ export default function BacklogPage() {
     date_type: dateFilter?.type,
     date_year: dateFilter?.year,
     date_months: dateFilter?.months,
+    date_days: dateFilter?.days,
     score: scoreFilter,
     rated: ratedOnly,
     source: sourceFilter,

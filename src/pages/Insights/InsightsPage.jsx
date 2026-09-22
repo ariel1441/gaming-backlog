@@ -116,8 +116,9 @@ export default function InsightsPage() {
 
   const years = useMemo(() => [...new Set(data?.yearly?.map((item) => item.year) || [])].sort((a, b) => b - a), [data]);
   const dateData = useMemo(() => year === "all" ? (data?.yearly || []) : (data?.yearly || []).filter((item) => String(item.year) === year), [data, year]);
+  const selectedYearDates = year === "all" ? null : dateData[0] || null;
   const yearGames = useMemo(() => (data?.games || []).filter((game) => (
-    year === "all" || String(game.startedAt || "").startsWith(`${year}-`) || String(game.finishedAt || "").startsWith(`${year}-`)
+    year === "all" || String(game.addedAt || "").startsWith(`${year}-`) || String(game.startedAt || "").startsWith(`${year}-`) || String(game.finishedAt || "").startsWith(`${year}-`)
   )), [data, year]);
   const filteredGames = useMemo(() => yearGames.filter((game) => (
     genreStatus === "all" || statusGroupOf(game.status) === genreStatus
@@ -153,26 +154,28 @@ export default function InsightsPage() {
   if (error) return <AppPage width="full"><PageError title="Could not load insights" description={error} onRetry={load} /></AppPage>;
   const totals = data?.totals || {}; const focused = data?.focused || {};
   const isYearView = year !== "all";
+  const currentAddedYear = totals.addedThisYearYear || new Date().getFullYear();
   const summary = isYearView ? focused : totals;
   const ratingSummary = focused;
   if (!data?.games?.length) return <AppPage width="full"><div className="space-y-6"><PageHeader title="Insights" description="A private view of your backlog, progress, and the data behind it." meta={user?.display_name || user?.username || "You"} /><EmptyState icon={BarChart3} title="Build your Insights" description="Add games or review your Steam library to see progress, genres, ratings, and estimate coverage." action={<div className="flex flex-wrap justify-center gap-2"><Button onClick={() => nav("/")}>Add games</Button><Button variant="secondary" onClick={() => nav("/steam/import")}>Review Steam library</Button></div>} /></div></AppPage>;
   return <AppPage width="full"><div className="space-y-6">
     <PageHeader title="Insights" description="A private view of your backlog, progress, and the data behind it." meta={user?.display_name || user?.username || "You"}
       actions={years.length > 1 ? <div className="flex items-center gap-2"><span className="text-xs font-medium uppercase tracking-wide text-content-muted">Year</span><SelectMenu value={year} onChange={setYear} options={[{ value: "all", label: "All time" }, ...years.map((item) => ({ value: String(item), label: String(item) }))]} aria-label="Select year" className="w-32" buttonClassName="min-h-9 py-1.5 text-sm" /></div> : null} />
-    <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-7">
       <InsightTile label="Library games" value={fmtInt(summary.games)} detail={isYearView ? year : "All time"} onClick={() => onBacklog(isYearView ? { insightsYear: year } : {})} />
       {isYearView ? (
-        <InsightTile label="Started" value={fmtInt(summary.started)} detail={year} onClick={() => onBacklog({ dateType: "started", year })} />
+        <InsightTile label="Added" value={fmtInt(selectedYearDates?.added ?? summary.added)} detail={year} onClick={() => onBacklog({ dateType: "added", year })} />
       ) : (
         <InsightTile label="Wishlist" value={fmtInt(totals.wishlist)} detail="Current" onClick={() => nav("/wishlist")} />
       )}
+      <InsightTile label={isYearView ? "Started" : "Added this year"} value={fmtInt(isYearView ? summary.started : totals.addedThisYear)} detail={isYearView ? year : String(currentAddedYear)} onClick={() => onBacklog({ dateType: isYearView ? "started" : "added", year: isYearView ? year : currentAddedYear })} />
       <InsightTile label="Finished" value={fmtInt(isYearView ? summary.finished : totals.finished)} detail={isYearView ? year : "All time"} onClick={() => onBacklog(isYearView ? { dateType: "finished", year } : { group: "done" })} />
       <InsightTile label="Playing" value={fmtInt(summary.playing)} detail={isYearView ? year : "Current"} onClick={() => onBacklog({ group: "playing", insightsYear: isYearView ? year : undefined })} />
       <InsightTile label="Rated games" value={fmtInt(ratingSummary.rated)} detail={ratingSummary.averageScore != null ? `Average ${ratingSummary.averageScore}/10` : "No ratings"} onClick={() => onBacklog({ rated: "true", insightsYear: isYearView ? year : undefined })} />
       <InsightTile label="Missing estimates" value={fmtInt(summary.missingEstimates)} detail={`${fmtInt(summary.estimatedGames)} of ${fmtInt(summary.games)} covered`} onClick={() => onBacklog({ missing: "estimates", insightsYear: isYearView ? year : undefined })} />
     </section>
     <section className="grid gap-6 xl:grid-cols-2">
-      <Panel title={year === "all" ? "Started and finished over time" : `Started and finished in ${year}`}>
+      <Panel title={year === "all" ? "Added, started, and finished over time" : `Added, started, and finished in ${year}`}>
         <DateTimelineChart data={dateData} axisTick={axisTick} gridStroke={gridStroke} tooltipColors={tooltipColors} onBarClick={(dateType, value) => onBacklog({ dateType, year: value })} />
       </Panel>
       <HoursByStatusChart title={isYearView ? `Status of ${year} games` : "Current library status"} valueLabel="games" data={statusData} isSmall={isSmall} isPhone={isPhone} axisTick={axisTick} gridStroke={gridStroke} tooltipColors={tooltipColors} colorAt={colorAt} onBarClick={(group) => onBacklog({ group, insightsYear: isYearView ? year : undefined })} />

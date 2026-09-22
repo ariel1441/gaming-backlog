@@ -105,12 +105,14 @@ test("Insights coverage keeps a RAWG fallback visible in Backlog even when HLTB 
 
 test("Insights selected-year summaries use games touched in that year", () => {
   const payload = buildInsightsPayload([
-    { id: 1, name: "Started", status: "playing", rank: 1, started_at: "2025-01-03", my_score: 8, personal_genres: [], rawg_genres: [] },
-    { id: 2, name: "Finished", status: "finished", rank: 2, finished_at: "2025-05-04", how_long_to_beat: 10, personal_genres: [], rawg_genres: [] },
+    { id: 1, name: "Started", status: "playing", rank: 1, backlog_added_at: "2025-01-01T22:00:00Z", started_at: "2025-01-03", my_score: 8, personal_genres: [], rawg_genres: [] },
+    { id: 2, name: "Finished", status: "finished", rank: 2, backlog_added_at: "2024-05-04T00:00:00Z", finished_at: "2025-05-04", how_long_to_beat: 10, personal_genres: [], rawg_genres: [] },
     { id: 3, name: "Older", status: "playing", rank: 1, started_at: "2024-01-03", my_score: 9, personal_genres: [], rawg_genres: [] },
   ], { locals: { hltb: {} } }, 2025);
 
   assert.equal(payload.focused.games, 2);
+  assert.equal(payload.focused.added, 1);
+  assert.equal(payload.yearly.find((row) => row.year === 2025)?.added, payload.focused.added);
   assert.equal(payload.focused.started, 1);
   assert.equal(payload.focused.finished, 1);
   assert.equal(payload.focused.playing, 1);

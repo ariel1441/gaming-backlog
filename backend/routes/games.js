@@ -231,6 +231,7 @@ router.get("/", verifyToken, listGames, async (req, res, next) => {
         dateType: req.query.date_type,
         dateYear: req.query.date_year,
         dateMonths: req.query.date_months,
+        dateDays: req.query.date_days,
         ratedOnly: req.query.rated,
         rawgStatus: req.query.rawg_status,
       };
@@ -1082,6 +1083,16 @@ router.put(
          rawg_slug = $16,
          catalog_game_id = $17,
          resume_note = $22,
+         backlog_added_at = CASE
+           WHEN LOWER(TRIM(g.status)) = 'wishlist' AND LOWER(TRIM($2)) <> 'wishlist'
+             THEN COALESCE(g.backlog_added_at, NOW())
+           ELSE g.backlog_added_at
+         END,
+         backlog_added_at_source = CASE
+           WHEN LOWER(TRIM(g.status)) = 'wishlist' AND LOWER(TRIM($2)) <> 'wishlist'
+                AND g.backlog_added_at IS NULL THEN 'app'
+           ELSE g.backlog_added_at_source
+         END,
 
          started_at = CASE
            WHEN $11 THEN $18

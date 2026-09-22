@@ -15,6 +15,10 @@ test("affectsInsights covers hour policy and ignores notes-only edits", () => {
   );
   assert.equal(affectsInsights(base, { ...base, hours_locked: true }), true);
   assert.equal(
+    affectsInsights(base, { ...base, backlog_added_at: "2026-01-01T00:00:00Z" }),
+    true
+  );
+  assert.equal(
     affectsInsights({ ...base, thoughts: "old" }, { ...base, thoughts: "new" }),
     false
   );

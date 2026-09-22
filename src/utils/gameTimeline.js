@@ -1,8 +1,9 @@
-import { parseGameDate } from "./gameDateInsights.js";
+import { parseBacklogAddedDate, parseGameDate } from "./gameDateInsights.js";
 
 const EVENT_ORDER = {
   finished: 0,
   started: 1,
+  added: 2,
 };
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -27,13 +28,27 @@ export function formatTimelineDay(event) {
   return DAY_FORMATTER.format(event.date);
 }
 
-export function buildTimelineEvents(games = []) {
+export function buildTimelineEvents(games = [], { includeAdded = false } = {}) {
   const events = [];
 
   for (const game of Array.isArray(games) ? games : []) {
     const title = game?.name || "Untitled game";
     const started = parseGameDate(game?.started_at);
     const finished = parseGameDate(game?.finished_at);
+    const added = includeAdded ? parseBacklogAddedDate(game?.backlog_added_at) : null;
+
+    if (added) {
+      events.push({
+        id: `${game.id ?? title}-added-${added.value}`,
+        type: "added",
+        date: added.date,
+        dateValue: added.value,
+        timestamp: added.timestamp,
+        year: added.year,
+        game,
+        title,
+      });
+    }
 
     if (started) {
       events.push({
@@ -67,13 +82,15 @@ export function buildTimelineEvents(games = []) {
 
 export function filterTimelineEvents(
   events = [],
-  { eventType = "all", year = "all", datePreset = "all", search = "", now } = {}
+  { eventType = "all", eventTypes, year = "all", datePreset = "all", search = "", now } = {}
 ) {
   const query = String(search || "").trim().toLowerCase();
   const activeYear = Number.isFinite(Number(year)) ? Number(year) : null;
   const dateRange = dateRangeForPreset(datePreset, now);
+  const selectedTypes = Array.isArray(eventTypes) ? new Set(eventTypes) : null;
 
   return (Array.isArray(events) ? events : []).filter((event) => {
+    if (selectedTypes && !selectedTypes.has(event.type)) return false;
     if (eventType !== "all" && event.type !== eventType) return false;
     if (activeYear && event.year !== activeYear) return false;
     if (dateRange) {
@@ -117,6 +134,7 @@ export function groupTimelineEvents(events = []) {
         events: [],
         started: 0,
         finished: 0,
+        added: 0,
       };
       byKey.set(key, group);
       groups.push(group);
@@ -126,6 +144,7 @@ export function groupTimelineEvents(events = []) {
     group.events.push(event);
     if (event.type === "started") group.started += 1;
     if (event.type === "finished") group.finished += 1;
+    if (event.type === "added") group.added += 1;
   }
 
   return groups;
@@ -139,6 +158,7 @@ export function formatTimelineGroupSummary(group) {
   if (group?.finished) {
     parts.push(`${group.finished} finished`);
   }
+  if (group?.added) parts.push(`${group.added} added`);
   return parts.length
     ? parts.join(", ")
     : `${group?.events?.length || 0} ${group?.events?.length === 1 ? "event" : "events"}`;
@@ -147,6 +167,7 @@ export function formatTimelineGroupSummary(group) {
 export function summarizeTimeline(games = [], events = buildTimelineEvents(games)) {
   const started = events.filter((event) => event.type === "started").length;
   const finished = events.filter((event) => event.type === "finished").length;
+  const added = events.filter((event) => event.type === "added").length;
   const active = (Array.isArray(games) ? games : []).filter(
     (game) => parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at)
   ).length;
@@ -155,6 +176,7 @@ export function summarizeTimeline(games = [], events = buildTimelineEvents(games
     total: events.length,
     started,
     finished,
+    added,
     active,
   };
 }

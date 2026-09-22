@@ -399,6 +399,18 @@ export function DateDropdown({ dateFilter, setDateFilter }) {
   const year = new Date().getFullYear();
   const options = [
     {
+      label: `Added ${year}`,
+      value: { type: "addedYear", year },
+    },
+    {
+      label: "Added in last 30 days",
+      value: { type: "addedRecentDays", days: 30 },
+    },
+    {
+      label: "Added date unknown",
+      value: { type: "addedUnknown" },
+    },
+    {
       label: `Started ${year}`,
       value: { type: "startedYear", year },
     },
