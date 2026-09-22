@@ -1,34 +1,40 @@
 # Next Tasks
 
-Updated: 2026-09-12. Live code/Git takes precedence.
+Updated: 2026-09-22. Live code/Git takes precedence.
 
-## Current phase: understand automation before changing it
+## Current phase: publish the verified Dev candidate
 
-- Recorded `origin/Dev`: `d624b4a`, including Steam branch `716cb5b`.
-- Main promotion is on hold because of Railway free-tier limitations. Remote CI
-  and deployments have not been reverified in this planning pass.
-- Read [AUTOMATION.md](AUTOMATION.md) for triggers, defaults and local configuration.
-- Discuss timing, freshness, budgets, retries and visibility before implementing
-  or enabling automation changes.
+- After a fresh fetch, local `Dev` is eight commits ahead of `origin/Dev`
+  (`65f5fbe`): code candidate `4328a8a` plus the documentation handoff.
+- Focused review verification passed 202 tests with no failures. Before publishing,
+  finish the exact-candidate browser/release gate and keep the worktree clean.
+- Push `Dev` only after the gate passes and confirm the remote SHA and CI result.
+- Do not promote `main` in this phase. The user plans to open the main PR later,
+  after 21:00 Israel time; the repository release rule still requires a fresh
+  `origin/main` merge and post-sync exact-candidate CI before merge.
 
 ## Preferred next product direction
 
-1. **Insights 2.0 v1 is implemented locally and ready for user visual review.** It
-   uses private Backlog/library data: library, Wishlist, finished/playing/rated and
-   estimate-coverage summaries; selected-year progress; current status, personal/
-   RAWG genres, and half-point score distribution. It deliberately excludes ETA,
-   activity history, notifications, and made-up historical Steam data. Chart
-   click-throughs open the existing filtered Backlog where meaningful.
-2. Make the broader **status grouping and personal-genre identity** decisions in a
-   separately scoped project-wide discussion. Insights currently consumes the
-   existing semantic groups and must inherit—not create—the eventual stable model.
-3. Confirm the external daily Steam schedule and account eligibility before relying
-   on Gaming Activity. The first successful activity-aware sync is a baseline;
-   current cumulative totals cannot reconstruct previous daily play. Preserve gaps
-   rather than inventing calendar-day values.
-4. Add the Steam/activity slice to Insights only after real observations accumulate:
-   start with daily/weekly hours, active days, per-game deltas and achievement
-   deltas; defer trends, streaks and recaps until there is enough continuous history.
+1. **Insights 2.0 v1 is accepted for now.** It uses private Backlog/library data:
+   library, Wishlist, finished/playing/rated and estimate-coverage summaries;
+   selected-year progress; current status, personal/RAWG genres, and half-point
+   score distribution. It deliberately excludes ETA, activity history,
+   notifications, and made-up historical Steam data. Chart click-throughs open the
+   existing filtered Backlog where meaningful.
+2. Make the broader **status model** the next dedicated product phase. Define
+   canonical stored statuses, labels, semantic groups, transition/date behavior,
+   ordering, and compatibility across Backlog, Play Next, Steam suggestions,
+   Timeline, Insights, smart lists, and public views. Personal-genre identity is a
+   separate decision and should not be mixed into the status migration by default.
+3. After the current candidate reaches `main`, confirm the external daily Steam
+   schedule, account eligibility, recovery behavior, and run evidence. Begin saving
+   timestamped playtime and achievement observations. The first successful
+   activity-aware sync is a baseline; cumulative totals cannot reconstruct earlier
+   daily play, and missed intervals must remain explicit gaps.
+4. Build detailed daily activity primarily in **Activity Center**: per-day/per-game
+   playtime deltas and achievement changes. Add aggregate daily/weekly hours, active
+   days, per-game deltas, and achievement deltas to Insights after observations
+   accumulate; defer trends, streaks, and recaps until history is continuous enough.
 
 Routine Steam decisions belong in the daily experience. Connection, bulk changes
 and difficult repair remain on Steam management pages. A separate Library Needs
