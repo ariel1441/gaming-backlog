@@ -11,6 +11,7 @@ import {
   gameIdParam,
   listGenreSuggestions,
   applyGenreSuggestions,
+  dismissGenreSuggestions,
   upsertGame,
   reorderGame,
 } from "../validators/games.js";
@@ -57,6 +58,7 @@ import {
 } from "../services/personalGenreService.js";
 import {
   applyPersonalGenreSuggestions,
+  dismissPersonalGenreSuggestions,
   getPersonalGenreSuggestionReview,
   listPersonalGenreSuggestionReviews,
 } from "../services/personalGenreSuggestionReviewService.js";
@@ -356,6 +358,26 @@ router.get(
       );
       res.setHeader("Cache-Control", "no-store");
       res.json(payload);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.post(
+  "/:id/genre-suggestions/dismiss",
+  verifyToken,
+  dismissGenreSuggestions,
+  async (req, res, next) => {
+    try {
+      const gameId = Number(req.params.id);
+      await dismissPersonalGenreSuggestions(
+        pool,
+        req.user.id,
+        gameId,
+        req.body.personalGenreIds,
+      );
+      res.json({ dismissedPersonalGenreIds: req.body.personalGenreIds });
     } catch (error) {
       next(error);
     }

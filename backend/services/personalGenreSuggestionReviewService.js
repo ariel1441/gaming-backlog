@@ -21,26 +21,46 @@ function catalogFromGame(game) {
   };
 }
 
-function missingSuggestions(game, personalGenres) {
+function missingSuggestions(game, personalGenres, dismissedGenreIds = []) {
   const currentPersonalGenres = asGenres(game.personal_genres);
   const currentIds = new Set(currentPersonalGenres.map((genre) => Number(genre.id)));
+  const dismissedIds = new Set(asGenres(dismissedGenreIds).map(Number));
   const suggestions = buildPersonalGenreSuggestions({
     catalog: catalogFromGame(game),
     personalGenres,
     currentPersonalGenres,
-  }).filter((genre) => !currentIds.has(Number(genre.id)));
+  }).filter((genre) => (
+    !currentIds.has(Number(genre.id)) && !dismissedIds.has(Number(genre.id))
+  ));
 
   return { currentPersonalGenres, suggestions };
 }
 
-export async function getPersonalGenreSuggestionReview(db, userId, gameId) {
+export async function getPersonalGenreSuggestionReview(
+  db,
+  userId,
+  gameId,
+  { includeDismissed = false } = {},
+) {
   const query = selectOwnedGameDetailsQuery(gameId, userId);
   const result = await db.query(query.text, query.values);
   const game = result.rows[0];
   if (!game) throw notFound("Game not found.");
 
   const personalGenres = await listPersonalGenres(db, userId);
-  const { currentPersonalGenres, suggestions } = missingSuggestions(game, personalGenres);
+  const dismissed = includeDismissed
+    ? { rows: [] }
+    : await db.query(
+      `SELECT personal_genre_id
+         FROM game_genre_suggestion_dismissals
+        WHERE user_id = $1 AND game_id = $2`,
+      [userId, gameId],
+    );
+  const { currentPersonalGenres, suggestions } = missingSuggestions(
+    game,
+    personalGenres,
+    dismissed.rows.map((row) => row.personal_genre_id),
+  );
 
   return {
     game: {
@@ -84,7 +104,8 @@ export async function listPersonalGenreSuggestionReviews(
             cg.rawg_playtime_hours AS catalog_rawg_playtime_hours,
             cg.genres_json AS catalog_genres_json,
             cg.tags_json AS catalog_tags_json,
-            personal.personal_genres
+            personal.personal_genres,
+            dismissed.dismissed_genre_ids
        FROM games g
        JOIN catalog_games cg ON cg.id = g.catalog_game_id
        LEFT JOIN LATERAL (
@@ -99,6 +120,11 @@ export async function listPersonalGenreSuggestionReviews(
           AND genre.user_id = membership.user_id
          WHERE membership.game_id = g.id AND membership.user_id = g.user_id
        ) personal ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(json_agg(dismissal.personal_genre_id), '[]'::json) AS dismissed_genre_ids
+           FROM game_genre_suggestion_dismissals dismissal
+          WHERE dismissal.game_id = g.id AND dismissal.user_id = g.user_id
+       ) dismissed ON TRUE
       WHERE g.user_id = $1
         AND LOWER(TRIM(g.status)) <> 'wishlist'
         AND cg.metadata_quality = 'full'
@@ -118,7 +144,11 @@ export async function listPersonalGenreSuggestionReviews(
 
     for (const game of result.rows) {
       nextOffset += 1;
-      const { currentPersonalGenres, suggestions } = missingSuggestions(game, personalGenres);
+      const { currentPersonalGenres, suggestions } = missingSuggestions(
+        game,
+        personalGenres,
+        game.dismissed_genre_ids,
+      );
       if (!suggestions.length && !onlyWithoutPersonalGenres) continue;
       reviews.push({
         game: {
@@ -139,6 +169,28 @@ export async function listPersonalGenreSuggestionReviews(
     }
   }
   return { reviews, page: { nextOffset, hasMore: true } };
+}
+
+export async function dismissPersonalGenreSuggestions(db, userId, gameId, genreIds) {
+  const review = await getPersonalGenreSuggestionReview(
+    db,
+    userId,
+    gameId,
+    { includeDismissed: true },
+  );
+  const suggestedIds = new Set(review.suggestions.map((genre) => Number(genre.id)));
+  const dismissedIds = [...new Set(genreIds.map(Number))];
+  if (dismissedIds.some((id) => !suggestedIds.has(id))) {
+    throw badRequest("Dismiss only current genre suggestions for this game.");
+  }
+
+  await db.query(
+    `INSERT INTO game_genre_suggestion_dismissals
+       (user_id, game_id, personal_genre_id)
+     SELECT $1, $2, unnest($3::int[])
+     ON CONFLICT (game_id, personal_genre_id) DO NOTHING`,
+    [userId, gameId, dismissedIds],
+  );
 }
 
 export async function applyPersonalGenreSuggestions(

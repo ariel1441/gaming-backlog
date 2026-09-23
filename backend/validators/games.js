@@ -126,6 +126,14 @@ export const gameSchemas = {
         "array.unique": "expectedPersonalGenreIds cannot contain duplicates",
       }),
   }),
+  genreSuggestionDismissBody: Joi.object({
+    personalGenreIds: Joi.array()
+      .items(Joi.number().integer().positive())
+      .min(1)
+      .max(10)
+      .unique()
+      .required(),
+  }),
   finishBody: Joi.object({
     completion_status: Joi.string()
       .valid("finished", "played alot but didnt finish")
@@ -306,6 +314,14 @@ export const applyGenreSuggestions = celebrate(
   {
     ...idParamSchema,
     [Segments.BODY]: gameSchemas.genreSuggestionApplyBody,
+  },
+  opts,
+);
+
+export const dismissGenreSuggestions = celebrate(
+  {
+    ...idParamSchema,
+    [Segments.BODY]: gameSchemas.genreSuggestionDismissBody,
   },
   opts,
 );

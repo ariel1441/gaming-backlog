@@ -68,6 +68,14 @@ export function applyGameGenreSuggestions(id, personalGenreIds, expectedPersonal
   );
 }
 
+export function dismissGameGenreSuggestions(id, personalGenreIds, opts = {}) {
+  return api.post(
+    `/api/games/${id}/genre-suggestions/dismiss`,
+    { personalGenreIds },
+    opts,
+  );
+}
+
 export function listGameGenreSuggestions(opts = {}) {
   const search = new URLSearchParams();
   if (Number.isInteger(opts.limit)) search.set("limit", String(opts.limit));

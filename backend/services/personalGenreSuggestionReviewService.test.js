@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyPersonalGenreSuggestions,
+  dismissPersonalGenreSuggestions,
   getPersonalGenreSuggestionReview,
   listPersonalGenreSuggestionReviews,
 } from "./personalGenreSuggestionReviewService.js";
@@ -40,6 +41,8 @@ function mockDb({ games = [fullGame] } = {}) {
         return { rows: genres.has(values[0]) ? [{ id: values[0], name: genres.get(values[0]) }] : [] };
       }
       if (sql.includes("SELECT 1 FROM games WHERE id = $1")) return { rows: [{ '?column?': 1 }] };
+      if (/SELECT personal_genre_id\s+FROM game_genre_suggestion_dismissals/.test(sql)) return { rows: [] };
+      if (sql.includes("INSERT INTO game_genre_suggestion_dismissals")) return { rows: [] };
       if (sql.startsWith("DELETE FROM game_personal_genres")) return { rows: [] };
       if (sql.includes("INSERT INTO game_personal_genres")) return { rows: [] };
       if (sql.startsWith("UPDATE games SET my_genre")) return { rows: [] };
@@ -81,8 +84,9 @@ test("settings review queue uses full metadata and skips games with no missing m
 
   assert.equal(payload.reviews.length, 1);
   assert.equal(payload.reviews[0].game.id, 12);
-  assert.match(db.calls[1].text, /cg\.metadata_quality = 'full'/);
-  assert.deepEqual(db.calls[1].values, [7, 200, false, 0]);
+  const queueCall = db.calls.find((call) => /cg\.metadata_quality = 'full'/.test(call.text));
+  assert.ok(queueCall);
+  assert.deepEqual(queueCall.values, [7, 200, false, 0]);
   assert.deepEqual(payload.page, { nextOffset: null, hasMore: false });
 });
 
@@ -101,9 +105,10 @@ test("settings review can prioritize games without any personal genres", async (
     onlyWithoutPersonalGenres: true,
   });
 
-  assert.match(db.calls[1].text, /NOT \$3::boolean/);
-  assert.match(db.calls[1].text, /NOT EXISTS \(/);
-  assert.deepEqual(db.calls[1].values, [7, 50, true, 0]);
+  const queueCall = db.calls.find((call) => /cg\.metadata_quality = 'full'/.test(call.text));
+  assert.match(queueCall.text, /NOT \$3::boolean/);
+  assert.match(queueCall.text, /NOT EXISTS \(/);
+  assert.deepEqual(queueCall.values, [7, 50, true, 0]);
   assert.deepEqual(payload.reviews[0].suggestions, []);
   assert.deepEqual(payload.reviews[0].currentPersonalGenres, []);
 });
@@ -142,4 +147,32 @@ test("applying rejects a stale review before replacing genres", async () => {
     /changed since this review was loaded/,
   );
   assert.equal(db.calls.some((call) => call.text.startsWith("DELETE FROM game_personal_genres")), false);
+});
+
+test("dismissed suggestions are excluded from a game review", async () => {
+  const db = mockDb();
+  const originalQuery = db.query.bind(db);
+  db.query = async (text, values) => {
+    if (/SELECT personal_genre_id\s+FROM game_genre_suggestion_dismissals/.test(String(text))) {
+      return { rows: [{ personal_genre_id: 2 }] };
+    }
+    return originalQuery(text, values);
+  };
+
+  const review = await getPersonalGenreSuggestionReview(db, 7, 12);
+  assert.deepEqual(review.suggestions, []);
+});
+
+test("dismissing stores only a current suggestion for the owned game", async () => {
+  const db = mockDb();
+  await dismissPersonalGenreSuggestions(db, 7, 12, [2]);
+  await dismissPersonalGenreSuggestions(db, 7, 12, [2]);
+
+  const inserts = db.calls.filter((call) => call.text.includes("INSERT INTO game_genre_suggestion_dismissals"));
+  assert.equal(inserts.length, 2);
+  assert.deepEqual(inserts[0].values, [7, 12, [2]]);
+  await assert.rejects(
+    () => dismissPersonalGenreSuggestions(db, 7, 12, [9]),
+    /current genre suggestions/,
+  );
 });

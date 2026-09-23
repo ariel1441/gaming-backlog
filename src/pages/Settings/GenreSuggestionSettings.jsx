@@ -6,7 +6,7 @@ import {
   useConfirm, useToast,
 } from "../../components/ui";
 import { usePersonalGenres } from "../../hooks/usePersonalGenres";
-import { applyGameGenreSuggestions, listGameGenreSuggestions } from "../../services/gameService";
+import { applyGameGenreSuggestions, dismissGameGenreSuggestions, listGameGenreSuggestions } from "../../services/gameService";
 
 const MAX_GENRES_PER_GAME = 10;
 
@@ -26,6 +26,7 @@ export function GenreSuggestionSettings({ refreshGames }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [applying, setApplying] = useState(false);
   const [applyingGameId, setApplyingGameId] = useState(null);
+  const [dismissingGameId, setDismissingGameId] = useState(null);
   const [error, setError] = useState(null);
   const [page, setPage] = useState({ nextOffset: null, hasMore: false });
   const [onlyWithoutPersonalGenres, setOnlyWithoutPersonalGenres] = useState(false);
@@ -76,7 +77,7 @@ export function GenreSuggestionSettings({ refreshGames }) {
     [included, reviews, selected],
   );
   const selectedCount = selectedEntries.reduce((total, entry) => total + entry.ids.length, 0);
-  const busy = applying || applyingGameId !== null;
+  const busy = applying || applyingGameId !== null || dismissingGameId !== null;
 
   const updateSelection = (gameId, ids) => {
     setSelected((current) => ({ ...current, [gameId]: ids }));
@@ -153,6 +154,30 @@ export function GenreSuggestionSettings({ refreshGames }) {
     }
   };
 
+  const dismissSuggestion = async (review, genre) => {
+    if (busy) return;
+    setDismissingGameId(review.game.id);
+    try {
+      await dismissGameGenreSuggestions(review.game.id, [genre.id]);
+      setReviews((current) => current.flatMap((item) => {
+        if (item.game.id !== review.game.id) return [item];
+        const suggestions = item.suggestions.filter((candidate) => candidate.id !== genre.id);
+        if (!suggestions.length) return [];
+        return [{ ...item, suggestions }];
+      }));
+      setSelected((current) => ({
+        ...current,
+        [review.game.id]: (current[review.game.id] || []).filter((id) => id !== genre.id),
+      }));
+      setIncluded((current) => ({ ...current, [review.game.id]: false }));
+      toast.success(`${genre.name} dismissed for ${review.game.name}.`);
+    } catch (nextError) {
+      toast.error(nextError.message || `Could not dismiss ${genre.name}.`);
+    } finally {
+      setDismissingGameId(null);
+    }
+  };
+
   return (
     <section className="rounded-panel border border-surface-border bg-surface-card p-4 shadow-panel sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -198,6 +223,11 @@ export function GenreSuggestionSettings({ refreshGames }) {
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="ghost" onClick={() => toggleVisible(true)} disabled={busy}>Select visible</Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => toggleVisible(false)} disabled={busy}>Clear visible</Button>
+              {selectedEntries.length ? (
+                <Button type="button" size="sm" variant="primary" onClick={applySelected} disabled={busy}>
+                  <CheckCheck className="h-4 w-4" aria-hidden="true" /> Apply selected ({selectedEntries.length})
+                </Button>
+              ) : null}
             </div>
           </div>
           {visibleReviews.length ? (
@@ -219,7 +249,7 @@ export function GenreSuggestionSettings({ refreshGames }) {
                           <Button type="button" size="sm" variant="secondary" aria-label={`Apply genres to ${review.game.name}`} onClick={() => applyOne(review)} disabled={busy || (!ids.length && !review.currentPersonalGenres.length)}>{isApplying ? "Applying..." : "Apply"}</Button>
                         </div>
                         <div className="mt-2.5">
-                          <PersonalGenreSuggestionEditor suggestions={review.suggestions} currentPersonalGenres={review.currentPersonalGenres} availablePersonalGenres={availablePersonalGenres} selectedIds={ids} onChange={(nextIds) => updateSelection(review.game.id, nextIds)} disabled={busy} compact />
+                          <PersonalGenreSuggestionEditor suggestions={review.suggestions} currentPersonalGenres={review.currentPersonalGenres} availablePersonalGenres={availablePersonalGenres} selectedIds={ids} onChange={(nextIds) => updateSelection(review.game.id, nextIds)} onDismissSuggestion={(genre) => dismissSuggestion(review, genre)} disabled={busy} compact />
                         </div>
                       </div>
                     </div>
