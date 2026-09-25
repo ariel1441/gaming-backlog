@@ -674,7 +674,7 @@ export async function moveWishlistItemToBacklog(userId, wishlistItemId, status) 
     if (!valid.rows[0]) throw badRequest("Choose a backlog lifecycle status.");
     let startedAt = null;
     if (account.rows[0] && statusGroupOf(status) === "playing") {
-      const evidence = await client.query(`SELECT source.first_play_observed_at
+      const evidence = await client.query(`SELECT source.first_play_activity_day
         FROM user_game_sources source
         WHERE source.user_id = $1 AND source.provider = 'steam'
           AND source.source_status = 'owned' AND source.last_synced_at >= $4
@@ -683,7 +683,7 @@ export async function moveWishlistItemToBacklog(userId, wishlistItemId, status) 
             WHERE membership.user_id = $1 AND membership.wishlist_item_id = $2
               AND membership.account_id = $5 AND membership.steam_app_id = source.provider_app_id
           ))`, [userId, wishlistItemId, item.rows[0].game_id, account.rows[0].linked_at, account.rows[0].id]);
-      if (evidence.rows.length === 1) startedAt = steamPlayDate(evidence.rows[0].first_play_observed_at);
+      if (evidence.rows.length === 1) startedAt = steamPlayDate(evidence.rows[0].first_play_activity_day);
     }
     let gameId = item.rows[0].game_id;
     if (gameId) {

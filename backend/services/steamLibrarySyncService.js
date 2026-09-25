@@ -346,7 +346,11 @@ async function persistLegacyReviewEvents(job, runId, client) {
           syncRunId: runId,
           dedupeKey,
           payload: item,
-          observedAt: job.updated_at || job.started_at || null,
+          observedAt:
+            job.payload_json?.snapshotObservedAt ||
+            job.updated_at ||
+            job.started_at ||
+            null,
         },
         client,
       );
@@ -477,7 +481,7 @@ async function persistWorkItem(job, item, prepared) {
       reason: "Existing Steam source.",
     };
     const firstObservedAt = firstPlayJustSet
-      ? item.app.lastPlayedAt || job.payload_json.snapshotObservedAt || job.started_at || new Date()
+      ? job.payload_json.snapshotObservedAt
       : activeBefore?.first_play_observed_at || null;
     const beforeCandidate = item.isNew
       ? await client.query(
@@ -555,8 +559,9 @@ async function persistWorkItem(job, item, prepared) {
       ],
     );
     const source = sourceRows[0];
-    if (source.source_status === 'owned' && source.game_id &&
-        (activityChanged || (wasNew && nextPlaytime > 0))) {
+    const achievementFollowUpNeeded = activityChanged ||
+      (wasNew && job.payload_json.hasPreviousSync && nextPlaytime > 0);
+    if (['owned', 'ignored'].includes(source.source_status) && achievementFollowUpNeeded) {
       await client.query(
         `UPDATE user_game_sources SET
           achievements_pending_at = COALESCE(achievements_pending_at, NOW()),
@@ -721,7 +726,7 @@ async function persistWorkItem(job, item, prepared) {
           syncRunId: job.sync_run_id,
           dedupeKey,
           payload,
-          observedAt: null,
+          observedAt: job.payload_json.snapshotObservedAt,
         },
         client,
       );
@@ -753,9 +758,8 @@ async function persistWorkItem(job, item, prepared) {
       candidateState,
       candidateId: item.isNew && !ignored ? candidate?.id || null : null,
       achievementSourceId:
-        source.source_status === "owned" &&
-        source.game_id &&
-        (activityChanged || (wasNew && nextPlaytime > 0))
+        ["owned", "ignored"].includes(source.source_status) &&
+        achievementFollowUpNeeded
           ? source.id
           : null,
       eventCreated: Boolean(event),
@@ -878,9 +882,12 @@ async function initializeSteamSyncJob(job) {
     return true;
   });
   if (!markedSyncing.active) return null;
+  let snapshotObservedAt = null;
   const [summary, games] = await Promise.all([
     fetchPlayerSummary(account.provider_user_id).catch(() => null),
-    fetchOwnedSteamGames(account.provider_user_id),
+    fetchOwnedSteamGames(account.provider_user_id, {
+      onSnapshotObserved: (value) => { snapshotObservedAt = value; },
+    }),
   ]);
   if (!games.length) {
     await completePrivateSyncJob(job, account);
@@ -888,7 +895,7 @@ async function initializeSteamSyncJob(job) {
   }
   const diff = diffSteamLibrarySnapshot(games, existingSources);
   const payload = {
-    snapshotObservedAt: nowIso(),
+    snapshotObservedAt,
     games: diff.workItems,
     unchangedAppIds: diff.unchangedAppIds,
     itemsSeen: diff.itemsSeen,
@@ -956,7 +963,12 @@ async function finalizeSteamSyncJob(job) {
     achievements = await syncSteamAchievementsForSourceIds(
       job.user_id,
       [...(progress.achievementSourceIds || []), ...(await listDueSteamAchievementSourceIds(job.user_id))],
-      { force: Boolean(job.force), writeGuard: async (work) => (await withActiveJobLease(job, work)).value },
+      {
+        force: Boolean(job.force),
+        writeGuard: async (work) => (await withActiveJobLease(job, work)).value,
+        syncRunId: job.sync_run_id,
+        observedAt: payload.snapshotObservedAt,
+      },
     );
     if (achievements.failed + achievements.unavailable > 0) {
       noncriticalErrors.push({
@@ -1020,7 +1032,11 @@ async function finalizeSteamSyncJob(job) {
     );
     if (!accountRows[0]) throw badRequest("Linked Steam account no longer exists.");
     const activityObservations = await recordSteamActivityObservations(
-      { userId: job.user_id, syncRunId: job.sync_run_id },
+      {
+        userId: job.user_id,
+        syncRunId: job.sync_run_id,
+        snapshotObservedAt: payload.snapshotObservedAt,
+      },
       client,
     );
     const eventCount = await client.query(
@@ -1041,10 +1057,15 @@ async function finalizeSteamSyncJob(job) {
       achievementFailures: achievements?.failed || 0,
       achievementUnavailable: achievements?.unavailable || 0,
       achievementSkipped: achievements?.skipped || 0,
+      achievementNewUnlocks: achievements?.newUnlocks || 0,
+      achievementBaselineUnlocks: achievements?.baselineUnlocks || 0,
       reviewItemsCreated,
       notificationDecisions: progress.notificationDecisions,
       activityObservations: activityObservations.recorded,
       activityBaselines: activityObservations.baselines,
+      activityDailyObservations: activityObservations.daily,
+      activityUncertainObservations: activityObservations.uncertain,
+      activityCounterRebaselines: activityObservations.counterRebaselines,
       activityObservationChanges: activityObservations.activityChanged,
       librarySnapshotSucceeded: true,
       baseline: !payload.hasPreviousSync,

@@ -10,9 +10,20 @@ const labels = {
   steam_new_game: "New ownership observed",
   steam_started_playing: "Play activity observed",
   steam_status_suggestion: "Status may need updating",
+  steam_played: "Played on Steam",
+  steam_achievement_unlocked: "Achievement unlocked",
+  steam_first_played: "First played",
+  steam_returned: "Returned to the game",
+  steam_added_to_library: "Added to Steam library",
 };
+
 export function activityLabel(event) {
-  if (event.source === 'steam_library' && event.state === 'resolved') return 'Steam activity reviewed';
+  if (
+    event.source === "steam_library" &&
+    event.eventKind === "decision" &&
+    event.state === "resolved"
+  )
+    return "Steam activity reviewed";
   if (
     event.nowOwned &&
     ["wishlist_removed", "wishlist_likely_purchased"].includes(event.eventType)
@@ -33,7 +44,41 @@ export function activitySummary(events = []) {
     if (priceEvents.some((event) => event.eventType === "steam_price_increase"))
       return "Price increased";
   }
-  return [...new Set(events.map(activityLabel))].join(" · ");
+  const parts = [];
+  const playedMinutes = events
+    .filter((event) => event.eventType === "steam_played")
+    .reduce((total, event) => {
+      const minutes = Number(event.payload?.playtimeMinutes);
+      return total + (Number.isFinite(minutes) && minutes > 0 ? minutes : 0);
+    }, 0);
+  if (playedMinutes > 0) {
+    const hours = Math.floor(playedMinutes / 60);
+    const minutes = playedMinutes % 60;
+    const duration = [hours ? `${hours}h` : "", minutes ? `${minutes}m` : ""]
+      .filter(Boolean)
+      .join(" ");
+    parts.push(`Played for ${duration}`);
+  }
+  const achievements = events.filter(
+    (event) => event.eventType === "steam_achievement_unlocked",
+  );
+  if (achievements.length === 1) {
+    parts.push(`Unlocked ${achievements[0].payload?.achievementName || "an achievement"}`);
+  } else if (achievements.length > 1) {
+    parts.push(`Unlocked ${achievements.length} achievements`);
+  }
+  for (const event of events) {
+    if (["steam_played", "steam_achievement_unlocked"].includes(event.eventType)) continue;
+    if (
+      event.eventType === "steam_returned" &&
+      Number(event.payload?.daysSincePrevious) >= 2
+    ) {
+      parts.push(`Returned after ${Number(event.payload.daysSincePrevious)} days`);
+    } else {
+      parts.push(activityLabel(event));
+    }
+  }
+  return [...new Set(parts)].join(" · ");
 }
 
 export function activityPriceChange(event) {
@@ -51,9 +96,10 @@ export function activityPriceChange(event) {
       currency: "ILS",
     }).format(value / 100);
   const discount = Number(p.discountPercent);
-  const discountLabel = p.sale === true && Number.isInteger(discount) && discount > 0
-    ? `${discount}% off · `
-    : "";
+  const discountLabel =
+    p.sale === true && Number.isInteger(discount) && discount > 0
+      ? `${discount}% off · `
+      : "";
   return `${discountLabel}${money(p.previousMinor)} → ${money(p.currentMinor)}`;
 }
 

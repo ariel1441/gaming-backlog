@@ -30,7 +30,18 @@ export const listActivity = celebrate(
 export const listPlayHistory = celebrate(
   {
     [Segments.QUERY]: Joi.object({
-      days: Joi.number().integer().min(7).max(180).default(35),
+      range: Joi.string().valid("7d", "30d", "all"),
+      // Temporary rollout compatibility for the pre-Activity frontend.
+      days: Joi.number().integer().min(7).max(180),
+    }).oxor("range", "days"),
+  },
+  opts,
+);
+
+export const listActivityInsights = celebrate(
+  {
+    [Segments.QUERY]: Joi.object({
+      range: Joi.string().valid("week", "month", "year", "all").default("week"),
     }),
   },
   opts,

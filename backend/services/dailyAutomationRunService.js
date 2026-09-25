@@ -27,7 +27,9 @@ function deploymentRevision() {
   ].find(Boolean) || null;
 }
 
-export async function beginDailyAutomationRun({ revision = deploymentRevision() } = {}) {
+export async function beginDailyAutomationRun({
+  revision = deploymentRevision(), idempotencyKey = null,
+} = {}) {
   await pool.query(
     `WITH stale AS (
        UPDATE daily_automation_runs
@@ -48,9 +50,10 @@ export async function beginDailyAutomationRun({ revision = deploymentRevision() 
   const id = crypto.randomUUID();
   try {
     const { rows } = await pool.query(
-      `INSERT INTO daily_automation_runs (id, automation_key, deployment_revision)
-       VALUES ($1, 'steam_daily', $2) RETURNING *`,
-      [id, revision],
+      `INSERT INTO daily_automation_runs
+        (id, automation_key, deployment_revision, idempotency_key)
+       VALUES ($1, 'steam_daily', $2, $3) RETURNING *`,
+      [id, revision, idempotencyKey],
     );
     return rows[0] || null;
   } catch (error) {

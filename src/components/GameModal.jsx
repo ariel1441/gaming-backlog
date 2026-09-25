@@ -449,7 +449,6 @@ export default function GameModal({
   const finishedAt = fmtDate(displayGame.finished_at);
   const backlogAddedAt = fmtBacklogAddedDate(displayGame.backlog_added_at);
   const steamLastPlayed = fmtDate(game.steamLastPlayedAt);
-  const steamFirstObserved = fmtDate(game.steamFirstPlayObservedAt);
   const hours = resolveGameHours(displayGame);
   const rating = Number(game.rating) > 0 ? `${game.rating}/5` : "—";
   const metacritic =
@@ -1250,16 +1249,10 @@ export default function GameModal({
                   label="Steam last played"
                   value={steamLastPlayed}
                 />
-                <DetailRow
-                  icon={Gamepad2}
-                  label="Steam activity first observed"
-                  value={steamFirstObserved}
-                />
                 {!backlogAddedAt &&
                 !startedAt &&
                 !finishedAt &&
-                !steamLastPlayed &&
-                !steamFirstObserved ? (
+                !steamLastPlayed ? (
                   <p className="col-span-full text-sm text-content-muted">
                     No play activity has been recorded yet.
                   </p>

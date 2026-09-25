@@ -255,6 +255,16 @@ for (const [label, viewport] of [
                   },
                 ],
         });
+      if (path === "/api/activity/play-history")
+        return json({
+          items: [],
+          summary: {
+            playtimeMinutes: 0,
+            gamesPlayed: 0,
+            achievementsUnlocked: 0,
+          },
+          coverage: { status: "not_started", reliableDays: 0 },
+        });
       return json({});
     });
     await page.goto("/");
@@ -429,7 +439,10 @@ for (const [label, viewport] of [
       page.getByRole("heading", { name: "Gaming activity", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Play history starts with your next sync", { exact: true }),
+      page.getByText(
+        "The first successful Steam library check saves a private baseline. Activity appears after a later check finds a change.",
+        { exact: true },
+      ),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: /^Notifications/ })).toHaveCount(0);
     await page.goto("/wishlist");

@@ -41,6 +41,7 @@
     "metadata:audit:prod": "node scripts/audit-metadata.js --production --confirm-production",
     "backlog:backfill-added-at": "node scripts/backfill-backlog-added-at.js",
     "steam:sync:daily": "node scripts/sync-steam-daily.js",
+    "steam:sync:daily-scheduled": "node scripts/sync-steam-daily.js --jerusalem-closeout",
     "db:copy-prod-to-local": "node scripts/copy-prod-to-local.js --confirm-local-overwrite",
     "db:reset:local": "node scripts/reset-local-db.js",
     "test:smoke": "playwright test tests/e2e/routes.smoke.spec.js",

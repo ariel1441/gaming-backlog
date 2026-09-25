@@ -85,5 +85,17 @@ existing membership/local intentions.
 retry timing and source revisions. Apply it before the A/B closeout service code.
 It only adds columns/indexes; it does not backfill or replace saved Steam data.
 
+`049_add_activity_foundation.sql` preserves the existing Steam observation ledger,
+corrects observation boundaries only from saved job snapshot evidence, and records
+explicit baseline/daily/uncertain precision plus the canonical 05:00 Jerusalem
+activity day. Legacy rows without snapshot evidence remain retained and uncertain.
+
+`050_add_detailed_activity_events.sql` adds account-fenced named Steam achievement
+unlocks with raw provider timestamps and a per-source detailed-event baseline. It
+freezes the transition timestamp for existing Steam sources, does not announce
+older unlocks from the first detailed achievement fetch, and retains post-boundary
+timestamps as new exact events. It also adds the nullable
+daily-closeout idempotency key/index used by the guarded Railway command.
+
 Future automation notes live in
 `docs/planning/production-migration-automation.md`.

@@ -1,8 +1,7 @@
-// Steam supplies last-played evidence, not an exact first-session timestamp.
-// Only pass frozen first-observation evidence here, never approval time.
-const playDay = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit",
-});
+import { calendarDay } from "./gamingActivityDay.js";
+
+// This compatibility helper is for provider calendar dates. Observed activity
+// intervals use the saved gaming activity day from the ledger instead.
 
 export function steamPlayDate(value) {
   if (!value) return null;
@@ -12,5 +11,5 @@ export function steamPlayDate(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return date.toISOString().slice(0, 10) === value ? value : null;
   }
-  return playDay.format(date);
+  return calendarDay(date);
 }

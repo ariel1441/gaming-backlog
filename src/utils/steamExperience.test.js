@@ -120,6 +120,22 @@ test("inbox labels observations accurately and combines price transitions into a
     ]),
     "New sale",
   );
+  assert.equal(
+    activitySummary([
+      { eventType: "steam_played", payload: { playtimeMinutes: 95 } },
+      { eventType: "steam_achievement_unlocked", payload: { achievementName: "Escape" } },
+      { eventType: "steam_first_played", payload: {} },
+      { eventType: "steam_added_to_library", payload: {} },
+    ]),
+    "Played for 1h 35m · Unlocked Escape · First played · Added to Steam library",
+  );
+  assert.equal(
+    activitySummary([
+      { eventType: "steam_played", payload: { playtimeMinutes: 30 } },
+      { eventType: "steam_played", payload: { playtimeMinutes: 45 } },
+    ]),
+    "Played for 1h 15m",
+  );
   assert.match(
     activityPriceChange({
       source: "steam_prices",

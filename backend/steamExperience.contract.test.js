@@ -185,7 +185,18 @@ test(
           const deal = await factFor("deal", "steam_price_drop", "steam_prices");
           const ended = await factFor("ended", "steam_sale_ended", "steam_prices");
           const increased = await factFor("increased", "steam_price_increase", "steam_prices");
-          const reviewed = await factFor("reviewed", "steam_status_suggestion", "steam_library");
+          const reviewed = await activity.createOpenActivityEvent({
+            userId: who.userId,
+            source: "steam_library",
+            eventType: "steam_status_suggestion",
+            externalId: "999",
+            syncRunId: libraryRun.saved.id,
+            dedupeKey: "reviewed",
+          });
+          await pool.query(
+            "UPDATE user_activity_events SET state = 'resolved', resolved_at = NOW() WHERE id = $1",
+            [reviewed.id],
+          );
           const page = await inbox.listActivityInbox(who.userId, { limit: 50 });
           assert.ok(page.nextCursor);
           assert.equal(
@@ -569,7 +580,10 @@ test(
       await t.test(
         "daily runner audit keeps account summaries private and durable",
         async () => {
-          const audit = await daily.beginDailyAutomationRun({ revision: "test-revision" });
+          const audit = await daily.beginDailyAutomationRun({
+            revision: "test-revision",
+            idempotencyKey: "steam-closeout:2026-09-23",
+          });
           assert.ok(audit?.id);
           await daily.registerDailyAutomationAccounts(audit.id, [
             { userId: second.userId, accountId: second.account.id },
@@ -585,6 +599,10 @@ test(
             totals,
           });
           await daily.finishDailyAutomationRun(audit.id, { totals });
+          assert.equal(await daily.beginDailyAutomationRun({
+            revision: "retry-revision",
+            idempotencyKey: "steam-closeout:2026-09-23",
+          }), null);
           const privateHistory = await health.getSteamExperienceHealth(second.userId);
           assert.equal(privateHistory.dailyRuns[0].id, audit.id);
           assert.equal(privateHistory.dailyRuns[0].status, "partial");

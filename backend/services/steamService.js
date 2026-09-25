@@ -26,6 +26,7 @@ import {
   buildPersonalGenreSuggestions,
   MAX_PERSONAL_GENRE_SUGGESTIONS,
 } from "./personalGenreSuggestionService.js";
+import { createFactualActivityEvent } from "./activityEventService.js";
 
 const PROVIDER = "steam";
 export const STEAM_LINK_COOKIE = "gb_steam_link_nonce";
@@ -583,16 +584,20 @@ function validateOwnedGamesPayload(payload) {
   return payload;
 }
 
-export async function fetchOwnedSteamGames(steamId) {
+export async function fetchOwnedSteamGames(steamId, {
+  onSnapshotObserved = null,
+  snapshotClock = nowIso,
+} = {}) {
+  const finish = (payload) => {
+    const games = normalizeOwnedGamesPayload(validateOwnedGamesPayload(payload));
+    onSnapshotObserved?.(snapshotClock());
+    return games;
+  };
   if (!isProduction() && process.env.STEAM_MOCK_OWNED_GAMES_JSON) {
-    return normalizeOwnedGamesPayload(
-      validateOwnedGamesPayload(
-        JSON.parse(process.env.STEAM_MOCK_OWNED_GAMES_JSON),
-      ),
-    );
+    return finish(JSON.parse(process.env.STEAM_MOCK_OWNED_GAMES_JSON));
   }
   if (!isProduction() && envFlag("STEAM_DEV_SYNC_SAMPLE") && !steamApiKey()) {
-    return normalizeOwnedGamesPayload(DEV_OWNED_GAMES_SAMPLE);
+    return finish(DEV_OWNED_GAMES_SAMPLE);
   }
   const key = requireSteamApiKey();
   const payload = await steamGet("/IPlayerService/GetOwnedGames/v0001/", {
@@ -602,7 +607,7 @@ export async function fetchOwnedSteamGames(steamId) {
     include_played_free_games: 1,
     format: "json",
   });
-  return normalizeOwnedGamesPayload(validateOwnedGamesPayload(payload));
+  return finish(payload);
 }
 
 export async function fetchPlayerSummary(steamId) {
@@ -658,6 +663,39 @@ function playerAchievementRows(payload) {
   if (!stats || stats.success === false) return null;
   const achievements = stats.achievements;
   return Array.isArray(achievements) ? achievements : null;
+}
+
+export function normalizeSteamAchievementUnlocks(playerPayload, schemaPayload) {
+  const playerRows = playerAchievementRows(playerPayload);
+  if (!playerRows) return [];
+  const schemaRows = schemaPayload?.game?.availableGameStats?.achievements;
+  const schemaByName = new Map(
+    (Array.isArray(schemaRows) ? schemaRows : [])
+      .map((row) => [String(row?.name || "").trim(), row])
+      .filter(([name]) => name),
+  );
+  const unlocks = [];
+  const seen = new Set();
+  for (const row of playerRows) {
+    if (Number(row?.achieved) <= 0) continue;
+    const apiName = String(row?.apiname || row?.name || "").trim();
+    const unlockSeconds = Number(row?.unlocktime);
+    if (!apiName || seen.has(apiName)) continue;
+    seen.add(apiName);
+    const schema = schemaByName.get(apiName) || {};
+    unlocks.push({
+      apiName,
+      displayName: String(row?.name || schema?.displayName || apiName).trim() || apiName,
+      description: String(row?.description || schema?.description || "").trim() || null,
+      iconUrl: String(schema?.icon || row?.icon || "").trim() || null,
+      unlockAt: Number.isInteger(unlockSeconds) && unlockSeconds > 0
+        ? new Date(unlockSeconds * 1000).toISOString()
+        : null,
+    });
+  }
+  return unlocks.sort((a, b) =>
+    String(a.unlockAt || "9999").localeCompare(String(b.unlockAt || "9999")) ||
+      a.apiName.localeCompare(b.apiName));
 }
 
 export function normalizeSteamAchievementSummary(playerPayload, schemaPayload) {
@@ -749,13 +787,16 @@ async function retireSteamAccount(client, userId) {
   await client.query(
     `UPDATE user_game_sources SET source_status = 'disconnected', game_id = NULL,
       playtime_minutes_forever = NULL, last_played_at = NULL, last_synced_at = NULL,
-      first_play_observed_at = NULL, first_play_observed_playtime_minutes = NULL,
+      first_play_observed_at = NULL, first_play_activity_day = NULL,
+      first_play_observed_playtime_minutes = NULL,
       ownership_observed_run_id = NULL,
       achievements_unlocked = NULL, achievements_total = NULL, achievements_percent = NULL,
       achievements_status = 'unknown', achievements_last_synced_at = NULL,
       achievements_last_attempt_at = NULL, achievements_last_error_code = NULL,
       achievements_last_error_message = NULL, achievements_pending_at = NULL,
       achievements_next_attempt_at = NULL, achievements_attempts = 0,
+      achievement_events_initialized_at = NULL,
+      achievement_events_baseline_at = NULL,
       achievements_revision = achievements_revision + 1, updated_at = NOW()
      WHERE user_id = $1 AND provider = 'steam'`, [userId],
   );
@@ -1012,8 +1053,9 @@ async function writeAchievementResult(source, writeGuard, work) {
     if (!account.rows[0]) return null;
     const current = await client.query(
       `SELECT id FROM user_game_sources WHERE id = $1 AND user_id = $2
-        AND source_status = 'owned' AND game_id = $3 AND achievements_revision = $4 FOR UPDATE`,
-      [source.id, source.user_id, source.game_id, source.achievements_revision],
+        AND source_status IN ('owned', 'ignored') AND provider_app_id = $3
+        AND achievements_revision = $4 FOR UPDATE`,
+      [source.id, source.user_id, source.provider_app_id, source.achievements_revision],
     );
     if (!current.rows[0]) return null;
     return work(client);
@@ -1023,7 +1065,7 @@ async function writeAchievementResult(source, writeGuard, work) {
 export async function listDueSteamAchievementSourceIds(userId) {
   const { rows } = await pool.query(
     `SELECT id FROM user_game_sources WHERE user_id = $1 AND provider = 'steam'
-      AND source_status = 'owned' AND game_id IS NOT NULL
+      AND source_status IN ('owned', 'ignored')
       AND (achievements_pending_at IS NOT NULL OR achievements_status IN ('failed', 'private', 'unavailable'))
       AND COALESCE(achievements_next_attempt_at,
         achievements_last_attempt_at + INTERVAL '6 hours',
@@ -1034,7 +1076,82 @@ export async function listDueSteamAchievementSourceIds(userId) {
   return rows.map((row) => row.id);
 }
 
-async function saveAchievementSummary(sourceId, summary, client = pool) {
+async function saveAchievementSummary(source, summary, {
+  syncRunId = null,
+  observedAt = null,
+} = {}, client = pool) {
+  const firstDetailedFetch = !source.achievement_events_initialized_at;
+  const unlocks = Array.isArray(summary.unlocks) ? summary.unlocks : [];
+  let insertedUnlocks = [];
+  let baselineBoundary = null;
+  if (firstDetailedFetch) {
+    const boundary = await client.query(
+      `SELECT COALESCE(
+         MIN(observation.observed_at) FILTER (WHERE observation.steam_app_id = $2),
+         MIN(observation.observed_at)
+       ) AS baseline_at
+       FROM steam_activity_observations observation
+       JOIN steam_sync_jobs job ON job.sync_run_id = observation.sync_run_id
+         AND job.user_id = observation.user_id
+       JOIN user_external_accounts account ON account.id = job.account_id
+         AND account.user_id = observation.user_id
+       WHERE observation.user_id = $1
+         AND job.account_id = $3
+         AND job.provider_user_id = $4
+         AND observation.observed_at >= account.linked_at`,
+      [source.user_id, source.provider_app_id, source.steam_account_id, source.steam_user_id],
+    );
+    baselineBoundary = source.achievement_events_baseline_at || boundary.rows[0]?.baseline_at || null;
+  }
+  if (unlocks.length) {
+    const unlockRows = JSON.stringify(unlocks);
+    const inserted = await client.query(
+      `WITH incoming AS (
+        SELECT * FROM jsonb_to_recordset($8::jsonb) AS item(
+          "apiName" text, "displayName" text, description text,
+          "iconUrl" text, "unlockAt" timestamptz
+        )
+      )
+      INSERT INTO steam_achievement_unlocks (
+        user_id, account_id, source_id, game_id, catalog_game_id,
+        first_seen_run_id, steam_app_id, achievement_api_name, display_name,
+        description, icon_url, unlock_at, activity_day, first_seen_at, is_baseline
+      )
+      SELECT $1, $2, $3, $4, $5, $6, $7, item."apiName", item."displayName",
+        item.description, item."iconUrl", item."unlockAt",
+        gaming_activity_day(item."unlockAt"), COALESCE($9::timestamptz, NOW()),
+        $10::boolean AND (
+          item."unlockAt" IS NULL OR $11::timestamptz IS NULL OR item."unlockAt" <= $11::timestamptz
+        )
+      FROM incoming item
+      ON CONFLICT (account_id, steam_app_id, achievement_api_name) DO NOTHING
+      RETURNING *`,
+      [source.user_id, source.steam_account_id, source.id, source.game_id,
+        source.catalog_game_id, syncRunId, source.provider_app_id, unlockRows,
+        observedAt, firstDetailedFetch, baselineBoundary],
+    );
+    insertedUnlocks = inserted.rows;
+    await client.query(
+      `WITH incoming AS (
+        SELECT * FROM jsonb_to_recordset($3::jsonb) AS item(
+          "apiName" text, "displayName" text, description text, "iconUrl" text,
+          "unlockAt" timestamptz
+        )
+      )
+      UPDATE steam_achievement_unlocks achievement
+      SET display_name = item."displayName", description = item.description,
+          icon_url = item."iconUrl", source_id = $4, game_id = $5,
+          catalog_game_id = $6,
+          unlock_at = COALESCE(achievement.unlock_at, item."unlockAt"),
+          activity_day = COALESCE(achievement.activity_day, gaming_activity_day(item."unlockAt")),
+          updated_at = NOW()
+      FROM incoming item
+      WHERE achievement.account_id = $1 AND achievement.steam_app_id = $2
+        AND achievement.achievement_api_name = item."apiName"`,
+      [source.steam_account_id, source.provider_app_id, unlockRows, source.id,
+        source.game_id, source.catalog_game_id],
+    );
+  }
   const { rows } = await client.query(
     `
     UPDATE user_game_sources
@@ -1050,12 +1167,13 @@ async function saveAchievementSummary(sourceId, summary, client = pool) {
            achievements_revision = achievements_revision + 1,
            achievements_last_error_code = $6,
            achievements_last_error_message = $7,
+           achievement_events_initialized_at = COALESCE(achievement_events_initialized_at, NOW()),
            updated_at = NOW()
      WHERE id = $1
      RETURNING *
     `,
     [
-      sourceId,
+      source.id,
       summary.unlocked,
       summary.total,
       summary.percent,
@@ -1064,7 +1182,39 @@ async function saveAchievementSummary(sourceId, summary, client = pool) {
       summary.errorMessage,
     ]
   );
-  return rows[0];
+  if (syncRunId) {
+    for (const unlock of insertedUnlocks.filter((item) => item.unlock_at && !item.is_baseline)) {
+      const activityDay = unlock.activity_day instanceof Date
+        ? unlock.activity_day.toISOString().slice(0, 10)
+        : String(unlock.activity_day).slice(0, 10);
+      await createFactualActivityEvent({
+        userId: source.user_id,
+        source: "steam_library",
+        eventType: "steam_achievement_unlocked",
+        gameId: source.game_id,
+        catalogGameId: source.catalog_game_id,
+        externalId: source.provider_app_id,
+        syncRunId,
+        occurrenceKey: `achievement:${source.steam_account_id}:${source.provider_app_id}:${unlock.achievement_api_name}`,
+        payload: {
+          achievementApiName: unlock.achievement_api_name,
+          achievementName: unlock.display_name,
+          description: unlock.description,
+          iconUrl: unlock.icon_url,
+          unlockAt: unlock.unlock_at,
+          activityDay,
+          activityPrecision: "exact",
+          groupKey: `steam-activity:${source.steam_account_id}:${source.provider_app_id}:${activityDay}`,
+        },
+        observedAt: unlock.unlock_at,
+      }, client);
+    }
+  }
+  return {
+    source: rows[0],
+    newUnlocks: insertedUnlocks.filter((item) => !item.is_baseline).length,
+    baselineUnlocks: insertedUnlocks.filter((item) => item.is_baseline).length,
+  };
 }
 
 async function saveAchievementFailure(sourceId, err, client = pool) {
@@ -1093,7 +1243,12 @@ async function saveAchievementFailure(sourceId, err, client = pool) {
   return rows[0];
 }
 
-async function syncSteamAchievementSource(source, { force = false, writeGuard = null } = {}) {
+async function syncSteamAchievementSource(source, {
+  force = false,
+  writeGuard = null,
+  syncRunId = null,
+  observedAt = null,
+} = {}) {
   if (achievementSyncCoolingDown(source, force)) {
     return {
       skipped: true,
@@ -1118,21 +1273,25 @@ async function syncSteamAchievementSource(source, { force = false, writeGuard = 
     const schemaPayload = schemaResult.value;
     const playerPayload = playerResult.value;
     const summary = normalizeSteamAchievementSummary(playerPayload, schemaPayload);
+    summary.unlocks = normalizeSteamAchievementUnlocks(playerPayload, schemaPayload);
     if (["private", "unavailable"].includes(summary.status)) {
       const error = new Error(summary.errorMessage);
       error.code = summary.errorCode;
       error.achievementStatus = summary.status;
       throw error;
     }
-    const updated = await writeAchievementResult(source, writeGuard,
-      (client) => saveAchievementSummary(source.id, summary, client));
-    if (!updated) return { skipped: true, reason: "lease_lost" };
+    const saved = await writeAchievementResult(source, writeGuard,
+      (client) => saveAchievementSummary(source, summary, { syncRunId, observedAt }, client));
+    if (!saved) return { skipped: true, reason: "lease_lost" };
+    const updated = saved.source;
     return {
       skipped: false,
       status: summary.status,
       gameId: updated.game_id,
       steamAppId: updated.provider_app_id,
       achievements: serializeAchievementSummary(updated),
+      newUnlocks: saved.newUnlocks,
+      baselineUnlocks: saved.baselineUnlocks,
     };
   } catch (err) {
     const updated = await writeAchievementResult(source, writeGuard,
@@ -1199,6 +1358,8 @@ export function summarizeAchievementSyncResults(results = []) {
     failed: statusCounts.failed,
     skipped: statusCounts.skipped,
     unavailable: statusCounts.private + statusCounts.unavailable,
+    newUnlocks: results.reduce((total, result) => total + (Number(result?.newUnlocks) || 0), 0),
+    baselineUnlocks: results.reduce((total, result) => total + (Number(result?.baselineUnlocks) || 0), 0),
     statusCounts,
   };
 }
@@ -1251,7 +1412,7 @@ export async function syncSteamAchievementsForLinkedGames(
 export async function syncSteamAchievementsForSourceIds(
   userId,
   sourceIds = [],
-  { force = false, writeGuard = null } = {},
+  { force = false, writeGuard = null, syncRunId = null, observedAt = null } = {},
 ) {
   const ids = Array.from(
     new Set(sourceIds.map(Number).filter(Number.isInteger)),
@@ -1279,8 +1440,7 @@ export async function syncSteamAchievementsForSourceIds(
       WHERE ugs.user_id = $1
         AND ugs.id = ANY($2::int[])
         AND ugs.provider = 'steam'
-        AND ugs.source_status = 'owned'
-        AND ugs.game_id IS NOT NULL
+        AND ugs.source_status IN ('owned', 'ignored')
       ORDER BY ugs.id
       `,
       [userId, batchIds],
@@ -1290,7 +1450,9 @@ export async function syncSteamAchievementsForSourceIds(
       ...(await mapWithConcurrency(
         rows,
         ACHIEVEMENT_BATCH_CONCURRENCY,
-        (source) => syncSteamAchievementSource(source, { force, writeGuard }),
+        (source) => syncSteamAchievementSource(source, {
+          force, writeGuard, syncRunId, observedAt,
+        }),
       )),
     );
   }
@@ -2431,7 +2593,7 @@ export async function applySteamStatusSuggestion(
     if (!event.rows[0]) throw conflict("This suggestion is no longer current. Refresh to see your saved game.");
     // A delayed approval must use the saved decision evidence, not a client
     // timestamp or a later session. Missing historic first-play evidence stays unknown.
-    dateValue = steamPlayDate(event.rows[0].payload_json?.firstPlayObservedAt);
+    dateValue = steamPlayDate(event.rows[0].payload_json?.activityDay);
   }
   const shouldSetStartedAt = Boolean(setStartedAt && dateValue);
   if (statusGroupOf(normStatus(game.status)) === 'done')
@@ -3773,7 +3935,7 @@ async function importSteamCandidateRowsTx(client, userId, rows) {
     const position = await nextPosition(client, userId, importStatus);
     const startedAt =
       statusGroupOf(importStatus) === "playing"
-        ? steamPlayDate(row.source_first_play_observed_at)
+        ? steamPlayDate(row.source_first_play_activity_day)
         : null;
     const inserted = await client.query(
       `
@@ -3874,6 +4036,7 @@ export async function importSteamCandidates(
     const { rows } = await client.query(
       `
       SELECT candidate.*, source.first_play_observed_at AS source_first_play_observed_at,
+             source.first_play_activity_day AS source_first_play_activity_day,
              source.first_imported_at AS source_first_imported_at
       FROM steam_import_candidates candidate
       LEFT JOIN user_game_sources source
@@ -3998,6 +4161,7 @@ export async function addSteamCandidateToBacklog(
     const { rows } = await client.query(
       `
       SELECT candidate.*, source.first_play_observed_at AS source_first_play_observed_at,
+             source.first_play_activity_day AS source_first_play_activity_day,
              source.first_imported_at AS source_first_imported_at,
              source.game_id AS source_game_id
       FROM steam_import_candidates candidate

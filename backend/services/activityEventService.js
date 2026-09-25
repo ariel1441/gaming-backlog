@@ -28,14 +28,18 @@ export function serializeActivityEvent(row) {
 
 // Informational facts have permanent identity; read/dismiss state never controls
 // replay protection. A later inbox can deliver/group these without open tasks.
-export async function createFactualActivityEvent({ userId, source, eventType, wishlistItemId,
-  externalId, syncRunId, occurrenceKey, payload, observedAt }, client = pool) {
+export async function createFactualActivityEvent({ userId, source, eventType, gameId = null,
+  catalogGameId = null, wishlistItemId = null, externalId, syncRunId, occurrenceKey,
+  payload, observedAt }, client = pool) {
   const { rows } = await client.query(
-    `INSERT INTO user_activity_events (user_id, source, event_type, wishlist_item_id,
-      external_id, sync_run_id, dedupe_key, occurrence_key, event_kind, state, payload_json, observed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $7, 'fact', 'resolved', $8::jsonb, $9)
+    `INSERT INTO user_activity_events (user_id, source, event_type, game_id,
+      catalog_game_id, wishlist_item_id, external_id, sync_run_id, dedupe_key,
+      occurrence_key, event_kind, state, payload_json, observed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9,
+       'fact', 'resolved', $10::jsonb, $11)
      ON CONFLICT (user_id, source, occurrence_key) WHERE occurrence_key IS NOT NULL DO NOTHING RETURNING *`,
-    [userId, source, eventType, wishlistItemId, externalId, syncRunId, occurrenceKey, JSON.stringify(payload), observedAt],
+    [userId, source, eventType, gameId, catalogGameId, wishlistItemId, externalId,
+      syncRunId, occurrenceKey, JSON.stringify(payload), observedAt],
   );
   return rows[0] || null;
 }
