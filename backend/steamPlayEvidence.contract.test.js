@@ -16,6 +16,7 @@ test("Steam play evidence survives delayed decisions and connection replacement"
   const nativeFetch = globalThis.fetch;
   const unexpectedRequests = [];
   let pool;
+  let drainSteamSyncJobs;
   try {
     await admin.query(`CREATE DATABASE ${database}`);
     url.pathname = `/${database}`;
@@ -36,6 +37,7 @@ test("Steam play evidence survives delayed decisions and connection replacement"
     };
     const steam = await import("./services/steamService.js");
     const sync = await import("./services/steamLibrarySyncService.js");
+    drainSteamSyncJobs = sync.runSteamSyncJobs;
     const wishlist = await import("./services/steamWishlistService.js");
     const activity = await import("./services/steamActivityService.js");
     let sequence = 0;
@@ -433,6 +435,9 @@ test("Steam play evidence survives delayed decisions and connection replacement"
     assert.deepEqual(unexpectedRequests, []);
   } finally {
     globalThis.fetch = nativeFetch;
+    // enqueueSteamSync also schedules a detached microtask. Drain its shared
+    // worker before closing the pool and force-dropping the fixture database.
+    await drainSteamSyncJobs?.();
     await pool?.end();
     await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
     await admin.end();
