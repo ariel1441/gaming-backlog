@@ -262,16 +262,19 @@ export function DetailModal({
         </aside>
         <div className="space-y-5 p-5">
           <section className="grid gap-3 sm:grid-cols-4">
-            <Stat
+            <MetricCard
+              variant="compact"
               label="Released"
               value={game.releaseDate || game.released || "Unknown"}
             />
-            <Stat
+            <MetricCard
+              variant="compact"
               label="RAWG"
               value={game.rating ? `${game.rating}/5` : "N/A"}
             />
             <MetricCard variant="compact" label="Metacritic" value={game.metacritic || "N/A"} />
-            <Stat
+            <MetricCard
+              variant="compact"
               label="Estimate"
               value={
                 game.rawgPlaytimeHours

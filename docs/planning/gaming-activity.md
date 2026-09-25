@@ -895,9 +895,10 @@ information architecture rather than further allocation expansion.
 
 #### Uncertain playtime allocation checkpoint (2026-09-25)
 
-This implementation is based on committed `Dev` revision `0d398a4` plus the
-focused dirty worktree below. No commit, push, deployment, Railway change or
-ordinary/production database migration was performed.
+This implementation was committed as `50a1ae3` and published only to `Dev`.
+No `main` push, deployment, Railway change or production database migration was
+performed. Migration 051 was applied successfully to the localhost database for
+manual review.
 
 - Migration `051_add_steam_activity_allocations.sql` adds immutable, owner-scoped
   allocation revisions and dated minute rows. Raw Steam observations remain
@@ -938,11 +939,15 @@ Focused verification for this checkpoint:
   including the 375px choose, save, edit and confirmed-reset flow plus existing
   Activity/Insights loading, range, error and privacy coverage.
 
-Not run: the full Node suite, production build, complete Playwright suite,
-exact-candidate CI, ordinary or production migrations, deployment, Railway
-configuration or production smoke verification. Migration 051 must follow the
-same authorization-gated migration/backend/frontend release ordering already
-documented for migrations 049 and 050.
+The first exact-candidate CI run passed lint, the full Node suite and production
+build. Its complete Playwright stage exposed two shared-UI regressions outside the
+allocation flow: the Discover details modal referenced a removed metric helper,
+and a Wishlist assertion matched AdaptiveChipList's hidden measurement copy.
+Both focused browser cases pass after the corrective follow-up. Production
+migrations, deployment, Railway configuration and production smoke verification
+remain unrun. Migration 051 must follow the same authorization-gated
+migration/backend/frontend release ordering already documented for migrations
+049 and 050.
 
 External release work remains pending exactly as described above. This checkpoint
 does not replace the required migration/backend/frontend ordering, exact-candidate

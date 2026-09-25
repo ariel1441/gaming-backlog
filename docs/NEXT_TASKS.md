@@ -2,15 +2,18 @@
 
 Updated: 2026-09-25. Live code/Git takes precedence.
 
-## Current phase: publish Gaming Activity to Dev
+## Current phase: verify the published Gaming Activity Dev candidate
 
 - The local `Dev` candidate contains Gaming Activity Phases 1-5, the shared-row
   polish and auditable **Choose dates** allocation for uncertain Steam playtime.
   Migrations 049-051, focused service/schema/route contracts, configured lint and
   the five Activity Playwright scenarios pass locally. See
   [planning/gaming-activity.md](planning/gaming-activity.md) for the exact evidence.
-- Publish only `Dev` in this phase and confirm the remote SHA. Do not merge or push
-  `main`, deploy, change Railway or run production migrations as part of this step.
+- `50a1ae3` was published only to `Dev`; its exact-candidate CI found two shared-UI
+  browser regressions after lint, tests and build passed. Publish the narrow
+  corrective follow-up only to `Dev`, require CI on that exact SHA and stop. Do not
+  merge or push `main`, deploy, change Railway or run production migrations as part
+  of this step.
 - Before the later `main` promotion, fetch `origin`, merge current `origin/main`
   into `Dev`, resolve conflicts, and require exact-candidate CI on that post-sync
   SHA. Respect the after-21:10 Israel Railway deployment window.

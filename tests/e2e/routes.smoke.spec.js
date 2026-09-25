@@ -238,7 +238,9 @@ test("wishlist mobile layout handles long titles without horizontal overflow", a
     page.getByText("Wishlist", { exact: true }).last(),
   ).toBeVisible();
   await expect(page.getByText("24h", { exact: true })).toBeVisible();
-  await expect(page.getByText("Adventure", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("[data-adaptive-chip]").getByText("Adventure", { exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth + 1,
