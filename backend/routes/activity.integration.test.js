@@ -59,7 +59,7 @@ test("play-history is private, demo-restricted, validated and owner-scoped", asy
     assert.equal(body.range, "30d");
     assert.deepEqual(body.items, []);
     assert.equal(body.coverage.status, "not_started");
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
 
     const legacyResponse = await fetch(`${base}?days=35`, {
       headers: { Authorization: `Bearer ${token({ id: 7, is_guest: false })}` },
@@ -69,7 +69,7 @@ test("play-history is private, demo-restricted, validated and owner-scoped", asy
     assert.equal(legacy.range, "35d");
     assert.deepEqual(legacy.days, []);
     assert.equal(legacy.deprecated.use, "range=7d|30d|all");
-    assert.equal(calls.length, 8);
+    assert.equal(calls.length, 10);
 
     const insightsResponse = await fetch(`${base.replace("play-history", "insights")}?range=year`, {
       headers: { Authorization: `Bearer ${token({ id: 7, is_guest: false })}` },
@@ -80,7 +80,7 @@ test("play-history is private, demo-restricted, validated and owner-scoped", asy
     assert.equal(insights.range, "year");
     assert.equal(insights.coverage.status, "not_started");
     assert.equal(insights.summary.preciseActiveDays, 0);
-    assert.equal(calls.length, 12);
+    assert.equal(calls.length, 15);
     assert.ok(calls.every((call) => call.values[0] === 7));
     assert.ok(calls.every((call) => !call.sql.includes("is_public")));
   } finally {

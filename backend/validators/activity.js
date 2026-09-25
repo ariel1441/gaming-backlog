@@ -47,6 +47,28 @@ export const listActivityInsights = celebrate(
   opts,
 );
 
+const allocationParams = Joi.object({
+  observationId: Joi.number().integer().positive().max(Number.MAX_SAFE_INTEGER).required(),
+});
+
+export const saveActivityAllocation = celebrate({
+  [Segments.PARAMS]: allocationParams,
+  [Segments.BODY]: Joi.object({
+    expectedRevision: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).required(),
+    allocations: Joi.array().items(Joi.object({
+      activityDay: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+      minutes: Joi.number().integer().positive().max(10_000_000).required(),
+    })).min(1).max(4000).required(),
+  }),
+}, opts);
+
+export const resetActivityAllocation = celebrate({
+  [Segments.PARAMS]: allocationParams,
+  [Segments.QUERY]: Joi.object({
+    expectedRevision: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).required(),
+  }),
+}, opts);
+
 export const updateActivity = celebrate(
   {
     [Segments.PARAMS]: Joi.object({

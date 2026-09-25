@@ -45,6 +45,9 @@ test("activity foundation migration preserves and classifies retained observatio
     const userId = (await client.query(
       "INSERT INTO users(username, password_hash) VALUES ('activity-owner', 'x') RETURNING id",
     )).rows[0].id;
+    const otherUserId = (await client.query(
+      "INSERT INTO users(username, password_hash) VALUES ('activity-other-owner', 'x') RETURNING id",
+    )).rows[0].id;
     const gameId = (await client.query(
       "INSERT INTO games(user_id, name, status) VALUES ($1, 'Hades', 'plan to play') RETURNING id",
       [userId],
@@ -226,6 +229,10 @@ test("activity foundation migration preserves and classifies retained observatio
       (await client.query("SELECT COUNT(*)::int AS count FROM schema_migrations WHERE filename = '049_add_activity_foundation.sql'")).rows[0].count,
       1,
     );
+    assert.equal(
+      (await client.query("SELECT COUNT(*)::int AS count FROM schema_migrations WHERE filename = '051_add_steam_activity_allocations.sql'")).rows[0].count,
+      1,
+    );
     const legacyRows = (await client.query(
       `SELECT observation_time_source, activity_precision, activity_day::text,
          playtime_minutes_forever, playtime_delta_minutes
@@ -380,10 +387,11 @@ test("activity foundation migration preserves and classifies retained observatio
       { userId, syncRunId: postGapRunId, snapshotObservedAt: postGapSnapshot }, client,
     );
     assert.ok(postGap.uncertain >= 1);
-    assert.equal((await client.query(
-      `SELECT activity_precision FROM steam_activity_observations
+    const uncertainRow = (await client.query(
+      `SELECT id, activity_precision FROM steam_activity_observations
        WHERE sync_run_id = $1 AND steam_app_id = '1145360'`, [postGapRunId],
-    )).rows[0].activity_precision, "uncertain");
+    )).rows[0];
+    assert.equal(uncertainRow.activity_precision, "uncertain");
     assert.equal((await client.query(
       `SELECT COUNT(*)::int AS count FROM user_activity_events
        WHERE sync_run_id = $1 AND event_type = 'steam_played'`, [postGapRunId],
@@ -393,6 +401,69 @@ test("activity foundation migration preserves and classifies retained observatio
        WHERE sync_run_id = $1 AND event_type IN ('steam_added_to_library', 'steam_first_played')`,
       [postGapRunId],
     )).rows[0].count, 0);
+
+    const allocation = await activity.saveSteamActivityAllocation(
+      userId,
+      uncertainRow.id,
+      [
+        { activityDay: "2026-09-26", minutes: 10 },
+        { activityDay: "2026-09-27", minutes: 20 },
+      ],
+      0,
+    );
+    assert.equal(allocation.revision, 1);
+    assert.equal(allocation.totalMinutes, 30);
+    assert.deepEqual(allocation.allocations, [
+      { activityDay: "2026-09-26", minutes: 10 },
+      { activityDay: "2026-09-27", minutes: 20 },
+    ]);
+    await assert.rejects(
+      activity.saveSteamActivityAllocation(
+        userId,
+        uncertainRow.id,
+        [{ activityDay: "2026-09-26", minutes: 30 }],
+        0,
+      ),
+      /changed/i,
+    );
+    await assert.rejects(
+      activity.saveSteamActivityAllocation(
+        userId,
+        uncertainRow.id,
+        [{ activityDay: "2026-09-26", minutes: 29 }],
+        1,
+      ),
+      /must equal/i,
+    );
+    await assert.rejects(
+      activity.saveSteamActivityAllocation(
+        otherUserId,
+        uncertainRow.id,
+        [{ activityDay: "2026-09-26", minutes: 30 }],
+        0,
+      ),
+      /not found/i,
+    );
+    await assert.rejects(
+      client.query(
+        `INSERT INTO steam_activity_allocation_revisions
+          (user_id, observation_id, revision, action)
+         VALUES ($1, $2, 99, 'reset')`,
+        [otherUserId, uncertainRow.id],
+      ),
+      /owner mismatch/i,
+    );
+    const reset = await activity.resetSteamActivityAllocation(userId, uncertainRow.id, 1);
+    assert.equal(reset.revision, 2);
+    assert.deepEqual(reset.allocations, []);
+    assert.deepEqual(
+      (await client.query(
+        `SELECT revision, action FROM steam_activity_allocation_revisions
+         WHERE observation_id = $1 ORDER BY revision`,
+        [uncertainRow.id],
+      )).rows,
+      [{ revision: 1, action: "allocate" }, { revision: 2, action: "reset" }],
+    );
   } finally {
     await appPool?.end();
     await client.end();

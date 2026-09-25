@@ -1,15 +1,17 @@
 # System Context
 
-Updated: 2026-09-24. Compact architecture and current handoff; live code/Git wins.
+Updated: 2026-09-25. Compact architecture and current handoff; live code/Git wins.
 Read linked details only for the active task, not as a startup checklist.
 
 ## Current checkpoint
 
-Gaming Activity Phases 1 through 5 are prepared as a locally verified release
-candidate as of 2026-09-25; it has not been migrated or deployed outside local
-development and disposable localhost tests. Migration 049 preserves and classifies the observation ledger;
+Gaming Activity Phases 1 through 5 plus auditable uncertain-playtime allocation
+are prepared as a locally verified release candidate as of 2026-09-25; they have
+not been migrated or deployed outside local development and disposable localhost
+tests. Migration 049 preserves and classifies the observation ledger;
 migration 050 adds account-fenced named achievement unlocks with raw provider
-timestamps and a first-detailed-fetch baseline. Daily closeout now creates durable,
+timestamps and a first-detailed-fetch baseline; migration 051 adds owner-scoped,
+revisioned user allocations without changing raw Steam observations. Daily closeout now creates durable,
 idempotent play, first-play, reliable-return and added-to-library facts, while
 grouping related notification evidence by game and activity day. Private,
 unavailable and failed achievement responses do not invent unlocks or block
@@ -19,7 +21,10 @@ named achievements and compact highlights. Activity Insights now uses the same
 owner-scoped ledger for week, month, year and all-time totals, exact-day bars,
 precise active days, uncertainty-aware rankings, first plays, reliable returns and
 recap highlights; boundary-crossing uncertainty stays separately unallocated and
-current periods are marked in progress. Phase 5 corrects historic Started-date and
+current periods are marked in progress. Users can choose one eligible date or split
+an uncertain game's minutes across eligible dates, edit or reset that choice, and
+have it reflected in Activity and Insights while exact achievement dates and
+operational coverage remain unchanged. Phase 5 corrects historic Started-date and
 large-library achievement fan-out regressions, adds a DST-safe guarded closeout
 command, and records the full local gate. The selected but unapplied Railway
 configuration is cron `0 2,3 * * *` with `npm run steam:sync:daily-scheduled`;

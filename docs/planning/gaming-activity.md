@@ -1,7 +1,7 @@
 # Gaming Activity
 
-Status: Phases 1 through 5 prepared and verified locally; external release actions remain pending authorization.
-Updated: 2026-09-24.
+Status: Phases 1 through 5 and uncertain-playtime allocation prepared and verified locally; external release actions remain pending authorization.
+Updated: 2026-09-25.
 
 This document defines the target behavior agreed for Steam-derived activity,
 notifications and activity Insights. It is not a description of the current UI.
@@ -888,6 +888,61 @@ Recommended next product/design pass (deliberately not expanded into this fix):
 5. Run a dedicated UX pass over desktop/mobile/loading/empty/error/current-period
    states and decide whether "Observed playtime" remains necessary in summary
    labels now that the page-level copy already explains Steam's cumulative nature.
+
+Item 2 above was completed in the following focused checkpoint. The remaining
+product/design pass begins with weekday patterns and the broader Activity/Insights
+information architecture rather than further allocation expansion.
+
+#### Uncertain playtime allocation checkpoint (2026-09-25)
+
+This implementation is based on committed `Dev` revision `0d398a4` plus the
+focused dirty worktree below. No commit, push, deployment, Railway change or
+ordinary/production database migration was performed.
+
+- Migration `051_add_steam_activity_allocations.sql` adds immutable, owner-scoped
+  allocation revisions and dated minute rows. Raw Steam observations remain
+  unchanged; saving again creates another revision and reset records a reset
+  revision instead of deleting audit history.
+- An authenticated owner can assign an uncertain game's full observed duration to
+  one eligible activity day or split it across eligible days. The server derives
+  eligible dates from the saved observation bounds, rejects duplicate/out-of-range
+  dates, requires integer minutes to equal the raw total, and uses an expected
+  revision to reject stale concurrent edits.
+- Activity replaces successfully allocated uncertain playtime with the chosen
+  dated rows. Insights uses those minutes in period totals, rankings, daily bars
+  and adjusted active-day averages. Unresolved contained and boundary-crossing
+  intervals retain the prior eligibility rules.
+- Achievement activity days continue to come only from Steam unlock timestamps.
+  Allocations do not rewrite observations, events, notifications, first-play facts
+  or coverage; a user choice does not turn a missed provider closeout into a
+  reliable Steam observation.
+- The responsive Activity flow provides **Choose dates**, one-tap **All here**,
+  manual minute splitting, remaining-minute validation, edit and confirmed reset.
+  Allocated rows are marked **Dates chosen by you** and Insights discloses their
+  contribution.
+
+Focused verification for this checkpoint:
+
+- `node --test backend/services/steamActivityService.test.js backend/migrations/steamActivityObservationsSchema.test.js backend/routes/activity.integration.test.js`
+  passed 20/20 tests.
+- `node --test backend/activityFoundationMigration.contract.test.js` passed the
+  disposable localhost migration/upgrade contract. The real migration runner ran
+  twice, including idempotency, allocation ownership, balanced totals, stale-write
+  rejection, audit preservation and reset.
+- `node --test --test-name-pattern="fresh schema enforces" backend/schema.contract.test.js`
+  passed the fresh-schema contract.
+- `npm run lint -- --quiet` passed with zero errors.
+- The first focused Playwright attempt was blocked before execution by the
+  filesystem sandbox while Vite loaded its configuration. The approved rerun of
+  `npx playwright test tests/e2e/activity.spec.js --project=chromium` passed 5/5,
+  including the 375px choose, save, edit and confirmed-reset flow plus existing
+  Activity/Insights loading, range, error and privacy coverage.
+
+Not run: the full Node suite, production build, complete Playwright suite,
+exact-candidate CI, ordinary or production migrations, deployment, Railway
+configuration or production smoke verification. Migration 051 must follow the
+same authorization-gated migration/backend/frontend release ordering already
+documented for migrations 049 and 050.
 
 External release work remains pending exactly as described above. This checkpoint
 does not replace the required migration/backend/frontend ordering, exact-candidate

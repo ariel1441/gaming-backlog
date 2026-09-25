@@ -70,12 +70,15 @@ test("Activity Insights applies one eligibility contract to totals, games, days 
   assert.deepEqual(result.summary, {
     playtimeMinutes: 275,
     reliablePlaytimeMinutes: 90,
+    allocatedPlaytimeMinutes: 0,
     uncertainPlaytimeMinutes: 185,
     unallocatedPlaytimeMinutes: 45,
     gamesPlayed: 2,
     achievementsUnlocked: 1,
     preciseActiveDays: 1,
+    activeDays: 1,
     preciseDailyAverageMinutes: 90,
+    activeDailyAverageMinutes: 90,
   });
   assert.equal(result.dailyBars.length, 1);
   assert.deepEqual(
@@ -99,6 +102,51 @@ test("Activity Insights applies one eligibility contract to totals, games, days 
   assert.equal(result.reliableReturns[0].daysSincePrevious, 10);
   assert.equal(result.unallocatedOverlap.playtimeMinutes, 45);
   assert.equal(result.coverage.patternClaimsAvailable, false);
+});
+
+test("chosen dates replace an uncertain interval in dated Activity and Insights without changing its total", () => {
+  const observation = {
+    id: 42,
+    activity_precision: "uncertain",
+    steam_app_id: "10",
+    game_name: "Hades",
+    playtime_delta_minutes: 120,
+    interval_started_at: "2026-09-19T02:00:00Z",
+    observed_at: "2026-09-21T02:00:00Z",
+  };
+  const allocations = [
+    { observation_id: 42, revision: 1, action: "allocate", activity_day: "2026-09-20", minutes: 30 },
+    { observation_id: 42, revision: 1, action: "allocate", activity_day: "2026-09-21", minutes: 90 },
+  ];
+  const ledger = { observations: [observation], allocations };
+  const activity = groupSteamActivityHistory(ledger, { range: "all", today: "2026-09-24" });
+  const insights = groupSteamActivityInsights(ledger, { range: "week", today: "2026-09-24" });
+
+  assert.equal(activity.summary.playtimeMinutes, 120);
+  assert.equal(activity.items.some((item) => item.type === "uncertain"), false);
+  assert.deepEqual(activity.items.map((item) => [item.date, item.playtimeMinutes]), [
+    ["2026-09-21", 90], ["2026-09-20", 30],
+  ]);
+  assert.equal(activity.items[0].games[0].allocatedPlaytimeMinutes, 90);
+  assert.equal(activity.items[0].games[0].allocationSources[0].revision, 1);
+  assert.deepEqual(activity.items[0].games[0].allocationSources[0].eligibleDays, [
+    "2026-09-19", "2026-09-20", "2026-09-21",
+  ]);
+
+  assert.equal(insights.summary.playtimeMinutes, 90);
+  assert.equal(insights.summary.allocatedPlaytimeMinutes, 90);
+  assert.equal(insights.summary.unallocatedPlaytimeMinutes, 0);
+  assert.equal(insights.summary.activeDays, 1);
+  assert.equal(insights.dailyBars[0].allocatedPlaytimeMinutes, 90);
+  assert.equal(insights.mostPlayed[0].allocatedPlaytimeMinutes, 90);
+
+  const reset = groupSteamActivityHistory({
+    observations: [observation],
+    allocations: [{ observation_id: 42, revision: 2, action: "reset", activity_day: null, minutes: null }],
+  }, { range: "all", today: "2026-09-24" });
+  assert.equal(reset.items[0].type, "uncertain");
+  assert.equal(reset.items[0].games[0].allocationSources[0].revision, 2);
+  assert.deepEqual(reset.items[0].games[0].allocationSources[0].allocations, []);
 });
 
 test("Activity Insights supports month, year and all-time boundaries without inventing daily precision", () => {

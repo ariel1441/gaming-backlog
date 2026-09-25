@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity as ActivityIcon, BarChart3, CalendarDays, CheckCircle2, Clock3, Gamepad2, Library, RotateCcw,
-  Sparkles, Trophy,
+  Activity as ActivityIcon, BarChart3, CalendarClock, CalendarDays, CheckCircle2, Clock3,
+  Gamepad2, Library, RotateCcw, Sparkles, Trophy,
 } from "lucide-react";
 import { AppPage, ListLoadingSkeleton, PageError, PageHeader, PageLoading } from "../components/layout";
-import { Badge, EmptyState, GameCover, MetricCard, SegmentedControl } from "../components/ui";
+import {
+  Badge, Button, EmptyState, GameCover, MetricCard, Modal, SegmentedControl,
+  TextInput, useConfirm, useToast,
+} from "../components/ui";
 import GameArtworkRow from "../components/GameArtworkRow";
 import GameModal from "../components/GameModal";
 import { useAuth } from "../contexts/AuthContext";
 import { useGames } from "../hooks/useGames";
-import { getSteamActivityInsights, listSteamPlayHistory } from "../services/activityService";
+import {
+  getSteamActivityInsights, listSteamPlayHistory, resetSteamActivityAllocation,
+  saveSteamActivityAllocation,
+} from "../services/activityService";
 import { formatActivityDay, formatDisplayDate, formatMonthDay } from "../utils/dateFormat";
 
 const ranges = [
@@ -42,6 +48,8 @@ export default function ActivityPage() {
   const [history, setHistory] = useState(emptyHistory);
   const [insights, setInsights] = useState(emptyHistory);
   const [selectedGame, setSelectedGame] = useState(null);
+  const [allocationTarget, setAllocationTarget] = useState(null);
+  const toast = useToast();
   const gamesById = useMemo(
     () => new Map(games.map((game) => [String(game.id), game])),
     [games],
@@ -54,6 +62,9 @@ export default function ActivityPage() {
     const details = game?.gameId == null ? null : gamesById.get(String(game.gameId));
     if (details) setSelectedGame(details);
   }, [gamesById]);
+  const chooseDates = useCallback((game, source) => {
+    setAllocationTarget({ ...source, gameName: game.name });
+  }, []);
 
   const loadHistory = useCallback(async (signal) => {
     if (!enabled) return;
@@ -160,6 +171,7 @@ export default function ActivityPage() {
             onRetry={() => loadHistory()}
             onOpenGame={openGame}
             canOpenGame={canOpenGame}
+            onChooseDates={chooseDates}
           />
         )
         : (
@@ -175,6 +187,15 @@ export default function ActivityPage() {
         onClose={() => setSelectedGame(null)}
         onGameRefresh={() => refresh({ silent: true })}
         readOnly
+      />
+      <ActivityAllocationModal
+        target={allocationTarget}
+        onClose={() => setAllocationTarget(null)}
+        onSaved={async (message) => {
+          setAllocationTarget(null);
+          await loadHistory();
+          toast.success(message);
+        }}
       />
     </AppPage>
   );
@@ -199,7 +220,7 @@ function formatFreshness(value) {
   return formatDisplayDate(value, { month: "short", day: "numeric", year: undefined });
 }
 
-function ActivityFeed({ history, onRetry, onOpenGame, canOpenGame }) {
+function ActivityFeed({ history, onRetry, onOpenGame, canOpenGame, onChooseDates }) {
   if (history.loading) return <ListLoadingSkeleton rows={4} label="Loading gaming activity" />;
   if (history.error) {
     return <PageError title="Could not load gaming activity" description={history.error} onRetry={onRetry} />;
@@ -217,8 +238,8 @@ function ActivityFeed({ history, onRetry, onOpenGame, canOpenGame }) {
         />
       ) : history.items.map((item) => (
         item.type === "uncertain"
-          ? <UncertainCard key={item.key} item={item} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
-          : <DayCard key={item.key} item={item} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
+          ? <UncertainCard key={item.key} item={item} onOpenGame={onOpenGame} canOpenGame={canOpenGame} onChooseDates={onChooseDates} />
+          : <DayCard key={item.key} item={item} onOpenGame={onOpenGame} canOpenGame={canOpenGame} onChooseDates={onChooseDates} />
       ))}
     </div>
   );
@@ -288,7 +309,7 @@ function ActivityInsights({ insights, onRetry, onOpenGame, canOpenGame }) {
           <SummaryStat icon={Clock3} label="Observed playtime" value={formatMinutes(summary.playtimeMinutes)} />
           <SummaryStat icon={Gamepad2} label="Games played" value={summary.gamesPlayed || 0} />
           <SummaryStat icon={Trophy} label="Achievements" value={summary.achievementsUnlocked || 0} />
-          <SummaryStat icon={CalendarDays} label="Active days" value={summary.preciseActiveDays || 0} />
+          <SummaryStat icon={CalendarDays} label="Active days" value={summary.activeDays ?? summary.preciseActiveDays ?? 0} />
         </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-content-muted">
           {summary.uncertainPlaytimeMinutes ? (
@@ -296,8 +317,11 @@ function ActivityInsights({ insights, onRetry, onOpenGame, canOpenGame }) {
               {formatMinutes(summary.uncertainPlaytimeMinutes)} has uncertain timing.
             </span>
           ) : null}
-          {summary.preciseDailyAverageMinutes != null ? (
-            <span>{formatMinutes(summary.preciseDailyAverageMinutes)} average on active days.</span>
+          {summary.allocatedPlaytimeMinutes ? (
+            <span>{formatMinutes(summary.allocatedPlaytimeMinutes)} assigned to dates by you.</span>
+          ) : null}
+          {(summary.activeDailyAverageMinutes ?? summary.preciseDailyAverageMinutes) != null ? (
+            <span>{formatMinutes(summary.activeDailyAverageMinutes ?? summary.preciseDailyAverageMinutes)} average on active days.</span>
           ) : null}
         </div>
       </section>
@@ -511,19 +535,19 @@ function RecapCard({ label, value, detail }) {
   );
 }
 
-function DayCard({ item, onOpenGame, canOpenGame }) {
+function DayCard({ item, onOpenGame, canOpenGame, onChooseDates }) {
   return (
     <section className="overflow-hidden rounded-panel border border-surface-border bg-surface-card shadow-panel">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border bg-surface-bg/25 px-4 py-3.5 sm:px-5">
         <h2 className="text-lg font-semibold">{formatDay(item.date)}</h2>
         <PeriodTotal item={item} />
       </div>
-      <GameRows games={item.games} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
+      <GameRows games={item.games} onOpenGame={onOpenGame} canOpenGame={canOpenGame} onChooseDates={onChooseDates} />
     </section>
   );
 }
 
-function UncertainCard({ item, onOpenGame, canOpenGame }) {
+function UncertainCard({ item, onOpenGame, canOpenGame, onChooseDates }) {
   return (
     <section className="overflow-hidden rounded-panel border border-state-warning/45 bg-surface-card shadow-panel">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-state-warning/30 bg-state-warning/5 px-4 py-3.5 sm:px-5">
@@ -533,7 +557,7 @@ function UncertainCard({ item, onOpenGame, canOpenGame }) {
         </div>
         <PeriodTotal item={item} />
       </div>
-      <GameRows games={item.games} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
+      <GameRows games={item.games} onOpenGame={onOpenGame} canOpenGame={canOpenGame} onChooseDates={onChooseDates} />
     </section>
   );
 }
@@ -551,7 +575,7 @@ function PeriodTotal({ item }) {
   );
 }
 
-function GameRows({ games, onOpenGame, canOpenGame }) {
+function GameRows({ games, onOpenGame, canOpenGame, onChooseDates }) {
   return (
     <div className="divide-y divide-surface-border">
       {games.map((game) => (
@@ -561,13 +585,14 @@ function GameRows({ games, onOpenGame, canOpenGame }) {
           onOpenGame={onOpenGame}
           canOpen={canOpenGame(game)}
           showPlaytime={games.length > 1}
+          onChooseDates={onChooseDates}
         />
       ))}
     </div>
   );
 }
 
-function GameRow({ game, onOpenGame, canOpen, showPlaytime }) {
+function GameRow({ game, onOpenGame, canOpen, showPlaytime, onChooseDates }) {
   return (
     <GameArtworkRow
       cover={game.cover}
@@ -591,7 +616,28 @@ function GameRow({ game, onOpenGame, canOpen, showPlaytime }) {
             {game.highlights.map((highlight) => <Highlight key={highlight.type} highlight={highlight} />)}
           </div>
         ) : null}
+        {game.allocatedPlaytimeMinutes ? (
+          <p className="mt-2 text-xs text-primary-light">Dates chosen by you</p>
+        ) : null}
         {game.achievements?.length ? <Achievements achievements={game.achievements} interactiveRow={canOpen} /> : null}
+        {game.allocationSources?.length ? (
+          <div className="relative z-20 mt-3 flex flex-wrap gap-2">
+            {game.allocationSources.map((source) => (
+              <Button
+                key={source.observationId}
+                size="sm"
+                variant="soft"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onChooseDates?.(game, source);
+                }}
+              >
+                <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                {source.allocations?.length ? "Edit dates" : "Choose dates"}
+              </Button>
+            ))}
+          </div>
+        ) : null}
     </GameArtworkRow>
   );
 }
@@ -628,5 +674,143 @@ function Achievements({ achievements, interactiveRow = false }) {
         </details>
       ) : null}
     </div>
+  );
+}
+
+function ActivityAllocationModal({ target, onClose, onSaved }) {
+  const [minutesByDay, setMinutesByDay] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const confirm = useConfirm();
+
+  useEffect(() => {
+    if (!target) return;
+    setMinutesByDay(Object.fromEntries(
+      (target.eligibleDays || []).map((day) => [
+        day,
+        target.allocations?.find((item) => item.activityDay === day)?.minutes || 0,
+      ]),
+    ));
+    setError("");
+  }, [target]);
+
+  if (!target) return null;
+  const assigned = Object.values(minutesByDay).reduce(
+    (sum, value) => sum + Math.max(0, Math.trunc(Number(value) || 0)),
+    0,
+  );
+  const remaining = target.totalMinutes - assigned;
+  const setDayMinutes = (day, value) => {
+    const minutes = Math.max(0, Math.min(target.totalMinutes, Math.trunc(Number(value) || 0)));
+    setMinutesByDay((current) => ({ ...current, [day]: minutes }));
+    setError("");
+  };
+  const assignAll = (day) => {
+    setMinutesByDay(Object.fromEntries((target.eligibleDays || []).map((value) => [
+      value, value === day ? target.totalMinutes : 0,
+    ])));
+    setError("");
+  };
+  const save = async () => {
+    if (remaining !== 0) return;
+    setSaving(true);
+    setError("");
+    try {
+      await saveSteamActivityAllocation(target.observationId, {
+        expectedRevision: target.revision || 0,
+        allocations: Object.entries(minutesByDay)
+          .map(([activityDay, minutes]) => ({
+            activityDay,
+            minutes: Math.max(0, Math.trunc(Number(minutes) || 0)),
+          }))
+          .filter((item) => item.minutes > 0),
+      });
+      await onSaved?.("Activity dates saved.");
+    } catch (saveError) {
+      setError(saveError.message || "Could not save activity dates.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const reset = async () => {
+    const accepted = await confirm({
+      title: "Reset chosen dates?",
+      message: "The original uncertain Steam interval will be shown again.",
+      confirmLabel: "Reset dates",
+    });
+    if (!accepted) return;
+    setSaving(true);
+    setError("");
+    try {
+      await resetSteamActivityAllocation(target.observationId, target.revision);
+      await onSaved?.("Chosen dates reset.");
+    } catch (resetError) {
+      setError(resetError.message || "Could not reset activity dates.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Choose activity dates"
+      description={`${target.gameName} has ${formatMinutes(target.totalMinutes)} of playtime between ${formatShortDay(target.startDay)} and ${formatShortDay(target.endDay)}.`}
+      onClose={saving ? undefined : onClose}
+      closeDisabled={saving}
+      size="sm"
+      footer={(
+        <>
+          {target.allocations?.length ? (
+            <Button variant="dangerGhost" onClick={reset} disabled={saving}>Reset</Button>
+          ) : null}
+          <Button onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="primary" onClick={save} disabled={saving || remaining !== 0} aria-busy={saving}>
+            {saving ? "Saving…" : "Save dates"}
+          </Button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        <div className={`rounded-card border px-3 py-2 text-sm ${remaining === 0 ? "border-state-success/35 bg-state-success/5 text-state-success" : "border-surface-border bg-surface-elevated/35 text-content-secondary"}`}>
+          {remaining > 0
+            ? `${formatMinutes(remaining)} left to assign`
+            : remaining < 0
+              ? `${formatMinutes(Math.abs(remaining))} over the observed total`
+              : "All playtime assigned"}
+        </div>
+        <div className="space-y-2">
+          {(target.eligibleDays || []).map((day) => (
+            <div key={day} className="grid grid-cols-[minmax(0,1fr)_6rem_auto] items-center gap-2 rounded-card border border-surface-border bg-surface-elevated/30 p-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
+              <label htmlFor={`allocation-${target.observationId}-${day}`} className="min-w-0 text-sm font-medium text-content-primary">
+                {formatDay(day)}
+              </label>
+              <TextInput
+                id={`allocation-${target.observationId}-${day}`}
+                type="number"
+                inputMode="numeric"
+                min="0"
+                max={target.totalMinutes}
+                step="1"
+                value={minutesByDay[day] || ""}
+                onChange={(event) => setDayMinutes(day, event.target.value)}
+                aria-label={`Minutes played on ${formatDay(day)}`}
+              />
+              <Button
+                size="sm"
+                onClick={() => assignAll(day)}
+                disabled={saving}
+                aria-label={`Assign all playtime to ${formatDay(day)}`}
+              >
+                All here
+              </Button>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs leading-5 text-content-muted">
+          Steam’s original uncertain interval is kept. This only controls how its playtime appears in your activity and insights.
+        </p>
+        {error ? <p role="alert" className="text-sm text-state-error">{error}</p> : null}
+      </div>
+    </Modal>
   );
 }

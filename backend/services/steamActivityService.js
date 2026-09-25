@@ -1,6 +1,7 @@
 import { pool } from "../db.js";
 import { createFactualActivityEvent } from "./activityEventService.js";
 import { gamingActivityDay } from "../utils/gamingActivityDay.js";
+import { badRequest, conflict, notFound } from "../utils/httpError.js";
 
 function nonNegativeInteger(value) {
   const number = Number(value);
@@ -11,6 +12,183 @@ function dateOnly(value) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   const text = String(value || "");
   return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null;
+}
+
+function activityDaysBetween(startedAt, endedAt) {
+  const startDay = gamingActivityDay(startedAt);
+  const endDay = gamingActivityDay(endedAt);
+  if (!startDay || !endDay || endDay < startDay) return [];
+  const days = [];
+  for (let value = dayOrdinal(startDay); value <= dayOrdinal(endDay); value += 1) {
+    days.push(dayFromOrdinal(value));
+  }
+  return days;
+}
+
+function allocationMap(rows = []) {
+  const map = new Map();
+  for (const row of rows) {
+    const observationId = String(rowValue(row, "observation_id", "observationId"));
+    let value = map.get(observationId);
+    if (!value) {
+      value = {
+        revision: nonNegativeInteger(row.revision),
+        action: row.action,
+        allocations: [],
+      };
+      map.set(observationId, value);
+    }
+    const activityDay = dateOnly(rowValue(row, "activity_day", "activityDay"));
+    const minutes = nonNegativeInteger(row.minutes);
+    if (activityDay && minutes) value.allocations.push({ activityDay, minutes });
+  }
+  return map;
+}
+
+function allocationSource(row, state) {
+  const observationId = Number(row.id);
+  if (!Number.isSafeInteger(observationId) || observationId <= 0) return null;
+  const intervalStartedAt = rowValue(row, "interval_started_at", "intervalStartedAt");
+  const intervalEndedAt = rowValue(row, "observed_at", "observedAt");
+  return {
+    observationId,
+    revision: state?.revision || 0,
+    totalMinutes: nonNegativeInteger(rowValue(row, "playtime_delta_minutes", "playtimeMinutes")),
+    startDay: gamingActivityDay(intervalStartedAt),
+    endDay: gamingActivityDay(intervalEndedAt),
+    eligibleDays: activityDaysBetween(intervalStartedAt, intervalEndedAt),
+    allocations: state?.action === "allocate" ? state.allocations : [],
+  };
+}
+
+function activeAllocation(row, states) {
+  const state = states.get(String(row.id));
+  if (state?.action !== "allocate") return null;
+  const total = state.allocations.reduce((sum, item) => sum + item.minutes, 0);
+  return total === nonNegativeInteger(rowValue(row, "playtime_delta_minutes", "playtimeMinutes"))
+    ? state
+    : null;
+}
+
+export async function saveSteamActivityAllocation(
+  userId,
+  observationId,
+  allocations,
+  expectedRevision,
+) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const observation = (await client.query(
+      `SELECT id, user_id, activity_precision, playtime_delta_minutes,
+        interval_started_at, observed_at
+       FROM steam_activity_observations
+       WHERE id = $1 AND user_id = $2
+       FOR UPDATE`,
+      [observationId, userId],
+    )).rows[0];
+    if (!observation) throw notFound("Uncertain activity was not found.");
+    if (observation.activity_precision !== "uncertain" ||
+        nonNegativeInteger(observation.playtime_delta_minutes) === 0 ||
+        !observation.interval_started_at) {
+      throw badRequest("Only uncertain playtime can have chosen dates.");
+    }
+    const latest = (await client.query(
+      `SELECT revision, action
+       FROM steam_activity_allocation_revisions
+       WHERE observation_id = $1 AND user_id = $2
+       ORDER BY revision DESC LIMIT 1`,
+      [observationId, userId],
+    )).rows[0];
+    const currentRevision = nonNegativeInteger(latest?.revision);
+    if (currentRevision !== nonNegativeInteger(expectedRevision)) {
+      throw conflict("This activity allocation changed. Refresh and try again.");
+    }
+    const eligibleDays = new Set(activityDaysBetween(
+      observation.interval_started_at,
+      observation.observed_at,
+    ));
+    const normalized = allocations
+      .map((item) => ({ activityDay: dateOnly(item.activityDay), minutes: nonNegativeInteger(item.minutes) }))
+      .filter((item) => item.minutes > 0);
+    if (!normalized.length || normalized.some((item) => !eligibleDays.has(item.activityDay)) ||
+        new Set(normalized.map((item) => item.activityDay)).size !== normalized.length) {
+      throw badRequest("Choose valid, non-duplicated dates from this uncertain interval.");
+    }
+    const totalMinutes = normalized.reduce((sum, item) => sum + item.minutes, 0);
+    if (totalMinutes !== nonNegativeInteger(observation.playtime_delta_minutes)) {
+      throw badRequest("Chosen minutes must equal the observed playtime.");
+    }
+    const revision = currentRevision + 1;
+    const revisionId = (await client.query(
+      `INSERT INTO steam_activity_allocation_revisions
+        (user_id, observation_id, revision, action)
+       VALUES ($1, $2, $3, 'allocate') RETURNING id`,
+      [userId, observationId, revision],
+    )).rows[0].id;
+    await client.query(
+      `INSERT INTO steam_activity_allocation_items
+        (revision_id, user_id, activity_day, minutes)
+       SELECT $1, $2, value.activity_day, value.minutes
+       FROM unnest($3::date[], $4::integer[]) AS value(activity_day, minutes)`,
+      [
+        revisionId,
+        userId,
+        normalized.map((item) => item.activityDay),
+        normalized.map((item) => item.minutes),
+      ],
+    );
+    await client.query("COMMIT");
+    return {
+      observationId: Number(observation.id), revision,
+      totalMinutes, eligibleDays: [...eligibleDays], allocations: normalized,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function resetSteamActivityAllocation(userId, observationId, expectedRevision) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const observation = (await client.query(
+      `SELECT id FROM steam_activity_observations
+       WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [observationId, userId],
+    )).rows[0];
+    if (!observation) throw notFound("Uncertain activity was not found.");
+    const latest = (await client.query(
+      `SELECT revision, action FROM steam_activity_allocation_revisions
+       WHERE observation_id = $1 AND user_id = $2
+       ORDER BY revision DESC LIMIT 1`,
+      [observationId, userId],
+    )).rows[0];
+    const currentRevision = nonNegativeInteger(latest?.revision);
+    if (currentRevision !== nonNegativeInteger(expectedRevision)) {
+      throw conflict("This activity allocation changed. Refresh and try again.");
+    }
+    if (!latest || latest.action !== "allocate") {
+      throw badRequest("This activity does not have chosen dates to reset.");
+    }
+    const revision = currentRevision + 1;
+    await client.query(
+      `INSERT INTO steam_activity_allocation_revisions
+        (user_id, observation_id, revision, action)
+       VALUES ($1, $2, $3, 'reset')`,
+      [userId, observationId, revision],
+    );
+    await client.query("COMMIT");
+    return { observationId: Number(observation.id), revision, allocations: [] };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function recordSteamActivityObservations(
@@ -403,7 +581,14 @@ function ensureGame(container, row) {
   const metadata = gameFromRow(row);
   let game = container.gameMap.get(metadata.steamAppId);
   if (!game) {
-    game = { ...metadata, playtimeMinutes: 0, achievements: [], highlights: [] };
+    game = {
+      ...metadata,
+      playtimeMinutes: 0,
+      allocatedPlaytimeMinutes: 0,
+      achievements: [],
+      highlights: [],
+      allocationSources: [],
+    };
     container.gameMap.set(metadata.steamAppId, game);
   } else {
     game.gameId ??= metadata.gameId;
@@ -437,7 +622,7 @@ function finalizeItem(item) {
 }
 
 export function groupSteamActivityHistory(
-  { observations = [], achievements = [], highlights = [], coverageRows = [] } = {},
+  { observations = [], achievements = [], highlights = [], coverageRows = [], allocations = [] } = {},
   {
     range = "7d", today = gamingActivityDay(new Date()), timezone = "Asia/Jerusalem",
     rangeStartOverride = null,
@@ -446,6 +631,7 @@ export function groupSteamActivityHistory(
   const rangeStart = rangeStartOverride || rangeStartFor(range, today);
   const days = new Map();
   const intervals = new Map();
+  const allocationStates = allocationMap(allocations);
   const included = (day) => day && day <= today && (!rangeStart || day >= rangeStart);
   const overlapsRange = (startDay, endDay) => endDay && endDay >= (rangeStart || "0000-01-01") && startDay <= today;
 
@@ -462,10 +648,32 @@ export function groupSteamActivityHistory(
     } else if (precision === "uncertain") {
       const startedAt = rowValue(row, "interval_started_at", "intervalStartedAt");
       const endedAt = rowValue(row, "observed_at", "observedAt");
+      const state = allocationStates.get(String(row.id));
+      const source = allocationSource(row, state);
+      const chosen = activeAllocation(row, allocationStates);
+      if (chosen) {
+        for (const allocation of chosen.allocations) {
+          if (!included(allocation.activityDay)) continue;
+          const day = days.get(allocation.activityDay) || createDay(allocation.activityDay);
+          days.set(allocation.activityDay, day);
+          const game = ensureGame(day, row);
+          game.playtimeMinutes += allocation.minutes;
+          game.allocatedPlaytimeMinutes += allocation.minutes;
+          if (source && !game.allocationSources.some((item) => item.observationId === source.observationId)) {
+            game.allocationSources.push(source);
+          }
+          day.playtimeMinutes += allocation.minutes;
+        }
+        continue;
+      }
       const candidate = createInterval(startedAt, endedAt);
       if (!startedAt || !overlapsRange(candidate.startDay, candidate.endDay)) continue;
       item = intervals.get(candidate.key) || candidate;
       intervals.set(candidate.key, item);
+      const game = ensureGame(item, row);
+      if (source && !game.allocationSources.some((value) => value.observationId === source.observationId)) {
+        game.allocationSources.push(source);
+      }
     } else continue;
     const game = ensureGame(item, row);
     game.playtimeMinutes += minutes;
@@ -559,7 +767,13 @@ function insightGame(gameMap, row) {
   const metadata = gameFromRow(row);
   let game = gameMap.get(metadata.steamAppId);
   if (!game) {
-    game = { ...metadata, playtimeMinutes: 0, reliablePlaytimeMinutes: 0, uncertainPlaytimeMinutes: 0 };
+    game = {
+      ...metadata,
+      playtimeMinutes: 0,
+      reliablePlaytimeMinutes: 0,
+      allocatedPlaytimeMinutes: 0,
+      uncertainPlaytimeMinutes: 0,
+    };
     gameMap.set(metadata.steamAppId, game);
   }
   game.name = game.name === "Steam game" ? metadata.name : game.name;
@@ -577,7 +791,7 @@ function finalizeInsightGames(gameMap) {
 }
 
 export function groupSteamActivityInsights(
-  { observations = [], achievements = [], highlights = [], coverageRows = [] } = {},
+  { observations = [], achievements = [], highlights = [], coverageRows = [], allocations = [] } = {},
   { range = "week", today = gamingActivityDay(new Date()), timezone = "Asia/Jerusalem" } = {},
 ) {
   const period = insightPeriodFor(range, today);
@@ -585,16 +799,26 @@ export function groupSteamActivityInsights(
   const unallocatedGameMap = new Map();
   const dailyMap = new Map();
   const reliableActivityDays = new Set();
+  const adjustedActivityDays = new Set();
+  const allocationStates = allocationMap(allocations);
   const uncertainIntervals = new Map();
   const unallocatedIntervals = new Map();
   let reliablePlaytimeMinutes = 0;
+  let allocatedPlaytimeMinutes = 0;
   let uncertainPlaytimeMinutes = 0;
   let unallocatedPlaytimeMinutes = 0;
 
   const ensureDaily = (day) => {
     let item = dailyMap.get(day);
     if (!item) {
-      item = { day, playtimeMinutes: 0, achievementsUnlocked: 0, gameMap: new Map() };
+      item = {
+        day,
+        playtimeMinutes: 0,
+        reliablePlaytimeMinutes: 0,
+        allocatedPlaytimeMinutes: 0,
+        achievementsUnlocked: 0,
+        gameMap: new Map(),
+      };
       dailyMap.set(day, item);
     }
     return item;
@@ -604,7 +828,13 @@ export function groupSteamActivityInsights(
     const metadata = gameFromRow(row);
     let game = daily.gameMap.get(metadata.steamAppId);
     if (!game) {
-      game = { ...metadata, playtimeMinutes: 0, achievementsUnlocked: 0 };
+      game = {
+        ...metadata,
+        playtimeMinutes: 0,
+        reliablePlaytimeMinutes: 0,
+        allocatedPlaytimeMinutes: 0,
+        achievementsUnlocked: 0,
+      };
       daily.gameMap.set(metadata.steamAppId, game);
     }
     game.name = game.name === "Steam game" ? metadata.name : game.name;
@@ -628,11 +858,33 @@ export function groupSteamActivityInsights(
       reliablePlaytimeMinutes += minutes;
       const daily = ensureDaily(day);
       daily.playtimeMinutes += minutes;
-      ensureDailyGame(daily, row).playtimeMinutes += minutes;
+      daily.reliablePlaytimeMinutes += minutes;
+      const dailyGame = ensureDailyGame(daily, row);
+      dailyGame.playtimeMinutes += minutes;
+      dailyGame.reliablePlaytimeMinutes += minutes;
       reliableActivityDays.add(day);
+      adjustedActivityDays.add(day);
       continue;
     }
     if (precision !== "uncertain") continue;
+    const chosen = activeAllocation(row, allocationStates);
+    if (chosen) {
+      for (const allocation of chosen.allocations) {
+        if (!insightIncluded(allocation.activityDay, period)) continue;
+        const game = insightGame(gameMap, row);
+        game.playtimeMinutes += allocation.minutes;
+        game.allocatedPlaytimeMinutes += allocation.minutes;
+        allocatedPlaytimeMinutes += allocation.minutes;
+        const daily = ensureDaily(allocation.activityDay);
+        daily.playtimeMinutes += allocation.minutes;
+        daily.allocatedPlaytimeMinutes += allocation.minutes;
+        const dailyGame = ensureDailyGame(daily, row);
+        dailyGame.playtimeMinutes += allocation.minutes;
+        dailyGame.allocatedPlaytimeMinutes += allocation.minutes;
+        adjustedActivityDays.add(allocation.activityDay);
+      }
+      continue;
+    }
     const startedAt = rowValue(row, "interval_started_at", "intervalStartedAt");
     const endedAt = rowValue(row, "observed_at", "observedAt");
     const candidate = createInterval(startedAt, endedAt);
@@ -686,6 +938,7 @@ export function groupSteamActivityInsights(
   });
 
   const preciseActiveDays = reliableActivityDays.size;
+  const activeDays = adjustedActivityDays.size;
   const dailyBars = [...dailyMap.values()]
     .map(({ gameMap: dailyGames, ...day }) => ({
       ...day,
@@ -698,15 +951,20 @@ export function groupSteamActivityInsights(
   return {
     range, timezone, period,
     summary: {
-      playtimeMinutes: reliablePlaytimeMinutes + uncertainPlaytimeMinutes,
+      playtimeMinutes: reliablePlaytimeMinutes + allocatedPlaytimeMinutes + uncertainPlaytimeMinutes,
       reliablePlaytimeMinutes,
+      allocatedPlaytimeMinutes,
       uncertainPlaytimeMinutes,
       unallocatedPlaytimeMinutes,
       gamesPlayed: games.length,
       achievementsUnlocked,
       preciseActiveDays,
+      activeDays,
       preciseDailyAverageMinutes: preciseActiveDays
         ? Math.round(reliablePlaytimeMinutes / preciseActiveDays)
+        : null,
+      activeDailyAverageMinutes: activeDays
+        ? Math.round((reliablePlaytimeMinutes + allocatedPlaytimeMinutes) / activeDays)
         : null,
     },
     coverage: { ...coverage, reliableCoverageSufficient, patternClaimsAvailable: reliableCoverageSufficient },
@@ -741,7 +999,7 @@ async function loadSteamActivityLedger(userId, rangeStart = null) {
        WHERE candidate.user_id = event.user_id
          AND candidate.steam_app_id = event.external_id LIMIT 1
     ) candidate ON TRUE`;
-  const [observationResult, achievementResult, highlightResult, coverageResult] = await Promise.all([
+  const [observationResult, achievementResult, highlightResult, coverageResult, allocationResult] = await Promise.all([
     pool.query(
       `SELECT observation.* FROM steam_activity_observations observation
        WHERE observation.user_id = $1
@@ -792,12 +1050,35 @@ async function loadSteamActivityLedger(userId, rangeStart = null) {
        ORDER BY observation.sync_run_id, observation.id`,
       [userId],
     ),
+    pool.query(
+      `WITH latest AS (
+         SELECT DISTINCT ON (revision.observation_id)
+           revision.id, revision.observation_id, revision.revision, revision.action
+         FROM steam_activity_allocation_revisions revision
+         WHERE revision.user_id = $1
+         ORDER BY revision.observation_id, revision.revision DESC
+       )
+       SELECT latest.observation_id, latest.revision, latest.action,
+         item.activity_day, item.minutes
+       FROM latest
+       JOIN steam_activity_observations observation
+         ON observation.id = latest.observation_id AND observation.user_id = $1
+       LEFT JOIN steam_activity_allocation_items item
+         ON item.revision_id = latest.id AND item.user_id = $1
+       WHERE $2::date IS NULL
+         OR observation.activity_day >= $2::date
+         OR (observation.activity_precision = 'uncertain'
+           AND gaming_activity_day(observation.observed_at) >= $2::date)
+       ORDER BY latest.observation_id, item.activity_day`,
+      [userId, rangeStart],
+    ),
   ]);
   return {
     observations: observationResult.rows,
     achievements: achievementResult.rows,
     highlights: highlightResult.rows,
     coverageRows: coverageResult.rows,
+    allocations: allocationResult.rows,
   };
 }
 

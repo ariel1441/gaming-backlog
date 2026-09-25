@@ -33,6 +33,12 @@ const feed = {
       games: [{
         steamAppId: "10", name: "Hades", cover: null, playtimeMinutes: 185,
         highlights: [{ type: "returned", daysSincePrevious: 46 }], achievements: [],
+        allocationSources: [{
+          observationId: 42, revision: 0, totalMinutes: 185,
+          startDay: "2026-09-19", endDay: "2026-09-22",
+          eligibleDays: ["2026-09-19", "2026-09-20", "2026-09-21", "2026-09-22"],
+          allocations: [],
+        }],
       }],
     },
   ],
@@ -99,7 +105,9 @@ async function authenticatedActivity(
         cover: null,
       }] });
     }
-    if (url.pathname === "/api/activity/play-history") return activityHandler(route, url);
+    if (url.pathname === "/api/activity/play-history" || url.pathname.startsWith("/api/activity/play-history/")) {
+      return activityHandler(route, url);
+    }
     if (url.pathname === "/api/activity/insights") return insightsHandler(route, url);
     return route.fulfill({ json: {} });
   });
@@ -108,13 +116,44 @@ async function authenticatedActivity(
 test("activity feed covers loading, ranges, highlights, achievements and responsive intervals", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   let requests = 0;
+  let savedAllocation = null;
+  let resetRevision = null;
   await authenticatedActivity(page, async (route, url) => {
+    if (route.request().method() === "PUT") {
+      savedAllocation = route.request().postDataJSON();
+      return route.fulfill({ json: { observationId: 42, revision: 1 } });
+    }
+    if (route.request().method() === "DELETE") {
+      resetRevision = url.searchParams.get("expectedRevision");
+      savedAllocation = null;
+      return route.fulfill({ json: { observationId: 42, revision: 2, allocations: [] } });
+    }
     requests += 1;
     await new Promise((resolve) => setTimeout(resolve, 250));
     const range = url.searchParams.get("range");
-    return route.fulfill({ json: range === "30d"
-      ? { ...feed, range, summary: {}, coverage: { status: "complete", reliableDays: 30, expectedCloseouts: 30 }, items: [] }
-      : { ...feed, range } });
+    if (range === "30d") {
+      return route.fulfill({ json: {
+        ...feed, range, summary: {},
+        coverage: { status: "complete", reliableDays: 30, expectedCloseouts: 30 }, items: [],
+      } });
+    }
+    const payload = savedAllocation ? {
+      ...feed,
+      range,
+      items: feed.items.map((item) => item.type !== "uncertain" ? item : ({
+        ...item,
+        games: item.games.map((game) => ({
+          ...game,
+          allocatedPlaytimeMinutes: 185,
+          allocationSources: game.allocationSources.map((source) => ({
+            ...source,
+            revision: 1,
+            allocations: [{ activityDay: "2026-09-20", minutes: 185 }],
+          })),
+        })),
+      })),
+    } : { ...feed, range };
+    return route.fulfill({ json: payload });
   });
 
   await page.goto("/activity");
@@ -134,6 +173,24 @@ test("activity feed covers loading, ranges, highlights, achievements and respons
   expect((await activityCover.boundingBox()).width).toBeGreaterThan(120);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
+  await page.getByRole("button", { name: "Choose dates", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Choose activity dates" })).toBeVisible();
+  await page.getByRole("button", { name: "Assign all playtime to Sunday, Sep 20" }).click();
+  await expect(page.getByText("All playtime assigned", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Save dates", exact: true }).click();
+  await expect(page.getByText("Activity dates saved.", { exact: true })).toBeVisible();
+  expect(savedAllocation).toEqual({
+    expectedRevision: 0,
+    allocations: [{ activityDay: "2026-09-20", minutes: 185 }],
+  });
+
+  await page.getByRole("button", { name: "Edit dates", exact: true }).click();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Reset chosen dates?" })).toBeVisible();
+  await page.getByRole("button", { name: "Reset dates", exact: true }).click();
+  await expect(page.getByText("Chosen dates reset.", { exact: true })).toBeVisible();
+  expect(resetRevision).toBe("1");
+
   await page.getByRole("button", { name: "Open details for A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("heading", { name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen" })).toBeVisible();
@@ -144,7 +201,7 @@ test("activity feed covers loading, ranges, highlights, achievements and respons
   await expect(page.getByText("No activity in this range", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByText("Returned after 46 days", { exact: true })).toBeVisible();
-  expect(requests).toBe(3);
+  expect(requests).toBe(5);
 });
 
 test("activity feed exposes a retryable read error", async ({ page }) => {
