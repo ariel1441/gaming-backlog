@@ -77,7 +77,20 @@ test("Activity Insights applies one eligibility contract to totals, games, days 
     preciseActiveDays: 1,
     preciseDailyAverageMinutes: 90,
   });
-  assert.deepEqual(result.dailyBars, [{ day: "2026-09-21", playtimeMinutes: 90, achievementsUnlocked: 1 }]);
+  assert.equal(result.dailyBars.length, 1);
+  assert.deepEqual(
+    {
+      day: result.dailyBars[0].day,
+      playtimeMinutes: result.dailyBars[0].playtimeMinutes,
+      achievementsUnlocked: result.dailyBars[0].achievementsUnlocked,
+    },
+    { day: "2026-09-21", playtimeMinutes: 90, achievementsUnlocked: 1 },
+  );
+  assert.deepEqual(result.dailyBars[0].games.map((game) => ({
+    name: game.name,
+    playtimeMinutes: game.playtimeMinutes,
+    achievementsUnlocked: game.achievementsUnlocked,
+  })), [{ name: "Daily game", playtimeMinutes: 90, achievementsUnlocked: 1 }]);
   assert.deepEqual(result.mostPlayed.map((game) => [game.name, game.playtimeMinutes]), [
     ["Contained game", 185], ["Daily game", 90],
   ]);
@@ -180,7 +193,16 @@ test("midnight new-game observations, achievements and first play stay on the 25
   assert.equal(activity.summary.playtimeMinutes, 240);
   assert.equal(activity.summary.achievementsUnlocked, 1);
   assert.deepEqual(activity.items[0].games[0].highlights.map((item) => item.type), ["first_played", "added_to_library"]);
-  assert.deepEqual(insights.dailyBars, [{ day: "2026-09-25", playtimeMinutes: 240, achievementsUnlocked: 1 }]);
+  assert.equal(insights.dailyBars.length, 1);
+  assert.deepEqual(
+    {
+      day: insights.dailyBars[0].day,
+      playtimeMinutes: insights.dailyBars[0].playtimeMinutes,
+      achievementsUnlocked: insights.dailyBars[0].achievementsUnlocked,
+    },
+    { day: "2026-09-25", playtimeMinutes: 240, achievementsUnlocked: 1 },
+  );
+  assert.deepEqual(insights.dailyBars[0].games.map((game) => game.name), ["Midnight game"]);
   assert.equal(new Date(`${insights.dailyBars[0].day}T00:00:00Z`).getUTCDay(), 5);
   assert.equal(insights.firstObservedPlays[0].activityDay, "2026-09-25");
   assert.equal(insights.summary.playtimeMinutes, activity.summary.playtimeMinutes);

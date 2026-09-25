@@ -14,6 +14,7 @@ import {
   EmptyState,
   Field,
   GameCover,
+  MetricCard,
   Modal,
   MultiSelectMenu,
   SelectMenu,
@@ -27,7 +28,6 @@ function cacheLabel(status) {
   if (status === "unavailable") return "Offline";
   return "Cached";
 }
-
 function cacheVariant(status) {
   if (status === "live") return "success";
   if (status === "stale") return "warning";
@@ -270,7 +270,7 @@ export function DetailModal({
               label="RAWG"
               value={game.rating ? `${game.rating}/5` : "N/A"}
             />
-            <Stat label="Metacritic" value={game.metacritic || "N/A"} />
+            <MetricCard variant="compact" label="Metacritic" value={game.metacritic || "N/A"} />
             <Stat
               label="Estimate"
               value={
@@ -447,18 +447,5 @@ export function DetailModal({
         </div>
       </div>
     </Modal>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-xl border border-surface-border bg-surface-bg/35 p-3">
-      <div className="text-xs uppercase tracking-wide text-content-muted">
-        {label}
-      </div>
-      <div className="mt-1 truncate text-sm font-semibold text-content-primary">
-        {value}
-      </div>
-    </div>
   );
 }

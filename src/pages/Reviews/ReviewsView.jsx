@@ -21,6 +21,7 @@ import {
   Field,
   GameCover,
   IconButton,
+  MetricPill,
   Modal,
   SearchClearButton,
   SelectMenu,
@@ -52,22 +53,6 @@ export const reviewSortOptions = [
   { value: "myScore", label: "My score" },
   { value: "name", label: "Name" },
 ];
-
-function StatPill({ icon: Icon, label, value }) {
-  return (
-    <div className="inline-flex min-h-11 items-center gap-3 rounded-2xl border border-surface-border bg-surface-card/80 px-4">
-      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-surface-border bg-surface-elevated/70 text-content-secondary">
-        <Icon className="h-4 w-4" aria-hidden="true" />
-      </span>
-      <span className="text-base font-semibold text-content-primary">
-        {value}
-      </span>
-      <span className="text-xs uppercase tracking-[0.18em] text-content-secondary">
-        {label}
-      </span>
-    </div>
-  );
-}
 
 export function ReviewsSkeleton() {
   return (
@@ -128,22 +113,22 @@ export function ReviewsHeader({ summary }) {
         icon={MessageSquareText}
       />
       <div className="mt-5 flex flex-wrap gap-3">
-        <StatPill
+        <MetricPill
           icon={MessageSquareText}
           label="Reviews"
           value={summary.total}
         />
-        <StatPill
+        <MetricPill
           icon={CheckCircle2}
           label="Completed"
           value={summary.completed}
         />
-        <StatPill
+        <MetricPill
           icon={Clock3}
           label="Not completed"
           value={summary.notCompleted}
         />
-        <StatPill icon={Star} label="Avg score" value={summary.averageScore} />
+        <MetricPill icon={Star} label="Avg score" value={summary.averageScore} />
       </div>
     </>
   );

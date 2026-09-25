@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  BarChart3, CalendarDays, CheckCircle2, Clock3, Gamepad2, Library, RotateCcw,
+  Activity as ActivityIcon, BarChart3, CalendarDays, CheckCircle2, Clock3, Gamepad2, Library, RotateCcw,
   Sparkles, Trophy,
 } from "lucide-react";
-import { AppPage, PageError, PageLoading } from "../components/layout";
-import { Badge, EmptyState, GameCover, SegmentedControl } from "../components/ui";
+import { AppPage, ListLoadingSkeleton, PageError, PageHeader, PageLoading } from "../components/layout";
+import { Badge, EmptyState, GameCover, MetricCard, SegmentedControl } from "../components/ui";
+import GameArtworkRow from "../components/GameArtworkRow";
+import GameModal from "../components/GameModal";
 import { useAuth } from "../contexts/AuthContext";
+import { useGames } from "../hooks/useGames";
 import { getSteamActivityInsights, listSteamPlayHistory } from "../services/activityService";
+import { formatActivityDay, formatDisplayDate, formatMonthDay } from "../utils/dateFormat";
 
 const ranges = [
   { value: "7d", label: "7 days" },
@@ -30,12 +34,26 @@ const emptyHistory = { items: [], summary: {}, coverage: {}, loading: true, erro
 
 export default function ActivityPage() {
   const { isAuthenticated, isGuest, loading: authLoading } = useAuth();
+  const { games, refresh } = useGames();
   const enabled = !authLoading && isAuthenticated && !isGuest;
   const [view, setView] = useState("activity");
   const [range, setRange] = useState("7d");
   const [insightRange, setInsightRange] = useState("week");
   const [history, setHistory] = useState(emptyHistory);
   const [insights, setInsights] = useState(emptyHistory);
+  const [selectedGame, setSelectedGame] = useState(null);
+  const gamesById = useMemo(
+    () => new Map(games.map((game) => [String(game.id), game])),
+    [games],
+  );
+  const canOpenGame = useCallback(
+    (game) => game?.gameId != null && gamesById.has(String(game.gameId)),
+    [gamesById],
+  );
+  const openGame = useCallback((game) => {
+    const details = game?.gameId == null ? null : gamesById.get(String(game.gameId));
+    if (details) setSelectedGame(details);
+  }, [gamesById]);
 
   const loadHistory = useCallback(async (signal) => {
     if (!enabled) return;
@@ -97,14 +115,13 @@ export default function ActivityPage() {
 
   return (
     <AppPage width="wide">
-      <header className="mb-5 flex flex-col gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Gaming activity</h1>
-          <p className="mt-1 max-w-2xl text-sm text-content-muted">
-            Cumulative Steam observations grouped into activity days ending at 5 AM in Jerusalem, not exact session boundaries.
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-5">
+        <PageHeader
+          title="Gaming activity"
+          description="Cumulative Steam observations grouped into activity days ending at 5 AM in Jerusalem, not exact session boundaries."
+          icon={ActivityIcon}
+        />
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SegmentedControl
             value={view}
             onChange={setView}
@@ -135,10 +152,30 @@ export default function ActivityPage() {
             />
           )}
         </div>
-      </header>
+      </div>
       {view === "activity"
-        ? <ActivityFeed history={history} onRetry={() => loadHistory()} />
-        : <ActivityInsights insights={insights} onRetry={() => loadInsights()} />}
+        ? (
+          <ActivityFeed
+            history={history}
+            onRetry={() => loadHistory()}
+            onOpenGame={openGame}
+            canOpenGame={canOpenGame}
+          />
+        )
+        : (
+          <ActivityInsights
+            insights={insights}
+            onRetry={() => loadInsights()}
+            onOpenGame={openGame}
+            canOpenGame={canOpenGame}
+          />
+        )}
+      <GameModal
+        game={selectedGame}
+        onClose={() => setSelectedGame(null)}
+        onGameRefresh={() => refresh({ silent: true })}
+        readOnly
+      />
     </AppPage>
   );
 }
@@ -150,29 +187,20 @@ function formatMinutes(value) {
   return hours ? `${hours}h${remainder ? ` ${remainder}m` : ""}` : `${remainder}m`;
 }
 
-function dateValue(value) {
-  return new Date(`${value}T12:00:00`);
-}
-
 function formatDay(value) {
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "long", month: "short", day: "numeric",
-  }).format(dateValue(value));
+  return formatActivityDay(value);
 }
 
 function formatShortDay(value) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(dateValue(value));
+  return formatMonthDay(value, { dateOnly: true });
 }
 
 function formatFreshness(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  return formatDisplayDate(value, { month: "short", day: "numeric", year: undefined });
 }
 
-function ActivityFeed({ history, onRetry }) {
-  if (history.loading) return <PageLoading rows={5} />;
+function ActivityFeed({ history, onRetry, onOpenGame, canOpenGame }) {
+  if (history.loading) return <ListLoadingSkeleton rows={4} label="Loading gaming activity" />;
   if (history.error) {
     return <PageError title="Could not load gaming activity" description={history.error} onRetry={onRetry} />;
   }
@@ -189,8 +217,8 @@ function ActivityFeed({ history, onRetry }) {
         />
       ) : history.items.map((item) => (
         item.type === "uncertain"
-          ? <UncertainCard key={item.key} item={item} />
-          : <DayCard key={item.key} item={item} />
+          ? <UncertainCard key={item.key} item={item} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
+          : <DayCard key={item.key} item={item} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
       ))}
     </div>
   );
@@ -217,11 +245,8 @@ function Summary({ history }) {
             {coverage.trailingMissingCloseouts} expected closeout{coverage.trailingMissingCloseouts === 1 ? " is" : "s are"} still missing; missing checks are not treated as zero play.
           </span>
         ) : null}
-        {coverage.uncertainIntervals ? (
-          <span className="text-state-warning">{coverage.uncertainIntervals} uncertain interval{coverage.uncertainIntervals === 1 ? "" : "s"}</span>
-        ) : null}
         {summary.overlappingPlaytimeMinutes ? (
-          <span>{formatMinutes(summary.overlappingPlaytimeMinutes)} overlaps this range and is shown separately.</span>
+          <span className="text-state-warning">Some activity has uncertain timing.</span>
         ) : null}
         {freshness ? <span>Activity checked through {freshness}.</span> : null}
       </div>
@@ -230,18 +255,10 @@ function Summary({ history }) {
 }
 
 function SummaryStat({ icon: Icon, label, value }) {
-  return (
-    <div className="min-w-0 rounded-card border border-surface-border bg-surface-elevated/45 p-3">
-      <div className="flex items-center gap-2 text-xs text-content-muted">
-        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span>{label}</span>
-      </div>
-      <p className="mt-2 break-words text-lg font-semibold text-content-primary sm:text-xl">{value}</p>
-    </div>
-  );
+  return <MetricCard icon={Icon} label={label} value={value} />;
 }
 
-function ActivityInsights({ insights, onRetry }) {
+function ActivityInsights({ insights, onRetry, onOpenGame, canOpenGame }) {
   if (insights.loading) return <PageLoading rows={5} />;
   if (insights.error) {
     return <PageError title="Could not load activity insights" description={insights.error} onRetry={onRetry} />;
@@ -271,23 +288,27 @@ function ActivityInsights({ insights, onRetry }) {
           <SummaryStat icon={Clock3} label="Observed playtime" value={formatMinutes(summary.playtimeMinutes)} />
           <SummaryStat icon={Gamepad2} label="Games played" value={summary.gamesPlayed || 0} />
           <SummaryStat icon={Trophy} label="Achievements" value={summary.achievementsUnlocked || 0} />
-          <SummaryStat icon={CalendarDays} label="Precise active days" value={summary.preciseActiveDays || 0} />
+          <SummaryStat icon={CalendarDays} label="Active days" value={summary.preciseActiveDays || 0} />
         </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-content-muted">
           {summary.uncertainPlaytimeMinutes ? (
             <span className="text-state-warning">
-              Includes {formatMinutes(summary.uncertainPlaytimeMinutes)} from contained uncertain intervals.
+              {formatMinutes(summary.uncertainPlaytimeMinutes)} has uncertain timing.
             </span>
           ) : null}
           {summary.preciseDailyAverageMinutes != null ? (
-            <span>{formatMinutes(summary.preciseDailyAverageMinutes)} per precise active day; uncertain playtime is excluded.</span>
+            <span>{formatMinutes(summary.preciseDailyAverageMinutes)} average on active days.</span>
           ) : null}
         </div>
       </section>
       {summary.unallocatedPlaytimeMinutes ? <UnallocatedOverlap insights={insights} /> : null}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
-        <DailyActivityBars bars={insights.dailyBars || []} />
-        <MostPlayed games={insights.mostPlayed || []} />
+        <DailyActivityBars
+          bars={insights.dailyBars || []}
+          onOpenGame={onOpenGame}
+          canOpenGame={canOpenGame}
+        />
+        <MostPlayed games={insights.mostPlayed || []} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
       </div>
       <RecapHighlights insights={insights} />
     </div>
@@ -305,17 +326,11 @@ function InsightsContext({ insights }) {
           <h2 className="font-semibold text-content-primary">{period.label || "Activity insights"}</h2>
           {period.isIncomplete ? <Badge variant="warning">In progress</Badge> : null}
         </div>
-        <p className="mt-1 text-xs text-content-muted">
-          {coverage.status === "not_started"
-            ? "Reliable coverage has not started."
-            : `${coverage.reliableDays || 0} reliable activity day${coverage.reliableDays === 1 ? "" : "s"}${coverage.uncertainIntervals ? ` and ${coverage.uncertainIntervals} uncertain interval${coverage.uncertainIntervals === 1 ? "" : "s"}` : ""}${coverage.trailingMissingCloseouts ? `; ${coverage.trailingMissingCloseouts} expected closeout${coverage.trailingMissingCloseouts === 1 ? " is" : "s are"} still missing and not treated as zero play` : ""}.`}
-        </p>
+        {coverage.status === "not_started" ? <p className="mt-1 text-xs text-content-muted">Activity tracking has not started yet.</p> : null}
+        {coverage.trailingMissingCloseouts ? <p className="mt-1 text-xs text-state-warning">The latest activity check is still pending.</p> : null}
       </div>
       <div className="text-xs text-content-muted sm:text-right">
         {freshness ? <p>Checked through {freshness}</p> : null}
-        {!coverage.patternClaimsAvailable && coverage.status !== "not_started" ? (
-          <p>No trend, streak, or weekday claims with current coverage.</p>
-        ) : null}
       </div>
     </section>
   );
@@ -325,29 +340,39 @@ function UnallocatedOverlap({ insights }) {
   const overlap = insights.unallocatedOverlap || {};
   return (
     <section className="rounded-panel border border-state-warning/45 bg-state-warning/5 px-4 py-3 sm:px-5" aria-label="Unallocated overlapping activity">
-      <h2 className="font-semibold text-content-primary">Unallocated overlap</h2>
+      <h2 className="font-semibold text-content-primary">Outside this range</h2>
       <p className="mt-1 text-sm leading-6 text-content-secondary">
-        {formatMinutes(overlap.playtimeMinutes)} was observed across a missed-check interval that crosses this range boundary.
-        It is kept separate from the period total, daily bars, averages, and active-day count.
+        {formatMinutes(overlap.playtimeMinutes)} spans the edge of this range, so it is not included in the totals above.
       </p>
     </section>
   );
 }
 
-function DailyActivityBars({ bars }) {
+function DailyActivityBars({ bars, onOpenGame, canOpenGame }) {
   const maximum = Math.max(1, ...bars.map((bar) => bar.playtimeMinutes || 0));
+  const [selectedDay, setSelectedDay] = useState(null);
+  const selected = bars.find((bar) => bar.day === selectedDay) || bars.at(-1) || null;
   return (
     <section className="min-w-0 rounded-panel border border-surface-border bg-surface-card p-4 shadow-panel sm:p-5">
       <div className="mb-4">
         <h2 className="font-semibold">Daily activity</h2>
-        <p className="mt-1 text-xs text-content-muted">Reliable playtime only; exact achievements stay on their provider-derived activity day.</p>
+        <p className="mt-1 text-xs text-content-muted">Choose a day to see what you played.</p>
       </div>
       {!bars.length ? (
         <p className="rounded-card bg-surface-elevated/45 px-3 py-4 text-sm text-content-muted">No precisely dated activity in this range.</p>
       ) : (
         <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
           {bars.map((bar) => (
-            <div key={bar.day} className="grid min-w-0 grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-2 text-xs sm:grid-cols-[6rem_minmax(0,1fr)_auto]">
+            <button
+              type="button"
+              key={bar.day}
+              className={`grid min-w-0 w-full grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-1.5 py-1 text-left text-xs transition-colors sm:grid-cols-[6rem_minmax(0,1fr)_auto] ${selected?.day === bar.day ? "bg-surface-elevated/65" : "hover:bg-surface-elevated/40"}`}
+              onMouseEnter={() => setSelectedDay(bar.day)}
+              onFocus={() => setSelectedDay(bar.day)}
+              onClick={() => setSelectedDay(bar.day)}
+              aria-pressed={selected?.day === bar.day}
+              aria-label={`${formatDay(bar.day)}: ${bar.playtimeMinutes ? formatMinutes(bar.playtimeMinutes) : "no playtime"}${bar.achievementsUnlocked ? `, ${bar.achievementsUnlocked} achievements` : ""}`}
+            >
               <span className="truncate text-content-muted">{formatShortDay(bar.day)}</span>
               <div className="h-5 overflow-hidden rounded-full bg-surface-elevated" aria-hidden="true">
                 <div
@@ -359,37 +384,83 @@ function DailyActivityBars({ bars }) {
                 {bar.playtimeMinutes ? formatMinutes(bar.playtimeMinutes) : "No playtime"}
                 {bar.achievementsUnlocked ? ` · ${bar.achievementsUnlocked} 🏆` : ""}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       )}
+      {selected ? (
+        <div className="mt-4 border-t border-surface-border/70 pt-4" aria-live="polite">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-medium text-content-primary">{formatDay(selected.day)}</h3>
+            <span className="text-sm font-semibold text-content-primary">
+              {selected.playtimeMinutes ? formatMinutes(selected.playtimeMinutes) : "Achievements only"}
+            </span>
+          </div>
+          {selected.games?.length ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {selected.games.map((game) => {
+                const openable = canOpenGame?.(game);
+                return (
+                  <button
+                    type="button"
+                    key={game.steamAppId}
+                    disabled={!openable}
+                    onClick={() => openable && onOpenGame?.(game)}
+                    className={`flex min-w-0 items-center gap-3 rounded-card border border-surface-border bg-surface-elevated/40 p-2 text-left ${openable ? "transition-colors hover:border-primary/40 hover:bg-surface-elevated/70" : "cursor-default"}`}
+                    aria-label={openable ? `Open details for ${game.name}` : undefined}
+                  >
+                    <GameCover src={game.cover} name={game.name} alt={`${game.name} cover`} variant="poster" className="h-12 w-9 shrink-0 rounded-md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-content-primary">{game.name}</span>
+                      <span className="block text-xs text-content-muted">
+                        {game.playtimeMinutes ? formatMinutes(game.playtimeMinutes) : "No playtime"}
+                        {game.achievementsUnlocked ? ` · ${game.achievementsUnlocked} achievement${game.achievementsUnlocked === 1 ? "" : "s"}` : ""}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function MostPlayed({ games }) {
+function MostPlayed({ games, onOpenGame, canOpenGame }) {
   return (
     <section className="rounded-panel border border-surface-border bg-surface-card p-4 shadow-panel sm:p-5">
       <h2 className="font-semibold">Most played</h2>
-      <p className="mt-1 text-xs text-content-muted">Includes contained uncertain intervals in each game total.</p>
       {!games.length ? <p className="mt-4 text-sm text-content-muted">No observed playtime in this range.</p> : (
-        <ol className="mt-4 space-y-3">
-          {games.map((game, index) => (
-            <li key={game.steamAppId} className="flex min-w-0 items-center gap-3">
-              <span className="w-5 shrink-0 text-center text-sm font-semibold text-content-muted">{index + 1}</span>
+        <ol className="mt-4 space-y-2">
+          {games.map((game, index) => {
+            const openable = canOpenGame?.(game);
+            return (
+            <li key={game.steamAppId}>
+              <button
+                type="button"
+                disabled={!openable}
+                onClick={() => openable && onOpenGame?.(game)}
+                className={`group flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-card border border-surface-border bg-surface-elevated/35 p-2 text-left ${openable ? "transition-all hover:border-primary/40 hover:bg-surface-elevated/65" : "cursor-default"}`}
+                aria-label={openable ? `Open details for ${game.name}` : undefined}
+              >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-bg/80 text-xs font-bold text-content-secondary">{index + 1}</span>
               <GameCover
-                src={game.cover} name={game.name} alt={`${game.name} cover`} variant="poster"
-                className="h-12 w-9 shrink-0 rounded-md border border-surface-border"
+                src={game.cover} name={game.name} alt={`${game.name} cover`} artwork
+                className="h-14 w-24 shrink-0 rounded-lg border border-media-border/10 shadow-sm"
               />
-              <div className="min-w-0 flex-1">
-                <p className="break-words text-sm font-medium text-content-primary">{game.name}</p>
-                <p className="text-xs text-content-muted">
+              <span className="min-w-0 flex-1">
+                <span className="block line-clamp-2 text-sm font-semibold text-content-primary">{game.name}</span>
+                <span className="mt-1 block text-sm font-medium text-content-secondary">
                   {formatMinutes(game.playtimeMinutes)}
-                  {game.uncertainPlaytimeMinutes ? ` · ${formatMinutes(game.uncertainPlaytimeMinutes)} uncertain` : ""}
-                </p>
-              </div>
+                </span>
+                {game.uncertainPlaytimeMinutes ? <span className="mt-0.5 block text-xs text-state-warning">Timing uncertain</span> : null}
+              </span>
+              </button>
             </li>
-          ))}
+            );
+          })}
         </ol>
       )}
     </section>
@@ -414,16 +485,16 @@ function RecapHighlights({ insights }) {
           detail={top ? formatMinutes(top.playtimeMinutes) : null}
         />
         <RecapCard
-          label="First observed plays"
+          label="Newly played"
           value={String(firstPlays.length)}
-          detail={firstPlays.length ? firstPlays.slice(0, 3).map((game) => game.name).join(", ") : "No reliable first plays"}
+          detail={firstPlays.length ? firstPlays.slice(0, 3).map((game) => game.name).join(", ") : "No new games"}
         />
         <RecapCard
-          label="Reliable returns"
+          label="Returned to"
           value={String(returns.length)}
           detail={returns.length
             ? returns.slice(0, 3).map((game) => `${game.name} after ${game.daysSincePrevious} days`).join(", ")
-            : "No reliable returns"}
+            : "No returns yet"}
         />
       </div>
     </section>
@@ -440,62 +511,79 @@ function RecapCard({ label, value, detail }) {
   );
 }
 
-function DayCard({ item }) {
+function DayCard({ item, onOpenGame, canOpenGame }) {
   return (
     <section className="overflow-hidden rounded-panel border border-surface-border bg-surface-card shadow-panel">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-surface-border bg-surface-bg/25 px-4 py-3 sm:px-5">
-        <h2 className="font-semibold">{formatDay(item.date)}</h2>
-        <p className="text-sm text-content-secondary">
-          {formatMinutes(item.playtimeMinutes)} · {item.gameCount} game{item.gameCount === 1 ? "" : "s"}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border bg-surface-bg/25 px-4 py-3.5 sm:px-5">
+        <h2 className="text-lg font-semibold">{formatDay(item.date)}</h2>
+        <PeriodTotal item={item} />
       </div>
-      <GameRows games={item.games} />
+      <GameRows games={item.games} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
     </section>
   );
 }
 
-function UncertainCard({ item }) {
+function UncertainCard({ item, onOpenGame, canOpenGame }) {
   return (
     <section className="overflow-hidden rounded-panel border border-state-warning/45 bg-surface-card shadow-panel">
-      <div className="border-b border-state-warning/30 bg-state-warning/5 px-4 py-3 sm:px-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="font-semibold">{formatShortDay(item.startDay)}–{formatShortDay(item.endDay)}</h2>
-          <p className="text-sm text-content-secondary">
-            {formatMinutes(item.playtimeMinutes)} observed · {item.gameCount} game{item.gameCount === 1 ? "" : "s"}
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-state-warning/30 bg-state-warning/5 px-4 py-3.5 sm:px-5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2 className="text-lg font-semibold">{formatShortDay(item.startDay)}–{formatShortDay(item.endDay)}</h2>
+          <Badge variant="warning" className="px-2.5 py-1">Timing uncertain</Badge>
         </div>
-        <p className="mt-1 text-xs leading-5 text-state-warning">
-          This interval spans missed checks, so its playtime was not divided into invented daily values.
-        </p>
+        <PeriodTotal item={item} />
       </div>
-      <GameRows games={item.games} />
+      <GameRows games={item.games} onOpenGame={onOpenGame} canOpenGame={canOpenGame} />
     </section>
   );
 }
 
-function GameRows({ games }) {
+function PeriodTotal({ item }) {
   return (
-    <div className="divide-y divide-surface-border">
-      {games.map((game) => <GameRow key={game.steamAppId} game={game} />)}
+    <div className="flex shrink-0 items-baseline gap-2 text-right">
+      <span className="text-lg font-semibold text-content-primary">
+        {formatMinutes(item.playtimeMinutes)} played
+      </span>
+      <span className="text-xs text-content-muted">
+        {item.gameCount} game{item.gameCount === 1 ? "" : "s"}
+      </span>
     </div>
   );
 }
 
-function GameRow({ game }) {
+function GameRows({ games, onOpenGame, canOpenGame }) {
   return (
-    <div className="flex min-w-0 gap-3 px-4 py-3 sm:gap-4 sm:px-5">
-      <GameCover
-        src={game.cover}
-        name={game.name}
-        alt={`${game.name} cover`}
-        variant="poster"
-        className="h-16 w-12 shrink-0 rounded-lg border border-surface-border sm:h-20 sm:w-14"
-      />
-      <div className="min-w-0 flex-1">
+    <div className="divide-y divide-surface-border">
+      {games.map((game) => (
+        <GameRow
+          key={game.steamAppId}
+          game={game}
+          onOpenGame={onOpenGame}
+          canOpen={canOpenGame(game)}
+          showPlaytime={games.length > 1}
+        />
+      ))}
+    </div>
+  );
+}
+
+function GameRow({ game, onOpenGame, canOpen, showPlaytime }) {
+  return (
+    <GameArtworkRow
+      cover={game.cover}
+      name={game.name}
+      embedded
+      onClick={canOpen ? () => onOpenGame(game) : undefined}
+    >
         <div className="flex min-w-0 items-start justify-between gap-3">
-          <h3 className="min-w-0 break-words text-sm font-medium leading-5 text-content-primary">{game.name}</h3>
-          {game.playtimeMinutes ? (
-            <span className="shrink-0 text-sm font-medium text-content-secondary">{formatMinutes(game.playtimeMinutes)}</span>
+          <h3 className={`min-w-0 break-words text-lg font-semibold leading-6 text-content-primary ${canOpen ? "transition-colors group-hover:text-primary-light" : ""}`}>
+            {game.name}
+          </h3>
+          {showPlaytime && game.playtimeMinutes ? (
+            <Badge className="shrink-0 px-2.5 py-1 text-sm text-content-primary">
+              <Clock3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              {formatMinutes(game.playtimeMinutes)}
+            </Badge>
           ) : null}
         </div>
         {game.highlights?.length ? (
@@ -503,9 +591,8 @@ function GameRow({ game }) {
             {game.highlights.map((highlight) => <Highlight key={highlight.type} highlight={highlight} />)}
           </div>
         ) : null}
-        {game.achievements?.length ? <Achievements achievements={game.achievements} /> : null}
-      </div>
-    </div>
+        {game.achievements?.length ? <Achievements achievements={game.achievements} interactiveRow={canOpen} /> : null}
+    </GameArtworkRow>
   );
 }
 
@@ -523,7 +610,7 @@ function Highlight({ highlight }) {
   );
 }
 
-function Achievements({ achievements }) {
+function Achievements({ achievements, interactiveRow = false }) {
   const preview = achievements.slice(0, 3);
   const rest = achievements.slice(3);
   return (
@@ -533,7 +620,7 @@ function Achievements({ achievements }) {
         <span>{achievements.length === 1 ? "Achievement" : `${achievements.length} achievements`}: {preview.map((item) => item.name).join(", ")}</span>
       </div>
       {rest.length ? (
-        <details className="ml-5 mt-1">
+        <details className={`ml-5 mt-1 ${interactiveRow ? "relative z-20" : ""}`}>
           <summary className="cursor-pointer text-content-secondary hover:text-content-primary">Show {rest.length} more</summary>
           <ul className="mt-1 list-disc pl-4">
             {rest.map((item) => <li key={item.id}>{item.name}</li>)}

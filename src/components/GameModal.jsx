@@ -62,6 +62,7 @@ import SteamPrice from "./SteamPrice";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { usePersonalGenres } from "../hooks/usePersonalGenres";
 import { parseBacklogAddedDate } from "../utils/gameDateInsights";
+import { formatDisplayDate } from "../utils/dateFormat";
 
 const hourSourceOptions = [
   { value: "auto", label: "Auto" },
@@ -107,17 +108,6 @@ function draftFromGame(game) {
 
 function draftKey(draft) {
   return JSON.stringify(draft);
-}
-
-function fmtDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function fmtBacklogAddedDate(value) {
@@ -442,13 +432,13 @@ export default function GameModal({
 
   const displayGame = isEditMode ? { ...game, ...draft } : game;
   const cover = (isEditMode ? draft.rawg_cover : game.cover) || null;
-  const releaseDate = fmtDate(
+  const releaseDate = formatDisplayDate(
     isEditMode ? draft.rawg_released || game.releaseDate : game.releaseDate,
   );
-  const startedAt = fmtDate(displayGame.started_at);
-  const finishedAt = fmtDate(displayGame.finished_at);
+  const startedAt = formatDisplayDate(displayGame.started_at);
+  const finishedAt = formatDisplayDate(displayGame.finished_at);
   const backlogAddedAt = fmtBacklogAddedDate(displayGame.backlog_added_at);
-  const steamLastPlayed = fmtDate(game.steamLastPlayedAt);
+  const steamLastPlayed = formatDisplayDate(game.steamLastPlayedAt);
   const hours = resolveGameHours(displayGame);
   const rating = Number(game.rating) > 0 ? `${game.rating}/5` : "—";
   const metacritic =

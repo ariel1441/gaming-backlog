@@ -801,6 +801,98 @@ authorized candidate/CI phase, but it is **not production-release-ready** until 
 ordered migration/deployment procedure, exact-candidate CI and external Railway /
 first-closeout checks pass.
 
+#### Shared UI and Activity polish checkpoint (2026-09-25)
+
+This follow-up worktree is based on committed `Dev` revision
+`1eb372a64bb79f8c2329bc0fffbefad84e259f7f`. It contains the UI/API changes below
+plus preserved, untracked local-only `work/` scenario scripts and screenshots. No
+push, deployment, Railway change or production access was performed.
+
+Implemented in this checkpoint:
+
+- Backlog, Wishlist, manual-list and Activity rows now share an artwork-row frame.
+  Landscape artwork has a stable width and stretches to the row's usable content
+  height when price or metadata creates a taller row. Timeline keeps its purposely
+  larger event composition.
+- Repeated metric cards, metric pills, metadata pills and common date formatting
+  were consolidated. Activity now uses the standard page heading and loading-row
+  treatment; Reviews, Timeline, Profile and Discover use the same primitives where
+  their visual roles match.
+- Gaming activity now appears directly after Play Next in primary navigation.
+- The adaptive genre list no longer becomes stuck at a narrow-layout result such as
+  one genre plus `+4`. It measures every candidate after resizing, keeps compact
+  card genres on one line, reserves room for the correct overflow count and may
+  skip an unusually wide tag when later tags fit.
+- Activity period headers use user-facing wording such as **2h played**. The
+  permanent uncertain-interval count was removed from the summary; affected
+  intervals still carry **Timing uncertain**, and incomplete/missing coverage is
+  still disclosed where it changes interpretation.
+- Insights copy was shortened. The daily chart is keyboard/click/hover selectable
+  and shows the games, artwork, playtime and achievements for the chosen exact day.
+  The API now derives these per-day game summaries from the existing private
+  ledger, so historical rows do not require another provider sync. Most Played is
+  a ranked artwork-card list and linked Backlog games open their details.
+
+Important range behavior retained:
+
+- A rolling **7 days** range and calendar **This week** are not equivalent. For
+  example, Sep 19-21 can be fully contained by a rolling range beginning Sep 19 but
+  cross a calendar week beginning Sep 21.
+- When the full uncertain interval is contained by a selected period, its time is
+  included in the period and per-game totals with uncertainty disclosed.
+- When it crosses a period boundary, the exact in-period portion is unknowable. It
+  remains visible as **Outside this range** but is excluded from the period total,
+  Most Played ranking, daily bars and active-day average. Counting the whole value
+  would overstate the period; splitting it automatically would invent data.
+
+Focused verification for this exact dirty checkpoint:
+
+- `node --test backend/services/steamActivityService.test.js` passed 10/10,
+  including per-day game details and the existing range/uncertainty contracts.
+- `npx playwright test tests/e2e/activity.spec.js tests/e2e/steam-prices.spec.js
+  --project=chromium` passed all five Activity cases and the mobile Wishlist case.
+  Its desktop Wishlist assertion initially compared artwork with the row including
+  padding rather than its usable height; after correcting that test measurement,
+  the focused desktop rerun passed 1/1. The first browser launch was blocked before
+  execution by the filesystem sandbox; the approved local-server run executed.
+- `npm run lint -- --quiet` passed with no errors.
+- `npm run build` passed: Vite built 68 JavaScript chunks and the 512000-byte
+  per-chunk budget passed. The existing stale Browserslist-data notice remains.
+- The localhost database-backed Activity lab captured refreshed Activity, Insights
+  and shared-row screenshots without production or user data.
+- `git diff --check` passed with only Windows LF-to-CRLF working-copy notices.
+
+Recommended next product/design pass (deliberately not expanded into this fix):
+
+1. Keep boundary-crossing time out of exact period metrics, but show its games next
+   to **Outside this range** so a title such as Cyberpunk does not appear to vanish
+   from Insights. Consider a clearly separate "may overlap this range" list rather
+   than mixing it into the ranked Most Played total.
+2. Design an optional correction flow for uncertain intervals. A user could assign
+   a game's full duration to one eligible activity day or split it across eligible
+   days. Preserve the immutable raw Steam observation, require allocated minutes to
+   equal the original game interval total, constrain dates to the interval, record
+   authorship/time, support reset, and recompute derived charts without duplicating
+   events or notifications. Decide explicitly whether achievements remain governed
+   only by their provider timestamps (recommended: yes).
+3. Add a weekday-pattern visualization (Sunday through Saturday) only when coverage
+   is sufficient. It should aggregate reliable daily intervals, exclude unresolved
+   time, expose game/day drill-down and explain incomplete coverage without treating
+   missing checks as zero play. This chart was discussed in metric eligibility but
+   was not part of the implemented V1 daily-bar scope.
+4. Review additional useful insights without manufacturing precision: playtime by
+   month, games returned to, new games started, achievement pace, longest reliable
+   gaps, comparison with the previous complete period and per-game activity pages.
+   Every candidate should be tested against current-period incompleteness, range
+   boundaries, account replacement and private-data rules before implementation.
+5. Run a dedicated UX pass over desktop/mobile/loading/empty/error/current-period
+   states and decide whether "Observed playtime" remains necessary in summary
+   labels now that the page-level copy already explains Steam's cumulative nature.
+
+External release work remains pending exactly as described above. This checkpoint
+does not replace the required migration/backend/frontend ordering, exact-candidate
+CI, Railway schedule change or first-closeout production verification.
+
 ### Continuing across chats
 
 The phase names and scopes above are the handoff contract. After a phase is complete,
@@ -831,8 +923,9 @@ Focused implementation coverage must include:
 ## Later improvements
 
 - Calendar heatmaps, richer weekly/monthly/yearly recaps and comparison trends.
-- Session notes, manual sessions, corrections, multiple playthroughs and per-game
-  activity exclusions.
+- Weekday-pattern charts based only on sufficiently complete reliable activity.
+- Session notes, manual sessions, auditable allocation/correction of uncertain
+  intervals, multiple playthroughs and per-game activity exclusions.
 - Goals, challenges and progress recaps.
 - User-configurable timezone/cutoff and retention/export controls.
 - Optional detailed provenance UI when useful, without adding noise to normal cards.

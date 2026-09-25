@@ -24,28 +24,12 @@ import {
   ActionMenu,
   AdaptiveChipList,
   GameCover,
+  MetaPill,
   StatusBadge,
   useToast,
 } from "./ui";
-import { GAME_ROW_COVER_SIZE } from "./gameRowCoverStyles";
-
-function fmtDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function fmtShortDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
-}
+import GameArtworkRow from "./GameArtworkRow";
+import { formatDisplayDate, formatNumericDate } from "../utils/dateFormat";
 
 function daysSince(value) {
   if (!value) return null;
@@ -58,36 +42,6 @@ export const MIN_PLANNED_STEAM_ACTIVITY_HOURS = 1;
 
 function statusIsAlreadyActiveOrDone(status, statusGroupOf) {
   return ["playing", "done"].includes(statusGroupOf(status));
-}
-
-function MiniStat({ icon: Icon, label, value, tone = "default" }) {
-  const toneClass =
-    tone === "warning"
-      ? "text-state-warning"
-      : tone === "success"
-        ? "text-state-success"
-        : tone === "primary"
-          ? "text-primary"
-          : tone === "integration"
-            ? "text-integration-steam"
-          : tone === "muted"
-            ? "text-content-muted"
-            : "text-content-primary";
-
-  return (
-    <div
-      className="inline-flex min-w-0 items-center gap-1 rounded-full border border-surface-border/70 bg-surface-elevated/55 px-2 py-1.5"
-      title={label}
-    >
-      <Icon
-        className="h-3.5 w-3.5 shrink-0 text-content-muted"
-        aria-hidden="true"
-      />
-      <span className={`truncate text-xs font-semibold ${toneClass}`}>
-        {value}
-      </span>
-    </div>
-  );
 }
 
 function TimelineRow({ startedAt, finishedAt }) {
@@ -214,9 +168,9 @@ export default function GameCard({
     onFinish?.();
   };
 
-  const releaseDate = fmtDate(game.releaseDate);
-  const startedAt = fmtShortDate(game.started_at);
-  const finishedAt = fmtShortDate(game.finished_at);
+  const releaseDate = formatDisplayDate(game.releaseDate);
+  const startedAt = formatNumericDate(game.started_at);
+  const finishedAt = formatNumericDate(game.finished_at);
   const myGenres = game.entryKind === "wishlist" ? splitCsv(game.genres) : personalGenreNames(game);
   const hours = resolveGameHours(game);
   const cardStats = [
@@ -250,7 +204,7 @@ export default function GameCard({
         : null
       : null;
   const steamLastPlayed = showSteamContext && game.steamOwned
-    ? fmtShortDate(game.steamLastPlayedAt)
+    ? formatNumericDate(game.steamLastPlayedAt)
     : null;
   const steamActivityDays = daysSince(game.steamFirstPlayObservedAt);
   const steamActivityStat =
@@ -371,42 +325,16 @@ export default function GameCard({
 
   if (isList) {
     return (
-      <article
-        className="group relative overflow-hidden rounded-2xl border border-surface-border bg-surface-card shadow-sm transition-colors hover:border-primary/35"
-        style={{ WebkitTapHighlightColor: "transparent" }}
+      <GameArtworkRow
+        cover={game.cover}
+        coverFallbacks={game.coverFallbacks}
+        name={game.name}
+        onClick={onClick ? handleCardClick : undefined}
+        actions={actionButtons}
+        footer={footer}
+        bodyClassName="pr-14 sm:pr-16"
       >
-        {openDetailsButton}
-        {actionButtons}
-        <div className="relative min-h-[172px] sm:min-h-[184px]">
-          {game.cover ? (
-            <>
-              <GameCover
-                src={game.cover}
-                fallbackSources={game.coverFallbacks}
-                artwork
-                name={game.name}
-                className="absolute inset-0 h-full w-full"
-                imageClassName="absolute inset-0 opacity-35"
-                fallbackClassName="opacity-35"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/72" />
-              <div className="absolute inset-0 bg-gradient-to-t from-surface-card/70 via-transparent to-transparent" />
-            </>
-          ) : null}
-
-          <div className="relative flex min-h-[172px] gap-4 p-4 pr-14 sm:min-h-[184px] sm:gap-5 sm:p-5 sm:pr-16">
-            <GameCover
-              src={game.cover}
-              fallbackSources={game.coverFallbacks}
-              artwork
-              name={game.name}
-              alt={`${game.name || "Game"} cover`}
-              decorative={false}
-              imageClassName="absolute inset-0"
-              className={`relative ${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl border border-media-border/10 shadow-lg`}
-            />
-
-            <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
+        <div className="flex min-w-0 flex-col gap-3">
               <div className="min-w-0">
                 <h3
                   className="line-clamp-2 text-lg font-semibold leading-tight text-content-primary sm:text-xl"
@@ -423,7 +351,7 @@ export default function GameCard({
 
               {cardStats.length ? <div className="flex flex-wrap gap-1.5">
                 {cardStats.map((stat) => (
-                  <MiniStat
+                  <MetaPill roomy
                     key={stat.label}
                     icon={stat.icon}
                     label={stat.label}
@@ -432,7 +360,7 @@ export default function GameCard({
                   />
                 ))}
                 {steamPlaytime ? (
-                  <MiniStat
+                  <MetaPill roomy
                     icon={Gamepad2}
                     label="Steam"
                     value={steamPlaytime}
@@ -440,7 +368,7 @@ export default function GameCard({
                   />
                 ) : null}
                 {steamLastPlayed ? (
-                  <MiniStat
+                  <MetaPill roomy
                     icon={CalendarDays}
                     label="Last played on Steam"
                     value={steamLastPlayed}
@@ -448,7 +376,7 @@ export default function GameCard({
                   />
                 ) : null}
                 {achievementStat ? (
-                  <MiniStat
+                  <MetaPill roomy
                     icon={achievementStat.icon}
                     label={achievementStat.label}
                     value={achievementStat.value}
@@ -460,15 +388,8 @@ export default function GameCard({
 
               <SteamPrice price={game.steamPrice || game.wishlist?.steamPrice} prominent={game.entryKind === "wishlist"} />
               {myGenres.length ? <AdaptiveChipList items={myGenres} className="gap-2" /> : null}
-            </div>
-          </div>
         </div>
-        {footer ? (
-          <div className="relative z-20 border-t border-surface-border/70 bg-surface-card/95 px-4 py-3 sm:px-5">
-            {footer}
-          </div>
-        ) : null}
-      </article>
+      </GameArtworkRow>
     );
   }
 
@@ -515,7 +436,7 @@ export default function GameCard({
             <div className="grid content-start gap-2">
               <div className="flex flex-wrap gap-1.5">
               {cardStats.map((stat) => (
-                <MiniStat
+                <MetaPill roomy
                   key={stat.label}
                   icon={stat.icon}
                   label={stat.label}
@@ -524,7 +445,7 @@ export default function GameCard({
                 />
               ))}
               {steamPlaytime ? (
-                <MiniStat
+                <MetaPill roomy
                   icon={Gamepad2}
                   label="Steam"
                   value={steamPlaytime}
@@ -532,7 +453,7 @@ export default function GameCard({
                 />
               ) : null}
               {steamLastPlayed ? (
-                <MiniStat
+                <MetaPill roomy
                   icon={CalendarDays}
                   label="Last played on Steam"
                   value={steamLastPlayed}
@@ -540,7 +461,7 @@ export default function GameCard({
                 />
               ) : null}
               {steamActivityStat ? (
-                <MiniStat
+                <MetaPill roomy
                   icon={steamActivityStat.icon}
                   label={steamActivityStat.label}
                   value={steamActivityStat.value}
@@ -548,7 +469,7 @@ export default function GameCard({
                 />
               ) : null}
               {achievementStat ? (
-                <MiniStat
+                <MetaPill roomy
                   icon={achievementStat.icon}
                   label={achievementStat.label}
                   value={achievementStat.value}
@@ -562,7 +483,7 @@ export default function GameCard({
         ) : (
           cardStats.length || steamPlaytime || steamLastPlayed || steamActivityStat || achievementStat || startedAt || finishedAt ? <div className="flex flex-wrap gap-1.5">
             {cardStats.map((stat) => (
-              <MiniStat
+              <MetaPill roomy
                 key={stat.label}
                 icon={stat.icon}
                 label={stat.label}
@@ -571,7 +492,7 @@ export default function GameCard({
               />
             ))}
             {steamPlaytime ? (
-              <MiniStat
+              <MetaPill roomy
                 icon={Gamepad2}
                 label="Steam"
                 value={steamPlaytime}
@@ -579,7 +500,7 @@ export default function GameCard({
               />
             ) : null}
             {steamLastPlayed ? (
-              <MiniStat
+              <MetaPill roomy
                 icon={CalendarDays}
                 label="Last played on Steam"
                 value={steamLastPlayed}
@@ -587,7 +508,7 @@ export default function GameCard({
               />
             ) : null}
             {steamActivityStat ? (
-              <MiniStat
+              <MetaPill roomy
                 icon={steamActivityStat.icon}
                 label={steamActivityStat.label}
                 value={steamActivityStat.value}
@@ -595,7 +516,7 @@ export default function GameCard({
               />
             ) : null}
             {achievementStat ? (
-              <MiniStat
+              <MetaPill roomy
                 icon={achievementStat.icon}
                 label={achievementStat.label}
                 value={achievementStat.value}

@@ -594,10 +594,25 @@ export function groupSteamActivityInsights(
   const ensureDaily = (day) => {
     let item = dailyMap.get(day);
     if (!item) {
-      item = { day, playtimeMinutes: 0, achievementsUnlocked: 0 };
+      item = { day, playtimeMinutes: 0, achievementsUnlocked: 0, gameMap: new Map() };
       dailyMap.set(day, item);
     }
     return item;
+  };
+
+  const ensureDailyGame = (daily, row) => {
+    const metadata = gameFromRow(row);
+    let game = daily.gameMap.get(metadata.steamAppId);
+    if (!game) {
+      game = { ...metadata, playtimeMinutes: 0, achievementsUnlocked: 0 };
+      daily.gameMap.set(metadata.steamAppId, game);
+    }
+    game.name = game.name === "Steam game" ? metadata.name : game.name;
+    game.cover ||= metadata.cover;
+    game.gameId ??= metadata.gameId;
+    game.catalogGameId ??= metadata.catalogGameId;
+    game.isBacklogGame ||= metadata.isBacklogGame;
+    return game;
   };
 
   for (const row of observations) {
@@ -611,7 +626,9 @@ export function groupSteamActivityInsights(
       game.playtimeMinutes += minutes;
       game.reliablePlaytimeMinutes += minutes;
       reliablePlaytimeMinutes += minutes;
-      ensureDaily(day).playtimeMinutes += minutes;
+      const daily = ensureDaily(day);
+      daily.playtimeMinutes += minutes;
+      ensureDailyGame(daily, row).playtimeMinutes += minutes;
       reliableActivityDays.add(day);
       continue;
     }
@@ -642,7 +659,9 @@ export function groupSteamActivityInsights(
     const day = dateOnly(rowValue(row, "activity_day", "activityDay"));
     if (!insightIncluded(day, period)) continue;
     achievementsUnlocked += 1;
-    ensureDaily(day).achievementsUnlocked += 1;
+    const daily = ensureDaily(day);
+    daily.achievementsUnlocked += 1;
+    ensureDailyGame(daily, row).achievementsUnlocked += 1;
   }
 
   const firstObservedPlays = [];
@@ -667,7 +686,14 @@ export function groupSteamActivityInsights(
   });
 
   const preciseActiveDays = reliableActivityDays.size;
-  const dailyBars = [...dailyMap.values()].sort((a, b) => a.day.localeCompare(b.day));
+  const dailyBars = [...dailyMap.values()]
+    .map(({ gameMap: dailyGames, ...day }) => ({
+      ...day,
+      games: [...dailyGames.values()]
+        .filter((game) => game.playtimeMinutes > 0 || game.achievementsUnlocked > 0)
+        .sort((a, b) => b.playtimeMinutes - a.playtimeMinutes || a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => a.day.localeCompare(b.day));
   const reliableCoverageSufficient = coverage.reliableDays >= 7 && coverage.missingCloseouts === 0;
   return {
     range, timezone, period,

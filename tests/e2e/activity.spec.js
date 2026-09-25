@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+const landscapeCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23233b63'/%3E%3C/svg%3E";
+
 const feed = {
   range: "7d",
   timezone: "Asia/Jerusalem",
@@ -15,7 +17,7 @@ const feed = {
       games: [{
         steamAppId: "20", gameId: 5,
         name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen",
-        cover: null, playtimeMinutes: 90,
+        cover: landscapeCover, playtimeMinutes: 90,
         highlights: [{ type: "first_played" }, { type: "added_to_library" }],
         achievements: [
           { id: 1, name: "First step" }, { id: 2, name: "Second step" },
@@ -56,13 +58,16 @@ const insightsFeed = {
   },
   mostPlayed: [
     { steamAppId: "10", name: "Hades", cover: null, playtimeMinutes: 185, reliablePlaytimeMinutes: 0, uncertainPlaytimeMinutes: 185 },
-    { steamAppId: "20", name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen", cover: null, playtimeMinutes: 90, reliablePlaytimeMinutes: 90, uncertainPlaytimeMinutes: 0 },
+    { steamAppId: "20", gameId: 5, name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen", cover: landscapeCover, playtimeMinutes: 90, reliablePlaytimeMinutes: 90, uncertainPlaytimeMinutes: 0 },
   ],
   firstObservedPlays: [{ steamAppId: "20", name: "Long first play title", activityDay: "2026-09-21" }],
   reliableReturns: [{ steamAppId: "10", name: "Hades", activityDay: "2026-09-21", daysSincePrevious: 46 }],
   dailyBars: [
-    { day: "2026-09-21", playtimeMinutes: 90, achievementsUnlocked: 1 },
-    { day: "2026-09-22", playtimeMinutes: 0, achievementsUnlocked: 1 },
+    {
+      day: "2026-09-21", playtimeMinutes: 90, achievementsUnlocked: 1,
+      games: [{ steamAppId: "20", gameId: 5, name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen", cover: landscapeCover, playtimeMinutes: 90, achievementsUnlocked: 1 }],
+    },
+    { day: "2026-09-22", playtimeMinutes: 0, achievementsUnlocked: 1, games: [{ steamAppId: "10", name: "Hades", cover: null, playtimeMinutes: 0, achievementsUnlocked: 1 }] },
   ],
   uncertainIntervals: [{ key: "inside", startDay: "2026-09-22", endDay: "2026-09-24", playtimeMinutes: 185 }],
   unallocatedOverlap: {
@@ -84,6 +89,15 @@ async function authenticatedActivity(
     if (url.pathname === "/api/auth/me") return route.fulfill({ json: user });
     if (url.pathname === "/api/meta/status-groups") {
       return route.fulfill({ json: { groups: { planned: [], playing: [], done: [], other: [] }, buckets: {} } });
+    }
+    if (url.pathname === "/api/games") {
+      return route.fulfill({ json: [{
+        id: 5,
+        name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen",
+        status: "playing",
+        position: 1000,
+        cover: null,
+      }] });
     }
     if (url.pathname === "/api/activity/play-history") return activityHandler(route, url);
     if (url.pathname === "/api/activity/insights") return insightsHandler(route, url);
@@ -113,8 +127,18 @@ test("activity feed covers loading, ranges, highlights, achievements and respons
   await expect(page.getByText("Returned after 46 days", { exact: true })).toBeVisible();
   await expect(page.getByText("5 achievements:")).toBeVisible();
   await expect(page.getByText("Show 2 more", { exact: true })).toBeVisible();
-  await expect(page.getByText(/spans missed checks/)).toBeVisible();
+  await expect(page.getByText("Timing uncertain", { exact: true })).toBeVisible();
+  await expect(page.getByText("3h 5m played", { exact: true })).toBeVisible();
+  const activityCover = page.getByAltText("A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen cover");
+  await expect(activityCover).toBeVisible();
+  expect((await activityCover.boundingBox()).width).toBeGreaterThan(120);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.getByRole("button", { name: "Open details for A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen" })).toBeVisible();
+  await page.getByRole("button", { name: "Close game details" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
 
   await page.getByRole("button", { name: "30 days", exact: true }).click();
   await expect(page.getByText("No activity in this range", { exact: true })).toBeVisible();
@@ -163,12 +187,14 @@ test("activity insights cover ranges, uncertainty, exact days and responsive sta
   await page.getByRole("button", { name: "Insights", exact: true }).click();
   await expect(page.getByRole("status", { name: "Loading", exact: true })).toBeVisible();
   await expect(page.getByText("In progress", { exact: true })).toBeVisible();
-  await expect(page.getByText("Includes 3h 5m from contained uncertain intervals.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Unallocated overlap" })).toBeVisible();
+  await expect(page.getByText("3h 5m has uncertain timing.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Outside this range" })).toBeVisible();
   await expect(page.getByText("No playtime · 1 🏆", { exact: true })).toBeVisible();
   await expect(page.getByText("Hades after 46 days", { exact: true })).toBeVisible();
-  await expect(page.getByText("No trend, streak, or weekday claims with current coverage.", { exact: true })).toBeVisible();
-  await expect(page.getByText(/1 expected closeout is still missing and not treated as zero play/)).toBeVisible();
+  await expect(page.getByText("The latest activity check is still pending.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Monday, Sep 21: 1h 30m, 1 achievements/ }).click();
+  await expect(page.getByRole("heading", { name: "Monday, Sep 21", exact: true })).toBeVisible();
+  await expect(page.getByText("1h 30m · 1 achievement", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await page.getByRole("button", { name: "This month", exact: true }).click();
