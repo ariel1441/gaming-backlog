@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -125,7 +126,7 @@ test("Steam candidate matching drains durable work without crossing interruption
   } finally {
     globalThis.fetch = nativeFetch;
     await pool?.end();
-    await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });

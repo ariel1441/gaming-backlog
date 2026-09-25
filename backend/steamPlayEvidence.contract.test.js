@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -436,10 +437,10 @@ test("Steam play evidence survives delayed decisions and connection replacement"
   } finally {
     globalThis.fetch = nativeFetch;
     // enqueueSteamSync also schedules a detached microtask. Drain its shared
-    // worker before closing the pool and force-dropping the fixture database.
+    // worker before closing the pool and waiting for fixture connections to close.
     await drainSteamSyncJobs?.();
     await pool?.end();
-    await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });
