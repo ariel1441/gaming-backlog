@@ -1,5 +1,6 @@
 import React from "react";
 import Skeleton from "../ui/Skeleton";
+import { GAME_ROW_COVER_SIZE } from "../gameRowCoverStyles";
 
 function LoadingRegion({ label, className = "", children, ...props }) {
   return (
@@ -114,8 +115,8 @@ export function CollectionContentSkeleton({ viewMode = "grid", rows = 8, collect
 
 function RowSkeleton() {
   return (
-    <div className="flex min-h-28 items-center gap-4 rounded-2xl border border-surface-border bg-surface-card p-3 sm:p-4">
-      <Skeleton className="h-20 w-14 shrink-0 rounded-lg sm:h-24 sm:w-16" />
+    <div className="flex min-h-[9rem] items-center gap-4 rounded-2xl border border-surface-border bg-surface-card p-3 sm:min-h-[11.5rem] sm:gap-5 sm:p-5">
+      <Skeleton className={`${GAME_ROW_COVER_SIZE} shrink-0 rounded-xl`} />
       <div className="min-w-0 flex-1 space-y-3"><Skeleton className="h-5 w-3/5" /><Skeleton className="h-4 w-2/5" /><Skeleton className="h-7 w-24 rounded-full" /></div>
       <Skeleton className="hidden h-9 w-20 rounded-control sm:block" />
     </div>

@@ -30,7 +30,8 @@ const scope = `FROM user_activity_events e
   ) related_wishlist ON TRUE
   WHERE e.user_id = $1 AND e.state <> 'dismissed' AND e.source IN ('steam_library', 'steam_wishlist', 'steam_prices')`;
 const attention = `(e.source = 'steam_library' AND e.event_kind = 'decision' AND e.state = 'open')`;
-const reviewedSteamActivity = `(e.source = 'steam_library' AND e.state = 'resolved')`;
+const reviewedSteamActivity = `(e.source = 'steam_library'
+  AND e.event_kind = 'decision' AND e.state = 'resolved')`;
 const mutedPriceTransition = `(e.source = 'steam_prices'
   AND e.event_type IN ('steam_price_increase', 'steam_sale_ended'))`;
 const attentionScope = `FROM user_activity_events e
@@ -84,6 +85,8 @@ const visibleUpdateFast = `NOT ${attention} AND NOT ${reviewedSteamActivity}
 // Price transitions retain their exact group key. Other domains use game + run.
 const groupKey = `CASE WHEN e.event_type = 'wishlist_priority_changed'
   THEN 'wishlist-order:' || account.id::text || ':' || e.sync_run_id::text
+  WHEN e.payload_json->>'groupKey' IS NOT NULL
+  THEN e.payload_json->>'groupKey'
   WHEN ${attention} AND e.game_id IS NULL
   AND e.event_type IN ('steam_new_game', 'steam_started_playing')
   THEN 'steam-acquisition:' || account.id::text || ':' || e.external_id

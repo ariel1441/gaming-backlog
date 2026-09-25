@@ -5,10 +5,17 @@ import {
   listActivityEvents,
   updateActivityEvent,
 } from "../services/activityEventService.js";
-import { listActivity, listPlayHistory, updateActivity } from "../validators/activity.js";
+import {
+  listActivity, listActivityInsights, listPlayHistory, resetActivityAllocation,
+  saveActivityAllocation, updateActivity,
+} from "../validators/activity.js";
 import { listInbox, updateInbox, hideOtherInbox } from '../validators/activity.js';
 import { activateActivityInbox, listActivityInbox, updateActivityInbox, hideOtherActivityUpdates, clearActivityUpdates } from '../services/activityInboxService.js';
-import { listSteamActivityHistory } from "../services/steamActivityService.js";
+import {
+  listSteamActivityHistory, listSteamActivityInsights, resetSteamActivityAllocation,
+  saveSteamActivityAllocation,
+} from "../services/steamActivityService.js";
+import { forbidden } from "../utils/httpError.js";
 
 const router = express.Router();
 router.post('/inbox/hide-other', verifyToken, hideOtherInbox, async (req, res, next) => {
@@ -30,8 +37,47 @@ router.post('/inbox/activate', verifyToken, async (req, res, next) => {
 
 router.get('/play-history', verifyToken, listPlayHistory, async (req, res, next) => {
   try {
+    if (req.user?.is_guest) {
+      throw forbidden("Gaming activity is unavailable in demo sessions.");
+    }
     res.setHeader('Cache-Control', 'no-store');
     res.json(await listSteamActivityHistory(req.user.id, req.query));
+  } catch (error) {
+    next(error);
+  }
+});
+router.get('/insights', verifyToken, listActivityInsights, async (req, res, next) => {
+  try {
+    if (req.user?.is_guest) {
+      throw forbidden("Gaming activity is unavailable in demo sessions.");
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await listSteamActivityInsights(req.user.id, req.query));
+  } catch (error) {
+    next(error);
+  }
+});
+router.put('/play-history/:observationId/allocation', verifyToken, saveActivityAllocation, async (req, res, next) => {
+  try {
+    if (req.user?.is_guest) throw forbidden("Gaming activity is unavailable in demo sessions.");
+    res.json(await saveSteamActivityAllocation(
+      req.user.id,
+      req.params.observationId,
+      req.body.allocations,
+      req.body.expectedRevision,
+    ));
+  } catch (error) {
+    next(error);
+  }
+});
+router.delete('/play-history/:observationId/allocation', verifyToken, resetActivityAllocation, async (req, res, next) => {
+  try {
+    if (req.user?.is_guest) throw forbidden("Gaming activity is unavailable in demo sessions.");
+    res.json(await resetSteamActivityAllocation(
+      req.user.id,
+      req.params.observationId,
+      req.query.expectedRevision,
+    ));
   } catch (error) {
     next(error);
   }

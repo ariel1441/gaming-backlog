@@ -112,6 +112,13 @@ test("genre suggestion routes return only owner-scoped, missing personal genres"
       if (sql.includes("SELECT 1 FROM games WHERE id = $1 AND user_id = $2")) {
         return { rows: [{ "?column?": 1 }] };
       }
+      if (/SELECT personal_genre_id\s+FROM game_genre_suggestion_dismissals/.test(sql)) {
+        return { rows: [] };
+      }
+      if (sql.includes("INSERT INTO game_genre_suggestion_dismissals")) {
+        writes.push(sql);
+        return { rows: [] };
+      }
       if (
         sql.startsWith("DELETE FROM game_personal_genres") ||
         sql.includes("INSERT INTO game_personal_genres") ||
@@ -159,6 +166,21 @@ test("genre suggestion routes return only owner-scoped, missing personal genres"
       assert.deepEqual(
         oneGame.body.suggestions.map((genre) => genre.name),
         ["Roguelike"],
+      );
+
+      const dismissed = await request(
+        baseUrl,
+        "/api/games/12/genre-suggestions/dismiss",
+        {
+          method: "POST",
+          body: { personalGenreIds: [2] },
+          authPayload: { is_guest: false },
+        },
+      );
+      assert.equal(dismissed.status, 200);
+      assert.deepEqual(dismissed.body.dismissedPersonalGenreIds, [2]);
+      assert.ok(
+        writes.some((sql) => sql.includes("INSERT INTO game_genre_suggestion_dismissals")),
       );
 
       const invalidApply = await request(

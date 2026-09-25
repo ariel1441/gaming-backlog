@@ -15,6 +15,7 @@ import {
   listSteamImportCandidates,
   mergeBacklogDuplicateGames,
   normalizeOwnedGamesPayload,
+  normalizeSteamAchievementUnlocks,
   normalizeSteamAchievementSummary,
   steamCandidateOrderBy,
   summarizeAchievementSyncResults,
@@ -29,6 +30,7 @@ import {
   enqueueSteamSync,
   getSteamSyncJob,
 } from "./steamLibrarySyncService.js";
+import { gamingActivityDay } from "../utils/gamingActivityDay.js";
 
 async function withMockClient(queryImpl, fn) {
   const originalConnect = pool.connect;
@@ -759,6 +761,109 @@ test("applySteamStatusSuggestion never substitutes today for an invalid approxim
   );
 });
 
+test("owned-library snapshot time is captured when the response arrives across the 05:00 boundary", async () => {
+  const previous = process.env.STEAM_MOCK_OWNED_GAMES_JSON;
+  process.env.STEAM_MOCK_OWNED_GAMES_JSON = JSON.stringify({
+    response: { game_count: 1, games: [{ appid: 10, playtime_forever: 240 }] },
+  });
+  const queueTime = "2026-09-26T01:59:59.000Z";
+  let observedAt = null;
+  try {
+    const games = await fetchOwnedSteamGames("76561198000000000", {
+      snapshotClock: () => "2026-09-26T02:00:01.000Z",
+      onSnapshotObserved: (value) => { observedAt = value; },
+    });
+    assert.equal(games.length, 1);
+    assert.equal(gamingActivityDay(queueTime), "2026-09-25");
+    assert.equal(observedAt, "2026-09-26T02:00:01.000Z");
+    assert.equal(gamingActivityDay(observedAt), "2026-09-26");
+  } finally {
+    if (previous == null) delete process.env.STEAM_MOCK_OWNED_GAMES_JSON;
+    else process.env.STEAM_MOCK_OWNED_GAMES_JSON = previous;
+  }
+});
+
+test("normalizeSteamAchievementUnlocks keeps named unlock timestamps in provider order", () => {
+  const unlocks = normalizeSteamAchievementUnlocks(
+    {
+      playerstats: {
+        success: true,
+        achievements: [
+          { apiname: "LATE", name: "Late unlock", achieved: 1, unlocktime: 1_758_245_400 },
+          { apiname: "LOCKED", name: "Locked", achieved: 0, unlocktime: 0 },
+          { apiname: "EARLY", achieved: 1, unlocktime: 1_758_241_800 },
+          { apiname: "NO_TIME", name: "Known without time", achieved: 1, unlocktime: 0 },
+        ],
+      },
+    },
+    {
+      game: {
+        availableGameStats: {
+          achievements: [
+            { name: "EARLY", displayName: "Early unlock", description: "First", icon: "https://example.test/early.png" },
+            { name: "LATE", displayName: "Schema name" },
+          ],
+        },
+      },
+    },
+  );
+
+  assert.deepEqual(unlocks.map((unlock) => unlock.apiName), ["EARLY", "LATE", "NO_TIME"]);
+  assert.equal(unlocks[0].displayName, "Early unlock");
+  assert.equal(unlocks[0].description, "First");
+  assert.equal(unlocks[0].unlockAt, "2025-09-19T00:30:00.000Z");
+  assert.equal(unlocks[2].unlockAt, null);
+});
+
+test("delayed Steam suggestion uses its saved activity day and preserves an existing Started date", async () => {
+  await withMockClient(
+    async (text, values) => {
+      const sql = compact(text);
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.startsWith("SELECT id, linked_at FROM user_external_accounts")) {
+        return { rows: [{ id: 1, linked_at: "2026-01-01" }] };
+      }
+      if (sql.startsWith("SELECT status FROM games")) {
+        return { rows: [{ status: "plan to play" }] };
+      }
+      if (sql.startsWith("SELECT e.id, e.payload_json FROM user_activity_events")) {
+        assert.equal(values[0], 99);
+        return {
+          rows: [{
+            id: 99,
+            payload_json: {
+              activityDay: "2026-09-18",
+              firstPlayObservedAt: "2026-09-19T02:03:00.000Z",
+            },
+          }],
+        };
+      }
+      assert.match(sql, /^WITH updated AS \( UPDATE games g SET status = \$3/);
+      assert.deepEqual(values, [42, 7, "playing", true, "2026-09-18", 99, "2026-01-01"]);
+      assert.match(sql, /WHEN \$4::boolean AND g\.started_at IS NULL THEN \$5::date/);
+      return {
+        rows: [{
+          id: 42,
+          name: "Hades",
+          status: "playing",
+          started_at: "2026-08-01",
+          activity_event_resolved: true,
+        }],
+      };
+    },
+    async () => {
+      const payload = await applySteamStatusSuggestion(7, 42, {
+        status: "playing",
+        setStartedAt: true,
+        startedAt: "2026-09-24T12:00:00.000Z",
+        activityEventId: 99,
+      });
+      assert.equal(payload.game.startedAt, "2026-08-01");
+      assert.equal(payload.activityEventResolved, true);
+    },
+  );
+});
+
 test("importSteamCandidates attaches marked duplicates instead of creating a new game", async () => {
   await withMockClient(
     async (text, values) => {
@@ -828,6 +933,7 @@ test("importSteamCandidates preserves first ownership observation and Jerusalem 
               playtime_minutes_forever: 240,
               last_played_at: "2026-09-14T00:00:00.000Z",
               source_first_play_observed_at: "2026-09-11T22:00:00.000Z",
+              source_first_play_activity_day: "2026-09-11",
               source_first_imported_at: "2026-09-12T03:15:00.000Z",
               proposed_catalog_game_id: 56,
               user_selected_catalog_game_id: null,
@@ -863,7 +969,7 @@ test("importSteamCandidates preserves first ownership observation and Jerusalem 
         "Delayed Import Game",
         "playing",
         1000,
-        "2026-09-12",
+        "2026-09-11",
         "2026-09-12T03:15:00.000Z",
       ]);
     },

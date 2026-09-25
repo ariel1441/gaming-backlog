@@ -172,25 +172,28 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     assert.deepEqual(retryCounts.rows[0], { sources: 1000, candidates: 1000 });
 
     const account = await pool.query(
-      "SELECT id FROM user_external_accounts WHERE user_id = $1",
+      "SELECT id, provider_user_id FROM user_external_accounts WHERE user_id = $1",
       [userId],
     );
     const resumeId = crypto.randomUUID();
+    const resumeSnapshotObservedAt = new Date().toISOString();
     const normalizedGames = steam.normalizeOwnedGamesPayload(generatedLibrary(1000));
     await pool.query(
       `INSERT INTO steam_sync_jobs
-         (id, user_id, account_id, status, force, cursor, total,
+         (id, user_id, account_id, provider_user_id, status, force, cursor, total,
           payload_json, progress_json, locked_at, started_at)
-       VALUES ($1, $2, $3, 'running', TRUE, 500, 1000, $4::jsonb, $5::jsonb,
+       VALUES ($1, $2, $3, $4, 'running', TRUE, 500, 1000, $5::jsonb, $6::jsonb,
                NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes')`,
       [
         resumeId,
         userId,
         account.rows[0].id,
+        account.rows[0].provider_user_id,
         JSON.stringify({
           games: normalizedGames,
           summary: null,
           hasPreviousSync: true,
+          snapshotObservedAt: resumeSnapshotObservedAt,
         }),
         JSON.stringify({
           matched: 0,

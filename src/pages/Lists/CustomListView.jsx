@@ -34,8 +34,10 @@ import {
   Chip,
   GameCover,
   IconButton,
+  MetaPill,
   SelectMenu,
 } from "../../components/ui";
+import GameArtworkRow from "../../components/GameArtworkRow";
 import {
   SMART_STATUS_OPTIONS,
   normalizeSmartQuery,
@@ -46,6 +48,7 @@ import {
 import { hoursValueForList } from "../../utils/hours";
 import { personalGenreNames } from "../../utils/gameList";
 import { statusDisplayLabel } from "../../utils/statusDisplay";
+import { formatDisplayDate } from "../../utils/dateFormat";
 import { formatUpdatedDate } from "./ListPreview";
 function moveItem(array, fromIndex, toIndex) {
   const next = [...array];
@@ -475,13 +478,7 @@ function yearFromDate(value) {
 }
 
 function compactDate(value) {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDisplayDate(value) || "";
 }
 
 function scoreLabel(game) {
@@ -502,19 +499,6 @@ function rowGenres(game) {
   }));
 }
 
-function MetaPill({ icon: Icon, children }) {
-  if (!children) return null;
-  return (
-    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-surface-border bg-surface-bg/55 px-2.5 py-1 text-xs font-medium text-content-secondary">
-      <Icon
-        className="h-3.5 w-3.5 shrink-0 text-content-muted"
-        aria-hidden="true"
-      />
-      <span className="truncate">{children}</span>
-    </span>
-  );
-}
-
 function RankedRow({
   game,
   index,
@@ -532,32 +516,21 @@ function RankedRow({
   const genres = rowGenres(game);
 
   return (
-    <div className="group relative flex min-w-0 items-stretch gap-3 overflow-hidden rounded-2xl border border-surface-border bg-surface-card">
-      <GameCover
-        src={cover}
-        name={title}
-        artwork
-        className="pointer-events-none absolute inset-0 h-full w-full"
-        imageClassName="absolute inset-0 opacity-35"
-        fallbackClassName="opacity-35"
-      />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-surface-card via-surface-card/95 to-surface-card/75" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface-card/70 via-transparent to-transparent" />
-      {dragHandle}
-      <div className="relative z-10 flex w-12 shrink-0 items-center justify-center text-xl font-semibold text-content-primary sm:w-14">
-        {index + 1}.
-      </div>
-      <button
-        type="button"
-        onClick={onSelect}
-        className="relative z-10 flex min-w-0 flex-1 items-center gap-5 p-3 text-left transition-colors hover:bg-surface-elevated/25"
-      >
-        <GameCover
-          src={cover}
-          name={title}
-          artwork
-          className="h-28 w-20 shrink-0 rounded-xl ring-1 ring-surface-border sm:h-36 sm:w-80"
-        />
+    <GameArtworkRow
+      cover={cover}
+      name={title}
+      onClick={onSelect}
+      leading={(
+        <div className="relative z-20 flex shrink-0 items-center gap-1">
+          {dragHandle}
+          <span className="flex w-10 items-center justify-center text-xl font-semibold text-content-primary sm:w-12">
+            {index + 1}.
+          </span>
+        </div>
+      )}
+      trailing={trailing ? <div className="relative z-20 flex items-center">{trailing}</div> : null}
+      bodyClassName="gap-3"
+    >
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
             <div
@@ -573,16 +546,16 @@ function RankedRow({
             ) : null}
           </div>
           <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 sm:gap-2">
-            <MetaPill icon={Star}>{scoreLabel(game)}</MetaPill>
-            <MetaPill icon={Clock3}>{hoursLabel(game)}</MetaPill>
-            <MetaPill icon={Tag}>{statusDisplayLabel(game.status)}</MetaPill>
-            <MetaPill icon={CalendarDays}>
-              {finishedDate
+            <MetaPill icon={Star} value={scoreLabel(game)} />
+            <MetaPill icon={Clock3} value={hoursLabel(game)} />
+            <MetaPill icon={Tag} value={statusDisplayLabel(game.status)} />
+            <MetaPill icon={CalendarDays} value={
+              finishedDate
                 ? `Finished ${finishedDate}`
                 : startedDate
                   ? `Started ${startedDate}`
-                  : ""}
-            </MetaPill>
+                  : ""
+            } />
           </div>
           {genres.length ? (
             <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
@@ -599,11 +572,7 @@ function RankedRow({
             </div>
           ) : null}
         </div>
-      </button>
-      {trailing ? (
-        <div className="relative z-10 flex items-center pr-3">{trailing}</div>
-      ) : null}
-    </div>
+    </GameArtworkRow>
   );
 }
 

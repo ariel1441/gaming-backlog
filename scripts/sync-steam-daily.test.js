@@ -1,6 +1,62 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dailyPhaseDiagnostics, runDailySteamSync } from "./sync-steam-daily.js";
+import {
+  dailyPhaseDiagnostics,
+  runDailySteamSync,
+  runDailySteamSyncCommand,
+} from "./sync-steam-daily.js";
+
+test("rejected closeout command closes resources before any run, sync, database-list or API path", async () => {
+  const calls = [];
+  const forbidden = async (name) => {
+    calls.push(name);
+    throw new Error(`${name} must not be called`);
+  };
+  const result = await runDailySteamSyncCommand({
+    argv: ["node", "sync-steam-daily.js", "--jerusalem-closeout"],
+    observedAt: new Date("2026-09-24T03:04:00.000Z"),
+    beginRun: () => forbidden("beginRun"),
+    runSync: () => forbidden("runSync"),
+    close: async () => { calls.push("close"); },
+    logger: { log: (message) => calls.push(message), warn() {}, error() {} },
+  });
+
+  assert.deepEqual(result, { skipped: true, reason: "outside_jerusalem_closeout_hour" });
+  assert.deepEqual(calls, [
+    "Steam daily sync: skipped outside the 05:00 Asia/Jerusalem closeout hour.",
+    "close",
+  ]);
+});
+
+test("paired Railway UTC invocations execute exactly once in summer and winter", async () => {
+  const begun = [];
+  let syncs = 0;
+  const totals = {
+    library: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
+    wishlist: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
+    wishlist_prices: { succeeded: 0, partial: 0, failed: 0, skipped: 0 },
+  };
+  const invoke = (observedAt) => runDailySteamSyncCommand({
+    argv: ["node", "sync-steam-daily.js", "--jerusalem-closeout"],
+    observedAt: new Date(observedAt),
+    beginRun: async (options) => {
+      begun.push(options.idempotencyKey);
+      return { id: `run-${begun.length}` };
+    },
+    runSync: async () => { syncs += 1; return totals; },
+    finishRun: async () => {},
+    failRun: async () => {},
+    close: async () => {},
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  await invoke("2026-09-24T02:04:00Z");
+  await invoke("2026-09-24T03:04:00Z");
+  await invoke("2026-12-24T02:04:00Z");
+  await invoke("2026-12-24T03:04:00Z");
+
+  assert.equal(syncs, 2);
+  assert.deepEqual(begun, ["steam-closeout:2026-09-23", "steam-closeout:2026-12-23"]);
+});
 
 test("daily runner preserves the selected account identity and counts later ineligibility as skipped", async () => {
   const selections = [];
@@ -140,7 +196,7 @@ test("daily Steam runner reports each account summary without exposing it in log
       wishlist_prices: { succeeded: 0, partial: 1, failed: 0, skipped: 0 },
     },
     details: {
-      library: { status: "succeeded", diagnostics: { itemsSeen: 0, activityObservations: 0, reviewItemsCreated: 0, librarySnapshotSucceeded: false, achievementFailures: 0, achievementUnavailable: 0, achievementSkipped: 0 }, notificationDecisions: null },
+      library: { status: "succeeded", diagnostics: { itemsSeen: 0, activityObservations: 0, activityBaselines: 0, activityDailyObservations: 0, activityUncertainObservations: 0, activityObservationChanges: 0, reviewItemsCreated: 0, librarySnapshotSucceeded: false, achievementFailures: 0, achievementUnavailable: 0, achievementSkipped: 0, achievementNewUnlocks: 0, achievementBaselineUnlocks: 0 }, notificationDecisions: null },
       wishlist: { status: "succeeded", diagnostics: { itemsSeen: 0, added: 0, removed: 0, priorityChanged: 0, metadataComplete: false, metadataFailedPages: 0 }, notificationDecisions: null },
       wishlist_prices: { status: "partial", diagnostics: { itemsSeen: 0, requests: 0, succeeded: 0, failed: 0, changed: 0, deferred: 0, pendingRetries: 0, firstAttemptSelected: 0, firstAttemptDeferred: 0, priceMode: "unknown", feedErrorCode: null, reason: null, errorCounts: {}, retryScheduled: false }, notificationDecisions: null },
     },
@@ -162,11 +218,17 @@ test("daily phase diagnostics preserve partial causes without provider payloads"
     {
       itemsSeen: 750,
       activityObservations: 750,
+      activityBaselines: 0,
+      activityDailyObservations: 0,
+      activityUncertainObservations: 0,
+      activityObservationChanges: 0,
       reviewItemsCreated: 2,
       librarySnapshotSucceeded: true,
       achievementFailures: 3,
       achievementUnavailable: 7,
       achievementSkipped: 0,
+      achievementNewUnlocks: 0,
+      achievementBaselineUnlocks: 0,
     },
   );
   assert.deepEqual(

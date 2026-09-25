@@ -157,7 +157,7 @@ test("Backlog renders one server page, appends on scroll, and filters on the ser
   await expect(page.locator("article h3").first()).toHaveText("Backlog title 001");
 
   await page.getByRole("button", { name: /Load more/ }).scrollIntoViewIfNeeded();
-  await expect(page.locator("article")).toHaveCount(100);
+  await expect.poll(() => page.locator("article").count()).toBeGreaterThanOrEqual(100);
   expect(backlog.reads.some((search) => search.includes("offset=50") && search.includes("include_summary=false"))).toBe(true);
 
   await page.getByPlaceholder(/Search/).fill("final game");

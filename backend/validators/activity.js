@@ -30,11 +30,44 @@ export const listActivity = celebrate(
 export const listPlayHistory = celebrate(
   {
     [Segments.QUERY]: Joi.object({
-      days: Joi.number().integer().min(7).max(180).default(35),
+      range: Joi.string().valid("7d", "30d", "all"),
+      // Temporary rollout compatibility for the pre-Activity frontend.
+      days: Joi.number().integer().min(7).max(180),
+    }).oxor("range", "days"),
+  },
+  opts,
+);
+
+export const listActivityInsights = celebrate(
+  {
+    [Segments.QUERY]: Joi.object({
+      range: Joi.string().valid("week", "month", "year", "all").default("week"),
     }),
   },
   opts,
 );
+
+const allocationParams = Joi.object({
+  observationId: Joi.number().integer().positive().max(Number.MAX_SAFE_INTEGER).required(),
+});
+
+export const saveActivityAllocation = celebrate({
+  [Segments.PARAMS]: allocationParams,
+  [Segments.BODY]: Joi.object({
+    expectedRevision: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).required(),
+    allocations: Joi.array().items(Joi.object({
+      activityDay: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+      minutes: Joi.number().integer().positive().max(10_000_000).required(),
+    })).min(1).max(4000).required(),
+  }),
+}, opts);
+
+export const resetActivityAllocation = celebrate({
+  [Segments.PARAMS]: allocationParams,
+  [Segments.QUERY]: Joi.object({
+    expectedRevision: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).required(),
+  }),
+}, opts);
 
 export const updateActivity = celebrate(
   {

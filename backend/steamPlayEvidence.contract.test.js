@@ -63,17 +63,26 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       return { userId, account, name, appId, catalogId, gameId, run, source, candidate };
     };
 
-    await t.test("new import preserves September 11 evidence after later play and duplicate approval", async () => {
+    await t.test("new import preserves its first observed activity day after later play and duplicate approval", async () => {
       const f = await fixture();
       await f.run(0);
       await f.run(30, "2026-09-11T12:00:00Z");
+      const firstEvidence = await f.source();
       await f.run(120, "2026-09-14T12:00:00Z");
-      assert.equal((await f.source()).first_play_observed_at.toISOString(), "2026-09-11T12:00:00.000Z");
+      const retainedEvidence = await f.source();
+      assert.equal(
+        retainedEvidence.first_play_observed_at.toISOString(),
+        firstEvidence.first_play_observed_at.toISOString(),
+      );
+      assert.equal(retainedEvidence.first_play_activity_day, firstEvidence.first_play_activity_day);
       const id = await f.candidate();
       await steam.updateSteamImportCandidate(f.userId, id, "set_status", { status: "playing" });
       const imported = await steam.importSteamCandidates(f.userId, [id]);
       const gameId = imported.imported[0].gameId;
-      assert.equal((await pool.query("SELECT started_at FROM games WHERE id=$1", [gameId])).rows[0].started_at, "2026-09-11");
+      assert.equal(
+        (await pool.query("SELECT started_at FROM games WHERE id=$1", [gameId])).rows[0].started_at,
+        firstEvidence.first_play_activity_day,
+      );
       await pool.query("UPDATE steam_import_candidates SET import_status='accepted' WHERE id=$1", [id]);
       const replay = await steam.importSteamCandidates(f.userId, [id]);
       assert.deepEqual(replay.attached, [id]);
@@ -199,11 +208,12 @@ test("Steam play evidence survives delayed decisions and connection replacement"
         await f.run(0);
         await f.run(30, "2026-09-11T22:00:00Z");
         const event = (await pool.query("SELECT * FROM user_activity_events WHERE user_id=$1 AND event_type='steam_status_suggestion'", [f.userId])).rows[0];
+        assert.ok(event.payload_json.activityDay);
         await f.run(90, "2026-09-14T12:00:00Z");
         const result = await steam.applySteamStatusSuggestion(f.userId, f.gameId, {
           activityEventId: event.id, setStartedAt: true, startedAt: "2099-01-01",
         });
-        assert.equal(result.game.startedAt, personalDate || "2026-09-12");
+        assert.equal(result.game.startedAt, personalDate || event.payload_json.activityDay);
         await assert.rejects(steam.applySteamStatusSuggestion(f.userId, f.gameId, { activityEventId: event.id }), error => error.status === 409);
       }
     });
@@ -377,12 +387,13 @@ test("Steam play evidence survives delayed decisions and connection replacement"
         const f = await fixture({ backlog: legacy });
         await f.run(0);
         await f.run(30, "2026-09-11T12:00:00Z");
+        const firstPlayActivityDay = (await f.source()).first_play_activity_day;
         if (legacy) await pool.query("UPDATE games SET status='wishlist' WHERE id=$1", [f.gameId]);
         const itemId = (await pool.query("INSERT INTO user_wishlist_items (user_id,game_id,catalog_game_id,display_name,local_intent_active) VALUES ($1,$2,$3,$4,TRUE) RETURNING id", [f.userId, f.gameId, f.catalogId, f.name])).rows[0].id;
         await pool.query("INSERT INTO steam_wishlist_items (user_id,account_id,wishlist_item_id,steam_app_id) VALUES ($1,$2,$3,$4)", [f.userId, f.account.id, itemId, f.appId]);
         const moved = await wishlist.moveWishlistItemToBacklog(f.userId, itemId, "playing");
         const game = (await pool.query("SELECT started_at,status FROM games WHERE id=$1", [moved.gameId])).rows[0];
-        assert.deepEqual(game, { started_at: "2026-09-11", status: "playing" });
+        assert.deepEqual(game, { started_at: firstPlayActivityDay, status: "playing" });
         assert.equal((await pool.query("SELECT local_intent_active FROM user_wishlist_items WHERE id=$1", [itemId])).rows[0].local_intent_active, true);
         assert.equal((await pool.query("SELECT is_active FROM steam_wishlist_items WHERE wishlist_item_id=$1", [itemId])).rows[0].is_active, true);
         await pool.query("UPDATE games SET started_at='2020-02-03' WHERE id=$1", [moved.gameId]);
@@ -405,7 +416,11 @@ test("Steam play evidence survives delayed decisions and connection replacement"
       observation = (await pool.query("SELECT * FROM steam_activity_observations WHERE sync_run_id=$1", [next.syncRunId])).rows[0];
       assert.equal(observation.playtime_delta_minutes, 30);
       assert.equal(observation.is_baseline, false);
-      assert.equal((await activity.recordSteamActivityObservations({ userId: f.userId, syncRunId: next.syncRunId })).recorded, 0);
+      assert.equal((await activity.recordSteamActivityObservations({
+        userId: f.userId,
+        syncRunId: next.syncRunId,
+        snapshotObservedAt: observation.observed_at,
+      })).recorded, 0);
       await steam.disconnectSteamAccount(f.userId);
       const reconnected = await steam.upsertSteamAccount(f.userId, "76561199999999000");
       assert.notEqual(reconnected.id, firstAccount);

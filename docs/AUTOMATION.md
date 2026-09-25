@@ -1,7 +1,8 @@
 # Automatic jobs and refresh behavior
 
-Code traced 2026-09-11 at `716cb5b`. This describes implementation, not verified
-production operation. No scheduler, account preference or data was changed.
+Code traced 2026-09-11 at `716cb5b`; production evidence updated 2026-09-23 from
+user-provided Railway executions. No scheduler, account preference or data was
+changed by this documentation update.
 
 ## Four different clocks
 
@@ -22,16 +23,40 @@ Metadata budget/interval overrides are unset. Demo is enabled, with guest lifeti
 configured as 36 hours. No secrets are recorded here.
 
 This describes the environment loaded by that command, not an already-running
-process, saved Steam account opt-in, Windows scheduled tasks, Railway settings, or
-successful job history. No external daily trigger was verified. The repository
-GitHub workflow search found no scheduled Steam trigger.
+process, saved Steam account opt-in or Windows scheduled tasks. The repository
+GitHub workflow search found no scheduled Steam trigger. Separately, user-provided
+Railway evidence on 2026-09-23 showed successful recent production executions and
+a Railway cron configured for `02:00 UTC`.
 
 ## Steam daily command
 
-[sync-steam-daily.js](../scripts/sync-steam-daily.js) implements
-`npm run steam:sync:daily`. An external scheduler must invoke it at the desired
-time. The Settings toggle makes connected, non-guest accounts eligible; it does
-not install that scheduler. The command implements no preferred morning/timezone.
+[sync-steam-daily.js](../scripts/sync-steam-daily.js) implements the ungated
+`npm run steam:sync:daily` command for deliberate/manual invocation and the
+schedule-safe `npm run steam:sync:daily-scheduled` command. An external scheduler must
+invoke one of them. The Settings toggle makes connected, non-guest accounts
+eligible; it does not install that scheduler.
+
+Railway cron schedules are evaluated in UTC. The current `02:00 UTC` production
+configuration starts around 05:00 `Asia/Jerusalem` during daylight-saving time but
+around 04:00 during Israel standard time. The selected DST-safe configuration is:
+
+- Railway cron: `0 2,3 * * *` (candidate only; not applied as of 2026-09-24).
+- Railway start command: `npm run steam:sync:daily-scheduled`.
+- The 02:00 and 03:00 UTC invocations both start, but the command proceeds only
+  during the local 05:00 hour in `Asia/Jerusalem`; the other invocation exits
+  without opening an automation run or querying eligible accounts.
+- The accepted invocation claims a durable `steam-closeout:<activity-day>` key.
+  A retry or replay for that closeout day exits without starting a second daily
+  run, even when the first invocation already finished.
+
+This selects 02:00 UTC during Israel daylight-saving time and 03:00 UTC during
+standard time without maintaining seasonal dates by hand. Railway can start a cron
+a few minutes late, so the gate intentionally accepts the full 05:00-05:59 local
+hour. If the selected invocation is delayed past that hour it safely skips and the
+next successful daily observation becomes an uncertain interval; operators must
+not manually invent the missing daily boundary. Changing the production cron or
+start command and verifying both the executing and skipped runs are separate,
+explicitly authorized Railway operations.
 
 For each eligible account it runs these stages sequentially:
 
@@ -45,6 +70,16 @@ For each eligible account it runs these stages sequentially:
    work remains bounded. Errors, unavailable offers and ambiguous identities
    are distinct outcomes.
 
+For Gaming Activity, the significant boundary is the Library provider snapshot,
+not completion of all three stages. The owned-games response callback captures
+`snapshotObservedAt` immediately after the response is validated, before waiting
+for the parallel player-summary request or doing diff/finalization work, and saves
+it in the job payload. Phase 1 persists that saved value as the factual observation time even though Library finalization happens
+after achievement follow-up. Wishlist and price duration cannot move that boundary.
+Migration 049 corrects retained rows only where this saved evidence exists and
+marks non-baseline intervals without it as legacy/uncertain rather than inventing
+a timestamp. See [the Gaming Activity design](planning/gaming-activity.md).
+
 A failed stage is recorded and later stages/accounts can continue. The command
 can process jobs itself and needs no browser. Separately, the running backend
 checks queued Steam jobs at startup and every 15 seconds. That timer drains work;
@@ -53,11 +88,19 @@ it does not create a fresh daily sync every 15 seconds.
 Library has a 15-minute cooldown. The command does not enforce one run per calendar
 day. Wishlist does not share that library cooldown; prices have separate due times.
 
-Achievements store summary counts, percentages and availability/status, primarily
-for eligible linked Backlog games. Changed activity marks follow-up work; later
-library runs also select due pending work. Attempts normally have a six-hour minimum
-spacing; failures back off up to seven days. Becoming due does not launch a new
-library run. This is not a six-hour refresh of every game's achievements.
+Achievements retain summary counts, percentages and availability/status. Phase 2
+also stores named unlocked identities and raw provider timestamps for owned or
+ignored Steam sources, including apps not linked to Backlog. On a source's first
+successful detailed fetch, unlocks at or before the saved source transition
+boundary (frozen by migration 050 for existing sources, or derived from Activity
+observations for later sources) are silent deduplication evidence. Unlocks whose raw Steam timestamps are
+after that boundary are emitted once even when already present in the first
+detailed response. Private, failed and unavailable responses do not initialize
+the baseline. Later exact unlocks are idempotent and use the canonical activity day. Changed
+activity marks follow-up work, and later library runs select due pending work.
+Attempts normally have a six-hour minimum spacing; failures back off up to seven
+days. Becoming due does not launch a new library run. This is not a six-hour refresh
+of every game's achievements.
 
 Scheduled successful price observations normally become eligible again after a
 three-day safety audit; a global Store change signal can select them sooner.
@@ -73,9 +116,8 @@ price coverage every day.
 
 Steam updates private source facts and review/notification evidence. It does not
 silently change personal status/dates or blindly import the whole library. Current
-source totals and review records are not a complete daily play ledger. Gaming
-Activity requires new observations and individual achievement history; old totals
-cannot recover missing calendar days.
+Old source totals cannot recover missing calendar days. The retained observation
+and named-unlock ledgers only become complete from their respective baselines.
 
 Sources: [library/jobs](../backend/services/steamLibrarySyncService.js),
 [achievements](../backend/services/steamService.js),

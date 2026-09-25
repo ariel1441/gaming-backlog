@@ -30,6 +30,21 @@ export function listSteamPlayHistory(params = {}, opts = {}) {
   return api.get(`/api/activity/play-history${suffix}`, opts);
 }
 
+export function getSteamActivityInsights(params = {}, opts = {}) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value != null));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return api.get(`/api/activity/insights${suffix}`, opts);
+}
+
+export function saveSteamActivityAllocation(observationId, payload, opts = {}) {
+  return api.put(`/api/activity/play-history/${observationId}/allocation`, payload, opts);
+}
+
+export function resetSteamActivityAllocation(observationId, expectedRevision, opts = {}) {
+  const query = new URLSearchParams({ expectedRevision: String(expectedRevision) });
+  return api.del(`/api/activity/play-history/${observationId}/allocation?${query}`, opts);
+}
+
 export function updateActivityEvent(id, action, opts = {}) {
   return api.patch(`/api/activity/${id}`, { action }, opts);
 }

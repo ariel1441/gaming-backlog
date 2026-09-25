@@ -1,5 +1,8 @@
 -- DEV RESET (optional)
 DROP TABLE IF EXISTS user_activity_events;
+DROP TABLE IF EXISTS steam_achievement_unlocks;
+DROP TABLE IF EXISTS steam_activity_allocation_items;
+DROP TABLE IF EXISTS steam_activity_allocation_revisions;
 DROP TABLE IF EXISTS steam_activity_observations;
 DROP TABLE IF EXISTS steam_wishlist_items;
 DROP TABLE IF EXISTS user_wishlist_items;
@@ -406,6 +409,21 @@ CREATE TABLE game_personal_genres (
 CREATE INDEX game_personal_genres_user_genre
   ON game_personal_genres (user_id, personal_genre_id, game_id);
 
+CREATE TABLE game_genre_suggestion_dismissals (
+  user_id INTEGER NOT NULL,
+  game_id INTEGER NOT NULL,
+  personal_genre_id INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (game_id, personal_genre_id),
+  FOREIGN KEY (user_id, game_id)
+    REFERENCES games(user_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id, personal_genre_id)
+    REFERENCES user_personal_genres(user_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX game_genre_suggestion_dismissals_user_genre
+  ON game_genre_suggestion_dismissals (user_id, personal_genre_id, game_id);
+
 CREATE OR REPLACE FUNCTION sync_legacy_personal_genres()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -635,6 +653,7 @@ CREATE TABLE daily_automation_runs (
   heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   finished_at TIMESTAMPTZ,
   deployment_revision TEXT,
+  idempotency_key TEXT,
   summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   error_code TEXT,
   error_message TEXT,
@@ -647,6 +666,10 @@ CREATE UNIQUE INDEX daily_automation_runs_one_active
 
 CREATE INDEX daily_automation_runs_recent
   ON daily_automation_runs (automation_key, started_at DESC);
+
+CREATE UNIQUE INDEX daily_automation_runs_idempotency
+  ON daily_automation_runs (automation_key, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE daily_automation_run_accounts (
   automation_run_id UUID NOT NULL REFERENCES daily_automation_runs(id) ON DELETE CASCADE,
@@ -743,6 +766,7 @@ CREATE TABLE user_game_sources (
   playtime_minutes_forever INTEGER CHECK (playtime_minutes_forever IS NULL OR playtime_minutes_forever >= 0),
   last_played_at TIMESTAMPTZ,
   first_play_observed_at TIMESTAMPTZ,
+  first_play_activity_day DATE,
   first_play_observed_playtime_minutes INTEGER CHECK (first_play_observed_playtime_minutes IS NULL OR first_play_observed_playtime_minutes >= 0),
   achievements_unlocked INTEGER CHECK (achievements_unlocked IS NULL OR achievements_unlocked >= 0),
   achievements_total INTEGER CHECK (achievements_total IS NULL OR achievements_total >= 0),
@@ -752,6 +776,8 @@ CREATE TABLE user_game_sources (
   achievements_last_synced_at TIMESTAMPTZ,
   achievements_last_error_code TEXT,
   achievements_last_error_message TEXT,
+  achievement_events_initialized_at TIMESTAMPTZ,
+  achievement_events_baseline_at TIMESTAMPTZ,
   first_imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_synced_at TIMESTAMPTZ,
   ignored_at TIMESTAMPTZ,
@@ -777,6 +803,15 @@ CREATE INDEX idx_user_game_sources_steam_first_play_observed
     AND source_status = 'owned'
     AND first_play_observed_at IS NOT NULL;
 
+CREATE OR REPLACE FUNCTION gaming_activity_day(value TIMESTAMPTZ)
+RETURNS DATE
+LANGUAGE SQL
+STABLE
+STRICT
+AS $$
+  SELECT ((value AT TIME ZONE 'Asia/Jerusalem') - INTERVAL '5 hours')::date
+$$;
+
 CREATE TABLE steam_activity_observations (
   id BIGSERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -794,12 +829,19 @@ CREATE TABLE steam_activity_observations (
   achievements_delta INTEGER NOT NULL DEFAULT 0 CHECK (achievements_delta >= 0),
   interval_started_at TIMESTAMPTZ,
   observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  observation_time_source TEXT NOT NULL DEFAULT 'snapshot'
+    CHECK (observation_time_source IN ('snapshot', 'legacy_finalization')),
+  activity_precision TEXT NOT NULL DEFAULT 'baseline'
+    CHECK (activity_precision IN ('baseline', 'daily', 'uncertain')),
+  activity_day DATE,
+  counter_rebaseline BOOLEAN NOT NULL DEFAULT FALSE,
   is_baseline BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (sync_run_id, steam_app_id),
   CHECK (achievements_unlocked IS NULL OR achievements_unlocked >= 0),
   CHECK (achievements_total IS NULL OR achievements_total >= 0),
-  CHECK (achievements_unlocked IS NULL OR achievements_total IS NULL OR achievements_unlocked <= achievements_total)
+  CHECK (achievements_unlocked IS NULL OR achievements_total IS NULL OR achievements_unlocked <= achievements_total),
+  CHECK ((activity_precision = 'daily') = (activity_day IS NOT NULL))
 );
 
 CREATE INDEX steam_activity_observations_user_observed
@@ -807,6 +849,63 @@ CREATE INDEX steam_activity_observations_user_observed
 
 CREATE INDEX steam_activity_observations_user_app_observed
   ON steam_activity_observations (user_id, steam_app_id, observed_at DESC);
+
+CREATE INDEX steam_activity_observations_user_activity_day
+  ON steam_activity_observations (user_id, activity_day DESC, observed_at DESC)
+  WHERE activity_precision = 'daily';
+
+CREATE TABLE steam_activity_allocation_revisions (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  observation_id BIGINT NOT NULL REFERENCES steam_activity_observations(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL CHECK (revision > 0),
+  action TEXT NOT NULL CHECK (action IN ('allocate', 'reset')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (observation_id, revision),
+  UNIQUE (id, user_id)
+);
+
+CREATE TABLE steam_activity_allocation_items (
+  revision_id BIGINT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  activity_day DATE NOT NULL,
+  minutes INTEGER NOT NULL CHECK (minutes > 0),
+  PRIMARY KEY (revision_id, activity_day),
+  FOREIGN KEY (revision_id, user_id)
+    REFERENCES steam_activity_allocation_revisions(id, user_id) ON DELETE CASCADE
+);
+
+CREATE INDEX steam_activity_allocation_revisions_observation_latest
+  ON steam_activity_allocation_revisions (observation_id, revision DESC);
+
+CREATE TABLE steam_achievement_unlocks (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account_id INTEGER NOT NULL REFERENCES user_external_accounts(id) ON DELETE CASCADE,
+  source_id INTEGER REFERENCES user_game_sources(id) ON DELETE SET NULL,
+  game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+  catalog_game_id INTEGER REFERENCES catalog_games(id) ON DELETE SET NULL,
+  first_seen_run_id BIGINT REFERENCES integration_sync_runs(id) ON DELETE SET NULL,
+  steam_app_id TEXT NOT NULL,
+  achievement_api_name TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  description TEXT,
+  icon_url TEXT,
+  unlock_at TIMESTAMPTZ,
+  activity_day DATE,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_baseline BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (account_id, steam_app_id, achievement_api_name),
+  CHECK ((unlock_at IS NULL) = (activity_day IS NULL))
+);
+
+CREATE INDEX steam_achievement_unlocks_user_day
+  ON steam_achievement_unlocks (user_id, activity_day DESC, unlock_at DESC, id DESC);
+
+CREATE INDEX steam_achievement_unlocks_user_app_time
+  ON steam_achievement_unlocks (user_id, steam_app_id, unlock_at DESC, id DESC);
 
 CREATE TABLE steam_import_candidates (
   id SERIAL PRIMARY KEY,
@@ -935,6 +1034,42 @@ BEGIN
   RETURN NEW;
 END $$;
 
+CREATE OR REPLACE FUNCTION enforce_steam_achievement_unlock_owner()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE account_owner INTEGER; source_owner INTEGER; game_owner INTEGER;
+BEGIN
+  SELECT user_id INTO account_owner FROM user_external_accounts WHERE id = NEW.account_id;
+  IF account_owner IS NULL OR account_owner <> NEW.user_id THEN
+    RAISE EXCEPTION 'steam achievement account owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  IF NEW.source_id IS NOT NULL THEN
+    SELECT user_id INTO source_owner FROM user_game_sources WHERE id = NEW.source_id;
+    IF source_owner IS NULL OR source_owner <> NEW.user_id THEN
+      RAISE EXCEPTION 'steam achievement source owner mismatch' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  IF NEW.game_id IS NOT NULL THEN
+    SELECT user_id INTO game_owner FROM games WHERE id = NEW.game_id;
+    IF game_owner IS NULL OR game_owner <> NEW.user_id THEN
+      RAISE EXCEPTION 'steam achievement game owner mismatch' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION enforce_steam_activity_allocation_owner()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE observation_owner INTEGER;
+BEGIN
+  SELECT user_id INTO observation_owner
+  FROM steam_activity_observations
+  WHERE id = NEW.observation_id;
+  IF observation_owner IS NULL OR observation_owner <> NEW.user_id THEN
+    RAISE EXCEPTION 'steam activity allocation owner mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+
 CREATE OR REPLACE FUNCTION enforce_wishlist_item_owner()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE game_owner INTEGER; item_owner INTEGER; account_owner INTEGER;
@@ -1006,6 +1141,16 @@ CREATE TRIGGER user_game_sources_owner_guard
 CREATE TRIGGER steam_activity_observations_owner_guard
   BEFORE INSERT OR UPDATE OF user_id, game_id ON steam_activity_observations
   FOR EACH ROW EXECUTE FUNCTION enforce_owned_game_relationship();
+
+CREATE TRIGGER steam_achievement_unlocks_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, account_id, source_id, game_id
+  ON steam_achievement_unlocks
+  FOR EACH ROW EXECUTE FUNCTION enforce_steam_achievement_unlock_owner();
+
+CREATE TRIGGER steam_activity_allocation_owner_guard
+  BEFORE INSERT OR UPDATE OF user_id, observation_id
+  ON steam_activity_allocation_revisions
+  FOR EACH ROW EXECUTE FUNCTION enforce_steam_activity_allocation_owner();
 
 -- Public Steam Store delta-feed state. This is global provider state; it never
 -- contains user Wishlist or price observations.

@@ -14,6 +14,7 @@ export default function PersonalGenreSuggestionEditor({
   availablePersonalGenres = [],
   selectedIds = [],
   onChange,
+  onDismissSuggestion,
   disabled = false,
   compact = false,
 }) {
@@ -96,7 +97,35 @@ export default function PersonalGenreSuggestionEditor({
             {suggestions.map((genre) => {
               const active = selectedSet.has(Number(genre.id));
               const atLimit = !active && limitReached;
-              return (
+              return onDismissSuggestion ? (
+                <Chip
+                  key={genre.id}
+                  className={active ? "gap-1 border-primary/35 bg-primary/12 px-1 text-primary-light" : "gap-1 px-1"}
+                >
+                  <button
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggle(genre.id)}
+                    disabled={disabled || atLimit}
+                    className="inline-flex items-center gap-1.5 rounded-full px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    <span className={active ? "flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-content-inverse" : "flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current/55"}>
+                      {active ? <Check className="h-2.5 w-2.5" strokeWidth={3} aria-hidden="true" /> : null}
+                    </span>
+                    {genre.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDismissSuggestion(genre)}
+                    disabled={disabled}
+                    aria-label={`Dismiss ${genre.name} suggestion`}
+                    title="Don't suggest this genre for this game"
+                    className="rounded-full p-1 text-content-muted hover:bg-surface-selected hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </Chip>
+              ) : (
                 <Chip
                   key={genre.id}
                   as="button"

@@ -2,6 +2,10 @@ import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import { pool } from "../backend/db.js";
 import {
+  gamingActivityCloseoutDay,
+  isGamingActivityCloseoutHour,
+} from "../backend/utils/gamingActivityDay.js";
+import {
   enqueueSteamSync,
   listEligibleSteamAutoSyncUsers,
   waitForSteamSyncJob,
@@ -24,11 +28,17 @@ export function dailyPhaseDiagnostics(syncKind, result = {}, run = {}) {
     return {
       itemsSeen: number(summary.total ?? run?.itemsSeen),
       activityObservations: number(summary.activityObservations),
+      activityBaselines: number(summary.activityBaselines),
+      activityDailyObservations: number(summary.activityDailyObservations),
+      activityUncertainObservations: number(summary.activityUncertainObservations),
+      activityObservationChanges: number(summary.activityObservationChanges),
       reviewItemsCreated: number(summary.reviewItemsCreated),
       librarySnapshotSucceeded: Boolean(summary.librarySnapshotSucceeded),
       achievementFailures: number(summary.achievementFailures),
       achievementUnavailable: number(summary.achievementUnavailable),
       achievementSkipped: number(summary.achievementSkipped),
+      achievementNewUnlocks: number(summary.achievementNewUnlocks),
+      achievementBaselineUnlocks: number(summary.achievementBaselineUnlocks),
     };
   }
   if (syncKind === "wishlist") {
@@ -158,28 +168,56 @@ export async function runDailySteamSync({
   return totals;
 }
 
-async function main() {
+export async function runDailySteamSyncCommand({
+  argv = process.argv,
+  observedAt = new Date(),
+  logger = console,
+  beginRun = beginDailyAutomationRun,
+  registerAccounts = registerDailyAutomationAccounts,
+  finishAccount = finishDailyAutomationAccount,
+  finishRun = finishDailyAutomationRun,
+  failRun = failDailyAutomationRun,
+  runSync = runDailySteamSync,
+  close = () => pool.end(),
+} = {}) {
+  if (argv.includes("--jerusalem-closeout") &&
+      !isGamingActivityCloseoutHour(observedAt)) {
+    logger.log("Steam daily sync: skipped outside the 05:00 Asia/Jerusalem closeout hour.");
+    await close();
+    return { skipped: true, reason: "outside_jerusalem_closeout_hour" };
+  }
   let auditRun = null;
   try {
-    auditRun = await beginDailyAutomationRun();
-    if (!auditRun) {
-      console.warn("Steam daily sync: another daily runner is already active.");
-      return;
-    }
-    const totals = await runDailySteamSync({
-      dailyAutomationRunId: auditRun.id,
-      onAccountsReady: (accounts) => registerDailyAutomationAccounts(auditRun.id, accounts),
-      onAccountFinished: (account) => finishDailyAutomationAccount(auditRun.id, account),
+    const closeoutDay = argv.includes("--jerusalem-closeout")
+      ? gamingActivityCloseoutDay(observedAt)
+      : null;
+    auditRun = await beginRun({
+      idempotencyKey: closeoutDay ? `steam-closeout:${closeoutDay}` : null,
     });
-    await finishDailyAutomationRun(auditRun.id, { totals });
-    process.exitCode = totals.library.failed || totals.wishlist.failed || totals.wishlist_prices.failed ? 1 : 0;
+    if (!auditRun) {
+      logger.warn("Steam daily sync: another daily runner is already active.");
+      return { skipped: true, reason: "active_runner" };
+    }
+    const totals = await runSync({
+      dailyAutomationRunId: auditRun.id,
+      onAccountsReady: (accounts) => registerAccounts(auditRun.id, accounts),
+      onAccountFinished: (account) => finishAccount(auditRun.id, account),
+    });
+    await finishRun(auditRun.id, { totals });
+    const failed = Boolean(totals.library.failed || totals.wishlist.failed || totals.wishlist_prices.failed);
+    return { skipped: false, failed, totals };
   } catch (error) {
-    await failDailyAutomationRun(auditRun?.id, error);
-    console.error(`Steam daily sync failed: ${JSON.stringify({ errorCode: error?.code || "unknown" })}`);
-    process.exitCode = 1;
+    await failRun(auditRun?.id, error);
+    logger.error(`Steam daily sync failed: ${JSON.stringify({ errorCode: error?.code || "unknown" })}`);
+    return { skipped: false, failed: true, error };
   } finally {
-    await pool.end();
+    await close();
   }
+}
+
+async function main() {
+  const result = await runDailySteamSyncCommand();
+  if (result?.failed) process.exitCode = 1;
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";

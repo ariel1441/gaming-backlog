@@ -21,10 +21,10 @@ export const primaryNavigationItems = [
     savedAccountOnly: true,
   },
   { to: "/next-up", label: "Play Next", icon: PlaySquare },
+  { to: "/activity", label: "Gaming activity", icon: Activity, savedAccountOnly: true },
   { to: "/discover", label: "Discover", icon: Compass },
   { to: "/lists", label: "Lists", icon: List },
   { to: "/timeline", label: "Timeline", icon: Clock3, authOnly: true },
-  { to: "/activity", label: "Gaming activity", icon: Activity, savedAccountOnly: true },
   {
     to: "/reviews",
     label: "Reviews",

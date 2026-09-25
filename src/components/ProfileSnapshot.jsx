@@ -13,7 +13,7 @@ import {
   Share2,
 } from "lucide-react";
 import ProfileAvatar from "./ProfileAvatar";
-import { Button, GameCover, StatusBadge } from "./ui";
+import { Button, GameCover, MetricCard, StatusBadge } from "./ui";
 import { parseGameDate } from "../utils/gameDateInsights";
 import { profileDisplayName, profileHandle } from "../utils/userProfile";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
@@ -193,15 +193,15 @@ export default function ProfileSnapshot({
               ) : null}
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <ProfileStat icon={LibraryBig} label="Games" value={snapshot.stats.total} />
-                <ProfileStat icon={PlayCircle} label="Playing" value={snapshot.stats.playing} />
-                <ProfileStat
+                <MetricCard variant="profile" icon={LibraryBig} label="Games" value={snapshot.stats.total} />
+                <MetricCard variant="profile" icon={PlayCircle} label="Playing" value={snapshot.stats.playing} />
+                <MetricCard variant="profile"
                   icon={CheckCircle2}
                   label="Finished"
                   value={snapshot.stats.finished}
                 />
-                <ProfileStat icon={Gamepad2} label="Backlog" value={snapshot.stats.backlog} />
-                <ProfileStat
+                <MetricCard variant="profile" icon={Gamepad2} label="Backlog" value={snapshot.stats.backlog} />
+                <MetricCard variant="profile"
                   icon={CalendarDays}
                   label={`Finished ${new Date().getFullYear()}`}
                   value={snapshot.stats.finishedThisYear}
@@ -260,20 +260,6 @@ export default function ProfileSnapshot({
         />
       </div>
     </section>
-  );
-}
-
-function ProfileStat({ icon: Icon, label, value }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-surface-border bg-surface-bg/35 p-3">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-content-muted">
-        <Icon className="h-4 w-4" aria-hidden="true" />
-        {label}
-      </div>
-      <div className="mt-2 truncate text-xl font-semibold text-content-primary">
-        {value}
-      </div>
-    </div>
   );
 }
 
