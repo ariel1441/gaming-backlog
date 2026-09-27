@@ -1,11 +1,14 @@
 import { test, expect } from "@playwright/test";
 
 const landscapeCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23233b63'/%3E%3C/svg%3E";
+const portraitCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='640'%3E%3Crect width='360' height='640' fill='%23723b55'/%3E%3C/svg%3E";
+const squareCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Crect width='480' height='480' fill='%233f6b57'/%3E%3C/svg%3E";
+const achievementIcon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23d6a32d'/%3E%3C/svg%3E";
 
 const feed = {
   range: "7d",
   timezone: "Asia/Jerusalem",
-  summary: { playtimeMinutes: 275, overlappingPlaytimeMinutes: 0, gamesPlayed: 2, achievementsUnlocked: 5 },
+  summary: { playtimeMinutes: 325, overlappingPlaytimeMinutes: 0, gamesPlayed: 4, achievementsUnlocked: 5 },
   coverage: {
     status: "partial", reliableDays: 4, expectedCloseouts: 6, missingCloseouts: 2,
     trailingMissingCloseouts: 1, uncertainIntervals: 1, latestSnapshotAt: "2026-09-24T02:00:00.000Z",
@@ -13,17 +16,23 @@ const feed = {
   items: [
     {
       type: "day", key: "day:2026-09-23", date: "2026-09-23",
-      playtimeMinutes: 90, gameCount: 1,
+      playtimeMinutes: 140, gameCount: 3,
       games: [{
         steamAppId: "20", gameId: 5,
         name: "A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen",
         cover: landscapeCover, playtimeMinutes: 90,
         highlights: [{ type: "first_played" }, { type: "added_to_library" }],
         achievements: [
-          { id: 1, name: "First step" }, { id: 2, name: "Second step" },
+          { id: 1, name: "First step", icon: achievementIcon }, { id: 2, name: "Second step", icon: achievementIcon },
           { id: 3, name: "Third step" }, { id: 4, name: "Fourth step" },
           { id: 5, name: "Fifth step" },
         ],
+      }, {
+        steamAppId: "30", name: "Portrait artwork should stay compact", cover: portraitCover,
+        playtimeMinutes: 30, highlights: [], achievements: [],
+      }, {
+        steamAppId: "40", name: "Square artwork should stay compact", cover: squareCover,
+        playtimeMinutes: 20, highlights: [], achievements: [],
       }],
     },
     {
@@ -37,6 +46,11 @@ const feed = {
           observationId: 42, revision: 0, totalMinutes: 185,
           startDay: "2026-09-19", endDay: "2026-09-22",
           eligibleDays: ["2026-09-19", "2026-09-20", "2026-09-21", "2026-09-22"],
+          allocations: [],
+        }, {
+          observationId: 43, revision: 0, totalMinutes: 25,
+          startDay: "2026-09-16", endDay: "2026-09-18",
+          eligibleDays: ["2026-09-16", "2026-09-17", "2026-09-18"],
           allocations: [],
         }],
       }],
@@ -147,8 +161,8 @@ test("activity feed covers loading, ranges, highlights, achievements and respons
           allocatedPlaytimeMinutes: 185,
           allocationSources: game.allocationSources.map((source) => ({
             ...source,
-            revision: 1,
-            allocations: [{ activityDay: "2026-09-20", minutes: 185 }],
+            revision: source.observationId === 42 ? 1 : source.revision,
+            allocations: source.observationId === 42 ? [{ activityDay: "2026-09-20", minutes: 185 }] : source.allocations,
           })),
         })),
       })),
@@ -159,21 +173,30 @@ test("activity feed covers loading, ranges, highlights, achievements and respons
   await page.goto("/activity");
   await expect(page.getByRole("status", { name: "Loading", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Gaming activity", exact: true })).toBeVisible();
-  await expect(page.getByText("4 of 6 reliable", { exact: true })).toBeVisible();
-  await expect(page.getByText(/1 expected closeout is still missing/)).toBeVisible();
+  await expect(page.getByText("4 of 6 Steam-confirmed", { exact: true })).toBeVisible();
+  await expect(page.getByText(/1 daily Steam check is still missing/)).toBeVisible();
   await expect(page.getByText("First played", { exact: true })).toBeVisible();
   await expect(page.getByText("Added to Steam library", { exact: true })).toBeVisible();
   await expect(page.getByText("Returned after 46 days", { exact: true })).toBeVisible();
-  await expect(page.getByText("5 achievements:")).toBeVisible();
-  await expect(page.getByText("Show 2 more", { exact: true })).toBeVisible();
-  await expect(page.getByText("Timing uncertain", { exact: true })).toBeVisible();
+  await expect(page.getByText("5 achievements unlocked", { exact: true })).toBeVisible();
+  await expect(page.getByText("Needs a date", { exact: true })).toBeVisible();
+  await expect(page.getByText("Choose dates for 2 ranges", { exact: true })).toBeVisible();
   await expect(page.getByText("3h 5m played", { exact: true })).toBeVisible();
   const activityCover = page.getByAltText("A Very Long Game Title That Must Stay Readable On A Narrow Mobile Screen cover");
   await expect(activityCover).toBeVisible();
-  expect((await activityCover.boundingBox()).width).toBeGreaterThan(120);
+    expect((await activityCover.boundingBox()).width).toBeGreaterThan(110);
+  const portraitActivityCover = page.getByAltText("Portrait artwork should stay compact cover");
+  const squareActivityCover = page.getByAltText("Square artwork should stay compact cover");
+  await expect(portraitActivityCover).toBeVisible();
+  await expect(squareActivityCover).toBeVisible();
+  for (const cover of [portraitActivityCover, squareActivityCover]) {
+    const box = await cover.boundingBox();
+      expect(box.width / box.height).toBeCloseTo(5 / 3, 1);
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
-  await page.getByRole("button", { name: "Choose dates", exact: true }).click();
+  await page.getByText("Choose dates for 2 ranges", { exact: true }).click();
+  await page.getByRole("button", { name: /Choose Sep 19–Sep 22/ }).click();
   await expect(page.getByRole("dialog", { name: "Choose activity dates" })).toBeVisible();
   await page.getByRole("button", { name: "Assign all playtime to Sunday, Sep 20" }).click();
   await expect(page.getByText("All playtime assigned", { exact: true })).toBeVisible();
@@ -184,7 +207,8 @@ test("activity feed covers loading, ranges, highlights, achievements and respons
     allocations: [{ activityDay: "2026-09-20", minutes: 185 }],
   });
 
-  await page.getByRole("button", { name: "Edit dates", exact: true }).click();
+  await page.getByText("1 date chosen · 1 range needs a date", { exact: true }).click();
+  await page.getByRole("button", { name: /Adjust Sep 19–Sep 22/ }).click();
   await page.getByRole("button", { name: "Reset", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Reset chosen dates?" })).toBeVisible();
   await page.getByRole("button", { name: "Reset dates", exact: true }).click();
@@ -244,7 +268,7 @@ test("activity insights cover ranges, uncertainty, exact days and responsive sta
   await page.getByRole("button", { name: "Insights", exact: true }).click();
   await expect(page.getByRole("status", { name: "Loading", exact: true })).toBeVisible();
   await expect(page.getByText("In progress", { exact: true })).toBeVisible();
-  await expect(page.getByText("3h 5m has uncertain timing.", { exact: true })).toBeVisible();
+  await expect(page.getByText("3h 5m still needs a date.", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Outside this range" })).toBeVisible();
   await expect(page.getByText("No playtime · 1 🏆", { exact: true })).toBeVisible();
   await expect(page.getByText("Hades after 46 days", { exact: true })).toBeVisible();

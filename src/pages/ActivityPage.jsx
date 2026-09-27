@@ -129,7 +129,7 @@ export default function ActivityPage() {
       <div className="mb-5">
         <PageHeader
           title="Gaming activity"
-          description="Cumulative Steam observations grouped into activity days ending at 5 AM in Jerusalem, not exact session boundaries."
+          description="Steam playtime grouped into days ending at 5 AM in Jerusalem. It shows daily boundaries, not exact session times."
           icon={ActivityIcon}
         />
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -250,12 +250,12 @@ function Summary({ history }) {
   const coverage = history.coverage || {};
   const freshness = formatFreshness(coverage.latestSnapshotAt);
   const coverageValue = coverage.status === "not_started" ? "Not started"
-    : coverage.status === "complete" ? `${coverage.reliableDays} reliable day${coverage.reliableDays === 1 ? "" : "s"}`
-      : `${coverage.reliableDays} of ${coverage.expectedCloseouts} reliable`;
+    : coverage.status === "complete" ? `${coverage.reliableDays} Steam-confirmed day${coverage.reliableDays === 1 ? "" : "s"}`
+      : `${coverage.reliableDays} of ${coverage.expectedCloseouts} Steam-confirmed`;
   return (
     <section aria-label="Activity summary" className="rounded-panel border border-surface-border bg-surface-card/90 p-4 sm:p-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryStat icon={Clock3} label="Observed playtime" value={formatMinutes(summary.playtimeMinutes)} />
+        <SummaryStat icon={Clock3} label="Playtime" value={formatMinutes(summary.playtimeMinutes)} />
         <SummaryStat icon={Gamepad2} label="Games played" value={summary.gamesPlayed || 0} />
         <SummaryStat icon={Trophy} label="Achievements" value={summary.achievementsUnlocked || 0} />
         <SummaryStat icon={CheckCircle2} label="Coverage" value={coverageValue} />
@@ -263,13 +263,13 @@ function Summary({ history }) {
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-content-muted">
         {coverage.trailingMissingCloseouts ? (
           <span className="text-state-warning">
-            {coverage.trailingMissingCloseouts} expected closeout{coverage.trailingMissingCloseouts === 1 ? " is" : "s are"} still missing; missing checks are not treated as zero play.
+            {coverage.trailingMissingCloseouts} daily Steam check{coverage.trailingMissingCloseouts === 1 ? " is" : "s are"} still missing; missing checks are not treated as zero play.
           </span>
         ) : null}
         {summary.overlappingPlaytimeMinutes ? (
-          <span className="text-state-warning">Some activity has uncertain timing.</span>
+          <span className="text-state-warning">Some playtime still needs a date.</span>
         ) : null}
-        {freshness ? <span>Activity checked through {freshness}.</span> : null}
+        {freshness ? <span>Steam checked through {freshness}.</span> : null}
       </div>
     </section>
   );
@@ -306,7 +306,7 @@ function ActivityInsights({ insights, onRetry, onOpenGame, canOpenGame }) {
       <InsightsContext insights={insights} />
       <section aria-label="Insights summary" className="rounded-panel border border-surface-border bg-surface-card/90 p-4 sm:p-5">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryStat icon={Clock3} label="Observed playtime" value={formatMinutes(summary.playtimeMinutes)} />
+          <SummaryStat icon={Clock3} label="Playtime" value={formatMinutes(summary.playtimeMinutes)} />
           <SummaryStat icon={Gamepad2} label="Games played" value={summary.gamesPlayed || 0} />
           <SummaryStat icon={Trophy} label="Achievements" value={summary.achievementsUnlocked || 0} />
           <SummaryStat icon={CalendarDays} label="Active days" value={summary.activeDays ?? summary.preciseActiveDays ?? 0} />
@@ -314,11 +314,11 @@ function ActivityInsights({ insights, onRetry, onOpenGame, canOpenGame }) {
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-content-muted">
           {summary.uncertainPlaytimeMinutes ? (
             <span className="text-state-warning">
-              {formatMinutes(summary.uncertainPlaytimeMinutes)} has uncertain timing.
+              {formatMinutes(summary.uncertainPlaytimeMinutes)} still needs a date.
             </span>
           ) : null}
           {summary.allocatedPlaytimeMinutes ? (
-            <span>{formatMinutes(summary.allocatedPlaytimeMinutes)} assigned to dates by you.</span>
+            <span>Includes {formatMinutes(summary.allocatedPlaytimeMinutes)} assigned to dates by you.</span>
           ) : null}
           {(summary.activeDailyAverageMinutes ?? summary.preciseDailyAverageMinutes) != null ? (
             <span>{formatMinutes(summary.activeDailyAverageMinutes ?? summary.preciseDailyAverageMinutes)} average on active days.</span>
@@ -350,11 +350,17 @@ function InsightsContext({ insights }) {
           <h2 className="font-semibold text-content-primary">{period.label || "Activity insights"}</h2>
           {period.isIncomplete ? <Badge variant="warning">In progress</Badge> : null}
         </div>
-        {coverage.status === "not_started" ? <p className="mt-1 text-xs text-content-muted">Activity tracking has not started yet.</p> : null}
+        {coverage.status === "not_started" ? (
+          <p className="mt-1 text-xs text-content-muted">
+            {coverage.firstSnapshotAt
+              ? "No completed daily Steam check falls in this period yet."
+              : "Activity tracking has not started yet."}
+          </p>
+        ) : null}
         {coverage.trailingMissingCloseouts ? <p className="mt-1 text-xs text-state-warning">The latest activity check is still pending.</p> : null}
       </div>
       <div className="text-xs text-content-muted sm:text-right">
-        {freshness ? <p>Checked through {freshness}</p> : null}
+        {freshness ? <p>Steam checked through {freshness}</p> : null}
       </div>
     </section>
   );
@@ -479,7 +485,7 @@ function MostPlayed({ games, onOpenGame, canOpenGame }) {
                 <span className="mt-1 block text-sm font-medium text-content-secondary">
                   {formatMinutes(game.playtimeMinutes)}
                 </span>
-                {game.uncertainPlaytimeMinutes ? <span className="mt-0.5 block text-xs text-state-warning">Timing uncertain</span> : null}
+                {game.uncertainPlaytimeMinutes ? <span className="mt-0.5 block text-xs text-state-warning">Needs a date</span> : null}
               </span>
               </button>
             </li>
@@ -553,7 +559,7 @@ function UncertainCard({ item, onOpenGame, canOpenGame, onChooseDates }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-state-warning/30 bg-state-warning/5 px-4 py-3.5 sm:px-5">
         <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="text-lg font-semibold">{formatShortDay(item.startDay)}–{formatShortDay(item.endDay)}</h2>
-          <Badge variant="warning" className="px-2.5 py-1">Timing uncertain</Badge>
+          <Badge variant="warning" className="px-2.5 py-1">Needs a date</Badge>
         </div>
         <PeriodTotal item={item} />
       </div>
@@ -617,26 +623,11 @@ function GameRow({ game, onOpenGame, canOpen, showPlaytime, onChooseDates }) {
           </div>
         ) : null}
         {game.allocatedPlaytimeMinutes ? (
-          <p className="mt-2 text-xs text-primary-light">Dates chosen by you</p>
+          <p className="mt-2 text-xs text-primary-light">Date chosen by you</p>
         ) : null}
         {game.achievements?.length ? <Achievements achievements={game.achievements} interactiveRow={canOpen} /> : null}
         {game.allocationSources?.length ? (
-          <div className="relative z-20 mt-3 flex flex-wrap gap-2">
-            {game.allocationSources.map((source) => (
-              <Button
-                key={source.observationId}
-                size="sm"
-                variant="soft"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onChooseDates?.(game, source);
-                }}
-              >
-                <CalendarClock className="h-4 w-4" aria-hidden="true" />
-                {source.allocations?.length ? "Edit dates" : "Choose dates"}
-              </Button>
-            ))}
-          </div>
+          <DatePlacementControls game={game} onChooseDates={onChooseDates} />
         ) : null}
     </GameArtworkRow>
   );
@@ -657,23 +648,53 @@ function Highlight({ highlight }) {
 }
 
 function Achievements({ achievements, interactiveRow = false }) {
-  const preview = achievements.slice(0, 3);
-  const rest = achievements.slice(3);
   return (
-    <div className="mt-2 text-xs leading-5 text-content-muted">
-      <div className="flex items-start gap-1.5">
-        <Trophy className="mt-0.5 h-3.5 w-3.5 shrink-0 text-state-warning" aria-hidden="true" />
-        <span>{achievements.length === 1 ? "Achievement" : `${achievements.length} achievements`}: {preview.map((item) => item.name).join(", ")}</span>
+    <details className={`mt-2 text-xs leading-5 text-content-muted ${interactiveRow ? "relative z-20" : ""}`}>
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-content-secondary hover:text-content-primary">
+        <Trophy className="h-3.5 w-3.5 shrink-0 text-state-warning" aria-hidden="true" />
+        {achievements.length} achievement{achievements.length === 1 ? "" : "s"} unlocked
+      </summary>
+      <ul className="mt-2 space-y-1.5 rounded-card border border-surface-border/70 bg-surface-elevated/35 p-2">
+        {achievements.map((item) => (
+          <li key={item.id} className="flex min-w-0 items-center gap-2">
+            {item.icon ? <img src={item.icon} alt="" className="h-6 w-6 shrink-0 rounded" loading="lazy" /> : <Trophy className="h-3.5 w-3.5 shrink-0 text-state-warning" aria-hidden="true" />}
+            <span className="min-w-0 break-words text-content-primary">{item.name}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function DatePlacementControls({ game, onChooseDates }) {
+  const sources = game.allocationSources || [];
+  const chosenCount = sources.filter((source) => source.allocations?.length).length;
+  return (
+    <details className="relative z-20 mt-3 text-xs">
+      <summary className="cursor-pointer text-content-secondary hover:text-content-primary">
+        {chosenCount === sources.length
+          ? `Manage ${chosenCount === 1 ? "chosen date" : `${chosenCount} chosen date ranges`}`
+          : chosenCount
+            ? `${chosenCount === 1 ? "1 date chosen" : `${chosenCount} dates chosen`} · ${sources.length - chosenCount} ${sources.length - chosenCount === 1 ? "range needs a date" : "ranges need dates"}`
+            : `Choose dates for ${sources.length === 1 ? "this range" : `${sources.length} ranges`}`}
+      </summary>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {sources.map((source) => (
+          <Button
+            key={source.observationId}
+            size="sm"
+            variant="soft"
+            onClick={(event) => {
+              event.stopPropagation();
+              onChooseDates?.(game, source);
+            }}
+          >
+            <CalendarClock className="h-4 w-4" aria-hidden="true" />
+            {source.allocations?.length ? "Adjust" : "Choose"} {formatShortDay(source.startDay)}–{formatShortDay(source.endDay)}
+          </Button>
+        ))}
       </div>
-      {rest.length ? (
-        <details className={`ml-5 mt-1 ${interactiveRow ? "relative z-20" : ""}`}>
-          <summary className="cursor-pointer text-content-secondary hover:text-content-primary">Show {rest.length} more</summary>
-          <ul className="mt-1 list-disc pl-4">
-            {rest.map((item) => <li key={item.id}>{item.name}</li>)}
-          </ul>
-        </details>
-      ) : null}
-    </div>
+    </details>
   );
 }
 
@@ -754,7 +775,7 @@ function ActivityAllocationModal({ target, onClose, onSaved }) {
   return (
     <Modal
       title="Choose activity dates"
-      description={`${target.gameName} has ${formatMinutes(target.totalMinutes)} of playtime between ${formatShortDay(target.startDay)} and ${formatShortDay(target.endDay)}.`}
+      description={`${target.gameName} has ${formatMinutes(target.totalMinutes)} of playtime between ${formatShortDay(target.startDay)} and ${formatShortDay(target.endDay)}. Your choice places it in your Activity and Insights without changing Steam's original record.`}
       onClose={saving ? undefined : onClose}
       closeDisabled={saving}
       size="sm"
@@ -807,7 +828,7 @@ function ActivityAllocationModal({ target, onClose, onSaved }) {
           ))}
         </div>
         <p className="text-xs leading-5 text-content-muted">
-          Steam’s original uncertain interval is kept. This only controls how its playtime appears in your activity and insights.
+          Steam's original range is kept. This only controls where its playtime appears in your Activity and Insights.
         </p>
         {error ? <p role="alert" className="text-sm text-state-error">{error}</p> : null}
       </div>

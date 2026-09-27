@@ -64,7 +64,7 @@ test("Activity Insights applies one eligibility contract to totals, games, days 
   }, { range: "week", today: "2026-09-24" });
 
   assert.deepEqual(result.period, {
-    range: "week", label: "This week", startDay: "2026-09-21", endDay: "2026-09-27",
+    range: "week", label: "This week", startDay: "2026-09-20", endDay: "2026-09-26",
     throughDay: "2026-09-24", isIncomplete: true,
   });
   assert.deepEqual(result.summary, {
@@ -74,22 +74,20 @@ test("Activity Insights applies one eligibility contract to totals, games, days 
     uncertainPlaytimeMinutes: 185,
     unallocatedPlaytimeMinutes: 45,
     gamesPlayed: 2,
-    achievementsUnlocked: 1,
+    achievementsUnlocked: 2,
     preciseActiveDays: 1,
     activeDays: 1,
     preciseDailyAverageMinutes: 90,
     activeDailyAverageMinutes: 90,
   });
-  assert.equal(result.dailyBars.length, 1);
-  assert.deepEqual(
-    {
-      day: result.dailyBars[0].day,
-      playtimeMinutes: result.dailyBars[0].playtimeMinutes,
-      achievementsUnlocked: result.dailyBars[0].achievementsUnlocked,
-    },
+  assert.equal(result.dailyBars.length, 2);
+  assert.deepEqual(result.dailyBars.map((day) => ({
+    day: day.day, playtimeMinutes: day.playtimeMinutes, achievementsUnlocked: day.achievementsUnlocked,
+  })), [
+    { day: "2026-09-20", playtimeMinutes: 0, achievementsUnlocked: 1 },
     { day: "2026-09-21", playtimeMinutes: 90, achievementsUnlocked: 1 },
-  );
-  assert.deepEqual(result.dailyBars[0].games.map((game) => ({
+  ]);
+  assert.deepEqual(result.dailyBars[1].games.map((game) => ({
     name: game.name,
     playtimeMinutes: game.playtimeMinutes,
     achievementsUnlocked: game.achievementsUnlocked,
@@ -133,12 +131,12 @@ test("chosen dates replace an uncertain interval in dated Activity and Insights 
     "2026-09-19", "2026-09-20", "2026-09-21",
   ]);
 
-  assert.equal(insights.summary.playtimeMinutes, 90);
-  assert.equal(insights.summary.allocatedPlaytimeMinutes, 90);
+  assert.equal(insights.summary.playtimeMinutes, 120);
+  assert.equal(insights.summary.allocatedPlaytimeMinutes, 120);
   assert.equal(insights.summary.unallocatedPlaytimeMinutes, 0);
-  assert.equal(insights.summary.activeDays, 1);
-  assert.equal(insights.dailyBars[0].allocatedPlaytimeMinutes, 90);
-  assert.equal(insights.mostPlayed[0].allocatedPlaytimeMinutes, 90);
+  assert.equal(insights.summary.activeDays, 2);
+  assert.equal(insights.dailyBars[0].allocatedPlaytimeMinutes, 30);
+  assert.equal(insights.mostPlayed[0].allocatedPlaytimeMinutes, 120);
 
   const reset = groupSteamActivityHistory({
     observations: [observation],
@@ -157,12 +155,15 @@ test("Activity Insights supports month, year and all-time boundaries without inv
     { activity_precision: "uncertain", steam_app_id: "uncertain", game_name: "Uncertain", playtime_delta_minutes: 45, interval_started_at: "2026-08-01T02:00:00Z", observed_at: "2026-08-04T02:00:00Z" },
   ];
   const month = groupSteamActivityInsights({ observations }, { range: "month", today: "2026-09-24" });
+  const week = groupSteamActivityInsights({ observations }, { range: "week", today: "2026-09-24" });
   const year = groupSteamActivityInsights({ observations }, { range: "year", today: "2026-09-24" });
   const all = groupSteamActivityInsights({ observations }, { range: "all", today: "2026-09-24" });
 
   assert.equal(month.period.startDay, "2026-09-01");
   assert.equal(month.period.isIncomplete, true);
   assert.equal(month.summary.playtimeMinutes, 30);
+  assert.equal(week.period.startDay, "2026-09-20");
+  assert.equal(week.period.endDay, "2026-09-26");
   assert.equal(year.period.startDay, "2026-01-01");
   assert.equal(year.summary.playtimeMinutes, 135);
   assert.equal(year.summary.preciseActiveDays, 2);

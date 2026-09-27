@@ -542,7 +542,7 @@ function insightPeriodFor(range, today) {
   const [year, month] = today.split("-").map(Number);
   if (range === "week") {
     const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
-    const startDay = addDays(today, -((weekday + 6) % 7));
+    const startDay = addDays(today, -weekday);
     return {
       range, label: "This week", startDay, endDay: addDays(startDay, 6),
       throughDay: today, isIncomplete: true,
