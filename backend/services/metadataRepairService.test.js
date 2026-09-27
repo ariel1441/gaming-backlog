@@ -39,8 +39,8 @@ async function withRepairSchema(work) {
       await db.end();
     }
   } finally {
-    await admin.query("SET search_path TO public").catch(() => {});
-    await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => {});
+    await admin.query("SET search_path TO public");
+    await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await admin.end();
   }
 }

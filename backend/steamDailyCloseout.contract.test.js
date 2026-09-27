@@ -5,6 +5,7 @@ import pg from "pg";
 import dotenv from "dotenv";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { dropDisposableDatabase } from "./testDatabase.js";
 dotenv.config();
 
 test("daily Steam follow-up survives unchanged snapshots, cancellation and account changes", { timeout: 120_000 }, async (t) => {
@@ -16,7 +17,7 @@ test("daily Steam follow-up survives unchanged snapshots, cancellation and accou
   await admin.query(`CREATE DATABASE ${database}`);
   url.pathname = `/${database}`;
   const nativeFetch = globalThis.fetch;
-  let pool, releasePlayer;
+  let pool, releasePlayer, sync;
   try {
     await promisify(execFile)(process.execPath, ["scripts/db-migrate.js"], {
       env: { ...process.env, DATABASE_URL: url.href, PGSSL: "false" },
@@ -24,7 +25,7 @@ test("daily Steam follow-up survives unchanged snapshots, cancellation and accou
     Object.assign(process.env, { DATABASE_URL: url.href, PGSSL: "false", NODE_ENV: "test", STEAM_WEB_API_KEY: "test-key" });
     for (const name of ["STEAM_MOCK_OWNED_GAMES_JSON", "STEAM_MOCK_PLAYER_SUMMARY_JSON", "STEAM_MOCK_WISHLIST_JSON"]) delete process.env[name];
     ({ pool } = await import("./db.js"));
-    const sync = await import("./services/steamLibrarySyncService.js");
+    sync = await import("./services/steamLibrarySyncService.js");
     const steam = await import("./services/steamService.js");
     const wishlist = await import("./services/steamWishlistService.js");
     const { runDailySteamSync } = await import("../scripts/sync-steam-daily.js");
@@ -83,8 +84,7 @@ test("daily Steam follow-up survives unchanged snapshots, cancellation and accou
       const job = await sync.enqueueSteamSync(userId, { trigger: "scheduled", ...options });
       assert.ok(job);
       const result = await sync.waitForSteamSyncJob(userId, job.id, { pollMs: 5 });
-      // Drain the finishing worker before tests deliberately hold the next request.
-      while ((await sync.getSteamSyncJob(userId, job.id)).status === 'running') await new Promise(resolve => setTimeout(resolve, 5));
+      await sync.drainSteamSyncJobs();
       return result;
     };
     const achievementCalls = () => calls.filter(call => /GetPlayerAchievements|GetSchemaForGame/.test(call.path));
@@ -153,7 +153,7 @@ test("daily Steam follow-up survives unchanged snapshots, cancellation and accou
       await sync.cancelSteamSyncJob(userId, job.id);
       playerMode = "success";
       releasePlayer();
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await sync.drainSteamSyncJobs();
       assert.ok((await source()).achievements_pending_at);
       const recovered = await finish();
       assert.equal(recovered.result.summary.activityChanged, 0);
@@ -256,9 +256,10 @@ test("daily Steam follow-up survives unchanged snapshots, cancellation and accou
     });
   } finally {
     releasePlayer?.();
+    await sync?.drainSteamSyncJobs();
     globalThis.fetch = nativeFetch;
     await pool?.end();
-    await admin.query(`DROP DATABASE ${database}`);
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });

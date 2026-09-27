@@ -9,6 +9,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import pg from "pg";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "../testDatabase.js";
 
 dotenv.config();
 
@@ -43,7 +44,7 @@ async function createTemporaryDatabase() {
   return {
     url: target.toString(),
     async cleanup() {
-      await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
+      await dropDisposableDatabase(admin, database);
       await admin.end();
     },
   };
@@ -365,8 +366,8 @@ test(
       );
       assert.deepEqual(finalMemberships.rows, []);
     } finally {
-      if (server) await server.close().catch(() => {});
-      if (pool) await pool.end().catch(() => {});
+      if (server) await server.close();
+      if (pool) await pool.end();
       for (const [key, value] of Object.entries(previousEnvironment)) {
         if (value == null) delete process.env[key];
         else process.env[key] = value;

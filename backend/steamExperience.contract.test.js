@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
+import { dropDisposableDatabase } from "./testDatabase.js";
 dotenv.config();
 
 test(
@@ -714,7 +715,7 @@ test(
     } finally {
       if (server) await new Promise((resolve) => server.close(resolve));
       await pool?.end();
-      await admin.query(`DROP DATABASE ${database}`);
+      await dropDisposableDatabase(admin, database);
       await admin.end();
     }
   },

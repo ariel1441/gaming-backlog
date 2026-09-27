@@ -5,6 +5,7 @@ import pg from "pg";
 import dotenv from "dotenv";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -354,7 +355,7 @@ test("detailed Steam activity baselines named unlocks and groups reliable facts"
   } finally {
     globalThis.fetch = nativeFetch;
     await pool?.end();
-    await admin.query(`DROP DATABASE ${database}`);
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });

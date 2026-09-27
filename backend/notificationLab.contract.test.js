@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -75,7 +76,7 @@ test("Notification Lab supports the real inbox lookup/action path and a clean re
     );
   } finally {
     await pool?.end();
-    await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`).catch(() => {});
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });

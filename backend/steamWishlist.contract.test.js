@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 const execFileAsync = promisify(execFile);
@@ -24,7 +25,7 @@ async function temporaryDatabase() {
   return {
     url: target.toString(),
     async cleanup() {
-      await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
+      await dropDisposableDatabase(admin, database);
       await admin.end();
     },
   };
@@ -130,10 +131,9 @@ test("wishlist sync preserves baselines, removals, events, and user isolation", 
       pool.query("UPDATE user_wishlist_items SET user_id = $2 WHERE id = $1", [ownedItem.id, otherUserId]),
       (error) => error.code === "23514",
     );
-    await sync.runSteamSyncJobs();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await sync.drainSteamSyncJobs();
   } finally {
-    await appPool?.end().catch(() => {});
+    await appPool?.end();
     await database.cleanup();
   }
 });

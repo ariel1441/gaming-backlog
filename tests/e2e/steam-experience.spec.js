@@ -274,21 +274,26 @@ for (const [label, viewport] of [
         exact: true,
       }),
     ).toBeVisible();
-    const measure = () =>
-      page
-        .locator("article")
-        .first()
-        .evaluate((element) => {
+    const firstCard = () => page.locator("article").first();
+    const foregroundCover = () =>
+      firstCard().getByRole("img", {
+        name: `${games[0].name} cover`,
+        exact: true,
+      });
+    const measure = async () => {
+      const [card, image] = await Promise.all([
+        firstCard().evaluate((element) => {
           const rect = element.getBoundingClientRect();
-          const img = element.querySelector("img");
-          return {
-            width: rect.width,
-            left: rect.left,
-            imageHeight: img.getBoundingClientRect().height,
-            fit: getComputedStyle(img).objectFit,
-          };
-        });
-    await expect.poll(() => page.locator("article").first().locator("img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+          return { width: rect.width, left: rect.left };
+        }),
+        foregroundCover().evaluate((element) => ({
+          imageHeight: element.getBoundingClientRect().height,
+          fit: getComputedStyle(element).objectFit,
+        })),
+      ]);
+      return { ...card, ...image };
+    };
+    await expect.poll(() => foregroundCover().evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
     const backlog = await measure();
     await page
       .getByRole("button", {
@@ -306,15 +311,15 @@ for (const [label, viewport] of [
     await page.goto("/wishlist");
     await expect(page.getByRole("heading", { name: /wishlist$/i })).toBeVisible();
     await expect(page.locator("article")).toHaveCount(8);
-    await expect(page.locator("article").first().locator("img")).toHaveAttribute("src", "https://cdn.akamai.steamstatic.com/steam/apps/3321460/header.jpg");
-    await expect.poll(() => page.locator("article").first().locator("img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+    await expect(foregroundCover()).toHaveAttribute("src", "https://cdn.akamai.steamstatic.com/steam/apps/3321460/header.jpg");
+    await expect.poll(() => foregroundCover().evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
     await page.screenshot({ path: testInfo.outputPath(`wishlist-artwork-${label}.png`) });
     const wishlist = await measure();
     expect(Math.abs(backlog.width - wishlist.width)).toBeLessThan(2);
     expect(Math.abs(backlog.left - wishlist.left)).toBeLessThan(2);
     expect(Math.abs(wishlist.imageHeight - backlog.imageHeight)).toBeLessThan(1);
     expect(wishlist.fit).toBe(backlog.fit);
-    expect(wishlist.fit).toBe("cover");
+    expect(wishlist.fit).toBe("contain");
     expect(wishlist.imageHeight).toBeCloseTo(256, 3);
     if (label === "desktop") {
       const positions = await page
@@ -355,9 +360,9 @@ for (const [label, viewport] of [
     await page.keyboard.press("Escape");
     await page.route("https://cdn.akamai.steamstatic.com/**", (route) => route.fulfill({ status: 404, body: "" }));
     await page.reload();
-    const fallbackImage = page.locator("article").first().locator("img");
+    const fallbackImage = foregroundCover();
     await expect(fallbackImage).toHaveAttribute("src", items[0].cover);
-    await expect(fallbackImage).toHaveCSS("object-fit", "cover");
+    await expect(fallbackImage).toHaveCSS("object-fit", "contain");
     if (label === "mobile")
       await page
         .getByRole("button", { name: "Filters and view", exact: true })
@@ -491,9 +496,9 @@ for (const [label, viewport] of [
     await page.getByRole("button", { name: "Move to backlog", exact: true }).click();
     await expect.poll(() => mutations.includes("/api/wishlist/1/move-to-backlog")).toBe(true);
     await page.goto("/");
-    const movedImage = page.locator("article").first().locator("img");
+    const movedImage = foregroundCover();
     await expect(movedImage).toHaveAttribute("src", items[0].cover);
-    await expect(movedImage).toHaveCSS("object-fit", "cover");
+    await expect(movedImage).toHaveCSS("object-fit", "contain");
     const moved = await measure();
     expect(Math.abs(moved.imageHeight - wishlist.imageHeight)).toBeLessThan(1);
     await page.screenshot({ path: testInfo.outputPath(`backlog-fallback-${label}.png`) });
@@ -506,11 +511,11 @@ for (const [label, viewport] of [
     }));
     await page.reload();
     await expect(movedImage).toHaveAttribute("src", "https://cdn.akamai.steamstatic.com/steam/apps/3321460/library_hero.jpg");
-    await expect(movedImage).toHaveCSS("object-fit", "cover");
+    await expect(movedImage).toHaveCSS("object-fit", "contain");
     await page.screenshot({ path: testInfo.outputPath(`backlog-wide-${label}.png`) });
     await page.goto("/wishlist");
-    await expect(page.locator("article").first().locator("img")).toHaveAttribute("src", "https://cdn.akamai.steamstatic.com/steam/apps/3321460/library_hero.jpg");
-    await expect(page.locator("article").first().locator("img")).toHaveCSS("object-fit", "cover");
+    await expect(foregroundCover()).toHaveAttribute("src", "https://cdn.akamai.steamstatic.com/steam/apps/3321460/library_hero.jpg");
+    await expect(foregroundCover()).toHaveCSS("object-fit", "contain");
     await page.screenshot({ path: testInfo.outputPath(`wishlist-wide-${label}.png`) });
     expect(errors).toEqual([]);
   });

@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -28,7 +29,7 @@ async function createTemporaryDatabase() {
     database,
     url: target.toString(),
     async cleanup() {
-      await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
+      await dropDisposableDatabase(admin, database);
       await admin.end();
     },
   };
@@ -60,7 +61,7 @@ function generatedLibrary(size) {
 
 test("durable Steam sync processes 1,000 apps asynchronously and idempotently", { timeout: 120_000 }, async () => {
   const temporary = await createTemporaryDatabase();
-  let pool;
+  let pool, steamSync;
   try {
     await migrate(temporary.url);
     process.env.DATABASE_URL = temporary.url;
@@ -73,7 +74,7 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     });
 
     const steam = await import("./services/steamService.js");
-    const steamSync = await import("./services/steamLibrarySyncService.js");
+    steamSync = await import("./services/steamLibrarySyncService.js");
     const activity = await import("./services/activityEventService.js");
     ({ pool } = await import("./db.js"));
     const user = await pool.query(
@@ -261,7 +262,6 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
     const cancelled = await steamSync.cancelSteamSyncJob(userId, cancellable.id);
     assert.ok(cancelled);
     assert.equal(cancelled.status, "cancelled");
-    await new Promise((resolve) => setTimeout(resolve, 50));
     const cancelledAfterWorker = await steamSync.getSteamSyncJob(
       userId,
       cancellable.id,
@@ -548,6 +548,7 @@ test("durable Steam sync processes 1,000 apps asynchronously and idempotently", 
       `Steam 1k contract: enqueue=${enqueueMs.toFixed(1)}ms process=${processingMs.toFixed(1)}ms firstSyncQueries=${firstSyncQueryCount}\n`,
     );
   } finally {
+    await steamSync?.drainSteamSyncJobs();
     await pool?.end();
     await temporary.cleanup();
   }

@@ -32,6 +32,13 @@ Live code, scripts and Git take precedence over historical documentation.
   current `origin/main` into the source branch. Resolve any conflicts, then require
   CI on that post-sync source SHA before opening/reopening or merging the PR. Do not
   use a direct push to `main` as a substitute for this release check.
+- After GitHub merges `Dev` to `main`, `main` may appear ahead only because GitHub's
+  merge commit exists on `main`; that does not by itself mean product code is missing
+  from `Dev`. Still merge current `origin/main` back into `Dev` before the next release
+  candidate so branch history and the exact CI candidate are synchronized.
+- Never infer authorization to push `main`. A future direct-main release requires an
+  explicit user instruction naming `main`, repository settings that permit it, the
+  same post-sync exact-candidate CI gate, and the production release window below.
 - Railway Free-plan production services in EU West cannot deploy during its
   08:00–20:00 Amsterdam peak window (currently 09:00–21:00 Asia/Jerusalem).
   Prepare and verify `Dev` at any time, but schedule `main` promotion and any

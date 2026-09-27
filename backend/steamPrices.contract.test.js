@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
+import { dropDisposableDatabase } from './testDatabase.js';
 dotenv.config();
 
 test('Steam prices: durable history, independent baselines, eligibility and fencing', { timeout: 120000 }, async t => {
@@ -16,12 +17,12 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
   await admin.connect(); await admin.query(`CREATE DATABASE ${database}`);
   url.pathname = `/${database}`;
   const nativeFetch = globalThis.fetch;
-  let pool, releaseHeld;
+  let pool, releaseHeld, sync;
   try {
     await promisify(execFile)(process.execPath, ['scripts/db-migrate.js'], { env: { ...process.env, DATABASE_URL: url.href, PGSSL: 'false' } });
     Object.assign(process.env, { DATABASE_URL: url.href, PGSSL: 'false', NODE_ENV: 'test' });
     ({ pool } = await import('./db.js'));
-    const sync = await import('./services/steamLibrarySyncService.js');
+    sync = await import('./services/steamLibrarySyncService.js');
     const steam = await import('./services/steamService.js');
     const prices = await import('./services/steamPriceSyncService.js');
     const wishlist = await import('./services/steamWishlistService.js');
@@ -431,8 +432,10 @@ test('Steam prices: durable history, independent baselines, eligibility and fenc
       assert.ok((await readFile('backend/schema.sql', 'utf8')).replace(/\r\n/g, '\n').includes(feedMigration.replace(/\r\n/g, '\n')));
     });
   } finally {
-    releaseHeld?.(); globalThis.fetch = nativeFetch;
+    releaseHeld?.();
+    await sync?.drainSteamSyncJobs();
+    globalThis.fetch = nativeFetch;
     await pool?.end();
-    await admin.query(`DROP DATABASE ${database}`); await admin.end();
+    await dropDisposableDatabase(admin, database); await admin.end();
   }
 });

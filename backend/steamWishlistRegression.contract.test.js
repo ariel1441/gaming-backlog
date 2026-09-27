@@ -8,6 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import express from "express";
 import jwt from "jsonwebtoken";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 const exec = promisify(execFile);
@@ -31,7 +32,7 @@ test(
     const target = new URL(adminUrl);
     target.pathname = `/${database}`;
     const nativeFetch = globalThis.fetch;
-    let pool, server;
+    let pool, server, sync;
     try {
       await exec(process.execPath, ["scripts/db-migrate.js"], {
         env: { ...process.env, DATABASE_URL: target.href, PGSSL: "false" },
@@ -43,7 +44,7 @@ test(
       process.env.JWT_SECRET = "wishlist-contract";
       delete process.env.STEAM_MOCK_WISHLIST_JSON;
       ({ pool } = await import("./db.js"));
-      const sync = await import("./services/steamLibrarySyncService.js");
+      sync = await import("./services/steamLibrarySyncService.js");
       const wishlist = await import("./services/steamWishlistService.js");
       const steam = await import("./services/steamService.js");
       const router = (await import("./routes/wishlist.js")).default;
@@ -237,40 +238,45 @@ test(
           // Only hold the first provider request so both concurrent membership calls can finish.
           let held = false;
           const provider = globalThis.fetch;
-          globalThis.fetch = async (...args) => {
-            if (!held) {
-              held = true;
-              fetchStarted();
-              await new Promise((resolve) => {
-                releaseFetch = resolve;
-              });
-            }
-            return provider(...args);
-          };
-          const manual = await sync.enqueueSteamSync(userId, {
-            syncKind: "wishlist",
-          });
-          await started;
-          const scheduled = await sync.enqueueSteamSync(userId, {
-            syncKind: "wishlist",
-            trigger: "scheduled",
-          });
-          assert.equal(scheduled.id, manual.id);
-          const before = (await wishlist.listWishlistItems(userId))
-            .snapshotVersion;
-          await sync.cancelSteamSyncJob(userId, manual.id);
-          releaseFetch();
-          await sync.runSteamSyncJobs();
-          await new Promise((resolve) => setTimeout(resolve, 30));
-          assert.equal(
-            (await sync.getSteamSyncJob(userId, manual.id)).status,
-            "cancelled",
-          );
-          assert.equal(
-            String((await wishlist.listWishlistItems(userId)).snapshotVersion),
-            String(before),
-          );
-          globalThis.fetch = provider;
+          try {
+            globalThis.fetch = async (...args) => {
+              if (!held) {
+                held = true;
+                fetchStarted();
+                await new Promise((resolve) => {
+                  releaseFetch = resolve;
+                });
+              }
+              return provider(...args);
+            };
+            const manual = await sync.enqueueSteamSync(userId, {
+              syncKind: "wishlist",
+            });
+            await started;
+            const scheduled = await sync.enqueueSteamSync(userId, {
+              syncKind: "wishlist",
+              trigger: "scheduled",
+            });
+            assert.equal(scheduled.id, manual.id);
+            const before = (await wishlist.listWishlistItems(userId))
+              .snapshotVersion;
+            await sync.cancelSteamSyncJob(userId, manual.id);
+            releaseFetch();
+            releaseFetch = null;
+            await sync.drainSteamSyncJobs();
+            assert.equal(
+              (await sync.getSteamSyncJob(userId, manual.id)).status,
+              "cancelled",
+            );
+            assert.equal(
+              String((await wishlist.listWishlistItems(userId)).snapshotVersion),
+              String(before),
+            );
+          } finally {
+            releaseFetch?.();
+            await sync.drainSteamSyncJobs();
+            globalThis.fetch = provider;
+          }
         },
       );
       await t.test(
@@ -413,12 +419,13 @@ test(
         },
       );
     } finally {
+      await sync?.drainSteamSyncJobs();
       globalThis.fetch = nativeFetch;
       await new Promise((resolve) =>
         server ? server.close(resolve) : resolve(),
       );
       await pool?.end();
-      await admin.query(`DROP DATABASE ${database}`);
+      await dropDisposableDatabase(admin, database);
       await admin.end();
     }
   },

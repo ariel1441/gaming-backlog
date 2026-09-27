@@ -7,6 +7,7 @@ import pg from "pg";
 import dotenv from "dotenv";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -467,7 +468,7 @@ test("activity foundation migration preserves and classifies retained observatio
   } finally {
     await appPool?.end();
     await client.end();
-    await admin.query(`DROP DATABASE ${database}`);
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });

@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -26,13 +27,7 @@ async function withTemporaryDatabase(work) {
     await admin.query(`CREATE DATABASE ${database}`);
     await work(target.toString(), database);
   } finally {
-    await admin
-      .query(
-        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
-        [database],
-      )
-      .catch(() => {});
-    await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 }
@@ -217,10 +212,8 @@ test("fresh schema enforces game identity, dates, metrics, and relationship owne
       [userA, gameA.rows[0].id, catalogGameId],
     );
   } finally {
-    await client.query("SET search_path TO public").catch(() => {});
-    await client
-      .query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`)
-      .catch(() => {});
+    await client.query("SET search_path TO public");
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await client.end();
   }
 });

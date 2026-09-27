@@ -5,6 +5,7 @@ import pg from "pg";
 import dotenv from "dotenv";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { dropDisposableDatabase } from "./testDatabase.js";
 dotenv.config();
 
 test(
@@ -18,7 +19,7 @@ test(
     await admin.connect();
     await admin.query(`CREATE DATABASE ${database}`);
     url.pathname = `/${database}`;
-    let pool;
+    let pool, sync;
     try {
       await promisify(execFile)(process.execPath, ["scripts/db-migrate.js"], {
         env: { ...process.env, DATABASE_URL: url.href, PGSSL: "false" },
@@ -42,7 +43,7 @@ test(
         response: { players: [] },
       });
       ({ pool } = await import("./db.js"));
-      const sync = await import("./services/steamLibrarySyncService.js");
+      sync = await import("./services/steamLibrarySyncService.js");
       const steam = await import("./services/steamService.js");
       const { lockSteamSyncJob } = await import("./services/steamSyncLease.js");
       const userId = (
@@ -147,8 +148,9 @@ test(
         client.release();
       }
     } finally {
+      await sync?.drainSteamSyncJobs();
       await pool?.end();
-      await admin.query(`DROP DATABASE ${database}`);
+      await dropDisposableDatabase(admin, database);
       await admin.end();
     }
   },
