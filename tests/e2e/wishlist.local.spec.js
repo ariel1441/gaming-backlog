@@ -42,6 +42,14 @@ test("local PostgreSQL Wishlist renders real metadata and covers on desktop and 
       await expect.poll(() => image.evaluate((img) => img.complete && img.naturalWidth > 0), { timeout: 20000 }).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       await page.screenshot({ path: `test-results/wishlist-local-${label}.png` });
+      if (width >= 768) {
+        await page.getByTitle("Rows", { exact: true }).click();
+        const rowImage = page.locator('article img[alt]:not([alt=""])').first();
+        await expect(rowImage).toBeVisible();
+        const rowImageBox = await rowImage.boundingBox();
+    expect(Math.abs((rowImageBox.width / rowImageBox.height) - (26 / 15))).toBeLessThan(0.02);
+        await page.screenshot({ path: `test-results/wishlist-local-${label}-rows.png` });
+      }
       if (width < 768) await page.getByRole("button", { name: /Filters/ }).click();
       await page.getByRole("button", { name: /^Sort direction: ascending/ }).click();
       await expect(page.locator("article h3").first()).toHaveText(last.name);

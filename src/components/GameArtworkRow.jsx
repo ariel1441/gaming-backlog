@@ -45,7 +45,7 @@ export default function GameArtworkRow({
         />
       ) : null}
       {actions}
-      <div className={`relative flex min-h-[9rem] min-w-0 items-stretch gap-4 p-3 transition-colors sm:min-h-[11.5rem] sm:gap-5 sm:p-5 ${onClick ? "group-hover:bg-surface-elevated/20" : ""} ${bodyClassName}`}>
+      <div className={`relative flex min-h-[172px] min-w-0 items-stretch gap-4 p-4 transition-colors sm:min-h-[184px] sm:gap-5 sm:p-5 ${onClick ? "group-hover:bg-surface-elevated/20" : ""} ${bodyClassName}`}>
         {leading}
         <GameCover
           src={cover}
@@ -54,6 +54,7 @@ export default function GameArtworkRow({
           name={name}
           alt={`${name || "Game"} cover`}
           decorative={false}
+          imageClassName="absolute inset-0"
           className={`relative ${coverClassName} shrink-0 rounded-xl border border-media-border/10 shadow-lg`}
         />
         <div className="flex min-w-0 flex-1 flex-col justify-center">{children}</div>

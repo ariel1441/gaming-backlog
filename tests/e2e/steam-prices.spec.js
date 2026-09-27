@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 const landscapeCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23233b63'/%3E%3C/svg%3E";
+const portraitCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='640'%3E%3Crect width='360' height='640' fill='%23874d58'/%3E%3C/svg%3E";
 
 for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mobile', { width: 390, height: 844 }]]) {
   test(`Steam Israel prices preserve ${label} Wishlist views and recovery`, async ({ page }, testInfo) => {
@@ -23,7 +24,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
       providerOrder: index,
       genres: index === 0 ? ['Action RPG', 'RPG', 'Fantasy', 'Stylized', 'Story Rich'] : ['Adventure'],
       metadataComplete: true,
-      cover: index === 0 ? landscapeCover : null,
+      cover: index === 0 ? landscapeCover : index === 1 ? portraitCover : null,
     }));
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
@@ -60,10 +61,16 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
       }
       if (name === 'Rows' && label === 'desktop') {
         const rowCover = page.getByAltText('A very long Wishlist title that remains readable on a small screen cover');
+        const portraitRowCover = page.getByAltText('Free game cover');
         await expect(rowCover).toBeVisible();
-        const box = await rowCover.boundingBox();
-        expect(box.width).toBeGreaterThan(250);
-        expect(box.height).toBeGreaterThan(120);
+        await expect(portraitRowCover).toBeVisible();
+        const [box, portraitBox] = await Promise.all([rowCover.boundingBox(), portraitRowCover.boundingBox()]);
+    expect(box.width).toBeGreaterThan(200);
+    expect(box.width).toBeLessThanOrEqual(210);
+    expect(box.height).toBeGreaterThan(90);
+    expect(box.height).toBeLessThanOrEqual(122);
+    expect(Math.abs((box.width / box.height) - (26 / 15))).toBeLessThan(0.02);
+    expect(Math.abs(box.height - portraitBox.height)).toBeLessThan(2);
         const heightDifference = await rowCover.evaluate((image) => {
           const cover = image.parentElement;
           const rowBody = cover?.parentElement;
@@ -73,7 +80,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
             - Number.parseFloat(styles?.paddingBottom || '0');
           return Math.abs((cover?.getBoundingClientRect().height || 0) - contentHeight);
         });
-        expect(heightDifference).toBeLessThan(2);
+    expect(heightDifference).toBeGreaterThan(10);
       }
       if (name === 'Cards' && label === 'desktop') {
         const genreList = page.getByTitle('Action RPG, RPG, Fantasy, Stylized, Story Rich', { exact: true });
