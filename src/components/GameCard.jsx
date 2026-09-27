@@ -30,6 +30,7 @@ import {
 } from "./ui";
 import GameArtworkRow from "./GameArtworkRow";
 import { formatDisplayDate, formatNumericDate } from "../utils/dateFormat";
+import { isSteamHeaderArtwork, resolveGameArtwork } from "../utils/gameArtwork";
 
 function daysSince(value) {
   if (!value) return null;
@@ -128,6 +129,10 @@ export default function GameCard({
   const toast = useToast();
   const canEdit = canEditGame({ user, game, isAuthenticated, readOnly });
   const canDelete = canDeleteGame({ user, game, isAuthenticated, readOnly });
+  const resolvedArtwork = resolveGameArtwork(game.cover);
+  const usesSteamHeaderFallback = Boolean(
+    isSteamHeaderArtwork(resolvedArtwork.cover || game.cover),
+  );
 
   const handleCardClick = (event) => {
     event.stopPropagation();
@@ -410,7 +415,9 @@ export default function GameCard({
           alt={`${game.name || "Game"} cover`}
           decorative={false}
           className={`relative ${imageHeight} w-full`}
-          imageClassName="absolute inset-0"
+          imageClassName={`absolute inset-0 ${usesSteamHeaderFallback ? "object-top" : ""}`}
+          fit={usesSteamHeaderFallback ? "contain" : "cover"}
+          backdrop={usesSteamHeaderFallback}
           showFallbackLabel
         />
         <div className="absolute inset-0 bg-gradient-to-t from-surface-card via-surface-card/25 to-transparent" />

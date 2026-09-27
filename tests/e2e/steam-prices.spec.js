@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const landscapeCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23233b63'/%3E%3C/svg%3E";
 const portraitCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='640'%3E%3Crect width='360' height='640' fill='%23874d58'/%3E%3C/svg%3E";
+const steamPortraitCover = "https://cdn.akamai.steamstatic.com/steam/apps/620/library_capsule.jpg";
 
 for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mobile', { width: 390, height: 844 }]]) {
   test(`Steam Israel prices preserve ${label} Wishlist views and recovery`, async ({ page }, testInfo) => {
@@ -24,7 +25,11 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
       providerOrder: index,
       genres: index === 0 ? ['Action RPG', 'RPG', 'Fantasy', 'Stylized', 'Story Rich'] : ['Adventure'],
       metadataComplete: true,
-      cover: index === 0 ? landscapeCover : index === 1 ? portraitCover : null,
+      cover: index === 0 ? steamPortraitCover : index === 1 ? portraitCover : null,
+    }));
+    await page.route('**/steam/apps/620/**', route => route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#233b63"/></svg>',
     }));
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
@@ -86,6 +91,12 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 1000 }], ['m
         const genreList = page.getByTitle('Action RPG, RPG, Fantasy, Stylized, Story Rich', { exact: true });
         const visibleGenres = await genreList.locator('[data-adaptive-chip]:not([data-adaptive-overflow])').count();
         expect(visibleGenres).toBeGreaterThan(1);
+        const steamFallbackImage = page.getByAltText('A very long Wishlist title that remains readable on a small screen cover');
+        const regularArtworkImage = page.getByAltText('Free game cover');
+        await expect(steamFallbackImage).toBeVisible();
+        expect(await steamFallbackImage.getAttribute('class')).toContain('object-contain');
+        expect(await steamFallbackImage.getAttribute('class')).toContain('object-top');
+        expect(await regularArtworkImage.getAttribute('class')).toContain('object-cover');
       }
     }
     const manageUpdates = page.getByRole('button', { name: 'Manage Steam Wishlist updates', exact: true });
