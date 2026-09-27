@@ -38,7 +38,7 @@ test("Steam play evidence survives delayed decisions and connection replacement"
     };
     const steam = await import("./services/steamService.js");
     const sync = await import("./services/steamLibrarySyncService.js");
-    drainSteamSyncJobs = sync.runSteamSyncJobs;
+    drainSteamSyncJobs = sync.drainSteamSyncJobs;
     const wishlist = await import("./services/steamWishlistService.js");
     const activity = await import("./services/steamActivityService.js");
     let sequence = 0;
@@ -435,10 +435,10 @@ test("Steam play evidence survives delayed decisions and connection replacement"
     });
     assert.deepEqual(unexpectedRequests, []);
   } finally {
-    globalThis.fetch = nativeFetch;
     // enqueueSteamSync also schedules a detached microtask. Drain its shared
     // worker before closing the pool and waiting for fixture connections to close.
     await drainSteamSyncJobs?.();
+    globalThis.fetch = nativeFetch;
     await pool?.end();
     await dropDisposableDatabase(admin, database);
     await admin.end();

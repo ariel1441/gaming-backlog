@@ -1263,7 +1263,11 @@ export async function enqueueSteamSync(
       if (triggerType === 'scheduled') return null;
       throw badRequest("Steam account changed. Try again.");
     }
-    queueMicrotask(() => void runSteamSyncJobs().catch(() => {}));
+    queueMicrotask(() =>
+      void runSteamSyncJobs().catch((error) => {
+        console.error("Steam sync worker failed:", error?.message || error);
+      }),
+    );
     return serializeSyncJob(rows[0]);
   } catch (error) {
     if (error?.code !== "23505") throw error;
@@ -1401,6 +1405,13 @@ export async function runSteamSyncJobs() {
     steamSyncWorkerPromise = null;
   });
   return steamSyncWorkerPromise;
+}
+
+export async function drainSteamSyncJobs() {
+  // Let enqueueSteamSync's queued microtask publish its shared worker promise,
+  // then join that worker (or start and drain the queued jobs ourselves).
+  await Promise.resolve();
+  return runSteamSyncJobs();
 }
 
 export function startSteamSyncJobScheduler() {

@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
+import { dropDisposableDatabase } from './testDatabase.js';
 dotenv.config();
 const exec = promisify(execFile);
 
@@ -124,7 +125,7 @@ test('release review regressions use an isolated database and no providers', { t
   } finally {
     globalThis.fetch = originalFetch;
     await pool?.end();
-    await admin.query(`DROP DATABASE ${database}`);
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });

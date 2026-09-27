@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { readFile, readdir } from "node:fs/promises";
 import pg from "pg";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -103,12 +104,8 @@ test("migration 043 preserves candidates and is idempotent through the local run
       (error) => error?.code === "23514",
     );
   } finally {
-    await client?.end().catch(() => {});
-    await admin.query(
-      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
-      [database],
-    ).catch(() => {});
-    await admin.query(`DROP DATABASE IF EXISTS ${database}`).catch(() => {});
+    await client?.end();
+    await dropDisposableDatabase(admin, database);
     await admin.end();
   }
 });

@@ -27,6 +27,7 @@ import {
   upsertSteamAccount,
 } from "./steamService.js";
 import {
+  drainSteamSyncJobs,
   enqueueSteamSync,
   getSteamSyncJob,
 } from "./steamLibrarySyncService.js";
@@ -185,6 +186,7 @@ test("Steam sync enqueue returns a durable job and job reads stay user scoped", 
         assert.deepEqual(values, [jobRow.id, 7]);
         return { rows: [jobRow] };
       }
+      if (sql.startsWith("WITH candidate AS")) return { rows: [] };
       throw new Error(`Unexpected query: ${sql}`);
     },
     async () => {
@@ -194,6 +196,7 @@ test("Steam sync enqueue returns a durable job and job reads stay user scoped", 
       const fetched = await getSteamSyncJob(7, jobRow.id);
       assert.equal(fetched.id, jobRow.id);
       assert.equal(fetched.status, "queued");
+      await drainSteamSyncJobs();
     },
   );
 });

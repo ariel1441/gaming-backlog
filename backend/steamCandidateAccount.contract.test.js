@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import pg from "pg";
 import dotenv from "dotenv";
+import { dropDisposableDatabase } from "./testDatabase.js";
 
 dotenv.config();
 
@@ -16,7 +17,7 @@ test("Steam candidates cannot restore facts from a previous connection", { timeo
   await admin.connect();
   await admin.query(`CREATE DATABASE ${database}`);
   url.pathname = `/${database}`;
-  let pool;
+  let pool, sync;
   try {
     await promisify(execFile)(process.execPath, ["scripts/db-migrate.js"], {
       env: { ...process.env, DATABASE_URL: url.href, PGSSL: "false" },
@@ -27,7 +28,7 @@ test("Steam candidates cannot restore facts from a previous connection", { timeo
     });
     ({ pool } = await import("./db.js"));
     const steam = await import("./services/steamService.js");
-    const sync = await import("./services/steamLibrarySyncService.js");
+    sync = await import("./services/steamLibrarySyncService.js");
     const catalogIds = new Map();
     for (const [appid, name] of [[41001, "Former account game"], [41002, "Shared account game"], [41003, "Ignored account game"], [41004, "New account game"]]) {
       const catalog = await pool.query("INSERT INTO catalog_games (name) VALUES ($1) RETURNING id", [name]);
@@ -166,11 +167,9 @@ test("Steam candidates cannot restore facts from a previous connection", { timeo
     assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM games WHERE user_id = $1", [userId])).rows[0].n, 2);
   } finally {
     try {
+      await sync?.drainSteamSyncJobs();
       await pool?.end();
-      // Let graceful client shutdown finish. Forcing termination here can race
-      // pg-pool's socket close and emit an uncaught administrator-command error.
-      // Ordinary DROP also exposes genuinely leaked connections instead of hiding them.
-      await admin.query(`DROP DATABASE ${database}`);
+      await dropDisposableDatabase(admin, database);
     } finally {
       await admin.end();
     }
