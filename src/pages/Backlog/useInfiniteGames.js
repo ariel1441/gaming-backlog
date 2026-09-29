@@ -4,14 +4,15 @@ import { subscribeGamesInvalidation } from "../../services/gamesCache.js";
 import { buildDisplayGames, splitCsv } from "../../utils/gameList.js";
 import { hoursValueForList } from "../../utils/hours.js";
 import { NO_PERSONAL_GENRE_FILTER, NO_RAWG_GENRE_FILTER } from "../../utils/filterOptions.js";
+import { COLLECTION_BACKGROUND_PAGE_SIZE } from "../../utils/collectionLoading.js";
 
-const PAGE_SIZE = 50;
 const REVALIDATE_MS = 60_000;
 const EMPTY = Object.freeze({ games: [], total: 0, loading: false, saved: false, error: "" });
 const LOADING = Object.freeze({ ...EMPTY, loading: true });
 const entries = new Map();
 const listeners = new Set();
 const pending = new Map();
+const hydrationJobs = new Map();
 const fullCollections = new Map();
 
 const clientSortKeys = {
@@ -52,6 +53,15 @@ function write(key, value) {
 }
 function subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }
 
+function cancelHydration(key) {
+  const job = hydrationJobs.get(key);
+  if (!job) return;
+  job.controller.abort();
+  hydrationJobs.delete(key);
+  const current = read(key);
+  if (current.loadingMore) write(key, { ...current, loadingMore: false });
+}
+
 function normalizePage(payload) {
   if (!Array.isArray(payload)) return payload || {};
   return {
@@ -78,7 +88,7 @@ function fullCollectionFacets(games) {
 async function loadSearchPage(userId, params) {
   const [collectionResult, serverResult] = await Promise.allSettled([
     getFullBacklogCollection(userId),
-    listGamesPage({ ...params, limit: PAGE_SIZE, offset: 0, include_summary: true }),
+    listGamesPage({ ...params, limit: COLLECTION_BACKGROUND_PAGE_SIZE, offset: 0, include_summary: true }),
   ]);
   if (collectionResult.status === "rejected" && serverResult.status === "rejected") {
     throw collectionResult.reason;
@@ -147,7 +157,8 @@ export function appendGamesPage(current, page) {
   return { games, hasMore: (page.games || []).length > 0 && games.length < Number(page.total || 0) };
 }
 
-async function loadFirst(key, userId, params, { preserveLoaded = false, silent = false, force = false } = {}) {
+async function loadFirst(key, userId, params, initialLimit, { preserveLoaded = false, silent = false, force = false } = {}) {
+  cancelHydration(key);
   const requestKey = `${key}:first`;
   if (pending.has(requestKey)) {
     if (!force) return pending.get(requestKey);
@@ -165,7 +176,7 @@ async function loadFirst(key, userId, params, { preserveLoaded = false, silent =
     try {
       const page = normalizePage(params.q
         ? await loadSearchPage(userId, params)
-        : await listGamesPage({ ...params, limit: PAGE_SIZE, offset: 0, include_summary: true }));
+        : await listGamesPage({ ...params, limit: initialLimit, offset: 0, include_summary: true }));
       const firstGames = page.games || [];
       const canPreserve = preserveLoaded && previous.saved && sameSnapshot(previous, page);
       const games = canPreserve
@@ -187,25 +198,41 @@ async function loadFirst(key, userId, params, { preserveLoaded = false, silent =
 }
 
 async function loadNext(key, params) {
-  const requestKey = `${key}:next`;
-  if (pending.has(requestKey)) return pending.get(requestKey);
+  if (hydrationJobs.has(key)) return hydrationJobs.get(key).promise;
   const current = read(key);
   if (!current.saved || current.loading || current.loadingMore || !current.hasMore) return;
+  const controller = new AbortController();
   write(key, { ...current, loadingMore: true, loadMoreError: "" });
   const promise = (async () => {
     try {
-      const page = normalizePage(await listGamesPage({ ...params, limit: PAGE_SIZE, offset: current.games.length, include_summary: false }));
-      const appended = appendGamesPage(current, page);
-      write(key, { ...current, ...appended, loadingMore: false, loadMoreError: "", validatedAt: Date.now() });
+      let assembled = current;
+      while (assembled.hasMore) {
+        const page = normalizePage(await listGamesPage({
+          ...params,
+          limit: COLLECTION_BACKGROUND_PAGE_SIZE,
+          offset: assembled.games.length,
+          include_summary: false,
+        }, { signal: controller.signal }));
+        const appended = appendGamesPage(assembled, page);
+        if (appended.games.length === assembled.games.length) {
+          throw new Error("Backlog paging stopped before the collection was complete.");
+        }
+        assembled = { ...assembled, ...appended };
+      }
+      if (hydrationJobs.get(key)?.controller !== controller) return;
+      write(key, { ...assembled, loadingMore: false, loadMoreError: "", validatedAt: Date.now() });
     } catch (error) {
+      if (error?.name === "AbortError" || hydrationJobs.get(key)?.controller !== controller) return;
       write(key, { ...read(key), loadingMore: false, loadMoreError: error.message || "Could not load more games." });
-    } finally { pending.delete(requestKey); }
+    } finally {
+      if (hydrationJobs.get(key)?.controller === controller) hydrationJobs.delete(key);
+    }
   })();
-  pending.set(requestKey, promise);
+  hydrationJobs.set(key, { controller, promise });
   return promise;
 }
 
-export default function useInfiniteGames({ userId, enabled = true, params = {} }) {
+export default function useInfiniteGames({ userId, enabled = true, params = {}, initialLimit = 12 }) {
   const active = enabled && !!userId;
   const paramsKey = JSON.stringify(params);
   const stableParams = useMemo(() => JSON.parse(paramsKey), [paramsKey]);
@@ -224,8 +251,16 @@ export default function useInfiniteGames({ userId, enabled = true, params = {} }
         refreshError: rawState.error || "",
       }
     : rawState;
-  const refresh = useCallback((options) => active ? loadFirst(key, userId, stableParams, options) : Promise.resolve(), [active, key, stableParams, userId]);
+  const refresh = useCallback((options) => active ? loadFirst(key, userId, stableParams, initialLimit, options) : Promise.resolve(), [active, initialLimit, key, stableParams, userId]);
   const loadMore = useCallback(() => active ? loadNext(key, stableParams) : Promise.resolve(), [active, key, stableParams]);
+
+  useEffect(() => {
+    if (active && rawState.saved && rawState.hasMore && !rawState.loading && !rawState.loadingMore && !rawState.loadMoreError) {
+      void loadMore();
+    }
+  }, [active, loadMore, rawState.hasMore, rawState.loadMoreError, rawState.loading, rawState.loadingMore, rawState.saved]);
+
+  useEffect(() => () => cancelHydration(key), [key]);
 
   useEffect(() => {
     if (!active) return;

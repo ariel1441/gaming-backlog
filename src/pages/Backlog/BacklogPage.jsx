@@ -12,6 +12,7 @@ import { NO_PERSONAL_GENRE_FILTER, NO_RAWG_GENRE_FILTER } from "../../utils/filt
 import { canReorderGames } from "../../utils/permissions";
 import { getManualReorderAvailability } from "../../utils/reorder";
 import { normalizeUserPreferences } from "../../utils/userPreferences";
+import { collectionInitialLimit } from "../../utils/collectionLoading";
 import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
 import { useStatuses } from "../../hooks/useStatuses";
@@ -71,6 +72,8 @@ export default function BacklogPage() {
     () => normalizeUserPreferences(user?.preferences),
     [user?.preferences],
   );
+  const [viewMode, setViewMode] = useState(userPreferences.default_backlog_view);
+  const isDesktopTable = useMedia("(min-width: 1024px)");
   const wishlist = useWishlist({ userId: user?.id,
     enabled: userPreferences.show_wishlist_in_backlog && isAuthenticated && !isGuest,
   });
@@ -158,7 +161,12 @@ export default function BacklogPage() {
     selectedMyGenres, hoursRange, dateFilter, scoreFilter, ratedOnly, sourceFilter,
     rawgStatus, missingEstimatesOnly]);
   const usePagedBacklog = !userPreferences.show_wishlist_in_backlog;
-  const paged = useInfiniteGames({ userId: user?.id, enabled: usePagedBacklog && isAuthenticated, params: requestParams });
+  const paged = useInfiniteGames({
+    userId: user?.id,
+    enabled: usePagedBacklog && isAuthenticated,
+    params: requestParams,
+    initialLimit: collectionInitialLimit(viewMode, isDesktopTable),
+  });
   const games = usePagedBacklog
     ? paged.games.filter((game) => !deletedGameIds.has(String(game.id)))
     : legacyGames;
@@ -264,10 +272,6 @@ export default function BacklogPage() {
   const [showKeepDemo, setShowKeepDemo] = useState(false);
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
-  const [viewMode, setViewMode] = useState(
-    userPreferences.default_backlog_view,
-  );
-
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
     setViewMode(userPreferences.default_backlog_view);
@@ -288,21 +292,6 @@ export default function BacklogPage() {
   const bannerRef = useRef(null);
   const mainRef = useRef(null);
   const toolbarRef = useRef(null);
-  const loadMoreRef = useRef(null);
-  const isDesktopTable = useMedia("(min-width: 1024px)");
-
-  useEffect(() => {
-    const node = loadMoreRef.current;
-    if (!usePagedBacklog || !node || !paged.hasMore || paged.loading || paged.loadingMore) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) void paged.loadMore();
-      },
-      { rootMargin: "600px 0px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [isDesktopTable, paged.hasMore, paged.loadMore, paged.loading, paged.loadingMore, usePagedBacklog, viewMode]);
 
   const {
     newGame,
@@ -698,8 +687,8 @@ export default function BacklogPage() {
                     hasMore: paged.hasMore,
                     loading: paged.loadingMore,
                     onLoadMore: paged.loadMore,
-                    ref: loadMoreRef,
-                    label: `Load more (${games.length} of ${paged.total})`,
+                    label: "Retry preparing the rest",
+                    loadingLabel: `Preparing the rest of your backlog… (${games.length} of ${paged.total})`,
                   } : undefined}
                 />
               ) : (
@@ -766,10 +755,12 @@ export default function BacklogPage() {
               </div>
             ) : null}
             {usePagedBacklog && paged.hasMore && !(viewMode === "table" && isDesktopTable) ? (
-              <div ref={loadMoreRef} className="mt-6 flex min-h-16 items-center justify-center">
-                <Button variant="secondary" disabled={paged.loadingMore} onClick={paged.loadMore}>
-                  {paged.loadingMore ? "Loading more..." : `Load more (${games.length} of ${paged.total})`}
-                </Button>
+              <div className="mt-6 flex min-h-16 items-center justify-center [overflow-anchor:none]">
+                {paged.loadingMore ? (
+                  <p className="text-sm text-content-muted" role="status">
+                    Preparing the rest of your backlog… ({games.length} of {paged.total})
+                  </p>
+                ) : null}
               </div>
             ) : null}
             {canReorder && !reorderEnabled && reorderUnavailableMessage && displayGames.length > 1 ? (

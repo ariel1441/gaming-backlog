@@ -30,6 +30,7 @@ import {
   syncWishlist,
 } from "../services/wishlistService";
 import { normalizeUserPreferences } from "../utils/userPreferences";
+import { collectionInitialLimit } from "../utils/collectionLoading";
 import BacklogToolbar from "./Backlog/BacklogToolbar";
 import BacklogTable from "./Backlog/BacklogTable";
 import WishlistCardFooter from "./Wishlist/WishlistCardFooter";
@@ -82,6 +83,7 @@ export default function WishlistPage() {
   const [viewMode, setViewMode] = useState(
     normalizeUserPreferences(user?.preferences).default_backlog_view,
   );
+  const isDesktop = useMedia("(min-width: 1024px)");
   useEffect(() => {
     if (!user?.id) return;
     setViewMode(normalizeUserPreferences(user.preferences).default_backlog_view);
@@ -123,6 +125,7 @@ export default function WishlistPage() {
     enabled: isAuthenticated && !isGuest,
     membership,
     params: requestParams,
+    initialLimit: collectionInitialLimit(viewMode, isDesktop),
   });
   const games = useMemo(() => wishlistItemsToGames(state.items), [state.items]);
   const closeDetails = () => {
@@ -137,21 +140,7 @@ export default function WishlistPage() {
   const [movingId, setMovingId] = useState(null);
   const [moveStatus, setMoveStatus] = useState("plan to play");
   const syncRequest = useRef(null);
-  const loadMoreRef = useRef(null);
   useEffect(() => () => syncRequest.current?.abort(), []);
-  const isDesktop = useMedia("(min-width: 1024px)");
-  useEffect(() => {
-    const node = loadMoreRef.current;
-    if (!node || !state.hasMore || state.loading || state.loadingMore) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) void state.loadMore();
-      },
-      { rootMargin: "600px 0px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [isDesktop, state.hasMore, state.loading, state.loadingMore, state.loadMore, viewMode]);
   const selected = games.find((game) => game.id === selectedId);
   const filterCount =
     Number(onSaleOnly) + Number(priceAttentionOnly) + filters.selectedGenres.length +
@@ -479,8 +468,8 @@ export default function WishlistPage() {
                 hasMore: state.hasMore,
                 loading: state.loadingMore,
                 onLoadMore: state.loadMore,
-                ref: loadMoreRef,
-                label: `Load more (${games.length} of ${state.total})`,
+                label: "Retry preparing the rest",
+                loadingLabel: `Preparing the rest of your Wishlist… (${games.length} of ${state.total})`,
               }}
             />
           ) : (
@@ -498,10 +487,12 @@ export default function WishlistPage() {
           </div>
         ) : null}
         {state.hasMore && !(viewMode === "table" && isDesktop) ? (
-          <div ref={loadMoreRef} className="mt-6 flex min-h-16 items-center justify-center">
-            <Button variant="secondary" disabled={state.loadingMore} onClick={state.loadMore}>
-              {state.loadingMore ? "Loading more..." : `Load more (${games.length} of ${state.total})`}
-            </Button>
+          <div className="mt-6 flex min-h-16 items-center justify-center [overflow-anchor:none]">
+            {state.loadingMore ? (
+              <p className="text-sm text-content-muted" role="status">
+                Preparing the rest of your Wishlist… ({games.length} of {state.total})
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
