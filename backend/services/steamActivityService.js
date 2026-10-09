@@ -571,8 +571,10 @@ function gameFromRow(row) {
     catalogGameId: rowValue(row, "catalog_game_id", "catalogGameId") == null
       ? null : Number(rowValue(row, "catalog_game_id", "catalogGameId")),
     steamAppId: String(rowValue(row, "steam_app_id", "steamAppId") || ""),
-    name: rowValue(row, "game_name", "name") || "Steam game",
-    cover: rowValue(row, "cover_url", "cover") || null,
+    name: rowValue(row, "display_game_name", "displayGameName")
+      || rowValue(row, "game_name", "name") || "Steam game",
+    cover: rowValue(row, "display_cover_url", "displayCoverUrl")
+      || rowValue(row, "cover_url", "cover") || null,
     isBacklogGame: rowValue(row, "game_id", "gameId") != null,
   };
 }
@@ -984,7 +986,7 @@ export function groupSteamActivityInsights(
 async function loadSteamActivityLedger(userId, rangeStart = null) {
   const achievementMetadata = `
     LEFT JOIN games game ON game.id = source_row.game_id AND game.user_id = source_row.user_id
-    LEFT JOIN catalog_games catalog ON catalog.id = source_row.catalog_game_id
+    LEFT JOIN catalog_games catalog ON catalog.id = COALESCE(game.catalog_game_id, source_row.catalog_game_id)
     LEFT JOIN LATERAL (
       SELECT steam_name, steam_icon_url FROM steam_import_candidates candidate
        WHERE candidate.user_id = source_row.user_id
@@ -993,7 +995,7 @@ async function loadSteamActivityLedger(userId, rangeStart = null) {
   const eventMetadata = `
     LEFT JOIN games game ON game.id = COALESCE(event.game_id, source_row.game_id)
       AND game.user_id = event.user_id
-    LEFT JOIN catalog_games catalog ON catalog.id = COALESCE(event.catalog_game_id, source_row.catalog_game_id)
+    LEFT JOIN catalog_games catalog ON catalog.id = COALESCE(game.catalog_game_id, event.catalog_game_id, source_row.catalog_game_id)
     LEFT JOIN LATERAL (
       SELECT steam_name, steam_icon_url FROM steam_import_candidates candidate
        WHERE candidate.user_id = event.user_id
@@ -1001,7 +1003,17 @@ async function loadSteamActivityLedger(userId, rangeStart = null) {
     ) candidate ON TRUE`;
   const [observationResult, achievementResult, highlightResult, coverageResult, allocationResult] = await Promise.all([
     pool.query(
-      `SELECT observation.* FROM steam_activity_observations observation
+      `SELECT observation.*,
+         COALESCE(game.name, catalog.name, observation.game_name, candidate.steam_name, 'Steam game') AS display_game_name,
+         COALESCE(catalog.cover_url, game.cover, observation.cover_url, candidate.steam_icon_url) AS display_cover_url
+       FROM steam_activity_observations observation
+       LEFT JOIN games game ON game.id = observation.game_id AND game.user_id = observation.user_id
+       LEFT JOIN catalog_games catalog ON catalog.id = COALESCE(game.catalog_game_id, observation.catalog_game_id)
+       LEFT JOIN LATERAL (
+         SELECT steam_name, steam_icon_url FROM steam_import_candidates candidate
+          WHERE candidate.user_id = observation.user_id
+            AND candidate.steam_app_id = observation.steam_app_id LIMIT 1
+       ) candidate ON TRUE
        WHERE observation.user_id = $1
          AND observation.playtime_delta_minutes > 0
          AND ($2::date IS NULL OR observation.activity_day >= $2::date
@@ -1014,8 +1026,8 @@ async function loadSteamActivityLedger(userId, rangeStart = null) {
       `SELECT unlock.id, unlock.user_id, unlock.game_id, unlock.catalog_game_id,
          unlock.steam_app_id, unlock.display_name, unlock.description, unlock.icon_url,
          unlock.unlock_at, unlock.activity_day,
-         COALESCE(game.name, catalog.name, candidate.steam_name, 'Steam game') AS game_name,
-         COALESCE(game.cover, catalog.cover_url, candidate.steam_icon_url) AS cover_url
+         COALESCE(game.name, catalog.name, candidate.steam_name, 'Steam game') AS display_game_name,
+         COALESCE(catalog.cover_url, game.cover, candidate.steam_icon_url) AS display_cover_url
        FROM steam_achievement_unlocks source_row
        JOIN steam_achievement_unlocks unlock ON unlock.id = source_row.id
        ${achievementMetadata}
@@ -1027,8 +1039,8 @@ async function loadSteamActivityLedger(userId, rangeStart = null) {
     pool.query(
       `SELECT event.id, event.user_id, event.game_id, event.catalog_game_id,
          event.external_id AS steam_app_id, event.event_type, event.payload_json,
-         COALESCE(game.name, catalog.name, candidate.steam_name, 'Steam game') AS game_name,
-         COALESCE(game.cover, catalog.cover_url, candidate.steam_icon_url) AS cover_url
+         COALESCE(game.name, catalog.name, candidate.steam_name, 'Steam game') AS display_game_name,
+         COALESCE(catalog.cover_url, game.cover, candidate.steam_icon_url) AS display_cover_url
        FROM user_activity_events event
        LEFT JOIN user_game_sources source_row ON source_row.user_id = event.user_id
          AND source_row.provider = 'steam' AND source_row.provider_app_id = event.external_id

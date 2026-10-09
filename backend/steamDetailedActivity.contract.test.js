@@ -328,6 +328,16 @@ test("detailed Steam activity baselines named unlocks and groups reliable facts"
     const otherUserId = (await pool.query(
       "INSERT INTO users (username, password_hash) VALUES ('other-owner', 'x') RETURNING id",
     )).rows[0].id;
+    const currentCatalogId = (await pool.query(
+      `INSERT INTO catalog_games (name, cover_url)
+       VALUES ('Current catalog title', 'https://img.example/current.jpg') RETURNING id`,
+    )).rows[0].id;
+    await pool.query(
+      `UPDATE games
+       SET name = 'Current Night game', cover = 'https://img.example/legacy.jpg', catalog_game_id = $2
+       WHERE id = $1`,
+      [gameId, currentCatalogId],
+    );
     const ownerFeed = await activity.listSteamActivityHistory(userId, { range: "all" });
     assert.ok(ownerFeed.items.some((item) => item.type === "day" && item.date === "2026-09-18"));
     assert.ok(ownerFeed.items.some((item) => item.type === "uncertain"));
@@ -335,11 +345,18 @@ test("detailed Steam activity baselines named unlocks and groups reliable facts"
     assert.ok(ownerFeed.summary.achievementsUnlocked >= 1);
     assert.ok(ownerFeed.items.some((item) => item.games.some((game) =>
       game.highlights.some((highlight) => highlight.type === "first_played"))));
+    const currentFeedGame = ownerFeed.items.flatMap((item) => item.games)
+      .find((game) => game.steamAppId === "10");
+    assert.equal(currentFeedGame.name, "Current Night game");
+    assert.equal(currentFeedGame.cover, "https://img.example/current.jpg");
     assert.deepEqual((await activity.listSteamActivityHistory(otherUserId, { range: "all" })).items, []);
     const ownerInsights = await activity.listSteamActivityInsights(userId, { range: "all" });
     assert.ok(ownerInsights.summary.playtimeMinutes >= 90);
     assert.ok(ownerInsights.summary.achievementsUnlocked >= 1);
     assert.ok(ownerInsights.mostPlayed.some((game) => game.steamAppId === "10"));
+    const currentInsightGame = ownerInsights.mostPlayed.find((game) => game.steamAppId === "10");
+    assert.equal(currentInsightGame.name, "Current Night game");
+    assert.equal(currentInsightGame.cover, "https://img.example/current.jpg");
     assert.ok(ownerInsights.firstObservedPlays.some((game) => game.activityDay === "2026-09-18"));
     assert.ok(ownerInsights.dailyBars.some((day) => day.day === "2026-09-18"));
     assert.deepEqual((await activity.listSteamActivityInsights(otherUserId, { range: "all" })).mostPlayed, []);

@@ -1,0 +1,20 @@
+{
+  "sourceRows": 166754,
+  "sourceTimedRows": 56981,
+  "added": 0,
+  "refreshed": 2068,
+  "unchanged": 52089,
+  "ambiguousTitles": 5488,
+  "resolvedExactTitles": 2078,
+  "legacyFallbackMetrics": 15126,
+  "previousRows": 56519,
+  "outputRows": 56519,
+  "retainedRows": 2362,
+  "sourceOldest": "2026-03-27T10:06:13Z",
+  "sourceNewest": "2026-03-27T15:11:31Z",
+  "source": "https://github.com/johagan94/hltb-dataset-plugin/blob/92a3e7d7b2bba167df0249ee4a5d270ddeeb9f29/dataset/hltb_dataset.csv",
+  "inputSha256": "306496d018c54c9a84ff35aeb6bc3103fb93ff41d2df2e290281042c2a6e2516",
+  "units": "seconds",
+  "statistic": "average; retained legacy estimates where unavailable",
+  "mode": "applied"
+}

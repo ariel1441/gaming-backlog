@@ -33,6 +33,7 @@
     "db:migrate:prod": "node scripts/db-migrate.js --production --confirm-production",
     "db:migrate:prod:status": "node scripts/db-migrate.js --production --confirm-production --status",
     "catalog:seed": "node scripts/seed-catalog-collections.js",
+    "hltb:import": "node scripts/import-hltb-cache.js",
     "metadata:import-cache": "node scripts/import-rawg-cache.js",
     "metadata:import-cache:local": "node scripts/import-rawg-cache.js --apply",
     "metadata:repair-exact": "node scripts/repair-exact-metadata-links.js",

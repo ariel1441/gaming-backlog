@@ -21,6 +21,33 @@ test("same-game same-day Activity and notification totals sum all idempotent obs
   assert.equal(notification, "Played for 1h 15m");
 });
 
+test("Activity and Insights use current presentation metadata with historical fallbacks", () => {
+  const current = {
+    activity_day: "2026-09-23", activity_precision: "daily", steam_app_id: "10",
+    game_id: 5, game_name: "Old title", cover_url: "https://img.example/old.jpg",
+    display_game_name: "Current title", display_cover_url: "https://img.example/current.jpg",
+    playtime_delta_minutes: 60,
+  };
+  const historical = {
+    activity_day: "2026-09-22", activity_precision: "daily", steam_app_id: "20",
+    game_name: "Deleted game", cover_url: "https://img.example/historical.jpg",
+    playtime_delta_minutes: 30,
+  };
+  const ledger = { observations: [current, historical] };
+
+  const activity = groupSteamActivityHistory(ledger, { range: "all", today: "2026-09-24" });
+  const insights = groupSteamActivityInsights(ledger, { range: "all", today: "2026-09-24" });
+  const activityCurrent = activity.items.find((item) => item.date === "2026-09-23").games[0];
+  const activityHistorical = activity.items.find((item) => item.date === "2026-09-22").games[0];
+
+  assert.equal(activityCurrent.name, "Current title");
+  assert.equal(activityCurrent.cover, "https://img.example/current.jpg");
+  assert.equal(insights.mostPlayed[0].name, "Current title");
+  assert.equal(insights.mostPlayed[0].cover, "https://img.example/current.jpg");
+  assert.equal(activityHistorical.name, "Deleted game");
+  assert.equal(activityHistorical.cover, "https://img.example/historical.jpg");
+});
+
 test("Activity Insights applies one eligibility contract to totals, games, days and exact events", () => {
   const result = groupSteamActivityInsights({
     observations: [
