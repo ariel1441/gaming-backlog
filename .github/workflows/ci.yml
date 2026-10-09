@@ -91,9 +91,39 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  railway-build:
+    name: Railway container build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Build and smoke-test Railway images
+        run: npm run check:railway
+
+      - name: Upload Railway build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: railway-build-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/railway-preflight/**/*.log
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
   migrate-production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: check
+    needs: [check, railway-build]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: production

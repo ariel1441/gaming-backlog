@@ -19,10 +19,34 @@ into `main` only after checks pass.
 
 ## Runtime
 
-Use Node.js 20.20.2 with npm 10.x. The repository records the Node version in
+Use Node.js 24.21.0 with npm 10.9.4. The repository records the Node version in
 `.nvmrc` and `.node-version`; CI pins npm 10.9.4. Installs intentionally fail on
 other major versions so local development, CI, Vercel, and Railway do not
 silently diverge.
+
+After switching Node versions, install the pinned npm before running `npm ci`:
+`npm install --global npm@10.9.4 --no-audit --no-fund`. Node 24 can bundle a
+newer npm major; `.npmrc` intentionally enforces the project's npm 10.x requirement.
+Vercel selects the Node 24 major from `package.json`; CI reads `.nvmrc` for both
+checks and production migration tooling. `vercel.json` bootstraps npm 10.9.4
+for installs. `railway.json` selects Railpack 0.40.1 for both Railway services;
+Railpack reads Node/npm from `package.json`. This build-only configuration
+preserves each service's dashboard start command, healthcheck and cron schedule.
+Check Railway runtime overrides for both services before release.
+
+Playwright 1.64 replaces 1.52 because the older runner stalls while loading
+its ESM configuration under Node 24. After dependency updates, install the
+matching browser with `npx playwright install chromium`.
+
+`npm run check:railway` requires running Linux Docker containers. It builds both
+Railway images with the pinned official Railpack tooling, checks Node/npm/native
+bcrypt, runs migrations and backend smoke checks against a disposable container
+database, and exercises the daily-sync closeout guard with networking disabled.
+It copies only Git-visible working files into an ignored build context, excludes
+local environment files, and never publishes images or uses production credentials.
+CI runs this check on Dev/PR/main and requires it before production migrations.
+Logs are saved under `.cache/railway-preflight/`. A local antivirus/proxy certificate
+may need to be trusted by Docker for downloads; do not disable TLS verification.
 
 ## Environments
 
