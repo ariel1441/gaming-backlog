@@ -12,6 +12,30 @@ function rankKey(game) {
     : String(rank);
 }
 
+// Merge canonical positions without dropping other loaded rank groups.
+export function applyRankOrder(games, { game, rank_order: order } = {}) {
+  if (!game || !Array.isArray(order)) return games;
+  const positions = new Map(order.map((row) => [String(row.id), row]));
+  return games.map((row) => ({
+    ...row,
+    ...(String(row.id) === String(game.id) ? game : {}),
+    ...positions.get(String(row.id)),
+  })).sort((a, b) =>
+    (a.status_rank ?? 999) - (b.status_rank ?? 999) ||
+    (a.position ?? Infinity) - (b.position ?? Infinity) || Number(a.id) - Number(b.id));
+}
+
+export function optimisticRankOrder(games, gameId, targetIndex) {
+  const game = games.find((row) => String(row.id) === String(gameId));
+  if (!game) return games;
+  const peers = games.filter((row) => row.status_rank === game.status_rank && row !== game);
+  peers.splice(Math.max(0, Math.min(targetIndex, peers.length)), 0, game);
+  return applyRankOrder(games, {
+    game,
+    rank_order: peers.map((row, index) => ({ id: row.id, position: index * 1000 })),
+  });
+}
+
 export function canReorderVisibleGames(allGames, visibleGames) {
   const fullList = Array.isArray(allGames) ? allGames : [];
   const visibleList = Array.isArray(visibleGames) ? visibleGames : [];

@@ -170,9 +170,9 @@ export default function BacklogPage() {
     params: requestParams,
     initialLimit: collectionInitialLimit(viewMode, isDesktopTable),
   });
-  const games = usePagedBacklog
+  const games = React.useMemo(() => usePagedBacklog
     ? paged.games.filter((game) => !deletedGameIds.has(String(game.id)))
-    : legacyGames;
+    : legacyGames, [usePagedBacklog, paged.games, deletedGameIds, legacyGames]);
   const presentationGames = usePagedBacklog ? games : legacyPresentationGames;
   const gamesLoading = usePagedBacklog ? paged.loading : legacyGamesLoading;
   const gamesError = usePagedBacklog ? paged.error : legacyGamesError;
@@ -212,9 +212,8 @@ export default function BacklogPage() {
     return result;
   };
   const reorderGame = async (...args) => {
-    const result = await legacyReorderGame(...args);
-    if (usePagedBacklog) await refresh({ silent: true });
-    return result;
+    if (!usePagedBacklog) return legacyReorderGame(...args);
+    return paged.reorder(args[0], args[1], () => legacyReorderGame(...args));
   };
   const selectGame = (game) => game.entryKind === "wishlist" ? nav(`/wishlist?item=${game.wishlistItemId}`) : setSelectedGame(game);
   const allMyGenres = React.useMemo(
@@ -436,6 +435,29 @@ export default function BacklogPage() {
     setSortKey("");
     setIsReversed(false);
   };
+  const filteredPresentationGames = React.useMemo(() => usePagedBacklog
+    ? presentationGames
+    : buildDisplayGames({
+        games: presentationGames,
+        searchQuery: debouncedQuery,
+        selectedStatuses,
+        selectedGenres,
+        selectedMyGenres,
+        hoursRange,
+        hoursBounds,
+        dateFilter,
+        scoreFilter,
+        ratedOnly,
+        sourceFilter,
+        rawgStatus,
+        missingEstimatesOnly,
+        missingHltbOnly,
+        sortKey,
+        isReversed,
+      }), [usePagedBacklog, presentationGames, debouncedQuery, selectedStatuses, selectedGenres,
+      selectedMyGenres, hoursRange, hoursBounds, dateFilter, scoreFilter, ratedOnly,
+      sourceFilter, rawgStatus, missingEstimatesOnly, missingHltbOnly, sortKey, isReversed]);
+
   if (authLoading || (gamesLoading && (!usePagedBacklog || !paged.saved))) {
     return <CollectionLoadingSkeleton viewMode={viewMode} />;
   }
@@ -457,28 +479,7 @@ export default function BacklogPage() {
     );
   }
 
-  const displayGames = isAuthError
-    ? []
-    : usePagedBacklog
-      ? presentationGames
-      : buildDisplayGames({
-        games: presentationGames,
-        searchQuery: debouncedQuery,
-        selectedStatuses,
-        selectedGenres,
-        selectedMyGenres,
-        hoursRange,
-        hoursBounds,
-        dateFilter,
-        scoreFilter,
-        ratedOnly,
-        sourceFilter,
-        rawgStatus,
-        missingEstimatesOnly,
-        missingHltbOnly,
-        sortKey,
-        isReversed,
-      });
+  const displayGames = isAuthError ? [] : filteredPresentationGames;
 
   const canReorder = canReorderGames({ user, isAuthenticated });
   const hasHoursFilter = Boolean(

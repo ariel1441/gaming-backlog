@@ -4,6 +4,7 @@ import { subscribeGamesInvalidation } from "../../services/gamesCache.js";
 import { buildDisplayGames, splitCsv } from "../../utils/gameList.js";
 import { hoursValueForList } from "../../utils/hours.js";
 import { NO_PERSONAL_GENRE_FILTER, NO_RAWG_GENRE_FILTER } from "../../utils/filterOptions.js";
+import { applyRankOrder, optimisticRankOrder } from "../../utils/reorder.js";
 import { COLLECTION_BACKGROUND_PAGE_SIZE } from "../../utils/collectionLoading.js";
 
 const REVALIDATE_MS = 60_000;
@@ -12,6 +13,7 @@ const LOADING = Object.freeze({ ...EMPTY, loading: true });
 const entries = new Map();
 const listeners = new Set();
 const pending = new Map();
+const refreshJobs = new Map();
 const hydrationJobs = new Map();
 const fullCollections = new Map();
 
@@ -158,41 +160,70 @@ export function appendGamesPage(current, page) {
   return { games, hasMore: (page.games || []).length > 0 && games.length < Number(page.total || 0) };
 }
 
+// Build a replacement offscreen. Never combine pages from different revisions.
+export async function assembleRefreshedGames(previous, page, fetchNext, preserveLoaded) {
+  const firstGames = page.games || [];
+  if (!preserveLoaded || !previous.saved) return firstGames;
+  if (sameSnapshot(previous, page)) {
+    return [...firstGames, ...previous.games.slice(firstGames.length)]
+      .filter((game, index, all) => all.findIndex((candidate) => candidate.id === game.id) === index)
+      .slice(0, Number(page.total || 0));
+  }
+  let assembled = { ...page, games: firstGames };
+  const target = Math.min(previous.games.length, Number(page.total || 0));
+  while (assembled.games.length < target) {
+    const next = await fetchNext(assembled.games.length);
+    const appended = appendGamesPage(assembled, next);
+    if (appended.games.length === assembled.games.length) {
+      throw new Error("Backlog paging stopped before the collection was complete.");
+    }
+    assembled = { ...assembled, ...appended };
+  }
+  return assembled.games;
+}
+
+function cancelRefresh(key) {
+  refreshJobs.get(key)?.abort();
+  refreshJobs.delete(key);
+}
+
 async function loadFirst(key, userId, params, initialLimit, { preserveLoaded = false, silent = false, force = false } = {}) {
-  cancelHydration(key);
-  const requestKey = `${key}:first`;
+  const requestKey = key + ":first";
   if (pending.has(requestKey)) {
     if (!force) return pending.get(requestKey);
     await pending.get(requestKey);
   }
+  if (read(key).reordering) return;
+  cancelHydration(key);
+  const controller = new AbortController();
+  refreshJobs.set(key, controller);
   const previous = read(key);
   const keepLoadedPageVisible = (preserveLoaded || silent) && previous.saved;
-  write(key, {
-    ...previous,
-    loading: !keepLoadedPageVisible,
-    error: "",
-    loadMoreError: "",
-  });
+  write(key, { ...previous, loading: !keepLoadedPageVisible, refreshing: true, error: "", loadMoreError: "" });
   const promise = (async () => {
     try {
-      const page = normalizePage(params.q
-        ? await loadSearchPage(userId, params)
-        : await listGamesPage({ ...params, limit: initialLimit, offset: 0, include_summary: true }));
-      const firstGames = page.games || [];
-      const canPreserve = preserveLoaded && previous.saved && sameSnapshot(previous, page);
-      const games = canPreserve
-        ? [...firstGames, ...previous.games.slice(firstGames.length)]
-            .filter((game, index, all) => all.findIndex((candidate) => candidate.id === game.id) === index)
-            .slice(0, Number(page.total || 0))
-        : firstGames;
-      write(key, { ...page, games, saved: true, loading: false, loadingMore: false, transitioning: false,
-        hasMore: !params.q && firstGames.length > 0 && games.length < Number(page.total || 0), error: "", refreshError: "", loadMoreError: "", validatedAt: Date.now() });
+      const fetchPage = async (offset, limit, include_summary) => normalizePage(await listGamesPage({
+        ...params, limit, offset, include_summary,
+      }, { signal: controller.signal }));
+      const page = params.q
+        ? normalizePage(await loadSearchPage(userId, params))
+        : await fetchPage(0, initialLimit, true);
+      const games = await assembleRefreshedGames(previous, page,
+        (offset) => fetchPage(offset, COLLECTION_BACKGROUND_PAGE_SIZE, false),
+        preserveLoaded && !params.q);
+      if (refreshJobs.get(key) !== controller) return;
+      write(key, { ...page, games, saved: true, loading: false, refreshing: false, loadingMore: false, transitioning: false,
+        hasMore: !params.q && games.length > 0 && games.length < Number(page.total || 0), error: "", refreshError: "", loadMoreError: "", validatedAt: Date.now() });
     } catch (error) {
+      if (controller.signal.aborted || refreshJobs.get(key) !== controller) return;
       const message = error.message || "Could not load the backlog.";
       write(key, keepLoadedPageVisible
-        ? { ...read(key), loading: false, error: "", refreshError: message, validatedAt: Date.now() }
-        : { ...read(key), loading: false, error: message, validatedAt: Date.now() });
-    } finally { pending.delete(requestKey); }
+        ? { ...read(key), loading: false, refreshing: false, error: "", refreshError: message, validatedAt: Date.now() }
+        : { ...read(key), loading: false, refreshing: false, error: message, validatedAt: Date.now() });
+    } finally {
+      if (refreshJobs.get(key) === controller) refreshJobs.delete(key);
+      if (pending.get(requestKey) === promise) pending.delete(requestKey);
+    }
   })();
   pending.set(requestKey, promise);
   return promise;
@@ -201,7 +232,7 @@ async function loadFirst(key, userId, params, initialLimit, { preserveLoaded = f
 async function loadNext(key, params) {
   if (hydrationJobs.has(key)) return hydrationJobs.get(key).promise;
   const current = read(key);
-  if (!current.saved || current.loading || current.loadingMore || !current.hasMore) return;
+  if (!current.saved || current.loading || current.refreshing || current.reordering || current.loadingMore || !current.hasMore) return;
   const controller = new AbortController();
   write(key, { ...current, loadingMore: true, loadMoreError: "" });
   const promise = (async () => {
@@ -253,13 +284,33 @@ export default function useInfiniteGames({ userId, enabled = true, params = {}, 
       }
     : rawState;
   const refresh = useCallback((options) => active ? loadFirst(key, userId, stableParams, initialLimit, options) : Promise.resolve(), [active, initialLimit, key, stableParams, userId]);
+  const reorder = useCallback(async (gameId, targetIndex, save) => {
+    if (!active || read(key).reordering) return;
+    cancelRefresh(key);
+    cancelHydration(key);
+    const previous = read(key);
+    write(key, { ...previous, games: optimisticRankOrder(previous.games, gameId, targetIndex),
+      reordering: true, refreshing: false, snapshotVersion: null });
+    let payload;
+    try {
+      payload = await save();
+    } catch (error) {
+      // Restore even when the recovery GET also fails.
+      write(key, { ...previous, games: [...previous.games], reordering: false, refreshing: false });
+      throw error;
+    }
+    write(key, { ...read(key), games: applyRankOrder(read(key).games, payload), reordering: false });
+    invalidateFullBacklogCollection(userId);
+    await refresh({ preserveLoaded: true, silent: true, force: true });
+    return payload;
+  }, [active, key, refresh, userId]);
   const loadMore = useCallback(() => active ? loadNext(key, stableParams) : Promise.resolve(), [active, key, stableParams]);
 
   useEffect(() => {
-    if (active && rawState.saved && rawState.hasMore && !rawState.loading && !rawState.loadingMore && !rawState.loadMoreError) {
+    if (active && rawState.saved && rawState.hasMore && !rawState.loading && !rawState.refreshing && !rawState.reordering && !rawState.loadingMore && !rawState.loadMoreError) {
       void loadMore();
     }
-  }, [active, loadMore, rawState.hasMore, rawState.loadMoreError, rawState.loading, rawState.loadingMore, rawState.saved]);
+  }, [active, loadMore, rawState.hasMore, rawState.loadMoreError, rawState.loading, rawState.refreshing, rawState.reordering, rawState.loadingMore, rawState.saved]);
 
   useEffect(() => () => cancelHydration(key), [key]);
 
@@ -290,5 +341,5 @@ export default function useInfiniteGames({ userId, enabled = true, params = {}, 
     }
   }), [active, refresh, userId]);
 
-  return { ...state, refresh, loadMore };
+  return { ...state, refresh, loadMore, reorder };
 }
