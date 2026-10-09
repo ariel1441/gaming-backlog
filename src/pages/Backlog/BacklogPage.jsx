@@ -12,6 +12,7 @@ import { NO_PERSONAL_GENRE_FILTER, NO_RAWG_GENRE_FILTER } from "../../utils/filt
 import { canReorderGames } from "../../utils/permissions";
 import { getManualReorderAvailability } from "../../utils/reorder";
 import { normalizeUserPreferences } from "../../utils/userPreferences";
+import { collectionInitialLimit } from "../../utils/collectionLoading";
 import useApplyFiltersFromQuery from "../../hooks/useApplyFiltersFromQuery";
 import { useGames } from "../../hooks/useGames";
 import { useStatuses } from "../../hooks/useStatuses";
@@ -71,6 +72,8 @@ export default function BacklogPage() {
     () => normalizeUserPreferences(user?.preferences),
     [user?.preferences],
   );
+  const [viewMode, setViewMode] = useState(userPreferences.default_backlog_view);
+  const isDesktopTable = useMedia("(min-width: 1024px)");
   const wishlist = useWishlist({ userId: user?.id,
     enabled: userPreferences.show_wishlist_in_backlog && isAuthenticated && !isGuest,
   });
@@ -114,6 +117,8 @@ export default function BacklogPage() {
     setRawgStatus,
     missingEstimatesOnly,
     setMissingEstimatesOnly,
+    missingHltbOnly,
+    setMissingHltbOnly,
     sortKey,
     setSortKey,
     isReversed,
@@ -154,14 +159,20 @@ export default function BacklogPage() {
     source: sourceFilter,
     rawg_status: rawgStatus,
     missing_estimates: missingEstimatesOnly,
+    missing_hltb: missingHltbOnly,
   }), [debouncedQuery, sortKey, isReversed, selectedStatuses, selectedGenres,
     selectedMyGenres, hoursRange, dateFilter, scoreFilter, ratedOnly, sourceFilter,
-    rawgStatus, missingEstimatesOnly]);
+    rawgStatus, missingEstimatesOnly, missingHltbOnly]);
   const usePagedBacklog = !userPreferences.show_wishlist_in_backlog;
-  const paged = useInfiniteGames({ userId: user?.id, enabled: usePagedBacklog && isAuthenticated, params: requestParams });
-  const games = usePagedBacklog
+  const paged = useInfiniteGames({
+    userId: user?.id,
+    enabled: usePagedBacklog && isAuthenticated,
+    params: requestParams,
+    initialLimit: collectionInitialLimit(viewMode, isDesktopTable),
+  });
+  const games = React.useMemo(() => usePagedBacklog
     ? paged.games.filter((game) => !deletedGameIds.has(String(game.id)))
-    : legacyGames;
+    : legacyGames, [usePagedBacklog, paged.games, deletedGameIds, legacyGames]);
   const presentationGames = usePagedBacklog ? games : legacyPresentationGames;
   const gamesLoading = usePagedBacklog ? paged.loading : legacyGamesLoading;
   const gamesError = usePagedBacklog ? paged.error : legacyGamesError;
@@ -201,9 +212,8 @@ export default function BacklogPage() {
     return result;
   };
   const reorderGame = async (...args) => {
-    const result = await legacyReorderGame(...args);
-    if (usePagedBacklog) await refresh({ silent: true });
-    return result;
+    if (!usePagedBacklog) return legacyReorderGame(...args);
+    return paged.reorder(args[0], args[1], () => legacyReorderGame(...args));
   };
   const selectGame = (game) => game.entryKind === "wishlist" ? nav(`/wishlist?item=${game.wishlistItemId}`) : setSelectedGame(game);
   const allMyGenres = React.useMemo(
@@ -264,10 +274,6 @@ export default function BacklogPage() {
   const [showKeepDemo, setShowKeepDemo] = useState(false);
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
-  const [viewMode, setViewMode] = useState(
-    userPreferences.default_backlog_view,
-  );
-
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
     setViewMode(userPreferences.default_backlog_view);
@@ -288,21 +294,6 @@ export default function BacklogPage() {
   const bannerRef = useRef(null);
   const mainRef = useRef(null);
   const toolbarRef = useRef(null);
-  const loadMoreRef = useRef(null);
-  const isDesktopTable = useMedia("(min-width: 1024px)");
-
-  useEffect(() => {
-    const node = loadMoreRef.current;
-    if (!usePagedBacklog || !node || !paged.hasMore || paged.loading || paged.loadingMore) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) void paged.loadMore();
-      },
-      { rootMargin: "600px 0px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [isDesktopTable, paged.hasMore, paged.loadMore, paged.loading, paged.loadingMore, usePagedBacklog, viewMode]);
 
   const {
     newGame,
@@ -444,6 +435,29 @@ export default function BacklogPage() {
     setSortKey("");
     setIsReversed(false);
   };
+  const filteredPresentationGames = React.useMemo(() => usePagedBacklog
+    ? presentationGames
+    : buildDisplayGames({
+        games: presentationGames,
+        searchQuery: debouncedQuery,
+        selectedStatuses,
+        selectedGenres,
+        selectedMyGenres,
+        hoursRange,
+        hoursBounds,
+        dateFilter,
+        scoreFilter,
+        ratedOnly,
+        sourceFilter,
+        rawgStatus,
+        missingEstimatesOnly,
+        missingHltbOnly,
+        sortKey,
+        isReversed,
+      }), [usePagedBacklog, presentationGames, debouncedQuery, selectedStatuses, selectedGenres,
+      selectedMyGenres, hoursRange, hoursBounds, dateFilter, scoreFilter, ratedOnly,
+      sourceFilter, rawgStatus, missingEstimatesOnly, missingHltbOnly, sortKey, isReversed]);
+
   if (authLoading || (gamesLoading && (!usePagedBacklog || !paged.saved))) {
     return <CollectionLoadingSkeleton viewMode={viewMode} />;
   }
@@ -465,27 +479,7 @@ export default function BacklogPage() {
     );
   }
 
-  const displayGames = isAuthError
-    ? []
-    : usePagedBacklog
-      ? presentationGames
-      : buildDisplayGames({
-        games: presentationGames,
-        searchQuery: debouncedQuery,
-        selectedStatuses,
-        selectedGenres,
-        selectedMyGenres,
-        hoursRange,
-        hoursBounds,
-        dateFilter,
-        scoreFilter,
-        ratedOnly,
-        sourceFilter,
-        rawgStatus,
-        missingEstimatesOnly,
-        sortKey,
-        isReversed,
-      });
+  const displayGames = isAuthError ? [] : filteredPresentationGames;
 
   const canReorder = canReorderGames({ user, isAuthenticated });
   const hasHoursFilter = Boolean(
@@ -503,6 +497,7 @@ export default function BacklogPage() {
     (sourceFilter !== "all" ? 1 : 0) +
     (rawgStatus !== "all" ? 1 : 0) +
     (missingEstimatesOnly ? 1 : 0) +
+    (missingHltbOnly ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveFilters = Boolean(
     searchQuery ||
@@ -515,6 +510,7 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       rawgStatus !== "all" ||
       missingEstimatesOnly ||
+      missingHltbOnly ||
       hasHoursFilter,
   );
   const hasPartialReorderFilters = Boolean(
@@ -527,6 +523,7 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       rawgStatus !== "all" ||
       missingEstimatesOnly ||
+      missingHltbOnly ||
       hasHoursFilter,
   );
   const manualReorder = getManualReorderAvailability({
@@ -625,6 +622,8 @@ export default function BacklogPage() {
                 hoursRange,
                 setHoursRange,
                 missingEstimatesOnly,
+                missingHltbOnly,
+                setMissingHltbOnly,
                 clearInsightYearFilter,
                 clearScoreFilter,
                 clearRatedFilter,
@@ -698,8 +697,8 @@ export default function BacklogPage() {
                     hasMore: paged.hasMore,
                     loading: paged.loadingMore,
                     onLoadMore: paged.loadMore,
-                    ref: loadMoreRef,
-                    label: `Load more (${games.length} of ${paged.total})`,
+                    label: "Retry preparing the rest",
+                    loadingLabel: `Preparing the rest of your backlog… (${games.length} of ${paged.total})`,
                   } : undefined}
                 />
               ) : (
@@ -766,10 +765,12 @@ export default function BacklogPage() {
               </div>
             ) : null}
             {usePagedBacklog && paged.hasMore && !(viewMode === "table" && isDesktopTable) ? (
-              <div ref={loadMoreRef} className="mt-6 flex min-h-16 items-center justify-center">
-                <Button variant="secondary" disabled={paged.loadingMore} onClick={paged.loadMore}>
-                  {paged.loadingMore ? "Loading more..." : `Load more (${games.length} of ${paged.total})`}
-                </Button>
+              <div className="mt-6 flex min-h-16 items-center justify-center [overflow-anchor:none]">
+                {paged.loadingMore ? (
+                  <p className="text-sm text-content-muted" role="status">
+                    Preparing the rest of your backlog… ({games.length} of {paged.total})
+                  </p>
+                ) : null}
               </div>
             ) : null}
             {canReorder && !reorderEnabled && reorderUnavailableMessage && displayGames.length > 1 ? (

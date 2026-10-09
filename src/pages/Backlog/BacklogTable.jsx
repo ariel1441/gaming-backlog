@@ -583,11 +583,15 @@ export default function BacklogTable({
                 />
               ))}
               {loadMore?.hasMore ? (
-                <tr ref={loadMore.ref}>
-                  <td colSpan={columnCount} className="bg-surface-card px-3 py-4 text-center">
-                    <Button variant="secondary" disabled={loadMore.loading} onClick={loadMore.onLoadMore}>
-                      {loadMore.loading ? "Loading more..." : loadMore.label}
-                    </Button>
+                <tr className="[overflow-anchor:none]">
+                  <td colSpan={columnCount} className="bg-surface-card px-3 py-4 text-center text-sm text-content-muted">
+                    {loadMore.loading ? (
+                      <span role="status">{loadMore.loadingLabel || "Preparing the rest…"}</span>
+                    ) : (
+                      <Button variant="secondary" onClick={loadMore.onLoadMore}>
+                        {loadMore.label}
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ) : null}

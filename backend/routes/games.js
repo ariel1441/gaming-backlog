@@ -21,6 +21,7 @@ import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
 import { normStatus, statusGroupOf } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
 import { affectsInsights } from "../utils/insightsInvalidation.js";
+import { finishedInsertionIndex } from "../utils/finishedPosition.js";
 import { normalizeScore } from "../utils/normalize.js";
 import {
   badRequest,
@@ -230,6 +231,7 @@ router.get("/", verifyToken, listGames, async (req, res, next) => {
         minHours: req.query.min_hours,
         maxHours: req.query.max_hours,
         missingEstimates: req.query.missing_estimates,
+        missingHltb: req.query.missing_hltb,
         dateType: req.query.date_type,
         dateYear: req.query.date_year,
         dateMonths: req.query.date_months,
@@ -841,9 +843,13 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
     const finishedAt = req.body.finished_at;
     const score = normalizeScore(req.body.my_score);
     const thoughts = req.body.thoughts?.trim() || null;
+    const placeByScore = completionStatus === "finished" && score !== null;
 
     client = await pool.connect();
     await client.query("BEGIN");
+
+    // Acquire the rank lock before row locks, matching manual reorder.
+    const finishedRank = placeByScore ? await lockUserRank(client, userId, completionStatus) : null;
 
     const existingQuery = selectOwnedGameQuery(gameId, userId);
     const existing = await client.query(
@@ -877,6 +883,25 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
         [gameId, userId, completionStatus, finishedAt, score, thoughts],
       );
       if (!updated.rows[0]) throw notFound("Not found");
+      if (placeByScore) {
+        const peers = await client.query(
+          `SELECT g.id, g.my_score
+             FROM games g JOIN statuses s ON s.status = g.status
+            WHERE g.user_id = $1 AND s.rank = $2 AND g.id <> $3
+            ORDER BY g.position NULLS LAST, g.id
+            FOR UPDATE OF g`,
+          [userId, finishedRank, gameId],
+        );
+        const ids = peers.rows.map((game) => game.id);
+        ids.splice(finishedInsertionIndex(peers.rows, score), 0, gameId);
+        await client.query(
+          `UPDATE games AS g
+              SET position = v.pos
+             FROM (SELECT unnest($1::int[]) AS id, unnest($2::int[]) AS pos) AS v
+            WHERE g.user_id = $3 AND g.id = v.id`,
+          [ids, ids.map((_, index) => index * DEFAULT_POSITION_SPACING), userId],
+        );
+      }
     } else {
       outcome = completionStatus === "finished"
         ? "already_finished"
@@ -1323,6 +1348,8 @@ router.patch(
         await client.query("ROLLBACK");
         return next(err);
       }
+
+      await client.query("SELECT pg_advisory_xact_lock($1, $2)", [Number(userId), targetRank]);
 
       // Lock peers across ALL statuses in the same rank group
       const peerRes = await client.query(

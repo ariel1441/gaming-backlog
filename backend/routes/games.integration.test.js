@@ -1035,6 +1035,11 @@ test("POST /api/games/:id/finish updates completion fields and clears planning r
     query: async (text, values) => {
       const sql = String(text);
       calls.push({ text: sql, values });
+      if (sql === "SELECT rank FROM statuses WHERE status = $1") return { rows: [{ rank: 12 }] };
+      if (sql.includes("SELECT g.id, g.my_score")) {
+        assert.deepEqual(values, [7, 12, 12]);
+        return { rows: [{ id: 20, my_score: 9 }, { id: 21, my_score: null }, { id: 22, my_score: 8 }] };
+      }
       if (sql.includes("SELECT * FROM games") && sql.includes("FOR UPDATE")) {
         return {
           rows: [
@@ -1119,6 +1124,12 @@ test("POST /api/games/:id/finish updates completion fields and clears planning r
         ),
         true,
       );
+      const positions = calls.find((call) => call.text.includes("SET position = v.pos"));
+      assert.deepEqual(positions.values, [[20, 12, 21, 22], [0, 1000, 2000, 3000], 7]);
+      assert.match(positions.text, /g.user_id = \$3/);
+      const rankLock = calls.findIndex((call) => call.text.includes("pg_advisory_xact_lock"));
+      const rowLock = calls.findIndex((call) => call.text.includes("SELECT * FROM games"));
+      assert.ok(rankLock < rowLock);
       assert.match(calls.at(-1).text, /COMMIT/);
     },
     async () => client,
@@ -1193,3 +1204,45 @@ test("POST /api/games/:id/finish can save the alternate completed status", async
     async () => client,
   );
 });
+
+
+for (const mode of ["replay", "unrated", "missing", "position failure"]) {
+  test("finish placement handles " + mode + " without partial or repeated ranking writes", async () => {
+    const calls = [];
+    const client = {
+      async query(text, values) {
+        const sql = String(text);
+        calls.push({ sql, values });
+        if (sql === "SELECT rank FROM statuses WHERE status = $1") return { rows: [{ rank: 12 }] };
+        if (sql.includes("SELECT * FROM games") && sql.includes("FOR UPDATE")) {
+          assert.deepEqual(values, [12, 7]);
+          return { rows: mode === "missing" ? [] : [{ id: 12, user_id: 7, status: mode === "replay" ? "finished" : "playing" }] };
+        }
+        if (sql.includes("SET status = $3")) return { rows: [{ id: 12 }] };
+        if (sql.includes("SELECT g.id, g.my_score")) return { rows: [{ id: 99, my_score: 8 }] };
+        if (sql.includes("SET position = v.pos")) throw new Error("position write failed");
+        if (sql.includes("LEFT JOIN LATERAL")) return { rows: [{ id: 12, user_id: 7, status: "finished", position: 7000 }] };
+        return { rows: [] };
+      },
+      release() {},
+    };
+    await withServer(async () => ({ rows: [] }), async (baseUrl) => {
+      const res = await request(baseUrl, "/api/games/12/finish", {
+        method: "POST", body: { finished_at: "2026-10-01", my_score: mode === "unrated" ? null : 8, thoughts: null },
+      });
+      assert.equal(res.status, mode === "missing" ? 404 : mode === "position failure" ? 500 : 200);
+      if (mode === "replay") {
+        assert.equal(res.body.outcome, "already_finished");
+        assert.equal(res.body.game.position, 7000);
+        assert.ok(!calls.some((call) => call.sql.includes("UPDATE games")));
+      }
+      if (mode === "unrated" || mode === "missing") {
+        assert.ok(!calls.some((call) => call.sql.includes("SET position = v.pos")));
+      }
+      if (mode === "missing" || mode === "position failure") {
+        assert.equal(calls.at(-1).sql, "ROLLBACK");
+        assert.ok(!calls.some((call) => call.sql === "COMMIT"));
+      }
+    }, async () => client);
+  });
+}

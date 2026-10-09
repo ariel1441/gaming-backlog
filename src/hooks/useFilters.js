@@ -20,6 +20,7 @@ export function useFilters(games, opts = {}) {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [rawgStatus, setRawgStatus] = useState("all");
   const [missingEstimatesOnly, setMissingEstimatesOnly] = useState(false);
+  const [missingHltbOnly, setMissingHltbOnly] = useState(false);
   const [sortKey, setSortKey] = useState(opts.initialSortKey || "");
   const [isReversed, setIsReversed] = useState(!!opts.initialReverse);
 
@@ -119,6 +120,7 @@ export function useFilters(games, opts = {}) {
     setSourceFilter("all");
     setRawgStatus("all");
     setMissingEstimatesOnly(false);
+    setMissingHltbOnly(false);
     setSearchQuery("");
     if (hoursBounds.max > hoursBounds.min) setHoursRange(hoursBounds);
   }, [hoursBounds]);
@@ -145,6 +147,8 @@ export function useFilters(games, opts = {}) {
     setRawgStatus,
     missingEstimatesOnly,
     setMissingEstimatesOnly,
+    missingHltbOnly,
+    setMissingHltbOnly,
     sortKey,
     setSortKey,
     isReversed,

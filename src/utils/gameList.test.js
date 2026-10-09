@@ -603,3 +603,19 @@ test("applyGameFilters can select games with missing personal or RAWG genres", (
     [1, 3],
   );
 });
+
+
+test("missing HLTB filter includes RAWG fallback and absent estimates regardless of Steam actual hours", () => {
+  const collection = [
+    { id: 1, name: "Saved", displayHLTB: 12, estimateSource: "saved" },
+    { id: 2, name: "Local", displayHLTB: 12, estimateSource: "hltb_local" },
+    { id: 3, name: "Legacy saved", how_long_to_beat: 12 },
+    { id: 4, name: "RAWG", displayHLTB: 15, how_long_to_beat: 15, estimateSource: "rawg_playtime" },
+    { id: 5, name: "Missing", how_long_to_beat: null },
+    { id: 6, name: "Steam only", how_long_to_beat: null, steamPlaytimeHours: 25, status: "finished" },
+    { id: 7, name: "Zero", how_long_to_beat: 0 },
+  ];
+  assert.deepEqual(applyGameFilters(collection, { missingHltbOnly: true }).map(game => game.id), [4, 5, 6, 7]);
+  assert.equal(applyGameFilters(collection, { missingHltbOnly: false }).length, collection.length);
+  assert.deepEqual(buildDisplayGames({ games: collection, searchQuery: "RAWG", missingHltbOnly: true }).map(game => game.id), [4]);
+});

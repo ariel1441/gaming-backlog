@@ -20,6 +20,7 @@ import {
   reorderGames as reorderGamesApi, // PATCH /api/games/:id/position
 } from "../services/gameService";
 import { subscribeGamesInvalidation } from "../services/gamesCache";
+import { applyRankOrder } from "../utils/reorder.js";
 
 function inferStatusRank(status, list) {
   const sample = list.find(
@@ -57,28 +58,6 @@ function sortGames(arr) {
     };
     return num(a?.id) - num(b?.id);
   });
-}
-
-// Apply authoritative rank order from the server payload after reorder
-function applyRankOrder(prevList, payload) {
-  const { game, rank_order } = payload || {};
-  if (!Array.isArray(prevList) || !game || !Array.isArray(rank_order)) {
-    return prevList;
-  }
-  const byId = new Map(prevList.map((g) => [g.id, g]));
-  // merge moved game fields
-  if (byId.has(game.id)) {
-    byId.set(game.id, { ...byId.get(game.id), ...game });
-  }
-  // apply authoritative status/position for all ids in the rank group
-  for (const { id, status, position } of rank_order) {
-    const g = byId.get(id);
-    if (g) {
-      // status_rank stays the same (shared rank group); keep existing sr
-      byId.set(id, { ...g, status, position });
-    }
-  }
-  return sortGames(Array.from(byId.values()));
 }
 
 const GamesContext = createContext(null);
@@ -421,16 +400,19 @@ function useGamesState() {
   // - parent state becomes the source of truth, so modals/re-renders can't "snap back"
   const reorderGame = useCallback(
     async (id, targetIndex, status) => {
+      const seq = reqSeq.current;
       const payload = await reorderGamesApi(
         { id, targetIndex, status },
         { auth: false, headers: getAuthHeaders() },
       );
+      if (seq !== reqSeq.current) return payload;
       if (payload && payload.rank_order) {
         setGames((prev) => applyRankOrder(prev, payload));
       } else {
         // Fallback: rare older server without rank_order → silent revalidate
         await refresh({ silent: true });
       }
+      return payload;
     },
     [getAuthHeaders, refresh],
   );

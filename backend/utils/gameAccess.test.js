@@ -134,3 +134,12 @@ test("owned status update requires id and user_id and can clear private planning
   assert.match(compact(query.text), /LOWER\(TRIM\(status\)\) = 'wishlist'/);
   assert.deepEqual(query.values, [12, 7, "finished", true, true]);
 });
+
+
+test("missing HLTB pages filter saved estimates before RAWG or Steam fallbacks", () => {
+  const query = listOwnedGamesPageQuery(7, { missingHltb: true, limit: 25 });
+  const sql = compact(query.text);
+  assert.match(sql, /WHERE g\.user_id = \$1/);
+  assert.match(sql, /COALESCE\(backlog\.how_long_to_beat, 0\) <= 0/);
+  assert.doesNotMatch(compact(listOwnedGamesPageQuery(7).text), /COALESCE\(backlog\.how_long_to_beat, 0\) <= 0/);
+});

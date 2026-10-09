@@ -41,7 +41,7 @@ const backlogGames = Array.from({ length: 120 }, (_, index) => ({
   displayHLTB: 20,
   how_long_to_beat: 20,
 }));
-async function fixture(page, showWishlist = false, wishlistReads = [], backlog = null) {
+async function fixture(page, showWishlist = false, wishlistReads = [], backlog = null, backgroundDelayMs = 0) {
   await page.route("https://**.steamstatic.com/**", (route) => route.fulfill({
     contentType: "image/svg+xml",
     body: '<svg xmlns="http://www.w3.org/2000/svg" width="920" height="430"><rect width="920" height="430" fill="#214769"/></svg>',
@@ -77,6 +77,7 @@ async function fixture(page, showWishlist = false, wishlistReads = [], backlog =
       const direction = url.searchParams.get("direction") || "asc";
       const offset = Number(url.searchParams.get("offset") || 0);
       const limit = Number(url.searchParams.get("limit") || 50);
+      if (offset && backgroundDelayMs) await new Promise((resolve) => setTimeout(resolve, backgroundDelayMs));
       let filtered = query
         ? items.filter((item) => item.name.toLowerCase().includes(query))
         : [...items];
@@ -110,6 +111,7 @@ async function fixture(page, showWishlist = false, wishlistReads = [], backlog =
       const query = String(url.searchParams.get("q") || "").trim().toLowerCase();
       const offset = Number(url.searchParams.get("offset") || 0);
       const limit = Number(url.searchParams.get("limit") || 50);
+      if (offset && backgroundDelayMs) await new Promise((resolve) => setTimeout(resolve, backgroundDelayMs));
       const filtered = query
         ? backlog.collection.filter((game) => game.name.toLowerCase().includes(query))
         : backlog.collection;
@@ -131,18 +133,30 @@ async function fixture(page, showWishlist = false, wishlistReads = [], backlog =
   });
 }
 
-test("Backlog renders one server page, appends on scroll, and filters on the server", async ({ page }) => {
+test("Backlog renders a small first view and completes once in the background", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const backlog = {
     reads: [],
     reorderPayloads: [],
     collection: backlogGames.map((game) => ({ ...game })),
   };
-  await fixture(page, false, [], backlog);
+  await fixture(page, false, [], backlog, 250);
   await page.goto("/");
-  await expect(page.locator("article")).toHaveCount(50);
-  expect(backlog.reads.filter((search) => search.includes("limit=50"))).toHaveLength(1);
+  await expect(page.locator("article")).toHaveCount(12);
+  expect(backlog.reads.some((search) => search.includes("limit=12") && search.includes("offset=0"))).toBe(true);
+  await expect(page.getByRole("button", { name: /Load more/ })).toHaveCount(0);
 
+  const backlogScroller = page.locator("main");
+  await backlogScroller.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  const scrollBeforeHydration = await backlogScroller.evaluate((element) => element.scrollTop);
+  await expect(page.locator("article")).toHaveCount(120);
+  const scrollAfterHydration = await backlogScroller.evaluate((element) => element.scrollTop);
+  expect(scrollAfterHydration).toBeLessThanOrEqual(scrollBeforeHydration + 5);
+  expect(backlog.reads.filter((search) => search.includes("include_summary=false"))).toHaveLength(2);
+  expect(backlog.reads.some((search) => search.includes("limit=100") && search.includes("offset=12"))).toBe(true);
+  expect(backlog.reads.some((search) => search.includes("limit=100") && search.includes("offset=112"))).toBe(true);
+
+  await backlogScroller.evaluate((element) => element.scrollTo(0, 0));
   const first = page.locator("article").filter({ hasText: "Backlog title 000" });
   const second = page.locator("article").filter({ hasText: "Backlog title 001" });
   const source = await second.boundingBox();
@@ -156,29 +170,48 @@ test("Backlog renders one server page, appends on scroll, and filters on the ser
   await expect.poll(() => backlog.reorderPayloads).toEqual([{ id: 2, targetIndex: 0 }]);
   await expect(page.locator("article h3").first()).toHaveText("Backlog title 001");
 
-  await page.getByRole("button", { name: /Load more/ }).scrollIntoViewIfNeeded();
-  await expect.poll(() => page.locator("article").count()).toBeGreaterThanOrEqual(100);
-  expect(backlog.reads.some((search) => search.includes("offset=50") && search.includes("include_summary=false"))).toBe(true);
-
   await page.getByPlaceholder(/Search/).fill("final game");
   await expect(page.locator("article h3")).toHaveText(["Backlog final game"]);
   expect(backlog.reads.some((search) => search.includes("q=final+game"))).toBe(true);
 });
 
-test("Wishlist renders the first server page before loading more on scroll", async ({ page }) => {
+test("Wishlist renders a small first view and completes without scroll-triggered requests", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const wishlistReads = [];
-  await fixture(page, false, wishlistReads);
+  await fixture(page, false, wishlistReads, null, 150);
   await page.goto("/wishlist");
-  await expect(page.locator("article")).toHaveCount(50);
-  expect(wishlistReads.filter((search) => search.includes("limit=50"))).toHaveLength(1);
-  await page.getByRole("button", { name: /Load more/ }).scrollIntoViewIfNeeded();
-  await expect(page.locator("article")).toHaveCount(100);
-  expect(wishlistReads.some((search) => search.includes("offset=50") && search.includes("include_summary=false"))).toBe(true);
+  await expect(page.locator("article")).toHaveCount(12);
+  expect(wishlistReads.some((search) => search.includes("limit=12") && search.includes("offset=0"))).toBe(true);
+  await expect(page.getByRole("button", { name: /Load more/ })).toHaveCount(0);
+  const wishlistScroller = page.locator("main");
+  await wishlistScroller.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  const scrollBeforeHydration = await wishlistScroller.evaluate((element) => element.scrollTop);
+  await expect(page.locator("article")).toHaveCount(444);
+  const scrollAfterHydration = await wishlistScroller.evaluate((element) => element.scrollTop);
+  expect(scrollAfterHydration).toBeLessThanOrEqual(scrollBeforeHydration + 5);
+  expect(wishlistReads.filter((search) => search.includes("include_summary=false"))).toHaveLength(5);
+  expect(wishlistReads.some((search) => search.includes("limit=100") && search.includes("offset=12"))).toBe(true);
+  expect(wishlistReads.some((search) => search.includes("offset=412"))).toBe(true);
   await page.getByRole("button", { name: "Table", exact: true }).click();
-  await page.getByRole("button", { name: /Load more/ }).scrollIntoViewIfNeeded();
-  await expect(page.locator("tbody tr")).toHaveCount(151);
-  expect(wishlistReads.some((search) => search.includes("offset=100"))).toBe(true);
+  await expect(page.locator("tbody tr")).toHaveCount(444);
+});
+
+test("Backlog mobile renders four cards before background completion", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  const backlog = {
+    reads: [],
+    reorderPayloads: [],
+    collection: backlogGames.map((game) => ({ ...game })),
+  };
+  await fixture(page, false, [], backlog, 200);
+  await page.goto("/");
+  await expect(page.locator("article")).toHaveCount(4);
+  expect(backlog.reads.some((search) => search.includes("limit=4") && search.includes("offset=0"))).toBe(true);
+  await expect(page.getByRole("button", { name: /Load more/ })).toHaveCount(0);
+  await expect(page.locator("article")).toHaveCount(120);
+  expect(backlog.reads.filter((search) => search.includes("include_summary=false"))).toHaveLength(2);
+  expect(backlog.reads.some((search) => search.includes("limit=100") && search.includes("offset=4"))).toBe(true);
+  expect(backlog.reads.some((search) => search.includes("offset=104"))).toBe(true);
 });
 
 for (const width of [1440, 375]) {

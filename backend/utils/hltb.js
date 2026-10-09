@@ -98,8 +98,8 @@ const extractMapContainer = (parsed) => {
  *
  * Expects fields like:
  *   - Main:          game_comp_main_med (fallback game_comp_main_avg)
- *   - Main + Extra:  game_comp_plus_med
- *   - Completionist: game_comp_all_med
+ *   - Main + Extra:  game_comp_plus_med (fallback game_comp_plus_avg)
+ *   - Completionist: game_comp_all_med (fallback game_comp_all_avg)
  * Units are controlled by HLTB_VALUE_UNITS (default "seconds").
  */
 export const loadHLTBLocal = async (app) => {
@@ -117,8 +117,8 @@ export const loadHLTBLocal = async (app) => {
 
         const mainRaw =
           row?.game_comp_main_med ?? row?.game_comp_main_avg ?? null;
-        const plusRaw = row?.game_comp_plus_med ?? null;
-        const compRaw = row?.game_comp_all_med ?? null;
+        const plusRaw = row?.game_comp_plus_med ?? row?.game_comp_plus_avg ?? null;
+        const compRaw = row?.game_comp_all_med ?? row?.game_comp_all_avg ?? null;
 
         const main = toHoursFromConfiguredUnits(mainRaw);
         const plus = toHoursFromConfiguredUnits(plusRaw);
@@ -139,8 +139,8 @@ export const loadHLTBLocal = async (app) => {
         if (!title) continue;
 
         const mainRaw = v?.game_comp_main_med ?? v?.game_comp_main_avg ?? null;
-        const plusRaw = v?.game_comp_plus_med ?? null;
-        const compRaw = v?.game_comp_all_med ?? null;
+        const plusRaw = v?.game_comp_plus_med ?? v?.game_comp_plus_avg ?? null;
+        const compRaw = v?.game_comp_all_med ?? v?.game_comp_all_avg ?? null;
 
         const main = toHoursFromConfiguredUnits(mainRaw);
         const plus = toHoursFromConfiguredUnits(plusRaw);

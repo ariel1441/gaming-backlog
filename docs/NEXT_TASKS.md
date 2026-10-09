@@ -1,6 +1,6 @@
 # Next Tasks
 
-Updated: 2026-09-25. Live code/Git takes precedence.
+Updated: 2026-09-29. Live code/Git takes precedence.
 
 ## Current phase: verify the published Gaming Activity Dev candidate
 
@@ -51,6 +51,22 @@ candidates. The notification inbox is already implemented. Broader candidates ar
 in [ROADMAP.md](ROADMAP.md). The earlier
 [daily experience vision](daily_sync__wishlist_and_loaded/gaming-backlog-steam-daily-experience-vision.md)
 records Gaming Activity proposals; its dated implementation claims are historical.
+
+## Local testing follow-up (not a loading blocker)
+
+- Extend the permanent localhost-only `codex_ui_test` account with a repeatable,
+  synthetic Steam dataset after the Backlog/Wishlist loading work. It should cover
+  representative ownership, playtime, achievements, activity, Wishlist/prices,
+  import/linking, notification and success/private/partial/failure states without
+  copying a real external-account identity or contacting Steam.
+- Before seeding it, add an explicit local/mock boundary and audit every Steam sync,
+  scheduler and automation account selector. Focused coverage must prove that the
+  synthetic identity cannot be selected for a live provider request, including
+  manual, scheduled, retry and repair paths. Do not rely only on a recognizable fake
+  Steam ID.
+- Keep the synthetic dataset resettable and clearly identified as test data. The
+  existing account's Backlog data is sufficient for the current loading investigation,
+  so this follow-up must not delay that work.
 
 ## Release work, when resumed
 

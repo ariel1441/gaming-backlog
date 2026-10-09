@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildRankReorderRequest,
+  applyRankOrder,
+  optimisticRankOrder,
   canReorderVisibleGames,
   getManualReorderAvailability,
 } from "./reorder.js";
@@ -112,4 +114,23 @@ test("manual backlog ordering requires permission, default sort, and complete ra
     }),
     { enabled: true, reason: null },
   );
+});
+
+
+test("optimistic and authoritative order preserve other ranks and handle string IDs", () => {
+  const original = [
+    { id: 1, status_rank: 1, position: 0, status: "playing" },
+    { id: 2, status_rank: 1, position: 1000, status: "playing" },
+    { id: 3, status_rank: 12, position: 0, status: "finished" },
+  ];
+  const optimistic = optimisticRankOrder(original, "2", 0);
+  assert.deepEqual(optimistic.map((game) => game.id), [2, 1, 3]);
+  const saved = applyRankOrder(optimistic, {
+    game: { id: 2, name: "Saved title" },
+    rank_order: [{ id: "2", position: 0, status: "playing" }, { id: "1", position: 1000, status: "playing" }],
+  });
+  assert.deepEqual(saved.map((game) => String(game.id)), ["2", "1", "3"]);
+  assert.equal(saved[0].name, "Saved title");
+  assert.deepEqual(original.map((game) => game.id), [1, 2, 3]);
+  assert.equal(saved[2].status, "finished");
 });

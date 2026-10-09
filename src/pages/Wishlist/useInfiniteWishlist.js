@@ -8,10 +8,22 @@ import {
   wishlistCacheKey,
   writeWishlistCache,
 } from "../../services/wishlistCache.js";
+import { COLLECTION_BACKGROUND_PAGE_SIZE } from "../../utils/collectionLoading.js";
 
-const PAGE_SIZE = 50;
 const REVALIDATE_MS = 60_000;
 const pending = new Map();
+const hydrationJobs = new Map();
+
+function cancelHydration(key) {
+  const job = hydrationJobs.get(key);
+  if (!job) return;
+  job.controller.abort();
+  hydrationJobs.delete(key);
+  const current = readWishlistCache(key);
+  if (current.loadingMore) {
+    writeWishlistCache(key, { ...current, loadingMore: false }, wishlistCacheGeneration());
+  }
+}
 
 function sameRevision(current, page) {
   return String(current.snapshotVersion || "") === String(page.snapshotVersion || "") &&
@@ -35,7 +47,8 @@ export function appendWishlistPage(current, page) {
   };
 }
 
-async function loadFirst(key, params, { preserveLoaded = false } = {}) {
+async function loadFirst(key, params, initialLimit, { preserveLoaded = false } = {}) {
+  cancelHydration(key);
   const generation = wishlistCacheGeneration();
   const requestKey = `${generation}:${key}:first`;
   if (pending.has(requestKey)) return pending.get(requestKey);
@@ -43,7 +56,7 @@ async function loadFirst(key, params, { preserveLoaded = false } = {}) {
   writeWishlistCache(key, { ...previous, loading: true, error: "", loadMoreError: "" }, generation);
   const promise = (async () => {
     try {
-      const page = await listWishlist({ ...params, limit: PAGE_SIZE, offset: 0, include_summary: true });
+      const page = await listWishlist({ ...params, limit: initialLimit, offset: 0, include_summary: true });
       const firstItems = page.items || [];
       const canPreserve = preserveLoaded && previous.saved && sameRevision(previous, page);
       const items = canPreserve
@@ -79,43 +92,50 @@ async function loadFirst(key, params, { preserveLoaded = false } = {}) {
 
 async function loadNext(key, params) {
   const generation = wishlistCacheGeneration();
-  const requestKey = `${generation}:${key}:next`;
-  if (pending.has(requestKey)) return pending.get(requestKey);
+  if (hydrationJobs.has(key)) return hydrationJobs.get(key).promise;
   const current = readWishlistCache(key);
   if (!current.saved || current.loading || current.loadingMore || !current.hasMore) return;
+  const controller = new AbortController();
   writeWishlistCache(key, { ...current, loadingMore: true, loadMoreError: "" }, generation);
   const promise = (async () => {
     try {
-      const page = await listWishlist({
-        ...params,
-        limit: PAGE_SIZE,
-        offset: current.items.length,
-        include_summary: false,
-      });
-      const appended = appendWishlistPage(current, page);
+      let assembled = current;
+      while (assembled.hasMore) {
+        const page = await listWishlist({
+          ...params,
+          limit: COLLECTION_BACKGROUND_PAGE_SIZE,
+          offset: assembled.items.length,
+          include_summary: false,
+        }, { signal: controller.signal });
+        const appended = appendWishlistPage(assembled, page);
+        if (appended.items.length === assembled.items.length) {
+          throw new Error("Wishlist paging stopped before the collection was complete.");
+        }
+        assembled = { ...assembled, ...appended };
+      }
+      if (hydrationJobs.get(key)?.controller !== controller) return;
       writeWishlistCache(key, {
-        ...current,
-        items: appended.items,
+        ...assembled,
         loadingMore: false,
-        hasMore: appended.hasMore,
         loadMoreError: "",
         validatedAt: Date.now(),
       }, generation);
     } catch (error) {
+      if (error?.name === "AbortError" || hydrationJobs.get(key)?.controller !== controller) return;
       writeWishlistCache(key, {
         ...readWishlistCache(key),
         loadingMore: false,
         loadMoreError: error.message || "Could not load more Wishlist items.",
       }, generation);
     } finally {
-      pending.delete(requestKey);
+      if (hydrationJobs.get(key)?.controller === controller) hydrationJobs.delete(key);
     }
   })();
-  pending.set(requestKey, promise);
+  hydrationJobs.set(key, { controller, promise });
   return promise;
 }
 
-export default function useInfiniteWishlist({ userId, enabled = true, membership = "active", params = {} }) {
+export default function useInfiniteWishlist({ userId, enabled = true, membership = "active", params = {}, initialLimit = 12 }) {
   const active = enabled && !!userId;
   const paramsKey = JSON.stringify(params);
   const stableParams = useMemo(() => JSON.parse(paramsKey), [paramsKey]);
@@ -140,13 +160,21 @@ export default function useInfiniteWishlist({ userId, enabled = true, membership
       }
     : rawState;
   const refresh = useCallback(
-    (options) => active ? loadFirst(key, { ...stableParams, active: membership }, options) : Promise.resolve(),
-    [active, key, membership, stableParams],
+    (options) => active ? loadFirst(key, { ...stableParams, active: membership }, initialLimit, options) : Promise.resolve(),
+    [active, initialLimit, key, membership, stableParams],
   );
   const loadMore = useCallback(
     () => active ? loadNext(key, { ...stableParams, active: membership }) : Promise.resolve(),
     [active, key, membership, stableParams],
   );
+
+  useEffect(() => {
+    if (active && rawState.saved && rawState.hasMore && !rawState.loading && !rawState.loadingMore && !rawState.loadMoreError) {
+      void loadMore();
+    }
+  }, [active, loadMore, rawState.hasMore, rawState.loadMoreError, rawState.loading, rawState.loadingMore, rawState.saved]);
+
+  useEffect(() => () => cancelHydration(key), [key]);
 
   useEffect(() => {
     if (!active) return;

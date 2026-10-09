@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "install": {
+      "commands": [
+        "npm install --global npm@10.9.4 --no-audit --no-fund",
+        "..."
+      ]
+    }
+  },
+  "deploy": {
+    "inputs": [
+      "...",
+      {
+        "step": "install",
+        "include": [
+          "/mise/installs",
+          "/mise/shims"
+        ]
+      }
+    ]
+  }
+}

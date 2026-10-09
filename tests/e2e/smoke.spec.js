@@ -160,6 +160,7 @@ function pagedGamesPayload(collection, requestUrl) {
   if (minHours != null) filtered = filtered.filter((game) => gameHours(game) >= Number(minHours));
   if (maxHours != null) filtered = filtered.filter((game) => gameHours(game) <= Number(maxHours));
   if (params.get("missing_estimates") === "true") filtered = filtered.filter((game) => gameHours(game) == null);
+  if (params.get("missing_hltb") === "true") filtered = filtered.filter((game) => game.estimateSource === "rawg_playtime" || !(gameHours(game) > 0));
   const dateType = params.get("date_type");
   const year = Number(params.get("date_year"));
   if (dateType === "startedYear") filtered = filtered.filter((game) => new Date(game.started_at).getUTCFullYear() === year);
@@ -892,7 +893,8 @@ test("reorders same-rank games without sending a status change", async ({
     has: page.getByRole("heading", { name: "Disco Elysium" }),
   });
 
-  await expect(baldursGate).toBeVisible();
+  // Allow the lazy Backlog card bundle to load on a cold preview server.
+  await expect(baldursGate).toBeVisible({ timeout: 15000 });
   await expect(disco).toBeVisible();
 
   const source = await disco.boundingBox();
@@ -1373,3 +1375,143 @@ test("mobile navigation exposes More destinations and account controls", async (
     }),
   ).toBeFocused();
 });
+
+
+for (const viewport of [{ name: "desktop", width: 1440, height: 900 }, { name: "mobile", width: 390, height: 844 }]) {
+  test(`missing HLTB filter includes RAWG fallback, searches, and clears on ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.addInitScript(() => {
+      localStorage.setItem("token", "demo-token");
+      localStorage.setItem("seen_onboarding_v1", "1");
+    });
+    const collection = [
+      { ...games[0], id: 11, name: "Saved HLTB RAWG title", how_long_to_beat: 10, estimateSource: "saved" },
+      { ...games[0], id: 12, name: "RAWG fallback", how_long_to_beat: 14, displayHLTB: 14, estimateSource: "rawg_playtime" },
+      { ...games[0], id: 13, name: "No hours", how_long_to_beat: null },
+      { ...games[0], id: 14, name: "Steam actual only", how_long_to_beat: null, steamPlaytimeHours: 20 },
+    ];
+    const requests = [];
+    await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), route => {
+      const url = new URL(route.request().url());
+      requests.push(url.searchParams);
+      return route.fulfill({ json: url.searchParams.has("limit") ? pagedGamesPayload(collection, url) : collection });
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toBeVisible();
+    if (viewport.width < 640) await page.getByRole("button", { name: "Filters and view" }).click();
+    await page.getByRole("button", { name: /^More filters/ }).click();
+    const toggle = page.getByRole("checkbox", { name: "Missing HLTB hours" });
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle).toBeChecked();
+    await expect(page.getByRole("button", { name: /^More filters\s*1$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toHaveCount(0);
+    for (const name of ["RAWG fallback", "No hours", "Steam actual only"]) {
+      await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    }
+    await expect.poll(() => requests.some(params => params.get("missing_hltb") === "true")).toBeTruthy();
+    await page.keyboard.press("Escape");
+    await page.getByRole("combobox", { name: "Search your backlog..." }).fill("RAWG");
+    await expect(page.getByRole("heading", { name: "RAWG fallback", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "No hours", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No hours", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "More filters", exact: true })).toBeVisible();
+  });
+}
+
+
+for (const outcome of ["saved", "refresh fails", "save fails"]) {
+  test(`large scrolled Backlog reorder stays stable when ${outcome}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.setItem("token", "demo-token");
+      localStorage.setItem("seen_onboarding_v1", "1");
+    });
+    let collection = Array.from({ length: 160 }, (_, index) => ({
+      ...games[0], id: index + 1, name: `Reorder game ${String(index + 1).padStart(3, "0")}`,
+      position: (index + 1) * 1000, favorite_rank: null,
+    }));
+    let attempted = false;
+    let settled = false;
+    await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), async (route) => {
+      const url = new URL(route.request().url());
+      if (attempted) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        if (outcome === "save fails" || (outcome === "refresh fails" && Number(url.searchParams.get("offset")) > 0)) {
+          settled = true;
+          return route.fulfill({ status: 500, json: { error: { message: "Refresh unavailable" } } });
+        }
+      }
+      const payload = url.searchParams.has("limit") ? pagedGamesPayload(collection, url) : collection;
+      await route.fulfill({ json: payload });
+      if (attempted && Number(url.searchParams.get("offset")) >= 120) settled = true;
+    });
+    await page.route(`${API_BASE}/api/games/*/position`, async (route) => {
+      attempted = true;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (outcome === "save fails") {
+        return route.fulfill({ status: 500, json: { error: { message: "Save unavailable" } } });
+      }
+      const id = Number(route.request().url().match(/games\/(\d+)/)[1]);
+      const { targetIndex } = route.request().postDataJSON();
+      const moved = collection.find((game) => game.id === id);
+      const rest = collection.filter((game) => game.id !== id);
+      rest.splice(targetIndex, 0, moved);
+      collection = rest.map((game, index) => ({ ...game, position: index * 1000 }));
+      await route.fulfill({ json: {
+        game: collection.find((game) => game.id === id),
+        rank_order: collection.map(({ id, status, position }) => ({ id, status, position })),
+      } });
+    });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Table", exact: true }).click();
+    const table = page.getByRole("table", { name: "Backlog table" });
+    const rows = table.locator("tbody tr");
+    await expect(rows).toHaveCount(160);
+    const handle = page.getByRole("button", { name: "Reorder Reorder game 121", exact: true });
+    await handle.scrollIntoViewIfNeeded();
+    await expect(handle).toBeEnabled();
+    const before = await table.locator("..").evaluate((element) => element.scrollTop);
+    await page.evaluate(() => {
+      window.reorderSamples = [];
+      window.reorderTimer = setInterval(() => {
+        const table = document.querySelector('table[aria-label="Backlog table"]');
+        const rows = [...table.querySelectorAll("tbody tr")];
+        window.reorderSamples.push({
+          rows: rows.length, scrollTop: table.parentElement.scrollTop,
+          movedIndex: rows.findIndex((row) => row.textContent.includes("Reorder game 121")),
+        });
+      }, 16);
+    });
+    const from = await handle.boundingBox();
+    const to = await page.getByRole("button", { name: "Reorder Reorder game 120", exact: true }).boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(() => attempted).toBeTruthy();
+    await expect(rows.nth(119)).toContainText("Reorder game 121");
+    await expect.poll(() => settled).toBeTruthy();
+    await expect(rows.nth(outcome === "save fails" ? 120 : 119)).toContainText("Reorder game 121");
+    if (outcome !== "saved") {
+      // The API client retries GET failures for 5.5 seconds before settling.
+      await expect(page.getByText("Could not refresh this view. Your loaded games are still available.")).toBeVisible({ timeout: 10000 });
+    }
+    await expect(handle).toBeEnabled();
+    const samples = await page.evaluate(() => {
+      clearInterval(window.reorderTimer);
+      return window.reorderSamples;
+    });
+    expect(Math.min(...samples.map((sample) => sample.rows))).toBe(160);
+    expect(Math.min(...samples.map((sample) => sample.scrollTop))).toBeGreaterThan(before - 180);
+    if (outcome !== "save fails") {
+      const optimisticStart = samples.findIndex((sample) => sample.movedIndex === 119);
+      expect(optimisticStart).toBeGreaterThanOrEqual(0);
+      expect(samples.slice(optimisticStart).every((sample) => sample.movedIndex === 119)).toBeTruthy();
+    }
+  });
+}
