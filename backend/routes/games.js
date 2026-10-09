@@ -230,6 +230,7 @@ router.get("/", verifyToken, listGames, async (req, res, next) => {
         minHours: req.query.min_hours,
         maxHours: req.query.max_hours,
         missingEstimates: req.query.missing_estimates,
+        missingHltb: req.query.missing_hltb,
         dateType: req.query.date_type,
         dateYear: req.query.date_year,
         dateMonths: req.query.date_months,

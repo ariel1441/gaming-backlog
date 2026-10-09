@@ -128,6 +128,7 @@ async function loadSearchPage(userId, params) {
     sourceFilter: params.source || "all",
     rawgStatus: params.rawg_status || "all",
     missingEstimatesOnly: !!params.missing_estimates,
+    missingHltbOnly: !!params.missing_hltb,
     sortKey: clientSortKeys[params.sort] || "",
     isReversed: params.direction === "desc",
   });

@@ -160,6 +160,7 @@ function pagedGamesPayload(collection, requestUrl) {
   if (minHours != null) filtered = filtered.filter((game) => gameHours(game) >= Number(minHours));
   if (maxHours != null) filtered = filtered.filter((game) => gameHours(game) <= Number(maxHours));
   if (params.get("missing_estimates") === "true") filtered = filtered.filter((game) => gameHours(game) == null);
+  if (params.get("missing_hltb") === "true") filtered = filtered.filter((game) => game.estimateSource === "rawg_playtime" || !(gameHours(game) > 0));
   const dateType = params.get("date_type");
   const year = Number(params.get("date_year"));
   if (dateType === "startedYear") filtered = filtered.filter((game) => new Date(game.started_at).getUTCFullYear() === year);
@@ -1373,3 +1374,49 @@ test("mobile navigation exposes More destinations and account controls", async (
     }),
   ).toBeFocused();
 });
+
+for (const viewport of [{ name: "desktop", width: 1440, height: 900 }, { name: "mobile", width: 390, height: 844 }]) {
+  test(`missing HLTB filter includes RAWG fallback, searches, and clears on ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.addInitScript(() => {
+      localStorage.setItem("token", "demo-token");
+      localStorage.setItem("seen_onboarding_v1", "1");
+    });
+    const collection = [
+      { ...games[0], id: 11, name: "Saved HLTB RAWG title", how_long_to_beat: 10, estimateSource: "saved" },
+      { ...games[0], id: 12, name: "RAWG fallback", how_long_to_beat: 14, displayHLTB: 14, estimateSource: "rawg_playtime" },
+      { ...games[0], id: 13, name: "No hours", how_long_to_beat: null },
+      { ...games[0], id: 14, name: "Steam actual only", how_long_to_beat: null, steamPlaytimeHours: 20 },
+    ];
+    const requests = [];
+    await page.route(new RegExp(`^${API_BASE}/api/games(?:\\?.*)?$`), route => {
+      const url = new URL(route.request().url());
+      requests.push(url.searchParams);
+      return route.fulfill({ json: url.searchParams.has("limit") ? pagedGamesPayload(collection, url) : collection });
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toBeVisible();
+    if (viewport.width < 640) await page.getByRole("button", { name: "Filters and view" }).click();
+    await page.getByRole("button", { name: /^More filters/ }).click();
+    const toggle = page.getByRole("checkbox", { name: "Missing HLTB hours" });
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle).toBeChecked();
+    await expect(page.getByRole("button", { name: /^More filters\s*1$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toHaveCount(0);
+    for (const name of ["RAWG fallback", "No hours", "Steam actual only"]) {
+      await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    }
+    await expect.poll(() => requests.some(params => params.get("missing_hltb") === "true")).toBeTruthy();
+    await page.keyboard.press("Escape");
+    await page.getByRole("combobox", { name: "Search your backlog..." }).fill("RAWG");
+    await expect(page.getByRole("heading", { name: "RAWG fallback", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "No hours", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Saved HLTB RAWG title", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No hours", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "More filters", exact: true })).toBeVisible();
+  });
+}

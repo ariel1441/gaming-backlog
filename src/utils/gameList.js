@@ -386,6 +386,7 @@ export function applyGameFilters(
     sourceFilter = "all",
     rawgStatus = "all",
     missingEstimatesOnly = false,
+    missingHltbOnly = false,
     onSaleOnly = false,
     now = new Date(),
   } = {},
@@ -447,6 +448,9 @@ export function applyGameFilters(
     }
 
     if (missingEstimatesOnly && Number(hoursValueForList(game)) > 0) return false;
+    const estimateHours = Number(game.displayHLTB ?? game.how_long_to_beat);
+    if (missingHltbOnly && game.estimateSource !== "rawg_playtime"
+      && Number.isFinite(estimateHours) && estimateHours > 0) return false;
 
     if (!matchesDateFilter(game, dateFilter, now)) return false;
     if (scoreFilter != null && (game.my_score == null || Number(game.my_score) !== Number(scoreFilter))) return false;
@@ -472,6 +476,7 @@ export function buildDisplayGames({
   sourceFilter = "all",
   rawgStatus = "all",
   missingEstimatesOnly = false,
+  missingHltbOnly = false,
   onSaleOnly = false,
   sortKey = "",
   isReversed = false,
@@ -488,6 +493,7 @@ export function buildDisplayGames({
     sourceFilter,
     rawgStatus,
     missingEstimatesOnly,
+    missingHltbOnly,
     onSaleOnly,
   });
 

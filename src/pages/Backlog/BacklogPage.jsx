@@ -117,6 +117,8 @@ export default function BacklogPage() {
     setRawgStatus,
     missingEstimatesOnly,
     setMissingEstimatesOnly,
+    missingHltbOnly,
+    setMissingHltbOnly,
     sortKey,
     setSortKey,
     isReversed,
@@ -157,9 +159,10 @@ export default function BacklogPage() {
     source: sourceFilter,
     rawg_status: rawgStatus,
     missing_estimates: missingEstimatesOnly,
+    missing_hltb: missingHltbOnly,
   }), [debouncedQuery, sortKey, isReversed, selectedStatuses, selectedGenres,
     selectedMyGenres, hoursRange, dateFilter, scoreFilter, ratedOnly, sourceFilter,
-    rawgStatus, missingEstimatesOnly]);
+    rawgStatus, missingEstimatesOnly, missingHltbOnly]);
   const usePagedBacklog = !userPreferences.show_wishlist_in_backlog;
   const paged = useInfiniteGames({
     userId: user?.id,
@@ -472,6 +475,7 @@ export default function BacklogPage() {
         sourceFilter,
         rawgStatus,
         missingEstimatesOnly,
+        missingHltbOnly,
         sortKey,
         isReversed,
       });
@@ -492,6 +496,7 @@ export default function BacklogPage() {
     (sourceFilter !== "all" ? 1 : 0) +
     (rawgStatus !== "all" ? 1 : 0) +
     (missingEstimatesOnly ? 1 : 0) +
+    (missingHltbOnly ? 1 : 0) +
     (hasHoursFilter ? 1 : 0);
   const hasActiveFilters = Boolean(
     searchQuery ||
@@ -504,6 +509,7 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       rawgStatus !== "all" ||
       missingEstimatesOnly ||
+      missingHltbOnly ||
       hasHoursFilter,
   );
   const hasPartialReorderFilters = Boolean(
@@ -516,6 +522,7 @@ export default function BacklogPage() {
       sourceFilter !== "all" ||
       rawgStatus !== "all" ||
       missingEstimatesOnly ||
+      missingHltbOnly ||
       hasHoursFilter,
   );
   const manualReorder = getManualReorderAvailability({
@@ -614,6 +621,8 @@ export default function BacklogPage() {
                 hoursRange,
                 setHoursRange,
                 missingEstimatesOnly,
+                missingHltbOnly,
+                setMissingHltbOnly,
                 clearInsightYearFilter,
                 clearScoreFilter,
                 clearRatedFilter,

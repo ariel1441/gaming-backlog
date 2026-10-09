@@ -146,6 +146,7 @@ export function listOwnedGamesPageQuery(userId, options = {}) {
   if (options.minHours != null) where.push(`${listHoursSql} >= ${add(Number(options.minHours))}`);
   if (options.maxHours != null) where.push(`${listHoursSql} <= ${add(Number(options.maxHours))}`);
   if (options.missingEstimates) where.push(`${listHoursSql} IS NULL`);
+  if (options.missingHltb) where.push("COALESCE(backlog.how_long_to_beat, 0) <= 0");
   if (options.score != null) where.push(`backlog.my_score = ${add(Number(options.score))}`);
   if (options.ratedOnly) where.push("backlog.my_score IS NOT NULL");
   if (options.dateType === "addedYear") where.push(`EXTRACT(YEAR FROM backlog.backlog_added_at AT TIME ZONE 'Asia/Jerusalem') = ${add(Number(options.dateYear))}`);

@@ -140,3 +140,28 @@ Railway checkout alone does not establish durable refresh.
   seconds. Ignored rollback status verified. `git diff --check` passed.
 - Full app gate, browser flow and production checks were not run; existing saved
   estimates were not updated. No automation, Git publishing or release action ran.
+
+## Backlog missing-HLTB filter checkpoint (2026-10-09)
+
+Historical implementation checkpoint, before local commit preparation.
+
+- Existing workspace changes were committed on `Dev` as `d6abf7c` at the user's
+  request. No push occurred; branch is two commits ahead of `origin/Dev`.
+- Subsequent filter work was uncommitted at this checkpoint: More filters > Missing HLTB hours includes
+  RAWG fallback and absent estimates, including Steam-actual-only games. Saved or
+  local HLTB estimates are excluded. No provenance claim distinguishes manual
+  saved estimates from historic HLTB values.
+- Added separate `missing_hltb` API validation/query filtering, client filtering
+  for search/legacy views, active counts, reset and reorder-filter handling.
+  The existing Insights missing-estimates filter keeps its existing meaning.
+- Verification covers `d6abf7c` plus the uncommitted filter scope:
+  `node --test src/utils/gameList.test.js backend/utils/gameAccess.test.js`;
+  targeted ESLint (zero errors, JSX unused-variable warnings);
+  mocked Playwright desktop/mobile cases for toggle, RAWG/absent/Steam-only
+  coverage, search, keyboard activation and reset. Both viewport cases passed.
+  Initial browser attempts failed on test selectors and an open search suggestion
+  overlay; corrected locators and Escape dismissal resolved them, with only the
+  remaining failed desktop case rerun after mobile passed. No real provider or
+  ordinary saved-data interaction, full gate, CI or production verification ran.
+- Next action at this checkpoint: review/commit the filter separately. Keep periodic
+  refresh and user-selectable completion categories deferred.

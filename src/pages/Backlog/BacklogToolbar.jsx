@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  Checkbox,
   IconButton,
   PopoverPanel,
   SelectMenu,
@@ -60,7 +61,7 @@ const sourceOptions = [
 function MoreFilters({ filters }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const active = Number(!!filters.dateFilter) + Number(filters.sourceFilter && filters.sourceFilter !== "all") + Number(filters.rawgStatus && filters.rawgStatus !== "all");
+  const active = Number(!!filters.dateFilter) + Number(filters.sourceFilter && filters.sourceFilter !== "all") + Number(filters.rawgStatus && filters.rawgStatus !== "all") + Number(!!filters.missingHltbOnly);
   useDismissibleLayer({ open, layerRef: ref, onDismiss: () => setOpen(false) });
   return <div ref={ref} className="relative max-sm:static">
     <Button type="button" variant={active ? "filterActive" : "secondary"} onClick={() => setOpen((value) => !value)} className="h-10 shrink-0 whitespace-nowrap" aria-expanded={open}>
@@ -68,6 +69,13 @@ function MoreFilters({ filters }) {
     </Button>
     {open ? <PopoverPanel padding="lg" className="absolute left-2 right-2 top-[calc(100%+0.5rem)] z-50 space-y-3 sm:left-0 sm:right-auto sm:w-72">
       <div><div className="text-sm font-semibold text-content-primary">More filters</div><p className="mt-1 text-xs text-content-muted">Less-used library controls.</p></div>
+      {filters.setMissingHltbOnly ? <Checkbox
+        label="Missing HLTB hours"
+        description="RAWG fallback or no estimate"
+        ariaLabel="Missing HLTB hours"
+        checked={!!filters.missingHltbOnly}
+        onChange={filters.setMissingHltbOnly}
+      /> : null}
       <DateDropdown dateFilter={filters.dateFilter} setDateFilter={filters.setDateFilter} />
       <FilterDropdown label="Steam details" options={sourceOptions.filter((option) => option.value !== "all")} selected={filters.sourceFilter && filters.sourceFilter !== "all" ? [filters.sourceFilter] : []} onToggle={(value) => filters.setSourceFilter(filters.sourceFilter === value ? "all" : value)} onClear={() => filters.setSourceFilter("all")} />
       <FilterDropdown label="RAWG status" options={RAWG_STATUS_OPTIONS} selected={filters.rawgStatus && filters.rawgStatus !== "all" ? [filters.rawgStatus] : []} onToggle={filters.toggleRawgStatus} onClear={() => filters.setRawgStatus("all")} />

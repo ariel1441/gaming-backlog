@@ -259,6 +259,7 @@ export const listGames = celebrate({
     min_hours: Joi.number().min(0),
     max_hours: Joi.number().min(0),
     missing_estimates: Joi.boolean().default(false),
+    missing_hltb: Joi.boolean().default(false),
     date_type: Joi.string().valid("addedYear", "addedRecentDays", "addedUnknown", "startedYear", "finishedYear", "touchedYear", "activeUnfinished", "activeOlderThanMonths"),
     date_year: Joi.number().integer().min(1900).max(2200),
     date_months: Joi.number().integer().min(1).max(120),
