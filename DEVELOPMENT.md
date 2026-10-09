@@ -30,7 +30,9 @@ newer npm major; `.npmrc` intentionally enforces the project's npm 10.x requirem
 Vercel selects the Node 24 major from `package.json`; CI reads `.nvmrc` for both
 checks and production migration tooling. `vercel.json` bootstraps npm 10.9.4
 for installs. `railway.json` selects Railpack 0.40.1 for both Railway services;
-Railpack reads Node/npm from `package.json`. This build-only configuration
+Railpack reads Node from `package.json`; `railpack.json` installs npm 10.9.4
+in the shared tool layer because Corepack does not enable npm shims by default.
+This build-only configuration
 preserves each service's dashboard start command, healthcheck and cron schedule.
 Check Railway runtime overrides for both services before release.
 

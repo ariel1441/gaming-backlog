@@ -19,7 +19,9 @@ unchanged. These files form one runtime upgrade commit.
 - Superseding the initial Nixpacks preparation, `railway.json` selects Railpack
   0.40.1 for both services without deploy/start/cron overrides. No manual dashboard
   builder switch is required once Railway deploys that file. `nixpacks.toml` was
-  removed. Both services read the existing npm 10.9.4 package-manager pin.
+  removed. The first Linux CI run exposed that Corepack did not enable npm shims, leaving
+  bundled npm 11. Added `railpack.json` to install npm 10.9.4 in the shared Mise
+  tool layer, which is included in both build and runtime images.
 - Added `npm run check:railway` and a Linux CI container-build job. Production
   migrations now require both the app gate and container gate to pass.
 - Playwright 1.52 stalled loading its ESM configuration under Node 24; an
@@ -101,3 +103,12 @@ current Railway Free/EU West services. No manual builder change is needed with r
 shows Railpack 0.40.1, Node 24, the original service start commands and cron.
 Verify backend/runtime/TLS, frontend,
 and the nightly scheduled job after the production deployment.
+
+## Dev publication follow-up
+
+Published post-main-sync candidate `25b9e4f`. Vercel deployment
+`H6tSJ8DQQK1oktbauxFVy37Ydhkz` succeeded. CI run 37921757969 reached the
+Linux application image build and reproduced npm EBADENGINE: Node 24.21.0
+was correct, but bundled npm 11.19.0 was used. The subsequent focused
+Railpack npm setup correction requires a new exact-candidate CI run.
+Main and Railway production remain unchanged.
