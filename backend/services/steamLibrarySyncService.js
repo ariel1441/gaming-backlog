@@ -1417,9 +1417,7 @@ export function runSteamSyncJobs() {
     try {
       do {
         steamSyncDrainRequested = false;
-        while (true) {
-          const job = await claimSteamSyncJob();
-          if (!job) break;
+        for (let job = await claimSteamSyncJob(); job; job = await claimSteamSyncJob()) {
           await processSteamSyncJob(job);
           processed++;
         }
