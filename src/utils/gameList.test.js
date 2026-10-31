@@ -542,7 +542,7 @@ test("applyGameFilters distinguishes RAWG identity from incomplete metadata", ()
 test("matchesDateFilter supports active unfinished aging", () => {
   assert.equal(
     matchesDateFilter(
-      { started_at: "2025-01-01", finished_at: null },
+      { status: "playing", started_at: "2025-01-01", finished_at: null },
       { type: "activeOlderThanMonths", months: 6 },
       new Date("2026-05-09T00:00:00Z"),
     ),

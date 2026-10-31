@@ -1,3 +1,4 @@
+import { formatSteamPlaytime } from "./steamDisplay.js";
 function toPositiveNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : null;
@@ -13,14 +14,14 @@ function normalizeStatus(value) {
 }
 
 export function resolveGameHours(game = {}) {
-  const steamHours = toPositiveNumber(game.steamPlaytimeHours);
+  const steamHours = toPositiveNumber(game.steamPlaytimeMinutes) ? Number(game.steamPlaytimeMinutes) / 60 : toPositiveNumber(game.steamPlaytimeHours);
   const estimateHours = toPositiveNumber(game.displayHLTB ?? game.how_long_to_beat);
   const preferredSource = String(game.hours_preferred_source || "auto");
   const locked = !!game.hours_locked;
   const steamActual = steamHours
     ? {
         hours: steamHours,
-        label: `${steamHours}h`,
+        label: formatSteamPlaytime(steamHours * 60, { suffix: "" }),
       source: "steam",
       sourceLabel: locked ? "Locked Steam actual" : "Steam actual",
       isActual: true,

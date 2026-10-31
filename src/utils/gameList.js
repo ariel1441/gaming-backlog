@@ -1,3 +1,4 @@
+import { completionDate, statusGroupOf } from "../../shared/statusModel.js";
 import { smartFuzzySearch } from "./fuzzySearch.js";
 import { parseBacklogAddedDate, parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
@@ -241,7 +242,7 @@ export function sortGames(
       case "addedDate":
         return compareOptionalDates(a, b, "backlog_added_at", isReversed);
       case "finishedDate":
-        return compareOptionalDates(a, b, "finished_at", isReversed);
+        return compareOptionalDates(a, b, completionDate, isReversed);
       case "steamLastPlayed":
         return compareOptionalDates(a, b, "steamLastPlayedAt", isReversed);
       default:
@@ -271,7 +272,7 @@ export function matchesDateFilter(game, dateFilter, now = new Date()) {
   if (!dateFilter?.type) return true;
 
   const started = parseGameDate(game?.started_at);
-  const finished = parseGameDate(game?.finished_at);
+  const finished = parseGameDate(completionDate(game));
   const added = parseBacklogAddedDate(game?.backlog_added_at);
 
   switch (dateFilter.type) {
@@ -296,9 +297,9 @@ export function matchesDateFilter(game, dateFilter, now = new Date()) {
       return started?.year === year || finished?.year === year;
     }
     case "activeUnfinished":
-      return !!started && !finished;
+      return !!started && !finished && ["playing", "returning"].includes(statusGroupOf(game.status));
     case "activeOlderThanMonths": {
-      if (!started || finished) return false;
+      if (!started || finished || !["playing", "returning"].includes(statusGroupOf(game.status))) return false;
       const months = Number.isFinite(Number(dateFilter.months))
         ? Math.max(0, Number(dateFilter.months))
         : 6;

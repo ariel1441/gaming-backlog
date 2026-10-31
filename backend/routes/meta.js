@@ -23,7 +23,7 @@ router.get("/status-groups", (req, res) => {
   }
 
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "public, max-age=86400"); // cache for 24h
+  res.setHeader("Cache-Control", "public, max-age=0, must-revalidate"); // revalidate status semantics after releases
   res.setHeader("ETag", etag);
   res.send(body);
 });

@@ -1,3 +1,4 @@
+import { statusDisplayLabel } from "../../shared/statusModel.js";
 import { personalGenreNames, sortGames, splitCsv } from "./gameList.js";
 import { parseGameDate } from "./gameDateInsights.js";
 
@@ -62,7 +63,7 @@ export function matchesReviewSearch(game, query) {
       game?.thoughts,
       personalGenreNames(game).join(" "),
       game?.genres,
-      game?.status,
+      statusDisplayLabel(game?.status),
     ]
       .filter(Boolean)
       .join(" ")

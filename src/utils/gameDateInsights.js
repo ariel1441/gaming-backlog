@@ -1,3 +1,4 @@
+import { completionDate, statusGroupOf } from "../../shared/statusModel.js";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export function parseGameDate(value) {
@@ -55,7 +56,7 @@ export function computeGameDateInsights(games = [], now = new Date()) {
 
   for (const game of Array.isArray(games) ? games : []) {
     const started = parseGameDate(game?.started_at);
-    const finished = parseGameDate(game?.finished_at);
+    const finished = parseGameDate(completionDate(game));
 
     if (started) {
       bumpYear(started.year, "started");
@@ -67,7 +68,7 @@ export function computeGameDateInsights(games = [], now = new Date()) {
       if (finished.year === currentYear) finishedThisYear += 1;
     }
 
-    if (started && !finished) {
+    if (started && !finished && ["playing", "returning"].includes(statusGroupOf(game.status))) {
       activeCount += 1;
       if (!activeOldest || started.timestamp < activeOldest.started.timestamp) {
         activeOldest = { game, started };

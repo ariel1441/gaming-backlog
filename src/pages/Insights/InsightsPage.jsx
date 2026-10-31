@@ -1,3 +1,4 @@
+import { STATUS_GROUP_ORDER } from "../../../shared/statusModel.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BarChart3, Star } from "lucide-react";
@@ -94,7 +95,7 @@ export default function InsightsPage() {
   const [year, setYear] = useQueryBackedState({ key: "year", defaultValue: "all", parse: (value) => /^\d{4}$/.test(value || "") ? value : "all", serialize: String, storageKey: "insights.year" });
   const [genreMetric, setGenreMetric] = useQueryBackedState({ key: "genreMetric", defaultValue: "count", parse: (value) => value === "hours" ? value : "count", serialize: String, storageKey: "insights.genreMetric" });
   const [genreType, setGenreType] = useQueryBackedState({ key: "genreType", defaultValue: "my", parse: (value) => value === "rawg" ? value : "my", serialize: String, storageKey: "insights.genreType" });
-  const [genreStatus, setGenreStatus] = useQueryBackedState({ key: "genreStatus", defaultValue: "all", parse: (value) => ["all", "planned", "playing", "returning", "done", "other"].includes(value || "") ? value : "all", serialize: String, storageKey: "insights.genreStatus" });
+  const [genreStatus, setGenreStatus] = useQueryBackedState({ key: "genreStatus", defaultValue: "all", parse: (value) => ["all", ...STATUS_GROUP_ORDER].includes(value || "") ? value : "all", serialize: String, storageKey: "insights.genreStatus" });
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -145,7 +146,7 @@ export default function InsightsPage() {
       const current = groups.get(group) || { name: group, display: group === "other" ? "Other" : `${group[0].toUpperCase()}${group.slice(1)}`, value: 0, count: 0 };
       current.value += 1; current.count += 1; groups.set(group, current);
     });
-    return ["planned", "playing", "returning", "done", "other"].map((group) => groups.get(group)).filter(Boolean);
+    return STATUS_GROUP_ORDER.map((group) => groups.get(group)).filter(Boolean);
   }, [statusGroupOf, yearGames]);
   const onBacklog = useCallback((params) => nav(`${BACKLOG_ROUTE}${toQP(params)}`), [nav]);
 
@@ -169,7 +170,7 @@ export default function InsightsPage() {
         <InsightTile label="Wishlist" value={fmtInt(totals.wishlist)} detail="Current" onClick={() => nav("/wishlist")} />
       )}
       <InsightTile label={isYearView ? "Started" : "Added this year"} value={fmtInt(isYearView ? summary.started : totals.addedThisYear)} detail={isYearView ? year : String(currentAddedYear)} onClick={() => onBacklog({ dateType: isYearView ? "started" : "added", year: isYearView ? year : currentAddedYear })} />
-      <InsightTile label="Finished" value={fmtInt(isYearView ? summary.finished : totals.finished)} detail={isYearView ? year : "All time"} onClick={() => onBacklog(isYearView ? { dateType: "finished", year } : { group: "done" })} />
+      <InsightTile label="Finished" value={fmtInt(isYearView ? summary.finished : totals.finished)} detail={isYearView ? year : "All time"} onClick={() => onBacklog(isYearView ? { dateType: "finished", year } : { status: "finished" })} />
       <InsightTile label="Playing" value={fmtInt(summary.playing)} detail={isYearView ? year : "Current"} onClick={() => onBacklog({ group: "playing", insightsYear: isYearView ? year : undefined })} />
       <InsightTile label="Rated games" value={fmtInt(ratingSummary.rated)} detail={ratingSummary.averageScore != null ? `Average ${ratingSummary.averageScore}/10` : "No ratings"} onClick={() => onBacklog({ rated: "true", insightsYear: isYearView ? year : undefined })} />
       <InsightTile label="Missing estimates" value={fmtInt(summary.missingEstimates)} detail={`${fmtInt(summary.estimatedGames)} of ${fmtInt(summary.games)} covered`} onClick={() => onBacklog({ missing: "estimates", insightsYear: isYearView ? year : undefined })} />

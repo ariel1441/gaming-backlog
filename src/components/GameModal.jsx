@@ -1,3 +1,4 @@
+import { completionDate, isNextUpEligible } from "../../shared/statusModel.js";
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -59,7 +60,6 @@ import GameSearchResult from "./GameSearchResult";
 import EditGameSteamSection from "./EditGameSteamSection";
 import PersonalGenreSuggestionEditor from "./PersonalGenreSuggestionEditor";
 import SteamPrice from "./SteamPrice";
-import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { usePersonalGenres } from "../hooks/usePersonalGenres";
 import { parseBacklogAddedDate } from "../utils/gameDateInsights";
 import { formatDisplayDate } from "../utils/dateFormat";
@@ -275,14 +275,13 @@ export default function GameModal({
   const titleId = `${useId()}-title`;
   const toast = useToast();
   const confirm = useConfirm();
-  const { statusGroupOf } = useStatusGroups();
   const { genres: availablePersonalGenres } = usePersonalGenres(!readOnly && !!onSubmitEdit);
   const dirty = draftKey(draft) !== draftKey(savedDraft);
   const canEdit = !readOnly && !!onSubmitEdit;
   const normalizedStatus = String(game?.status || "").trim().toLowerCase();
   const canAddToNextUp =
     !!onAddToNextUp &&
-    !["playing", "done"].includes(statusGroupOf(game?.status));
+    isNextUpEligible(game?.status);
   const canFinish =
     !!onFinish && normalizedStatus !== "finished";
   const hasOverflowActions = !!onRefreshMetadata || canEdit || canAddToNextUp || !!onDelete;
@@ -436,7 +435,7 @@ export default function GameModal({
     isEditMode ? draft.rawg_released || game.releaseDate : game.releaseDate,
   );
   const startedAt = formatDisplayDate(displayGame.started_at);
-  const finishedAt = formatDisplayDate(displayGame.finished_at);
+  const finishedAt = formatDisplayDate(completionDate(displayGame));
   const backlogAddedAt = fmtBacklogAddedDate(displayGame.backlog_added_at);
   const steamLastPlayed = formatDisplayDate(game.steamLastPlayedAt);
   const hours = resolveGameHours(displayGame);
@@ -457,7 +456,7 @@ export default function GameModal({
   const achievementSyncedAt = formatAchievementSyncDate(
     (localAchievements || game.steamAchievements)?.lastSyncedAt,
   );
-  const statusOptions = statuses.map(statusOption);
+  const statusOptions = Array.from(new Set([...statuses, ...(displayGame.status ? [displayGame.status] : [])])).map(statusOption);
   const selectedMyGenres = Array.isArray(draft.personal_genres)
     ? draft.personal_genres.map((genre) =>
         typeof genre === "string" ? genre : genre?.name,

@@ -1,3 +1,4 @@
+import { completionDate, isNextUpEligible } from "../../../shared/statusModel.js";
 import React from "react";
 import SteamPrice from '../../components/SteamPrice';
 import {
@@ -30,7 +31,6 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../../contexts/AuthContext";
-import { useStatusGroups } from "../../contexts/StatusGroupsContext";
 import {
   ActionMenu,
   AdaptiveChipList,
@@ -118,7 +118,6 @@ function GameActions({
   onAddToNextUp,
 }) {
   const { user, isAuthenticated } = useAuth();
-  const { statusGroupOf } = useStatusGroups();
   const canEdit = canEditGame({ user, game, isAuthenticated });
   const canDelete = canDeleteGame({ user, game, isAuthenticated });
   const canFinish =
@@ -130,7 +129,7 @@ function GameActions({
   const canQueue =
     canEdit &&
     onAddToNextUp &&
-    !["playing", "done"].includes(statusGroupOf(game.status));
+    isNextUpEligible(game.status);
 
   if (!canEdit && !canDelete) {
     return <span className="text-content-muted">—</span>;
@@ -366,7 +365,7 @@ function BacklogTableRow({
         {formatDate(collection === "wishlist" ? game.dateAdded : game.started_at)}
       </td>
       <td className="whitespace-nowrap px-3 py-3 text-sm text-content-secondary">
-        {formatDate(collection === "wishlist" ? game.releaseDate : game.finished_at)}
+        {formatDate(collection === "wishlist" ? game.releaseDate : completionDate(game))}
       </td>
       {showSteam ? (
         <td className="min-w-[155px] px-3 py-3">

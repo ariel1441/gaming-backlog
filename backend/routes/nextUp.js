@@ -7,10 +7,11 @@ import {
   nextUpGameId,
   reorderNextUp,
 } from "../validators/nextUp.js";
-import { statusGroupOf } from "../utils/status.js";
+import { isNextUpEligible, statusGroupOf } from "../utils/status.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
 import { selectOwnedGameDetailsQuery } from "../utils/gameAccess.js";
 import { decorateGameForClient } from "./games.js";
+import { cacheClear } from "../utils/microCache.js";
 
 const router = express.Router();
 const POSITION_SPACING = 1000;
@@ -31,7 +32,7 @@ async function lockedQueueRows(client, userId, role) {
        JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
        WHERE n.user_id = $1
         AND n.candidate_role = $2
-        AND LOWER(TRIM(g.status)) <> 'wishlist'
+        AND LOWER(TRIM(g.status)) NOT IN ('wishlist', 'playing', 'finished', 'played alot but didnt finish', 'played a lot but didn''t finish', 'occasional', 'played and wont come back', 'not anytime soon', 'recommended by someone')
       ORDER BY n.position, n.game_id
       FOR UPDATE OF n`,
     [userId, role],
@@ -74,7 +75,7 @@ async function readCandidates(queryable, userId) {
        FROM user_next_up_games n
        JOIN games g ON g.id = n.game_id AND g.user_id = n.user_id
       WHERE n.user_id = $1
-        AND LOWER(TRIM(g.status)) <> 'wishlist'
+        AND LOWER(TRIM(g.status)) NOT IN ('wishlist', 'playing', 'finished', 'played alot but didnt finish', 'played a lot but didn''t finish', 'occasional', 'played and wont come back', 'not anytime soon', 'recommended by someone')
       ORDER BY CASE n.candidate_role WHEN 'main' THEN 0 ELSE 1 END,
                n.position, n.game_id`,
     [userId],
@@ -110,12 +111,17 @@ function focusPayload(rows = []) {
 
 async function readFocus(queryable, userId) {
   const result = await queryable.query(
-    `SELECT focus.game_id, focus.focus_role, focus.assigned_at
+    `SELECT focus.game_id, CASE WHEN LOWER(TRIM(g.status)) = 'occasional' THEN 'occasional' ELSE focus.focus_role END AS focus_role, focus.assigned_at
        FROM user_play_focus_games focus
        JOIN games g ON g.id = focus.game_id AND g.user_id = focus.user_id
       WHERE focus.user_id = $1
         AND LOWER(TRIM(g.status)) <> 'wishlist'
-      ORDER BY focus.assigned_at, focus.game_id`,
+      UNION ALL
+      SELECT g.id AS game_id, 'occasional' AS focus_role, NULL AS assigned_at
+        FROM games g
+       WHERE g.user_id = $1 AND LOWER(TRIM(g.status)) = 'occasional'
+         AND NOT EXISTS (SELECT 1 FROM user_play_focus_games f WHERE f.user_id = $1 AND f.game_id = g.id)
+      ORDER BY assigned_at NULLS LAST, game_id`,
     [userId],
   );
   return focusPayload(result.rows);
@@ -163,10 +169,17 @@ router.put(
       if (normalized === "wishlist" || statusGroupOf(game.status) === "done") {
         throw badRequest("Finished and wishlist games cannot be focused.");
       }
-      if (role === "occasional" && statusGroupOf(game.status) !== "playing") {
-        throw badRequest("Only Playing games can be marked occasional.");
+      if (role === "occasional" && !["playing", "occasional"].includes(statusGroupOf(game.status))) {
+        throw badRequest("Only Playing or Occasional games can be marked occasional.");
       }
 
+      if (role === "occasional") {
+        await client.query("UPDATE games SET status = 'occasional' WHERE id = $1 AND user_id = $2", [gameId, userId]);
+      } else if (statusGroupOf(game.status) === "occasional") {
+        await client.query(`UPDATE games SET status = 'playing', started_at = COALESCE(started_at, ${TODAY_SQL}) WHERE id = $1 AND user_id = $2`, [gameId, userId]);
+      } else if (!isNextUpEligible(game.status) && statusGroupOf(game.status) !== "playing") {
+        throw badRequest("Change this game to Playing before assigning a focus slot.");
+      }
       await client.query(
         `DELETE FROM user_play_focus_games
           WHERE user_id = $1
@@ -178,6 +191,9 @@ router.put(
          VALUES ($1, $2, $3)`,
         [userId, gameId, role],
       );
+      if (game.status === "occasional" && role !== "occasional") {
+        await client.query("DELETE FROM user_play_focus_games WHERE user_id = $1 AND game_id = $2 AND focus_role = 'occasional'", [userId, gameId]);
+      }
       const removedCandidate = await client.query(
         `DELETE FROM user_next_up_games
           WHERE user_id = $1 AND game_id = $2
@@ -190,7 +206,10 @@ router.put(
       const candidateState = candidateResponse(await readCandidates(client, userId));
       const focus = await readFocus(client, userId);
       await client.query("COMMIT");
-      res.json({ focus, ...candidateState });
+      cacheClear(userId);
+      const detailQuery = selectOwnedGameDetailsQuery(gameId, userId);
+      const detail = await pool.query(detailQuery.text, detailQuery.values);
+      res.json({ focus, ...candidateState, game: detail.rows[0] ? decorateGameForClient(detail.rows[0]) : undefined });
     } catch (error) {
       try {
         await client?.query("ROLLBACK");
@@ -211,13 +230,18 @@ router.delete(
       const userId = req.user.id;
       const gameId = Number(req.params.gameId);
       const removed = await pool.query(
-        `DELETE FROM user_play_focus_games
-          WHERE user_id = $1 AND game_id = $2
-          RETURNING game_id`,
+        `WITH removed AS (
+          DELETE FROM user_play_focus_games WHERE user_id = $1 AND game_id = $2 RETURNING game_id
+        ), updated AS (
+          UPDATE games SET status = 'playing' WHERE user_id = $1 AND id = $2 AND status = 'occasional' RETURNING id AS game_id
+        ) SELECT game_id FROM removed UNION SELECT game_id FROM updated`,
         [userId, gameId],
       );
       if (!removed.rows[0]) throw notFound("Game is not focused.");
-      res.json({ gameId, focus: await readFocus(pool, userId) });
+      cacheClear(userId);
+      const detailQuery = selectOwnedGameDetailsQuery(gameId, userId);
+      const detail = await pool.query(detailQuery.text, detailQuery.values);
+      res.json({ gameId, focus: await readFocus(pool, userId), game: detail.rows[0] ? decorateGameForClient(detail.rows[0]) : undefined });
     } catch (error) {
       next(error);
     }
@@ -246,8 +270,8 @@ router.post("/:gameId", verifyToken, nextUpGameId, addNextUpCandidate, async (re
     ) {
       throw badRequest("Move this wishlist item into the backlog first.");
     }
-    if (["playing", "done"].includes(statusGroupOf(game.status))) {
-      throw badRequest("Playing and done games cannot be added to Next Up.");
+    if (!isNextUpEligible(game.status)) {
+      throw badRequest("Choose a planned, on-hold or played-a-bit game for Next Up.");
     }
     const existing = await client.query(
       "SELECT candidate_role FROM user_next_up_games WHERE user_id = $1 AND game_id = $2",
@@ -392,6 +416,9 @@ router.post(
           RETURNING *`,
         [gameId, userId],
       );
+      if (game.status === "occasional") {
+        await client.query("DELETE FROM user_play_focus_games WHERE user_id = $1 AND game_id = $2 AND focus_role = 'occasional'", [userId, gameId]);
+      }
       const removedCandidate = await client.query(
         `DELETE FROM user_next_up_games
           WHERE user_id = $1 AND game_id = $2
@@ -403,6 +430,7 @@ router.post(
       }
       const candidateState = candidateResponse(await readCandidates(client, userId));
       await client.query("COMMIT");
+      cacheClear(userId);
 
       const detailQuery = selectOwnedGameDetailsQuery(gameId, userId);
       const detail = await pool.query(detailQuery.text, detailQuery.values);

@@ -1,3 +1,5 @@
+import { formatSteamPlaytime } from "../utils/steamDisplay.js";
+import { completionDate, showsShortSteamActivity, isNextUpEligible } from "../../shared/statusModel.js";
 import React from "react";
 import SteamPrice from './SteamPrice';
 import {
@@ -15,7 +17,6 @@ import {
   Trophy,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { canDeleteGame, canEditGame } from "../utils/permissions";
 import { personalGenreNames, splitCsv } from "../utils/gameList";
 import { resolveGameHours } from "../utils/hours";
@@ -40,10 +41,6 @@ function daysSince(value) {
 }
 
 export const MIN_PLANNED_STEAM_ACTIVITY_HOURS = 1;
-
-function statusIsAlreadyActiveOrDone(status, statusGroupOf) {
-  return ["playing", "done"].includes(statusGroupOf(status));
-}
 
 function TimelineRow({ startedAt, finishedAt }) {
   if (!startedAt && !finishedAt) return null;
@@ -125,7 +122,6 @@ export default function GameCard({
   footer = null,
 }) {
   const { user, isAuthenticated } = useAuth();
-  const { statusGroupOf } = useStatusGroups();
   const toast = useToast();
   const canEdit = canEditGame({ user, game, isAuthenticated, readOnly });
   const canDelete = canDeleteGame({ user, game, isAuthenticated, readOnly });
@@ -175,7 +171,7 @@ export default function GameCard({
 
   const releaseDate = formatDisplayDate(game.releaseDate);
   const startedAt = formatNumericDate(game.started_at);
-  const finishedAt = formatNumericDate(game.finished_at);
+  const finishedAt = formatNumericDate(completionDate(game));
   const myGenres = game.entryKind === "wishlist" ? splitCsv(game.genres) : personalGenreNames(game);
   const hours = resolveGameHours(game);
   const cardStats = [
@@ -198,14 +194,14 @@ export default function GameCard({
       tone: "default",
     } : null,
   ].filter(Boolean);
-  const isActiveOrDone = statusIsAlreadyActiveOrDone(game.status, statusGroupOf);
+  const isActiveOrDone = showsShortSteamActivity(game.status);
   const steamHours = Number(hours.secondarySteamHours);
   const showSteamContext = isActiveOrDone || (Number.isFinite(steamHours) && steamHours >= MIN_PLANNED_STEAM_ACTIVITY_HOURS);
   const steamPlaytime =
     showSteamContext &&
     game.steamOwned && hours.source !== "steam"
       ? hours.secondarySteamHours
-        ? `Steam ${hours.secondarySteamHours}h`
+        ? `Steam ${formatSteamPlaytime(hours.secondarySteamHours * 60, { suffix: "" })}`
         : null
       : null;
   const steamLastPlayed = showSteamContext && game.steamOwned
@@ -216,7 +212,7 @@ export default function GameCard({
     game.steamOwned &&
     steamActivityDays != null &&
     steamActivityDays <= 30 &&
-    !statusIsAlreadyActiveOrDone(game.status, statusGroupOf)
+    !showsShortSteamActivity(game.status)
       ? {
           icon: Gamepad2,
           label: "Steam activity",
@@ -271,7 +267,7 @@ export default function GameCard({
               ) : null}
               {canEdit &&
               onAddToNextUp &&
-              !["playing", "done"].includes(statusGroupOf(game.status)) ? (
+              isNextUpEligible(game.status) ? (
                 <button
                   type="button"
                   role="menuitem"

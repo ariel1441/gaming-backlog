@@ -398,7 +398,7 @@ async function ensureRunForJob(job) {
 
 function staleLinkedStatus(status) {
   const normalized = normStatus(status);
-  return Boolean(normalized) && !["playing", "done"].includes(statusGroupOf(normalized));
+  return statusGroupOf(normalized) === "planned";
 }
 
 function reviewItem(app, source, candidate, game, activityEventId) {

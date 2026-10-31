@@ -60,8 +60,8 @@ test("achievementStatusSuggestion suggests conservative completion states", () =
       achievements: { status: "synced", total: 10, percent: 100 },
     }),
     {
-      label: "Looks complete",
-      targetStatus: "finished",
+      label: "100% achievements",
+      targetStatus: null,
       confidence: "medium",
       reason: "Steam achievements are 100% complete.",
     }
@@ -82,6 +82,6 @@ test("achievementStatusSuggestion suggests conservative completion states", () =
       playtimeMinutes: 900,
       achievements: { status: "private" },
     })?.targetStatus,
-    "played alot but didnt finish"
+    null
   );
 });

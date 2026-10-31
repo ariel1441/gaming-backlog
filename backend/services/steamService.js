@@ -1715,7 +1715,7 @@ export function isLikelySteamDuplicateTitle(steamTitle, backlogTitle) {
   return bestTitleSimilarity(steamTitle, backlogTitle) >= DUPLICATE_TITLE_SCORE;
 }
 
-function recommendStatus(app, catalog = null, filteredReason = null) {
+export function recommendStatus(app, _catalog = null, filteredReason = null) {
   if (filteredReason) {
     return {
       status: null,
@@ -1730,7 +1730,6 @@ function recommendStatus(app, catalog = null, filteredReason = null) {
   const recentlyPlayed =
     Number.isFinite(lastPlayed) &&
     Date.now() - lastPlayed <= RECENT_STEAM_ACTIVITY_DAYS * 24 * 60 * 60 * 1000;
-  const estimate = Number(catalog?.rawg_playtime_hours || 0);
 
   if (hours <= 0) {
     return {
@@ -1756,26 +1755,10 @@ function recommendStatus(app, catalog = null, filteredReason = null) {
     };
   }
 
-  if (estimate >= 3 && hours >= estimate * 1.1) {
-    return {
-      status: "finished",
-      confidence: "low",
-      reason: `Steam playtime is above the ${Math.round(estimate)}h catalog estimate.`,
-    };
-  }
-
-  if (hours >= 10) {
-    return {
-      status: "played alot but didnt finish",
-      confidence: "medium",
-      reason: "Steam playtime is substantial, but there is no finish signal.",
-    };
-  }
-
   return {
-    status: "played and should come back",
+    status: null,
     confidence: "low",
-    reason: "Steam playtime is meaningful but not high enough to infer completion.",
+    reason: "Steam records playtime. Choose whether you are playing, on hold, occasional, done or have dropped it.",
   };
 }
 
@@ -2797,7 +2780,8 @@ function serializeCandidate(row) {
   const playtimeMinutes =
     row.source_playtime_minutes_forever ?? row.playtime_minutes_forever;
   const lastPlayedAt = row.source_last_played_at || row.last_played_at;
-  const fallbackRecommendation = row.suggested_status
+  const safeSavedSuggestion = ["plan to play", "played a bit", "playing"].includes(row.suggested_status) ? row.suggested_status : null;
+  const fallbackRecommendation = safeSavedSuggestion
     ? null
     : recommendStatus(
         {
@@ -2834,11 +2818,11 @@ function serializeCandidate(row) {
     matchReason: row.match_reason,
     importStatus: row.import_status,
     filteredReason: row.filtered_reason,
-    suggestedStatus: row.suggested_status || fallbackRecommendation?.status || null,
+    suggestedStatus: safeSavedSuggestion || fallbackRecommendation?.status || null,
     suggestedStatusReason:
-      row.suggested_status_reason || fallbackRecommendation?.reason || null,
+      (safeSavedSuggestion ? row.suggested_status_reason : fallbackRecommendation?.reason) || null,
     suggestedStatusConfidence:
-      row.suggested_status_confidence || fallbackRecommendation?.confidence || null,
+      (safeSavedSuggestion ? row.suggested_status_confidence : fallbackRecommendation?.confidence) || null,
     personalGenreSuggestions: candidateGenreSuggestions(row.personal_genre_suggestions_json),
     selectedStatus: row.selected_status,
     decisionAt: row.decision_at,
@@ -3924,9 +3908,9 @@ async function importSteamCandidateRowsTx(client, userId, rows) {
     );
     const targetStatus =
       row.selected_status ||
-      row.suggested_status ||
-      fallbackRecommendation.status ||
-      "plan to play";
+      (["plan to play", "played a bit", "playing"].includes(row.suggested_status) ? row.suggested_status : null) ||
+      fallbackRecommendation.status;
+    if (!targetStatus) throw badRequest("Choose a Backlog status for this played Steam game before importing it.");
     const validStatus = await client.query(
       "SELECT status FROM statuses WHERE status = $1 AND LOWER(TRIM(status)) <> 'wishlist' LIMIT 1",
       [targetStatus]

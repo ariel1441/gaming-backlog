@@ -1,3 +1,4 @@
+import { isNextUpEligible } from "../../shared/statusModel.js";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -764,6 +765,7 @@ export default function PlayNextPage() {
   const [laterOpen, setLaterOpen] = useState(false);
   const [candidatesOpen, setCandidatesOpen] = useState(false);
   const [activeOpen, setActiveOpen] = useState(false);
+  const [occasionalOpen, setOccasionalOpen] = useState(false);
   const [assigningRole, setAssigningRole] = useState("");
   const [showAllFocusCandidates, setShowAllFocusCandidates] = useState(false);
   const [returningOpen, setReturningOpen] = useState(false);
@@ -848,12 +850,12 @@ export default function PlayNextPage() {
     [focus.main, focus.side],
   );
   const occasionalIds = useMemo(
-    () => new Set((focus.occasional || []).map(String)),
-    [focus.occasional],
+    () => new Set([...(focus.occasional || []).map(String), ...games.filter((game) => playNextStatusGroup(game.status, statusGroupOf) === "occasional").map((game) => String(game.id))]),
+    [focus.occasional, games, statusGroupOf],
   );
   const otherActiveGames = useMemo(
-    () => activeGames.filter((game) => !focusedIds.has(String(game.id))),
-    [activeGames, focusedIds],
+    () => activeGames.filter((game) => !focusedIds.has(String(game.id)) && !occasionalIds.has(String(game.id))),
+    [activeGames, focusedIds, occasionalIds],
   );
   const queueSet = useMemo(
     () => new Set(queueIds.map((id) => String(id))),
@@ -865,9 +867,7 @@ export default function PlayNextPage() {
       .filter(
         (game) =>
           !queueSet.has(String(game.id)) &&
-          !["playing", "done"].includes(
-            playNextStatusGroup(game.status, statusGroupOf),
-          ) &&
+          isNextUpEligible(game.status) &&
           (!query || titleOf(game).toLowerCase().includes(query)),
       )
       .sort((a, b) => {
@@ -884,6 +884,7 @@ export default function PlayNextPage() {
     const eligible = games.filter(
         (game) =>
           !focusedIds.has(String(game.id)) &&
+          !occasionalIds.has(String(game.id)) &&
           String(game.status || "")
             .trim()
             .toLowerCase() !== "wishlist" &&
@@ -896,7 +897,7 @@ export default function PlayNextPage() {
       queueIds: candidateBanks[assigningRole] || [],
       statusGroupOf,
     });
-  }, [assigningRole, candidateBanks, focusedIds, games, mainGame, sideGame, statusGroupOf]);
+  }, [assigningRole, candidateBanks, focusedIds, occasionalIds, games, mainGame, sideGame, statusGroupOf]);
   const focusGroups = useMemo(
     () => focusSuggestionGroups({
       candidates: focusCandidates,
@@ -1027,7 +1028,7 @@ export default function PlayNextPage() {
         const previousGame = byId.get(String(previousId));
         if (previousGame) upsertGame({ ...previousGame, focusRole: null });
       }
-      upsertGame({ ...game, focusRole: role });
+      upsertGame(payload.game || { ...game, focusRole: role });
       setAddOpen(false);
       setAddSearch("");
       setAssigningRole("");
@@ -1050,7 +1051,7 @@ export default function PlayNextPage() {
     try {
       const payload = await removePlayFocus(game.id);
       setFocus(payload.focus || EMPTY_FOCUS);
-      upsertGame({ ...game, focusRole: null });
+      upsertGame(payload.game || { ...game, focusRole: null });
       toast.success(`${titleOf(game)} was removed from your focus.`);
     } catch (error) {
       toast.error(error.message || "Could not clear this focus slot.");
@@ -1148,7 +1149,7 @@ export default function PlayNextPage() {
   };
 
   const playGame = (game) => {
-    if (playNextStatusGroup(game.status, statusGroupOf) === "playing") {
+    if (["playing", "occasional"].includes(playNextStatusGroup(game.status, statusGroupOf))) {
       openSteam(game, toast);
       return;
     }
@@ -1197,18 +1198,14 @@ export default function PlayNextPage() {
       const updated = await editGame(original.id, result.payload);
       setSelectedGame(updated);
       if (
-        ["playing", "done"].includes(
-          playNextStatusGroup(updated.status, statusGroupOf),
-        )
+        !isNextUpEligible(updated.status)
       ) {
         setQueueIds((current) =>
           current.filter((id) => String(id) !== String(updated.id)),
         );
       }
       if (
-        ["returning", "done"].includes(
-          playNextStatusGroup(updated.status, statusGroupOf),
-        ) || String(updated.status || "").trim().toLowerCase() === "wishlist"
+        playNextStatusGroup(updated.status, statusGroupOf) !== "playing" || playNextStatusGroup(original.status, statusGroupOf) === "occasional"
       ) {
         setFocus((current) => ({
           main:
@@ -1663,52 +1660,26 @@ export default function PlayNextPage() {
           )}
         </section>
 
-        {otherActiveGames.length ? (
-          <section>
+        {[
+          { key: "active", title: "Other active games", games: otherActiveGames, open: activeOpen, toggle: setActiveOpen },
+          { key: "occasional", title: "Occasional games", games: games.filter((game) => occasionalIds.has(String(game.id))), open: occasionalOpen, toggle: setOccasionalOpen },
+        ].filter((section) => section.games.length).map((section) => (
+          <section key={section.key}>
             <div className="rounded-2xl border border-surface-border bg-surface-card/65">
-              <button
-                type="button"
-                onClick={() => setActiveOpen((current) => !current)}
-                className="flex min-h-14 w-full items-center justify-between gap-4 rounded-2xl px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/70 sm:px-5"
-                aria-expanded={activeOpen}
-              >
-                <span>
-                  <span className="block font-semibold text-content-primary">
-                    Other active games ({otherActiveGames.length})
-                  </span>
-                  <span className="mt-0.5 block text-sm text-content-muted">
-                    Available without competing with Main and Side.
-                  </span>
-                </span>
-                {activeOpen ? (
-                  <ChevronUp className="h-5 w-5 shrink-0" aria-hidden="true" />
-                ) : (
-                  <ChevronDown
-                    className="h-5 w-5 shrink-0"
-                    aria-hidden="true"
-                  />
-                )}
+              <button type="button" onClick={() => section.toggle((current) => !current)}
+                className="flex min-h-14 w-full items-center justify-between gap-4 rounded-2xl px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/70 sm:px-5"
+                aria-expanded={section.open}>
+                <span className="block font-semibold text-content-primary">{section.title} ({section.games.length})</span>
+                {section.open ? <ChevronUp className="h-5 w-5" aria-hidden="true" /> : <ChevronDown className="h-5 w-5" aria-hidden="true" />}
               </button>
-              {activeOpen ? (
-                <div className="space-y-3 border-t border-surface-border p-3 sm:p-4">
-                  {otherActiveGames.map((game) => (
-                    <OtherActiveRow
-                      key={game.id}
-                      game={game}
-                      busy={busy}
-                      occasional={occasionalIds.has(String(game.id))}
-                      onPlay={playGame}
-                      onAssign={assignFocus}
-                      onClear={clearFocus}
-                      onNote={openNote}
-                      onOpen={setSelectedGame}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              {section.open ? <div className="space-y-3 border-t border-surface-border p-3 sm:p-4">
+                {section.games.map((game) => <OtherActiveRow key={game.id} game={game} busy={busy}
+                  occasional={occasionalIds.has(String(game.id))} onPlay={playGame} onAssign={assignFocus}
+                  onClear={clearFocus} onNote={openNote} onOpen={setSelectedGame} />)}
+              </div> : null}
             </div>
           </section>
-        ) : null}
+        ))}
 
         {returningGames.length ? (
           <section>

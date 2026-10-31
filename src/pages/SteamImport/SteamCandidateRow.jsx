@@ -252,7 +252,7 @@ export function CandidateRow({
             onClick={runPrimaryAction}
             disabled={
               primaryAction.kind === "completed" ||
-              (primaryAction.kind === "import" && !canImport)
+              (primaryAction.kind === "import" && (!canImport || !statusValue))
             }
           >
             {primaryAction.label}

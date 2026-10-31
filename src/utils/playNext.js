@@ -1,3 +1,4 @@
+import { isNextUpEligible } from "../../shared/statusModel.js";
 import { personalGenreNames } from "./gameList.js";
 import { resolveGameHours } from "./hours.js";
 
@@ -32,13 +33,7 @@ export function playNextStatusGroup(status, statusGroupOf) {
 }
 
 function eligibleGames(games, statusGroupOf) {
-  return (games || []).filter(
-    (game) =>
-      String(game?.status || "").trim().toLowerCase() !== "wishlist" &&
-      !["playing", "done"].includes(
-        playNextStatusGroup(game?.status, statusGroupOf),
-      ),
-  );
+  return (games || []).filter((game) => isNextUpEligible(game?.status, statusGroupOf));
 }
 
 function genresOf(game) {
@@ -101,6 +96,7 @@ export function focusRoleCandidates({
   const partnerIsIntense = intersects(partnerGenres, INTENSE_GENRES);
 
   return games
+    .filter((game) => isNextUpEligible(game.status, statusGroupOf) || (playNextStatusGroup(game.status, statusGroupOf) === "playing" && game.focusRole !== "occasional"))
     .map((game) => {
       const genres = genresOf(game);
       const hours = knownHours(game);
@@ -305,7 +301,7 @@ export function recommendationCandidates({
   );
   const activeGames = games.filter(
     (game) =>
-      playNextStatusGroup(game?.status, statusGroupOf) === "playing" &&
+      playNextStatusGroup(game?.status, statusGroupOf) === "playing" && game.focusRole !== "occasional" &&
       matchesMyGenres(game, selectedGenres),
   );
 

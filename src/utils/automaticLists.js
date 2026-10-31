@@ -1,3 +1,4 @@
+import { hasCompletedGame, completionDate } from "../../shared/statusModel.js";
 import { parseBacklogAddedDate, parseGameDate } from "./gameDateInsights.js";
 import { hoursValueForList } from "./hours.js";
 import { personalGenreNames, sortByDefaultOrder, splitCsv } from "./gameList.js";
@@ -19,7 +20,8 @@ export const SMART_SORT_OPTIONS = [
 
 export const SMART_STATUS_OPTIONS = [
   { value: "", label: "Any status" },
-  { value: "finished", label: "Finished / done" },
+  { value: "finished", label: "Finished" },
+  { value: "done", label: "Done (finished or played enough)" },
   { value: "playing", label: "Currently playing" },
   { value: "started-unfinished", label: "Started but unfinished" },
   { value: "unfinished", label: "Not finished" },
@@ -226,13 +228,15 @@ function genreMatches(game, genre) {
 function matchesStatus(game, status, statusGroupOf) {
   switch (status) {
     case "finished":
+      return hasCompletedGame(game);
+    case "done":
       return isDone(game, statusGroupOf);
     case "playing":
       return isPlaying(game, statusGroupOf);
     case "started-unfinished":
-      return !!parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at) && !isDone(game, statusGroupOf);
+      return !!parseGameDate(game?.started_at) && !parseGameDate(completionDate(game)) && ["playing", "returning"].includes(statusGroupOf(game.status));
     case "unfinished":
-      return !isDone(game, statusGroupOf);
+      return !hasCompletedGame(game);
     default:
       return true;
   }
@@ -255,7 +259,7 @@ export function smartListYears(games = [], field = "finished") {
         ? parseGameDate(game?.releaseDate || game?.released || game?.released_at)
         : field === "added"
           ? parseBacklogAddedDate(game?.backlog_added_at)
-          : parseGameDate(game?.finished_at);
+          : parseGameDate(completionDate(game));
     if (date?.year) years.add(date.year);
   }
   return Array.from(years).sort((a, b) => b - a);
@@ -372,7 +376,7 @@ export function resolveSmartList(
     if (normalize(game?.status) === "wishlist") return false;
     if (!matchesStatus(game, query.status, statusGroupOf)) return false;
     if (query.addedYear && parseBacklogAddedDate(game?.backlog_added_at)?.year !== Number(query.addedYear)) return false;
-    if (query.finishedYear && parseGameDate(game?.finished_at)?.year !== Number(query.finishedYear)) return false;
+    if (query.finishedYear && parseGameDate(completionDate(game))?.year !== Number(query.finishedYear)) return false;
     if (query.releasedYear && parseGameDate(game?.releaseDate || game?.released || game?.released_at)?.year !== Number(query.releasedYear)) return false;
     if (query.genre && !genreMatches(game, query.genre)) return false;
     if (query.maxHours != null && query.maxHours !== "") {
@@ -398,7 +402,7 @@ export function resolveSmartList(
     }
     if (sortKey === "score") return compareScore(a, b);
     if (sortKey === "finishedDate") {
-      return dateTime(b?.finished_at) - dateTime(a?.finished_at) || sortByDefaultOrder(a, b);
+      return dateTime(completionDate(b)) - dateTime(completionDate(a)) || sortByDefaultOrder(a, b);
     }
     if (sortKey === "releaseDate") {
       return releaseTime(b) - releaseTime(a) || sortByDefaultOrder(a, b);

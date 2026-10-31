@@ -1,21 +1,9 @@
+import { SELECTABLE_STATUSES as FALLBACK_STATUSES } from "../../shared/statusModel.js";
 // src/hooks/useStatuses.js
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listStatuses } from "../services/statusService";
 
-export const FALLBACK_STATUSES = Object.freeze([
-  "playing",
-  "plan to play soon",
-  "plan to play",
-  "played and should come back",
-  "play when in the mood",
-  "maybe in the future",
-  "recommended by someone",
-  "not anytime soon",
-  "played a bit",
-  "played and wont come back",
-  "played alot but didnt finish",
-  "finished",
-]);
+export { SELECTABLE_STATUSES as FALLBACK_STATUSES } from "../../shared/statusModel.js";
 
 let _cache = null; // simple module-level cache
 

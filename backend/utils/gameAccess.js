@@ -1,3 +1,4 @@
+const completionDateSql = "CASE WHEN LOWER(TRIM(backlog.status)) NOT IN ('played alot but didnt finish', 'played a lot but didn''t finish') THEN backlog.finished_at END";
 export function listOwnedGamesQuery(userId) {
   return {
     text: `
@@ -156,15 +157,15 @@ export function listOwnedGamesPageQuery(userId, options = {}) {
   }
   if (options.dateType === "addedUnknown") where.push("backlog.backlog_added_at IS NULL");
   if (options.dateType === "startedYear") where.push(`EXTRACT(YEAR FROM backlog.started_at) = ${add(Number(options.dateYear))}`);
-  if (options.dateType === "finishedYear") where.push(`EXTRACT(YEAR FROM backlog.finished_at) = ${add(Number(options.dateYear))}`);
+  if (options.dateType === "finishedYear") where.push(`EXTRACT(YEAR FROM ${completionDateSql}) = ${add(Number(options.dateYear))}`);
   if (options.dateType === "touchedYear") {
     const year = add(Number(options.dateYear));
-    where.push(`(EXTRACT(YEAR FROM backlog.started_at) = ${year} OR EXTRACT(YEAR FROM backlog.finished_at) = ${year})`);
+    where.push(`(EXTRACT(YEAR FROM backlog.started_at) = ${year} OR EXTRACT(YEAR FROM ${completionDateSql}) = ${year})`);
   }
-  if (options.dateType === "activeUnfinished") where.push("backlog.started_at IS NOT NULL AND backlog.finished_at IS NULL");
+  if (options.dateType === "activeUnfinished") where.push("backlog.started_at IS NOT NULL AND backlog.finished_at IS NULL AND LOWER(TRIM(backlog.status)) IN ('playing', 'played and should come back')");
   if (options.dateType === "activeOlderThanMonths") {
     const months = Math.min(Math.max(Number(options.dateMonths) || 6, 1), 120);
-    where.push(`backlog.started_at IS NOT NULL AND backlog.finished_at IS NULL
+    where.push(`backlog.started_at IS NOT NULL AND backlog.finished_at IS NULL AND LOWER(TRIM(backlog.status)) IN ('playing', 'played and should come back')
       AND backlog.started_at <= (now() AT TIME ZONE 'Asia/Jerusalem')::date - (${add(months)}::int * INTERVAL '1 month')`);
   }
   const sourceFilters = {
@@ -199,7 +200,7 @@ export function listOwnedGamesPageQuery(userId, options = {}) {
     release_date: optional("backlog.catalog_released_at"),
     added_date: optional("backlog.backlog_added_at"),
     started_date: optional("backlog.started_at"),
-    finished_date: optional("backlog.finished_at"),
+    finished_date: optional(completionDateSql),
     steam_last_played: optional("backlog.steam_last_played_at"),
   };
   const order = options.sort

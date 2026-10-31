@@ -1,3 +1,4 @@
+import { statusOption } from "../utils/statusDisplay.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Heart, Percent } from "lucide-react";
 import { priceSyncMessage } from '../utils/steamPrice';
@@ -148,7 +149,7 @@ export default function WishlistPage() {
     (isHoursFilterActive(filters.hoursRange, state.facets?.hoursBounds) ? 1 : 0);
   const statusOptions = (statuses || [])
     .filter((status) => status.toLowerCase().trim() !== "wishlist")
-    .map((status) => ({ value: status, label: status }));
+    .map(statusOption);
   const setQuery = (value) => {
     filters.setSearchQuery(value);
   };
