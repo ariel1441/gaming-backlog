@@ -10,7 +10,7 @@ import {
   saveActivityAllocation, updateActivity,
 } from "../validators/activity.js";
 import { listInbox, updateInbox, hideOtherInbox } from '../validators/activity.js';
-import { activateActivityInbox, listActivityInbox, updateActivityInbox, hideOtherActivityUpdates, clearActivityUpdates } from '../services/activityInboxService.js';
+import { activateActivityInbox, getActivityInboxCounts, listActivityInbox, updateActivityInbox, hideOtherActivityUpdates, clearActivityUpdates } from '../services/activityInboxService.js';
 import {
   listSteamActivityHistory, listSteamActivityInsights, resetSteamActivityAllocation,
   saveSteamActivityAllocation,
@@ -27,6 +27,10 @@ router.post('/inbox/clear-updates', verifyToken, hideOtherInbox, async (req, res
   catch (error) { next(error); }
 });
 
+router.get('/inbox/counts', verifyToken, async (req, res, next) => {
+  try { res.setHeader('Cache-Control', 'no-store'); res.json(await getActivityInboxCounts(req.user.id)); }
+  catch (error) { next(error); }
+});
 router.get('/inbox', verifyToken, listInbox, async (req, res, next) => {
   try { res.setHeader('Cache-Control', 'no-store'); res.json(await listActivityInbox(req.user.id, req.query)); }
   catch (error) { next(error); }

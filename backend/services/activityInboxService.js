@@ -103,6 +103,21 @@ export async function activateActivityInbox(userId) {
   return { activated: true };
 }
 
+async function attentionCounts(db, userId) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*) FILTER (WHERE ${attention})::int AS attention,
+      COUNT(DISTINCT (${groupKey})) FILTER (WHERE ${attention})::int AS "pendingDecisions"
+      ${attentionScope}`,
+    [userId],
+  );
+  return rows[0];
+}
+
+export async function getActivityInboxCounts(userId) {
+  await assertSavedAccountUser(userId);
+  return { counts: await attentionCounts(pool, userId) };
+}
+
 export async function listActivityInbox(
   userId,
   { section = "updates", before = null, snapshot = null, limit = 20 } = {},
@@ -119,14 +134,11 @@ export async function listActivityInbox(
           [userId],
         )
       ).rows[0].id;
-    const counts = (
+    const counts = section === "attention"
+      ? { ...(await attentionCounts(client, userId)), updates: null }
+      : (
       await client.query(
-        section === "attention"
-          ? `SELECT COUNT(*) FILTER (WHERE ${attention})::int AS attention,
-        COUNT(DISTINCT (${groupKey})) FILTER (WHERE ${attention})::int AS "pendingDecisions",
-        NULL::int AS updates
-        ${attentionScope}`
-          : `SELECT NULL::int AS attention,
+        `SELECT NULL::int AS attention,
         NULL::int AS "pendingDecisions",
         COUNT(*) FILTER (WHERE ${visibleUpdateFast})::int AS updates
         ${updateCountScope}`,
@@ -134,16 +146,7 @@ export async function listActivityInbox(
       )
     ).rows[0];
     if (section !== "attention") {
-      const attentionCounts = (
-        await client.query(
-          `SELECT COUNT(*) FILTER (WHERE ${attention})::int AS attention,
-          COUNT(DISTINCT (${groupKey})) FILTER (WHERE ${attention})::int AS "pendingDecisions"
-          ${attentionScope}`,
-          [userId],
-        )
-      ).rows[0];
-      counts.attention = attentionCounts.attention;
-      counts.pendingDecisions = attentionCounts.pendingDecisions;
+      Object.assign(counts, await attentionCounts(client, userId));
     }
     const filter = section === "attention" ? attention : visibleUpdate;
     const { rows: grouped } = await client.query(

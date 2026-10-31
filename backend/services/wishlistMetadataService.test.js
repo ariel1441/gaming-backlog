@@ -13,7 +13,10 @@ import {
   refreshWishlistMetadataItem,
   selectWishlistRawgMatch,
   drainWishlistMetadataQueue,
+  startWishlistMetadataScheduler,
+  wakeWishlistMetadataScheduler,
 } from "./wishlistMetadataService.js";
+import { workerClock } from "../testWorkerClock.js";
 
 dotenv.config();
 const connectionString =
@@ -81,6 +84,7 @@ test("Wishlist metadata policy uses measured incomplete, recent, and mature inte
 test("Wishlist work is owner-scoped, idempotent, and hydrates one safe RAWG identity", async () => {
   await withMetadataSchema(async (db) => {
     await seed(db);
+    const startedAt = new Date();
     const first = await enqueueWishlistMetadataWork(db, { userId: 1, wishlistItemId: 20, steamAppId: "1000" });
     const second = await enqueueWishlistMetadataWork(db, { userId: 1, wishlistItemId: 20, steamAppId: "1000" });
     assert.equal(first.wishlist_item_id, second.wishlist_item_id);
@@ -89,7 +93,7 @@ test("Wishlist work is owner-scoped, idempotent, and hydrates one safe RAWG iden
       db,
       userId: 1,
       workerId: "wishlist-test-worker",
-      now: () => new Date("2026-09-13T00:00:00.000Z"),
+      now: () => startedAt,
       searchCatalogFn: async () => ({ results: [{ id: 11, rawg_id: 101, name: "Unique Match" }] }),
       ingestRawgGameMetadataFn: async (rawgId) => {
         assert.equal(rawgId, 100);
@@ -278,6 +282,136 @@ async function completeCatalog(db, id = 10) {
 
 const noSearch = async () => { assert.fail("A saved RAWG identity must not be rematched"); };
 const noIngestion = async () => { assert.fail("Unexpected RAWG detail request"); };
+
+test("Wishlist scheduler backs off empty fresh/retry database claims", async () => {
+  await withMetadataSchema(async db => {
+    const clock = workerClock(), priorities = [];
+    const observedDb = {
+      query: (...args) => db.query(...args),
+      async connect() {
+        const client = await db.connect();
+        return {
+          async query(sql, values) {
+            if (sql.includes('FOR UPDATE SKIP LOCKED')) priorities.push(values[2]);
+            return client.query(sql, values);
+          },
+          release: () => client.release(),
+        };
+      },
+    };
+    const stop = startWishlistMetadataScheduler({ db: observedDb, timers: clock.timers,
+      searchCatalogFn: noSearch, ingestRawgGameMetadataFn: noIngestion,
+    });
+    try {
+      await clock.advanceTo(3600000);
+      assert.equal(priorities.length, 126, '63 ticks, each retaining both empty claim attempts');
+      assert.deepEqual(priorities, Array.from({ length: 63 }, () => ['fresh_only', 'retry_first']).flat());
+      assert.equal(clock.size, 1);
+    } finally { stop(); }
+    wakeWishlistMetadataScheduler();
+    assert.equal(clock.size, 0, 'stopped scheduler unsubscribes and cannot rearm');
+  });
+});
+
+test("Wishlist transactional wake preserves fresh/retry ordering and rollback isolation", async () => {
+  await withMetadataSchema(async db => {
+    await seed(db);
+    await completeCatalog(db, 10); await completeCatalog(db, 11);
+    await db.query('UPDATE user_wishlist_items SET catalog_game_id = 11 WHERE id = 22');
+    const clock = workerClock();
+    const order = [];
+    const observedDb = {
+      async query(sql, values) {
+        if (sql.includes('SELECT work.*, wishlist.display_name')) order.push(Number(values[0]));
+        return db.query(sql, values);
+      },
+      connect: () => db.connect(),
+    };
+    const stop = startWishlistMetadataScheduler({ db: observedDb, timers: clock.timers, batchSize: 2,
+      searchCatalogFn: noSearch, ingestRawgGameMetadataFn: noIngestion,
+    });
+    const client = await db.connect();
+    try {
+      for (let i = 0; i < 6; i++) await clock.next();
+      assert.equal(clock.nextDelay, 60000);
+      await client.query('BEGIN');
+      await enqueueWishlistMetadataWork(client, { userId: 1, wishlistItemId: 20 });
+      assert.equal(clock.nextDelay, 60000, 'uncommitted enqueue must not signal');
+      await client.query('ROLLBACK');
+      assert.equal((await db.query('SELECT * FROM wishlist_metadata_work')).rows.length, 0);
+      assert.equal(clock.nextDelay, 60000);
+
+      await client.query('BEGIN');
+      await enqueueWishlistMetadataWork(client, { userId: 1, wishlistItemId: 20 });
+      await enqueueWishlistMetadataWork(client, { userId: 1, wishlistItemId: 22 });
+      await client.query("UPDATE wishlist_metadata_work SET status = 'failed', attempt_count = 3, next_attempt_at = NOW() - INTERVAL '1 day' WHERE wishlist_item_id = 20");
+      assert.equal(clock.nextDelay, 60000);
+      await client.query('COMMIT');
+      wakeWishlistMetadataScheduler(); wakeWishlistMetadataScheduler();
+      assert.equal(clock.size, 1);
+      assert.equal(clock.nextDelay, 0);
+      await clock.next();
+      assert.deepEqual(order, [22, 20], 'fresh slot precedes due retry');
+      assert.deepEqual((await db.query('SELECT wishlist_item_id, status, attempt_count FROM wishlist_metadata_work ORDER BY wishlist_item_id')).rows,
+        [{ wishlist_item_id: '20', status: 'completed', attempt_count: 4 }, { wishlist_item_id: '22', status: 'completed', attempt_count: 1 }]);
+      assert.equal((await db.query('SELECT * FROM wishlist_metadata_work WHERE user_id = 2')).rows.length, 0);
+      assert.equal(clock.nextDelay, 5000);
+    } finally { client.release(); stop(); }
+  });
+});
+
+test("Wishlist capped polls discover remote work and recover only expired leases", async () => {
+  await withMetadataSchema(async db => {
+    await seed(db); await completeCatalog(db, 10);
+    const clock = workerClock();
+    const stop = startWishlistMetadataScheduler({ db, timers: clock.timers,
+      searchCatalogFn: noSearch, ingestRawgGameMetadataFn: noIngestion,
+    });
+    const client = await db.connect();
+    try {
+      for (let i = 0; i < 6; i++) await clock.next();
+      await client.query('BEGIN');
+      await enqueueWishlistMetadataWork(client, { userId: 1, wishlistItemId: 20 });
+      await client.query('COMMIT'); // Separate connection, no local hint.
+      assert.equal(clock.nextDelay, 60000);
+      await clock.next();
+      assert.equal((await db.query('SELECT status FROM wishlist_metadata_work')).rows[0].status, 'completed');
+      await client.query("UPDATE wishlist_metadata_work SET status = 'running', worker_id = 'crashed', lease_expires_at = NOW() + INTERVAL '1 day' WHERE wishlist_item_id = 20");
+      await clock.next();
+      assert.equal((await db.query('SELECT status FROM wishlist_metadata_work')).rows[0].status, 'running');
+      await client.query("UPDATE wishlist_metadata_work SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE wishlist_item_id = 20");
+      await clock.next();
+      const saved = (await db.query('SELECT * FROM wishlist_metadata_work')).rows[0];
+      assert.equal(saved.status, 'completed');
+      assert.equal(saved.attempt_count, 2);
+      assert.equal(saved.worker_id, null);
+    } finally { client.release(); stop(); }
+  });
+});
+
+test("Wishlist wake during provider work never overlaps drains and survives shutdown", async () => {
+  await withMetadataSchema(async db => {
+    await seed(db);
+    await enqueueWishlistMetadataWork(db, { userId: 1, wishlistItemId: 20 });
+    const gate = barrier(), clock = workerClock();
+    let calls = 0;
+    const stop = startWishlistMetadataScheduler({ db, timers: clock.timers, batchSize: 1,
+      searchCatalogFn: noSearch,
+      ingestRawgGameMetadataFn: async () => { calls++; await gate.hold(); await completeCatalog(db, 10); },
+    });
+    const running = clock.next();
+    try {
+      await gate.ready;
+      wakeWishlistMetadataScheduler(); wakeWishlistMetadataScheduler();
+      assert.equal(clock.size, 0);
+      assert.equal(calls, 1);
+      stop();
+      gate.release(); await running;
+      assert.equal(clock.size, 0);
+      assert.equal((await db.query('SELECT status FROM wishlist_metadata_work')).rows[0].status, 'completed');
+    } finally { stop(); gate.release(); await running; }
+  });
+});
 
 test("expired running work is reclaimed and a reused worker ID cannot finish its old attempt", async () => {
   await withMetadataSchema(async db => {

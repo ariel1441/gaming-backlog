@@ -16,7 +16,7 @@ import {
   readProviderText,
 } from "../utils/providerFetch.js";
 import { getCatalogGame, searchCatalog } from "./catalogService.js";
-import { enqueueMetadataRepairTx } from "./metadataRepairService.js";
+import { enqueueMetadataRepairTx, wakeMetadataRepairScheduler } from "./metadataRepairService.js";
 import {
   PERSONAL_GENRES_PER_GAME_MAX,
   replaceGamePersonalGenres,
@@ -4106,6 +4106,7 @@ export async function importSteamCandidates(
       }
     }
     await client.query("COMMIT");
+    if (metadataRepairQueued) wakeMetadataRepairScheduler();
     return { ...result, resolvedActivityEventIds, metadataRepairQueued };
   } catch (err) {
     try {
@@ -4223,6 +4224,7 @@ export async function addSteamCandidateToBacklog(
     );
     await enqueueMetadataRepairTx(userId, client, { priorityGameIds: [Number(gameId)] });
     await client.query("COMMIT");
+    wakeMetadataRepairScheduler();
     return {
       ...result,
       gameId: Number(gameId),

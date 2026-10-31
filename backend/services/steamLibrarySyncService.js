@@ -27,6 +27,7 @@ import {
 import { processSteamPriceJob, failSteamPriceJob } from './steamPriceSyncService.js';
 import { recordSteamActivityObservations } from "./steamActivityService.js";
 import { cacheClear } from "../utils/microCache.js";
+import { startAdaptiveWorker } from "../utils/adaptiveWorker.js";
 
 const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
 const SYNC_AUTO_MATCH_LIMIT = 150;
@@ -1263,11 +1264,7 @@ export async function enqueueSteamSync(
       if (triggerType === 'scheduled') return null;
       throw badRequest("Steam account changed. Try again.");
     }
-    queueMicrotask(() =>
-      void runSteamSyncJobs().catch((error) => {
-        console.error("Steam sync worker failed:", error?.message || error);
-      }),
-    );
+    requestSteamSyncDrain();
     return serializeSyncJob(rows[0]);
   } catch (error) {
     if (error?.code !== "23505") throw error;
@@ -1296,13 +1293,17 @@ export async function enqueueSteamSync(
             WHERE id = $1 AND user_id = $2 AND status = 'queued' RETURNING *`,
           [rows[0].id, userId],
         );
-        if (upgraded.rows[0]) return serializeSyncJob(upgraded.rows[0]);
+        if (upgraded.rows[0]) {
+          requestSteamSyncDrain();
+          return serializeSyncJob(upgraded.rows[0]);
+        }
       }
       const busy = new Error("The current Steam sync must finish before confirmation.");
       busy.status = 409;
       busy.code = "steam_sync_busy";
       throw busy;
     }
+    if (rows[0].status === "queued") requestSteamSyncDrain();
     return serializeSyncJob(rows[0]);
   }
 }
@@ -1390,19 +1391,43 @@ async function claimSteamSyncJob() {
 }
 
 let steamSyncWorkerPromise = null;
+let steamSyncDrainRequested = false;
+const steamSyncWorkerWakes = new Set();
 
-export async function runSteamSyncJobs() {
+function requestSteamSyncDrain() {
+  // INSERT/UPDATE has committed before this hint; retain it even during a final
+  // in-flight empty claim. CLI callers have no scheduler and still drain promptly.
+  steamSyncDrainRequested = true;
+  if (steamSyncWorkerWakes.size) {
+    for (const wake of steamSyncWorkerWakes) wake();
+  } else {
+    queueMicrotask(() => void runSteamSyncJobs().catch((error) => {
+      console.error("Steam sync worker failed:", error?.message || error);
+    }));
+  }
+}
+
+export function runSteamSyncJobs() {
+  steamSyncDrainRequested = true;
   if (steamSyncWorkerPromise) return steamSyncWorkerPromise;
-  const workerPromise = (async () => {
-    let draining = true;
-    while (draining) {
-      const job = await claimSteamSyncJob();
-      if (!job) draining = false;
-      else await processSteamSyncJob(job);
+  // Publish the shared promise before the first query. Clear it synchronously
+  // inside the drain so a new request cannot join an already-finished worker.
+  steamSyncWorkerPromise = Promise.resolve().then(async () => {
+    let processed = 0;
+    try {
+      do {
+        steamSyncDrainRequested = false;
+        while (true) {
+          const job = await claimSteamSyncJob();
+          if (!job) break;
+          await processSteamSyncJob(job);
+          processed++;
+        }
+      } while (steamSyncDrainRequested);
+      return processed;
+    } finally {
+      steamSyncWorkerPromise = null;
     }
-  })();
-  steamSyncWorkerPromise = workerPromise.finally(() => {
-    steamSyncWorkerPromise = null;
   });
   return steamSyncWorkerPromise;
 }
@@ -1414,16 +1439,23 @@ export async function drainSteamSyncJobs() {
   return runSteamSyncJobs();
 }
 
-export function startSteamSyncJobScheduler() {
-  if (process.env.NODE_ENV === "test") return () => {};
-  const run = () =>
-    void runSteamSyncJobs().catch((error) => {
+export function startSteamSyncJobScheduler(options = {}) {
+  // Tests only opt in with an explicit deterministic timer queue.
+  if (process.env.NODE_ENV === "test" && !options.timers) return () => {};
+  const worker = startAdaptiveWorker({
+    intervalMs: 15_000,
+    maxIdleMs: 60_000,
+    timers: options.timers,
+    run: async () => (await runSteamSyncJobs()) > 0,
+    onError: (error) => {
       console.error("Steam sync job scheduler failed:", error?.message || error);
-    });
-  run();
-  const timer = setInterval(run, 15_000);
-  timer.unref?.();
-  return () => clearInterval(timer);
+    },
+  });
+  steamSyncWorkerWakes.add(worker.wake);
+  return () => {
+    steamSyncWorkerWakes.delete(worker.wake);
+    worker.stop();
+  };
 }
 
 export async function listEligibleSteamAutoSyncUsers() {

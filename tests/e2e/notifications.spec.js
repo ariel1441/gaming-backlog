@@ -86,6 +86,7 @@ for (const [label, viewport] of [
       failPlaying = true,
       failRetirement = true,
       hiddenOther = false;
+    let inboxReads = 0, countReads = 0, holdCounts = null, countOverride = null;
     await page.route("**/api/**", async (route) => {
       const url = new URL(route.request().url()),
         path = url.pathname,
@@ -165,12 +166,19 @@ for (const [label, viewport] of [
       }
       if (path === "/api/activity/inbox/activate")
         return json({ activated: true });
+      if (path === '/api/activity/inbox/counts') {
+        countReads++;
+        const pendingDecisions = countOverride ?? facts.filter(item => !dismissed.has(item.id)).length;
+        if (holdCounts) await holdCounts;
+        return json({ counts: { pendingDecisions } });
+      }
       if (path === "/api/activity/inbox" && method === "PATCH") {
         for (const id of data.eventIds)
           (data.action === "dismiss" ? dismissed : read).add(id);
         return json({ updated: data.eventIds.length });
       }
-      if (path === "/api/activity/inbox")
+      if (path === "/api/activity/inbox") {
+        inboxReads++;
         return json({
           snapshot: "17",
           nextCursor: null,
@@ -189,6 +197,7 @@ for (const [label, viewport] of [
               events: [item],
             })),
         });
+      }
       if (/^\/api\/activity\/\d+$/.test(path)) {
         dismissed.add(Number(path.split("/").at(-1)));
         return json({});
@@ -266,7 +275,7 @@ for (const [label, viewport] of [
     await page.goto("/wishlist");
     await expect(
       page.getByRole("heading", { name: /wishlist$/i }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
     const bell = page
       .getByRole("button", { name: /^Notifications/, includeHidden: true })
       .filter({ visible: true });
@@ -278,11 +287,32 @@ for (const [label, viewport] of [
     await expect(
       page.getByRole("dialog", { name: "Notifications", exact: true }),
     ).toHaveCount(0);
+    expect(inboxReads).toBe(0);
+    // Coalesce closed-panel focus storms. Opening during a delayed count must
+    // fetch fresh groups and fence out the older count response.
+    let releaseCounts;
+    holdCounts = new Promise(resolve => { releaseCounts = resolve; });
+    countOverride = 42;
+    const beforeCounts = countReads;
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect.poll(() => countReads).toBe(beforeCounts + 1);
+    expect(inboxReads).toBe(0);
     await bell.click();
     const panel = page.getByRole("dialog", {
       name: "Notifications",
       exact: true,
     });
+    await expect(panel).toBeVisible();
+    await expect.poll(() => inboxReads).toBeGreaterThanOrEqual(2);
+    const delayedCount = page.waitForResponse(response => new URL(response.url()).pathname === '/api/activity/inbox/counts');
+    holdCounts = null; countOverride = null; releaseCounts();
+    await (await delayedCount).finished();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    await expect(bell).toHaveAttribute('aria-label', 'Notifications, 5 pending decisions');
     await expect(panel).toBeVisible();
     await expect(
       panel.getByText("5 decisions waiting", { exact: true }),
@@ -329,7 +359,7 @@ for (const [label, viewport] of [
     await page.screenshot({
       path: testInfo.outputPath(`notifications-${label}-status.png`),
     });
-    await hollow.getByRole("option", { name: "finished", exact: true }).click();
+    await hollow.getByRole("option", { name: "Finished", exact: true }).click();
     if (label !== "legacy wishlist") {
       await expect(hollow.getByText("Genres", { exact: true })).toBeVisible();
       const roguelike = hollow.getByRole("button", { name: /Roguelike/ });
@@ -368,7 +398,7 @@ for (const [label, viewport] of [
       .getByRole("button", { name: "Add to Backlog", exact: true })
       .click();
     await expect(hollow.getByRole("status")).toContainText(
-      "Added to Backlog · finished",
+      "Added to Backlog · Finished",
     );
     await expect(hollow.getByRole("status")).toContainText(
       "reminder is still saved",
@@ -407,7 +437,7 @@ for (const [label, viewport] of [
       .getByRole("button", { name: "Existing Backlog game", exact: true })
       .click();
     await celeste
-      .getByRole("option", { name: "Celeste · finished", exact: true })
+      .getByRole("option", { name: "Celeste · Finished", exact: true })
       .click();
     await celeste
       .getByRole("button", { name: "Confirm link", exact: true })
@@ -438,7 +468,7 @@ for (const [label, viewport] of [
     const portal = panel.getByRole("article", { name: "Portal", exact: true });
     await portal.getByRole("button", { name: "Add as Playing" }).click();
     await expect(portal.getByRole("status")).toContainText(
-      "Added to Backlog · playing",
+      "Added to Backlog · Playing",
     );
     await panel.locator("summary").filter({ hasText: "Other activity" }).click();
     await panel.getByRole("button", { name: "Hide all activity" }).click();

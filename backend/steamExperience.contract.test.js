@@ -363,6 +363,11 @@ test(
           });
           assert.equal(page.groups.length, 1);
           assert.equal(page.counts.pendingDecisions, 56);
+          const badge = await request(who, '/activity/inbox/counts');
+          assert.equal(badge.headers.get('cache-control'), 'no-store');
+          assert.deepEqual(await badge.json(), { counts: { attention: 56, pendingDecisions: 56 } });
+          const foreignBadge = await inbox.getActivityInboxCounts(first.userId);
+          assert.notEqual(foreignBadge.counts.pendingDecisions, 56);
           await inbox.updateActivityInbox(
             who.userId,
             [page.groups[0].events[0].id],
@@ -372,6 +377,7 @@ test(
             (await inbox.listActivityInbox(who.userId)).counts.pendingDecisions,
             56,
           );
+          assert.equal((await inbox.getActivityInboxCounts(who.userId)).counts.pendingDecisions, 56);
           await activity.updateActivityEvent(
             who.userId,
             page.groups[0].events[0].id,
@@ -381,6 +387,7 @@ test(
             (await inbox.listActivityInbox(who.userId)).counts.pendingDecisions,
             55,
           );
+          assert.equal((await inbox.getActivityInboxCounts(who.userId)).counts.pendingDecisions, 55);
           const orderRun = await run(who, "wishlist");
           for (let i = 0; i < 2; i++)
             await activity.createFactualActivityEvent({
@@ -401,6 +408,10 @@ test(
             "Steam Wishlist order updated",
           );
           assert.equal(updates.counts.pendingDecisions, 55);
+          await steam.disconnectSteamAccount(who.userId);
+          assert.equal((await inbox.getActivityInboxCounts(who.userId)).counts.pendingDecisions, 0);
+          await steam.upsertSteamAccount(who.userId, `7656999${String(who.userId).padStart(10, '0')}`);
+          assert.equal((await inbox.getActivityInboxCounts(who.userId)).counts.pendingDecisions, 0, 'replacement connection cannot inherit old decisions');
         },
       );
       const fact = (key, type = "steam_price_drop") =>
@@ -487,6 +498,9 @@ test(
         "bulk receipt owner guards, auth, validators and guest isolation",
         async () => {
           assert.equal((await fetch(`${base}/activity/inbox`)).status, 401);
+          assert.equal((await fetch(`${base}/activity/inbox/counts`)).status, 401);
+          assert.equal((await fetch(`${base}/steam/sync-health?detail=summary`)).status, 401);
+          assert.equal((await request(first, '/steam/sync-health?detail=invalid')).status, 422);
           assert.equal(
             (await request(first, "/activity/inbox?snapshot=oops")).status,
             422,
@@ -528,10 +542,12 @@ test(
             (await request(guestAuth, "/activity/inbox")).status,
             403,
           );
+          assert.equal((await request(guestAuth, '/activity/inbox/counts')).status, 403);
           assert.equal(
             (await request(guestAuth, "/steam/sync-health")).status,
             403,
           );
+          assert.equal((await request(guestAuth, '/steam/sync-health?detail=summary')).status, 403);
         },
       );
       await t.test(
@@ -641,6 +657,12 @@ test(
           assert.equal(saved.dailyRuns[0].id, dailyId);
           assert.equal(saved.dailyRuns[0].status, "partial");
           assert.equal(saved.dailyRuns[0].summary.phases.wishlist_prices.partial, 1);
+          const summary = await health.getSteamExperienceHealth(first.userId, { detail: 'summary' });
+          assert.deepEqual(summary, { account: saved.account, activeJob: saved.activeJob });
+          const summaryResponse = await request(first, '/steam/sync-health?detail=summary');
+          assert.equal(summaryResponse.headers.get('cache-control'), 'no-store');
+          assert.deepEqual(Object.keys(await summaryResponse.json()).sort(), ['account', 'activeJob']);
+          assert.equal((await health.getSteamExperienceHealth(second.userId, { detail: 'summary' })).activeJob, null);
           assert.equal(
             (await health.getSteamExperienceHealth(second.userId)).activeJob,
             null,
@@ -691,6 +713,7 @@ test(
             ).rows.length,
           );
           await steam.disconnectSteamAccount(first.userId);
+          assert.deepEqual(await health.getSteamExperienceHealth(first.userId, { detail: 'summary' }), { account: null, activeJob: null });
           await steam.upsertSteamAccount(first.userId, "76561199999999999");
           assert.equal(
             (await inbox.listActivityInbox(first.userId)).groups.length,

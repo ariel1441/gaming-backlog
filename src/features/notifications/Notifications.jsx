@@ -37,6 +37,7 @@ import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import {
   activateActivityInbox,
   listActivityInbox,
+  getActivityInboxCounts,
   updateActivityInbox,
   hideOtherActivityUpdates,
   clearActivityUpdates,
@@ -141,6 +142,7 @@ function NotificationController({ scope, publish }) {
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(null);
   const countSequence = useRef(0);
+  const countsInFlight = useRef(null);
   const { statuses } = useStatuses();
   const sequence = useRef(0);
   const openRef = useRef(open);
@@ -152,6 +154,25 @@ function NotificationController({ scope, publish }) {
   const location = useLocation();
   const { account } = useSteamExperience();
   const enabled = Boolean(account?.id);
+  const reloadCounts = useCallback(({ fresh = false } = {}) => {
+    if (!enabled) {
+      setPending(0);
+      return Promise.resolve();
+    }
+    if (!fresh && countsInFlight.current) return countsInFlight.current;
+    const request = ++countSequence.current;
+    const task = getActivityInboxCounts()
+      .then((result) => {
+        if (request === countSequence.current)
+          setPending(result.counts.pendingDecisions);
+      })
+      .catch(() => {}) // Retain the last badge; the next visible wake retries.
+      .finally(() => {
+        if (countsInFlight.current === task) countsInFlight.current = null;
+      });
+    countsInFlight.current = task;
+    return task;
+  }, [enabled]);
   const reload = useCallback(
     async ({ quiet = false, append = false } = {}) => {
       if (!enabled) {
@@ -159,6 +180,9 @@ function NotificationController({ scope, publish }) {
         setState({ ...empty, loading: false });
         return;
       }
+      // The closed bell needs only a badge. Always fetch full content on opening;
+      // an unchanged count is never used as a content revision.
+      if (!openRef.current && !append) return reloadCounts();
       const request = ++sequence.current;
       const countRequest = ++countSequence.current;
       if (!quiet) setState((value) => ({ ...value, loading: true, error: "" }));
@@ -222,7 +246,7 @@ function NotificationController({ scope, publish }) {
           }));
       }
     },
-    [enabled],
+    [enabled, reloadCounts],
   );
   useEffect(() => {
     const wake = () => {
@@ -235,6 +259,7 @@ function NotificationController({ scope, publish }) {
     return () => {
       sequence.current++;
       countSequence.current++;
+      countsInFlight.current = null;
       clearInterval(timer);
       window.removeEventListener("focus", wake);
       document.removeEventListener("visibilitychange", wake);
@@ -257,13 +282,8 @@ function NotificationController({ scope, publish }) {
   }, [scope, open, toggle, pending, panelId, publish]);
   const actionDone = (id) => {
     markRead(id);
-    const request = ++countSequence.current;
-    void listActivityInbox({ section: "attention", limit: 1 })
-      .then((result) => {
-        if (request === countSequence.current)
-          setPending(result.counts.pendingDecisions);
-      })
-      .catch(() => {});
+    // A pre-action read cannot satisfy the post-mutation badge refresh.
+    void reloadCounts({ fresh: true });
   };
   const markRead = (id) =>
     setState((value) => ({
