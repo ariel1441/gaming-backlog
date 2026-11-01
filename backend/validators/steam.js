@@ -8,6 +8,10 @@ const forceBody = Joi.object({
   force: Joi.boolean().optional(),
 });
 
+export const steamSyncHealth = celebrate({
+  [Segments.QUERY]: Joi.object({ detail: Joi.string().valid("full", "summary").default("full") }),
+}, opts);
+
 const importStatus = Joi.string()
   .valid("all", "active", "done", "pending", "accepted", "attached", "ignored", "imported")
   .default("active");

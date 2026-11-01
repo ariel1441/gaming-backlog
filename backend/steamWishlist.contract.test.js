@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { dropDisposableDatabase } from "./testDatabase.js";
+import { workerClock } from "./testWorkerClock.js";
 
 dotenv.config();
 const execFileAsync = promisify(execFile);
@@ -46,7 +47,7 @@ function payload(items) {
 
 test("wishlist sync preserves baselines, removals, events, and user isolation", { timeout: 120_000 }, async () => {
   const database = await temporaryDatabase();
-  let appPool;
+  let appPool, stopMetadataScheduler;
   try {
     await execFileAsync(process.execPath, [path.join(root, "scripts", "db-migrate.js")], {
       cwd: root,
@@ -63,6 +64,11 @@ test("wishlist sync preserves baselines, removals, events, and user isolation", 
     appPool = pool;
     const sync = await import("./services/steamLibrarySyncService.js");
     const wishlist = await import("./services/steamWishlistService.js");
+    const metadata = await import("./services/wishlistMetadataService.js");
+    const metadataClock = workerClock();
+    stopMetadataScheduler = metadata.startWishlistMetadataScheduler({ timers: metadataClock.timers });
+    for (let i = 0; i < 6; i++) await metadataClock.next();
+    assert.equal(metadataClock.nextDelay, 60000);
     const users = await pool.query(
       "INSERT INTO users (username, password_hash) VALUES ($1, 'x'), ($2, 'x') RETURNING id",
       [`wishlist_${crypto.randomUUID()}`, `wishlist_other_${crypto.randomUUID()}`],
@@ -80,6 +86,9 @@ test("wishlist sync preserves baselines, removals, events, and user isolation", 
 
     const baseline = await finish(await sync.enqueueSteamSync(userId, { syncKind: "wishlist" }));
     assert.equal(baseline.status, "completed");
+    assert.equal(metadataClock.nextDelay, 0, 'committed Steam Wishlist work wakes the idle metadata worker');
+    assert.equal(Number((await pool.query('SELECT COUNT(*) FROM wishlist_metadata_work WHERE user_id = $1', [userId])).rows[0].count), 2);
+    stopMetadataScheduler();
     assert.equal(baseline.run.syncKind, "wishlist");
     assert.equal((await wishlist.listWishlistItems(userId)).total, 2);
     assert.equal(Number((await pool.query("SELECT COUNT(*) FROM games WHERE user_id = $1", [userId])).rows[0].count), 0);
@@ -133,6 +142,7 @@ test("wishlist sync preserves baselines, removals, events, and user isolation", 
     );
     await sync.drainSteamSyncJobs();
   } finally {
+    stopMetadataScheduler?.();
     await appPool?.end();
     await database.cleanup();
   }

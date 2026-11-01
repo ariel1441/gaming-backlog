@@ -118,8 +118,8 @@ export function achievementStatusSuggestion({
 
   if (hasAchievements && percent >= 100 && statusGroupOf(currentStatus) !== "done") {
     return {
-      label: "Looks complete",
-      targetStatus: "finished",
+      label: "100% achievements",
+      targetStatus: null,
       confidence: "medium",
       reason: "Steam achievements are 100% complete.",
     };
@@ -134,10 +134,10 @@ export function achievementStatusSuggestion({
     };
   }
 
-  if (recent && hours >= 2 && statusGroupOf(currentStatus) !== "playing") {
+  if (recent && hours >= 2 && statusGroupOf(currentStatus) === "planned") {
     return {
       label: "Recently played",
-      targetStatus: "playing",
+      targetStatus: null,
       confidence: "low",
       reason: "Steam shows recent playtime.",
     };
@@ -146,7 +146,7 @@ export function achievementStatusSuggestion({
   if (hours >= 10 && statusGroupOf(currentStatus) !== "done") {
     return {
       label: "Played a lot",
-      targetStatus: "played alot but didnt finish",
+      targetStatus: null,
       confidence: "low",
       reason: "Steam playtime is substantial, but there is no finish signal.",
     };

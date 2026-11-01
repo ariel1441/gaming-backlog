@@ -36,7 +36,7 @@ test("smart lists honor status metadata instead of hardcoded labels", () => {
     { id: 2, status: "active" },
   ];
   const finished = resolveSmartList(
-    { query: { status: "finished" } },
+    { query: { status: "done" } },
     games,
     { statusGroupOf: semantics.statusGroupOf },
   );

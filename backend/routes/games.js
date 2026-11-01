@@ -18,7 +18,7 @@ import {
 
 import { toDateOrNull, toHourInt } from "../utils/time.js";
 import { loadHLTBLocal, lookupHLTBHoursByPref } from "../utils/hltb.js";
-import { normStatus, statusGroupOf } from "../utils/status.js";
+import { normStatus, isNextUpEligible, statusGroupOf } from "../utils/status.js";
 import { cacheClear } from "../utils/microCache.js";
 import { affectsInsights } from "../utils/insightsInvalidation.js";
 import { finishedInsertionIndex } from "../utils/finishedPosition.js";
@@ -666,7 +666,7 @@ router.post("/", verifyToken, upsertGame, async (req, res, next) => {
     }
 
     const statusRow = await pool.query(
-      "SELECT 1 FROM statuses WHERE status = $1",
+      "SELECT 1 FROM statuses WHERE status = $1 AND status <> 'recommended by someone'",
       [statusNorm],
     );
     if (!statusRow.rows[0]) {
@@ -840,7 +840,7 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
     const userId = req.user.id;
     const gameId = Number(req.params.id);
     const completionStatus = req.body.completion_status || "finished";
-    const finishedAt = req.body.finished_at;
+    const finishedAt = completionStatus === "finished" ? req.body.finished_at : null;
     const score = normalizeScore(req.body.my_score);
     const thoughts = req.body.thoughts?.trim() || null;
     const placeByScore = completionStatus === "finished" && score !== null;
@@ -862,7 +862,7 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
     let outcome = completionStatus === "finished" ? "finished" : "completed";
     if (normStatus(row.status) !== completionStatus) {
       const startedAt = toDateOrNull(row.started_at);
-      if (startedAt && finishedAt < startedAt) {
+      if (startedAt && finishedAt && finishedAt < startedAt) {
         throw httpError(
           422,
           "finished_at cannot be before started_at",
@@ -874,7 +874,7 @@ router.post("/:id/finish", verifyToken, finishGame, async (req, res, next) => {
         `
           UPDATE games
              SET status = $3,
-                 finished_at = $4,
+                 finished_at = CASE WHEN $3 = 'finished' THEN $4 ELSE finished_at END,
                  my_score = $5,
                  thoughts = $6
            WHERE id = $1 AND user_id = $2
@@ -1198,9 +1198,8 @@ router.put(
         resumeNoteProvided
           ? normalizeResumeNote(resume_note)
           : (row.resume_note ?? null), // $22
-        ["playing", "done"].includes(statusGroupOf(statusNorm)), // $23
-        ["returning", "done"].includes(statusGroupOf(statusNorm)) ||
-          normStatus(statusNorm) === "wishlist", // $24
+        !isNextUpEligible(statusNorm), // $23
+        statusGroupOf(statusNorm) !== "playing" || (statusChanged && statusGroupOf(row.status) === "occasional"), // $24
       ];
 
       client = await pool.connect();
@@ -1270,7 +1269,7 @@ router.delete("/:id", verifyToken, gameIdParam, async (req, res, next) => {
 router.get("/statuses-list", async (_req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT status FROM statuses WHERE LOWER(TRIM(status)) <> 'wishlist' ORDER BY rank, status`,
+      `SELECT status FROM statuses WHERE LOWER(TRIM(status)) NOT IN ('wishlist', 'recommended by someone') ORDER BY rank, status`,
     );
     res.json(rows.map((r) => r.status));
   } catch (err) {
@@ -1378,9 +1377,8 @@ router.patch(
           gameId,
           userId,
           targetStatus,
-          ["playing", "done"].includes(statusGroupOf(targetStatus)),
-          ["returning", "done"].includes(statusGroupOf(targetStatus)) ||
-            normStatus(targetStatus) === "wishlist",
+          !isNextUpEligible(targetStatus),
+          statusGroupOf(targetStatus) !== "playing",
         );
         await client.query(statusQuery.text, statusQuery.values);
       }

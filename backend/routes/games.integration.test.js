@@ -1182,7 +1182,6 @@ test("POST /api/games/:id/finish can save the alternate completed status", async
         method: "POST",
         body: {
           completion_status: "played alot but didnt finish",
-          finished_at: "2026-07-20",
           my_score: null,
           thoughts: null,
         },
@@ -1196,7 +1195,7 @@ test("POST /api/games/:id/finish can save the alternate completed status", async
         13,
         7,
         "played alot but didnt finish",
-        "2026-07-20",
+        null,
         null,
         null,
       ]);

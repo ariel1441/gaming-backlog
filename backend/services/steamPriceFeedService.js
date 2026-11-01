@@ -4,6 +4,7 @@ import { createSteamPriceFeedLeaseToken, fetchSteamPriceChangeFeed, STEAM_PRICE_
 export const STEAM_PRICE_FEED_REFRESH_MS = 20 * 60 * 60 * 1000;
 export const STEAM_PRICE_FEED_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const STEAM_PRICE_FEED_LEASE_MS = 15 * 60 * 1000;
+export const STEAM_PRICE_FEED_WRITE_BATCH_SIZE = 1000;
 
 async function transaction(work) {
   const client = await pool.connect();
@@ -22,8 +23,8 @@ async function changesSince(client, since) {
   return rows.map((row) => row.app_id);
 }
 
-async function readCursor(client) {
-  const { rows } = await client.query('SELECT * FROM steam_price_feed_cursor WHERE id = 1');
+async function readCursor(client, forUpdate = false) {
+  const { rows } = await client.query(`SELECT * FROM steam_price_feed_cursor WHERE id = 1${forUpdate ? ' FOR UPDATE' : ''}`);
   return rows[0] || null;
 }
 
@@ -87,31 +88,37 @@ export async function ensureSteamPriceFeed() {
   try {
     const scan = await fetchSteamPriceChangeFeed({ ifModifiedSince: Number(claim.cursor.cursor_modified_since) || 0 });
     const result = await transaction(async (client) => {
-      const locked = await readCursor(client);
+      // Keep lease ownership stable until feed writes and cursor advancement commit.
+      const locked = await readCursor(client, true);
       if (!locked || locked.lease_token !== claim.leaseToken) return null;
-      const prior = new Map();
-      if (scan.apps.length) {
+      const candidateIds = [];
+      // Provider normalization guarantees one record per app across all pages.
+      for (let offset = 0; offset < scan.apps.length; offset += STEAM_PRICE_FEED_WRITE_BATCH_SIZE) {
+        const batch = scan.apps.slice(offset, offset + STEAM_PRICE_FEED_WRITE_BATCH_SIZE);
         const existing = await client.query(
           'SELECT app_id, price_change_number FROM steam_price_feed_changes WHERE app_id = ANY($1::text[])',
-          [scan.apps.map((item) => item.appId)],
+          [batch.map((item) => item.appId)],
         );
-        for (const row of existing.rows) prior.set(row.app_id, row.price_change_number);
-      }
-      const candidates = scan.apps.filter((item) => !prior.has(item.appId) ||
-        item.priceChangeNumber == null || prior.get(item.appId) !== item.priceChangeNumber);
-      const candidateIds = new Set(candidates.map((item) => item.appId));
-      for (const change of scan.apps) {
-        const candidate = candidateIds.has(change.appId);
+        const prior = new Map(existing.rows.map((row) => [row.app_id, row.price_change_number]));
+        const values = [];
+        const tuples = batch.map((change) => {
+          const candidate = !prior.has(change.appId) || change.priceChangeNumber == null ||
+            prior.get(change.appId) !== change.priceChangeNumber;
+          if (candidate) candidateIds.push(change.appId);
+          const base = values.length;
+          values.push(change.appId, change.lastModified, change.priceChangeNumber, candidate);
+          return `($${base + 1}, $${base + 2}::bigint, $${base + 3}, NOW(), CASE WHEN $${base + 4}::boolean THEN NOW() END)`;
+        });
         await client.query(
           `INSERT INTO steam_price_feed_changes (app_id, last_modified, price_change_number, last_seen_at, price_candidate_at)
-           VALUES ($1, $2, $3, NOW(), CASE WHEN $4::boolean THEN NOW() END)
+           VALUES ${tuples.join(', ')}
            ON CONFLICT (app_id) DO UPDATE SET
              last_modified = GREATEST(steam_price_feed_changes.last_modified, EXCLUDED.last_modified),
              price_change_number = CASE WHEN EXCLUDED.last_modified >= steam_price_feed_changes.last_modified
                THEN EXCLUDED.price_change_number ELSE steam_price_feed_changes.price_change_number END,
              last_seen_at = NOW(),
-             price_candidate_at = CASE WHEN $4::boolean THEN NOW() ELSE steam_price_feed_changes.price_candidate_at END`,
-          [change.appId, change.lastModified, change.priceChangeNumber, candidate],
+             price_candidate_at = COALESCE(EXCLUDED.price_candidate_at, steam_price_feed_changes.price_candidate_at)`,
+          values,
         );
       }
       await client.query(
@@ -127,8 +134,12 @@ export async function ensureSteamPriceFeed() {
           RETURNING *`,
         [claim.leaseToken, cursorModifiedSince],
       );
-      if (!rows[0]) return null;
-      return { cursor: rows[0], changedAppIds: candidates.map((item) => item.appId), pages: scan.pages };
+      if (!rows[0]) {
+        const error = new Error('Steam price feed lease was lost before cursor advancement.');
+        error.code = 'steam_price_feed_lease_lost';
+        throw error; // Roll back feed rows/retention together with the cursor.
+      }
+      return { cursor: rows[0], changedAppIds: candidateIds, pages: scan.pages };
     });
     if (!result) return { mode: 'fallback', changedAppIds: [], feedErrorCode: 'steam_price_feed_lease_lost' };
     return { mode: 'delta', changedAppIds: [...new Set(result.changedAppIds)], pages: result.pages,

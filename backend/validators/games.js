@@ -138,7 +138,7 @@ export const gameSchemas = {
     completion_status: Joi.string()
       .valid("finished", "played alot but didnt finish")
       .default("finished"),
-    finished_at: calendarDateSchema.invalid(null).required().messages({
+    finished_at: calendarDateSchema.when("completion_status", { is: "finished", then: calendarDateSchema.invalid(null).required(), otherwise: calendarDateSchema.optional() }).messages({
       "any.required": "finished_at is required",
       "any.invalid": "finished_at is required",
     }),

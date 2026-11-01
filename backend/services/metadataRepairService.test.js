@@ -7,15 +7,20 @@ import dotenv from "dotenv";
 import {
   decideMetadataCandidate,
   enqueueMetadataRepair,
+  enqueueMetadataRepairTx,
+  startMetadataRepairScheduler,
+  wakeMetadataRepairScheduler,
   getLatestMetadataRepair,
   listMetadataCandidates,
   processNextMetadataRepairBatch,
   singleExactTitleCandidate,
 } from "./metadataRepairService.js";
+import { workerClock } from "../testWorkerClock.js";
 
 dotenv.config();
 const connectionString =
   process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/game_backlog";
+assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(new URL(connectionString).hostname), "Repair tests require localhost");
 
 async function withRepairSchema(work) {
   const admin = new pg.Client({ connectionString });
@@ -124,6 +129,123 @@ test("repair jobs are resumable, budgeted, and owner-scoped", async () => {
       ownerCandidates.map((candidate) => candidate.gameId),
       [21],
     );
+  });
+});
+
+function observedRepairDb(db, onStatement) {
+  return {
+    query: (...args) => db.query(...args),
+    async connect() {
+      const client = await db.connect();
+      return {
+        async query(text, values) {
+          await onStatement(text, values);
+          return client.query(text, values);
+        },
+        release: () => client.release(),
+      };
+    },
+  };
+}
+
+test("repair scheduler reduces empty database claims and wakes only after enqueue commit", async () => {
+  await withRepairSchema(async db => {
+    await db.query("INSERT INTO users (id, username, password_hash) VALUES (1, 'scheduler-owner', 'fixture')");
+    const clock = workerClock();
+    let claims = 0, inspectCommit = false;
+    const observed = observedRepairDb(db, text => {
+      if (text.includes('FOR UPDATE SKIP LOCKED')) claims++;
+      if (inspectCommit && text === 'COMMIT') assert.equal(clock.nextDelay, 60000, 'enqueue must not wake before commit');
+    });
+    const stop = startMetadataRepairScheduler({ db: observed, timers: clock.timers,
+      searchCatalogFn: () => assert.fail('empty repair must not call provider'),
+    });
+    try {
+      await clock.advanceTo(3600000);
+      assert.equal(claims, 63, 'fixed polling would make 721 startup/hour claims');
+      // Finish the partial capped wait so this assertion is independent of where
+      // the simulated hour ends within its final interval.
+      await clock.next();
+      assert.equal(clock.nextDelay, 60000);
+      inspectCommit = true;
+      const job = await enqueueMetadataRepair(1, observed);
+      inspectCommit = false;
+      assert.equal(clock.nextDelay, 0);
+      await clock.next();
+      assert.equal((await getLatestMetadataRepair(1, db)).job.status, 'completed');
+      assert.equal(Number((await db.query('SELECT attempt_count FROM metadata_jobs WHERE id = $1', [job.id])).rows[0].attempt_count), 1);
+      assert.equal(clock.nextDelay, 5000);
+    } finally { stop(); }
+    assert.equal(clock.size, 0);
+    wakeMetadataRepairScheduler();
+    assert.equal(clock.size, 0, 'stopped scheduler must unsubscribe from local wakes');
+  });
+});
+
+test("transactional enqueue and rollback never publish an early repair wake", async () => {
+  await withRepairSchema(async db => {
+    await db.query("INSERT INTO users (id, username, password_hash) VALUES (1, 'transaction-owner', 'fixture')");
+    const clock = workerClock();
+    const stop = startMetadataRepairScheduler({ db, timers: clock.timers });
+    const client = await db.connect();
+    try {
+      for (let i = 0; i < 6; i++) await clock.next();
+      assert.equal(clock.nextDelay, 60000);
+      await client.query('BEGIN');
+      await enqueueMetadataRepairTx(1, client);
+      assert.equal(clock.nextDelay, 60000);
+      await client.query('ROLLBACK');
+      assert.equal((await db.query('SELECT * FROM metadata_jobs')).rows.length, 0);
+      assert.equal(clock.nextDelay, 60000);
+      const failingCommit = observedRepairDb(db, text => {
+        if (text === 'COMMIT') throw Error('injected commit failure');
+      });
+      await assert.rejects(enqueueMetadataRepair(1, failingCommit), /injected commit failure/);
+      assert.equal(clock.nextDelay, 60000);
+      assert.equal((await db.query('SELECT * FROM metadata_jobs')).rows.length, 0);
+      // Steam import owns its transaction and explicitly wakes after commit.
+      await client.query('BEGIN');
+      await enqueueMetadataRepairTx(1, client);
+      await client.query('COMMIT');
+      assert.equal(clock.nextDelay, 60000);
+      wakeMetadataRepairScheduler();
+      assert.equal(clock.nextDelay, 0);
+      await clock.next();
+      assert.equal((await getLatestMetadataRepair(1, db)).job.status, 'completed');
+    } finally { client.release(); stop(); }
+  });
+});
+
+test("capped repair polls discover another process's work and reclaim only expired leases", async () => {
+  await withRepairSchema(async db => {
+    await db.query("INSERT INTO users (id, username, password_hash) VALUES (1, 'remote-owner', 'fixture'), (2, 'other-owner', 'fixture')");
+    const clock = workerClock();
+    const stop = startMetadataRepairScheduler({ db, timers: clock.timers,
+      searchCatalogFn: () => assert.fail('empty repair must not call provider'),
+    });
+    const client = await db.connect();
+    try {
+      for (let i = 0; i < 6; i++) await clock.next();
+      // Separate connection and no wake: equivalent to a different API/cron process.
+      await client.query('BEGIN');
+      const job = await enqueueMetadataRepairTx(1, client);
+      await client.query('COMMIT');
+      assert.equal(clock.nextDelay, 60000);
+      await clock.next();
+      assert.equal((await getLatestMetadataRepair(1, db)).job.status, 'completed');
+      assert.equal((await getLatestMetadataRepair(2, db)).job, null);
+
+      await client.query(`UPDATE metadata_jobs SET status = 'running', worker_id = 'crashed',
+        lease_expires_at = NOW() + INTERVAL '1 day', next_attempt_at = NOW() WHERE id = $1`, [job.id]);
+      await clock.next();
+      assert.equal((await getLatestMetadataRepair(1, db)).job.status, 'running', 'live lease must not be stolen');
+      await client.query("UPDATE metadata_jobs SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE id = $1", [job.id]);
+      await clock.next();
+      const recovered = (await db.query('SELECT * FROM metadata_jobs WHERE id = $1', [job.id])).rows[0];
+      assert.equal(recovered.status, 'completed');
+      assert.equal(recovered.attempt_count, 2);
+      assert.equal(recovered.worker_id, null);
+    } finally { client.release(); stop(); }
   });
 });
 

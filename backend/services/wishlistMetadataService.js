@@ -4,6 +4,7 @@ import { searchCatalog } from "./catalogService.js";
 import { ingestRawgGameMetadata } from "./metadataIngestionService.js";
 import { isSameGameTitle } from "../utils/gameTitle.js";
 import { conflict, notFound } from "../utils/httpError.js";
+import { startAdaptiveWorker } from "../utils/adaptiveWorker.js";
 
 const DEFAULT_BATCH_SIZE = 2;
 const MAX_BATCH_SIZE = 10;
@@ -15,6 +16,12 @@ const MATURE_REFRESH_MS = 120 * 24 * 60 * 60 * 1000;
 const MAX_CANDIDATES = 8;
 const METADATA_JOB_TYPE = "wishlist_metadata";
 const DEFAULT_SCHEDULER_INTERVAL_MS = 5_000;
+const wishlistWorkerWakes = new Set();
+
+// Enqueue can use a transaction client; its owner must wake only after commit.
+export function wakeWishlistMetadataScheduler() {
+  for (const wake of wishlistWorkerWakes) wake();
+}
 
 function positiveInt(value, fallback, max) {
   const parsed = Number(value);
@@ -896,20 +903,18 @@ export function startWishlistMetadataScheduler(options = {}) {
     DEFAULT_BATCH_SIZE,
     MAX_BATCH_SIZE,
   );
-  let running = false;
-  const run = async () => {
-    if (running) return;
-    running = true;
-    try {
-      await drainWishlistMetadataQueue({ maxItems: batchSize });
-    } catch (error) {
+  const worker = startAdaptiveWorker({
+    intervalMs,
+    maxIdleMs: 60_000,
+    timers: options.timers,
+    run: async () => (await drainWishlistMetadataQueue({ ...options, maxItems: batchSize })).processed > 0,
+    onError: (error) => {
       console.error("Wishlist metadata worker failed:", error?.code || error?.message);
-    } finally {
-      running = false;
-    }
+    },
+  });
+  wishlistWorkerWakes.add(worker.wake);
+  return () => {
+    wishlistWorkerWakes.delete(worker.wake);
+    worker.stop();
   };
-  const timer = setInterval(run, intervalMs);
-  timer.unref?.();
-  void run();
-  return () => clearInterval(timer);
 }

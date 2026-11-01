@@ -23,8 +23,8 @@ export async function disconnectSteam(opts = {}) {
   return payload;
 }
 
-export function getSteamSyncHealth(opts = {}) {
-  return api.get('/api/steam/sync-health', opts);
+export function getSteamSyncHealth({ detail = "full", ...opts } = {}) {
+  return api.get(`/api/steam/sync-health${detail === "summary" ? '?detail=summary' : ''}`, opts);
 }
 
 export function startSteamLibrarySync(opts = {}) {

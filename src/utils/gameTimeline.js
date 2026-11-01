@@ -1,3 +1,4 @@
+import { completionDate, statusGroupOf } from "../../shared/statusModel.js";
 import { parseBacklogAddedDate, parseGameDate } from "./gameDateInsights.js";
 
 const EVENT_ORDER = {
@@ -34,7 +35,7 @@ export function buildTimelineEvents(games = [], { includeAdded = false } = {}) {
   for (const game of Array.isArray(games) ? games : []) {
     const title = game?.name || "Untitled game";
     const started = parseGameDate(game?.started_at);
-    const finished = parseGameDate(game?.finished_at);
+    const finished = parseGameDate(completionDate(game));
     const added = includeAdded ? parseBacklogAddedDate(game?.backlog_added_at) : null;
 
     if (added) {
@@ -169,7 +170,7 @@ export function summarizeTimeline(games = [], events = buildTimelineEvents(games
   const finished = events.filter((event) => event.type === "finished").length;
   const added = events.filter((event) => event.type === "added").length;
   const active = (Array.isArray(games) ? games : []).filter(
-    (game) => parseGameDate(game?.started_at) && !parseGameDate(game?.finished_at)
+    (game) => parseGameDate(game?.started_at) && !parseGameDate(completionDate(game)) && ["playing", "returning"].includes(statusGroupOf(game.status))
   ).length;
 
   return {

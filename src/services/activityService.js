@@ -7,6 +7,7 @@ export function clearActivityUpdates(snapshot, opts = {}) {
 }
 
 export function activateActivityInbox(opts = {}) { return api.post('/api/activity/inbox/activate', {}, opts); }
+export function getActivityInboxCounts(opts = {}) { return api.get('/api/activity/inbox/counts', opts); }
 export function listActivityInbox(params = {}, opts = {}) {
   const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value != null));
   return api.get(`/api/activity/inbox?${query}`, opts);

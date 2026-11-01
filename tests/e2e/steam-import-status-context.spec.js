@@ -103,10 +103,10 @@ test("changing a chosen backlog status keeps a Steam review candidate in its sug
   const readsBeforeChange = candidateReads;
 
   await page.locator("#steam-candidate-status-1").click();
-  await page.getByRole("option", { name: "playing", exact: true }).click();
+  await page.getByRole("option", { name: "Playing", exact: true }).click();
 
   await expect(candidateHeading).toBeVisible();
-  await expect(page.locator("#steam-candidate-status-1")).toHaveText("playing");
+  await expect(page.locator("#steam-candidate-status-1")).toHaveText("Playing");
   await page.waitForTimeout(100);
   expect(candidateReads).toBe(readsBeforeChange);
 

@@ -47,8 +47,8 @@ function validate(draft, game) {
     ? String(game.started_at).slice(0, 10)
     : "";
 
-  if (!draft.finished_at) fields.finished_at = "Choose a finish date.";
-  if (startedAt && draft.finished_at && draft.finished_at < startedAt) {
+  if (!draft.did_not_finish && !draft.finished_at) fields.finished_at = "Choose a finish date.";
+  if (!draft.did_not_finish && startedAt && draft.finished_at && draft.finished_at < startedAt) {
     fields.finished_at =
       "Finish date cannot be before the recorded start date.";
   }
@@ -126,7 +126,7 @@ export default function FinishGameFlow({
         completion_status: draft.did_not_finish
           ? "played alot but didnt finish"
           : "finished",
-        finished_at: draft.finished_at,
+        ...(draft.did_not_finish ? {} : { finished_at: draft.finished_at }),
         my_score: draft.my_score === "" ? null : Number(draft.my_score),
         thoughts: draft.thoughts.trim() || null,
       });
@@ -151,9 +151,9 @@ export default function FinishGameFlow({
     outcome === "already_finished"
       ? "Already finished"
       : outcome === "already_completed"
-        ? "Already completed"
+        ? "Already marked done"
         : outcome
-          ? "Completion saved"
+          ? "Status saved"
           : `Finish ${game.displayName || game.name}`;
   const description = outcome
     ? undefined
@@ -177,7 +177,7 @@ export default function FinishGameFlow({
         <p className="mt-2 text-sm leading-6 text-content-muted">
           {outcome === "already_finished" || outcome === "already_completed"
             ? "We refreshed it with the latest saved details."
-            : "Your completion details have been saved."}
+            : "Your status, score and thoughts have been saved."}
         </p>
       </div>
     </div>
@@ -215,7 +215,7 @@ export default function FinishGameFlow({
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field
+        {!draft.did_not_finish ? <Field
           id="finish-game-date"
           label="Finish date"
           error={fields.finished_at}
@@ -234,7 +234,7 @@ export default function FinishGameFlow({
             }
             className="[color-scheme:dark]"
           />
-        </Field>
+        </Field> : null}
         <Field
           id="finish-game-score"
           label="My score"
@@ -288,8 +288,8 @@ export default function FinishGameFlow({
           setDraft((current) => ({ ...current, did_not_finish: checked }))
         }
         disabled={isSubmitting}
-        label="Mark as played a lot, but not finished"
-        description="Keeps it in Completed instead of marking it Finished."
+        label="Played enough"
+        description="I have experienced enough to form an opinion and am done with it for now. No finish date is recorded."
         className="max-w-md"
       />
     </div>
@@ -336,7 +336,7 @@ export default function FinishGameFlow({
         {isSubmitting
           ? "Saving…"
           : draft.did_not_finish
-            ? "Save completion"
+            ? "Save status"
             : "Finish game"}
       </Button>
     </>

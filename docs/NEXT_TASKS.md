@@ -2,6 +2,14 @@
 
 Updated: 2026-09-29. Live code/Git takes precedence.
 
+## Cost efficiency follow-up (audit 2026-10-23; implementation pending)
+
+- Use [Railway cost-efficiency audit and handoff](planning/railway-cost-efficiency-audit.md)
+  for confirmed code findings, conditional savings, local profiling, dirty-file
+  risks and focused verification requirements. Start with one coherent checkpoint;
+  preserve daily-sync freshness and existing user/account safeguards. Live spend,
+  network settings and the proposed single seasonal cron remain unverified.
+
 ## Current phase: verify the published Gaming Activity Dev candidate
 
 - The local `Dev` candidate contains Gaming Activity Phases 1-5, the shared-row

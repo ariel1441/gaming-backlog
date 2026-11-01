@@ -158,7 +158,7 @@ test("rule description names filters and ranking", () => {
       { status: "finished", finishedYear: 2026, genre: "Action", minScore: 4 },
       "score"
     ),
-    "Finished / done - Finished in 2026 - Genre: Action - Score 4+ - Ranked by your score, highest first"
+    "Finished - Finished in 2026 - Genre: Action - Score 4+ - Ranked by your score, highest first"
   );
 });
 

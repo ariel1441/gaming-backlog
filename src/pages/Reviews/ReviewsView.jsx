@@ -1,3 +1,4 @@
+import { completionDate } from "../../../shared/statusModel.js";
 import {
   ArrowDownAZ,
   ArrowUpAZ,
@@ -253,7 +254,7 @@ function ReviewMedia({ game }) {
 
 export function ReviewCard({ game, onOpen, onEdit }) {
   const hours = resolveGameHours(game);
-  const finished = formatReviewDate(game.finished_at);
+  const finished = formatReviewDate(completionDate(game));
   const started = formatReviewDate(game.started_at);
   const score = formatReviewScore(game.my_score);
   const { myGenres } = reviewGenres(game);

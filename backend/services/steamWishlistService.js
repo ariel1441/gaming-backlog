@@ -20,6 +20,7 @@ import {
   enqueueWishlistMetadataWork,
   getWishlistMetadataStatus,
   serializeWishlistMetadataWork,
+  wakeWishlistMetadataScheduler,
 } from "./wishlistMetadataService.js";
 
 const SOURCE = "steam_wishlist";
@@ -547,7 +548,7 @@ export async function processSteamWishlistJob(job) {
     }
   }
   const diff = diffWishlistSnapshot(snapshot.items, previous);
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     if (!(await lockSteamSyncJob(client, job))) return null;
     const baselineExists = Boolean(account.last_wishlist_sync_at);
     for (const item of snapshot.items) {
@@ -649,6 +650,8 @@ export async function processSteamWishlistJob(job) {
     );
     return result;
   });
+  if (result && snapshot.items.length) wakeWishlistMetadataScheduler();
+  return result;
 }
 
 export async function failSteamWishlistJob(job, error) {

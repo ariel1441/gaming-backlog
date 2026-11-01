@@ -1,3 +1,4 @@
+import { hasCompletedGame, completionDate } from "../../shared/statusModel.js";
 import React from "react";
 import {
   CalendarDays,
@@ -19,8 +20,8 @@ import { profileDisplayName, profileHandle } from "../utils/userProfile";
 import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { defaultStatusSemantics } from "../utils/statusSemantics";
 
-export function isCompletedGame(game, statusGroupOf = defaultStatusSemantics.statusGroupOf) {
-  return statusGroupOf(game?.status) === "done";
+export function isCompletedGame(game) {
+  return hasCompletedGame(game);
 }
 
 export function isPlayingGame(game, statusGroupOf = defaultStatusSemantics.statusGroupOf) {
@@ -37,7 +38,7 @@ function scoreOf(game) {
 }
 
 function finishedTime(game) {
-  return parseGameDate(game?.finished_at)?.timestamp || 0;
+  return parseGameDate(completionDate(game))?.timestamp || 0;
 }
 
 function queueSortValue(game) {
@@ -82,7 +83,7 @@ export function buildProfileSnapshot(
     .filter((game) => finishedTime(game) > 0)
     .sort((a, b) => finishedTime(b) - finishedTime(a));
   const finishedThisYear = recentlyFinished.filter(
-    (game) => parseGameDate(game?.finished_at)?.year === currentYear
+    (game) => parseGameDate(completionDate(game))?.year === currentYear
   );
 
   return {
@@ -370,7 +371,7 @@ function ShowcaseSection({ title, icon: Icon, games, empty, onSelectGame }) {
 function ShowcaseGame({ game, onClick }) {
   const score = scoreOf(game);
   const hours = Number(game?.how_long_to_beat);
-  const finished = parseGameDate(game?.finished_at)?.value;
+  const finished = parseGameDate(completionDate(game))?.value;
   const Element = onClick ? "button" : "div";
 
   return (

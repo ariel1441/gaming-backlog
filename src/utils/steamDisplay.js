@@ -4,6 +4,7 @@ export function formatSteamPlaytime(
 ) {
   const value = Number(minutes);
   if (!Number.isFinite(value) || value <= 0) return empty;
+  if (value < 60) return `${Math.max(1, Math.round(value))}m${suffix}`;
   const hours = Math.round((value / 60) * 10) / 10;
   return `${hours}h${suffix}`;
 }

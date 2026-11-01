@@ -125,7 +125,7 @@ test("Play Next focuses two games while keeping extra active games secondary", a
   await expect(
     page.getByRole("button", { name: "Let’s play for 10 minutes" }),
   ).toBeVisible();
-  await expect(page.getByText("Other active games (2)")).toBeVisible();
+  await expect(page.getByText("Other active games (1)")).toBeVisible();
   await expect(
     page.getByText("Unclassified Active", { exact: true }),
   ).toHaveCount(0);
@@ -137,6 +137,7 @@ test("Play Next focuses two games while keeping extra active games secondary", a
   await page.getByRole("button", { name: "Choose Side" }).click();
   const dialog = page.getByRole("dialog", { name: "Choose your side game" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Friends Co-op", { exact: true })).toHaveCount(0);
   await expect(dialog.getByText("From your side candidates", { exact: true })).toBeVisible();
   await expect(dialog.getByText("From your backlog", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Candidate #1", { exact: true })).toBeVisible();
@@ -164,6 +165,7 @@ test("Play Next focuses two games while keeping extra active games secondary", a
   await expect(
     page.getByText("Unclassified Active", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: /Occasional games/ }).click();
   await expect(page.getByText("Friends Co-op", { exact: true })).toBeVisible();
   await expect(page.getByText("Occasional", { exact: true })).toBeVisible();
   await page

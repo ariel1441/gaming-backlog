@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { pool } from "../db.js";
 import {
+  recommendStatus,
   applySteamStatusSuggestion,
   attachSteamCandidateToGame,
   beginSteamLink,
@@ -1165,4 +1166,12 @@ test("mergeBacklogDuplicateGames moves Steam links before deleting duplicate row
       );
     }
   );
+});
+
+test("Steam hours alone never infer completion, enough experience or an intention to return", () => {
+  for (const playtimeMinutes of [600, 2400, 12000]) {
+    const result = recommendStatus({ playtimeMinutes, lastPlayedAt: null }, { rawg_playtime_hours: 3 });
+    assert.equal(result.status, null);
+    assert.match(result.reason, /Choose/);
+  }
 });

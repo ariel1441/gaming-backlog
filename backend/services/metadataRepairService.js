@@ -5,12 +5,19 @@ import { ingestRawgGameMetadata } from "./metadataIngestionService.js";
 import { isSameGameTitle } from "../utils/gameTitle.js";
 import { conflict, notFound } from "../utils/httpError.js";
 import { cacheClear } from "../utils/microCache.js";
+import { startAdaptiveWorker } from "../utils/adaptiveWorker.js";
 
 const JOB_TYPE = "backlog_repair";
 const DEFAULT_BATCH_SIZE = 3;
 const DEFAULT_PROVIDER_BUDGET = 40;
 const DEFAULT_INTERVAL_MS = 5_000;
 const LEASE_MS = 60_000;
+const repairWorkerWakes = new Set();
+
+// Transaction-owning callers must invoke this only after a successful commit.
+export function wakeMetadataRepairScheduler() {
+  for (const wake of repairWorkerWakes) wake();
+}
 
 function positiveInt(value, fallback, max) {
   const parsed = Number(value);
@@ -145,6 +152,7 @@ export async function enqueueMetadataRepair(
     await client.query("BEGIN");
     const job = await enqueueMetadataRepairTx(userId, client, options);
     await client.query("COMMIT");
+    wakeMetadataRepairScheduler();
     return job;
   } catch (error) {
     try {
@@ -531,22 +539,20 @@ export function startMetadataRepairScheduler(options = {}) {
     DEFAULT_INTERVAL_MS,
     60_000,
   );
-  let running = false;
-  const run = async () => {
-    if (running) return;
-    running = true;
-    try {
-      await processNextMetadataRepairBatch(options);
-    } catch (error) {
+  const worker = startAdaptiveWorker({
+    intervalMs,
+    maxIdleMs: 60_000,
+    timers: options.timers,
+    run: async () => Boolean(await processNextMetadataRepairBatch(options)),
+    onError: (error) => {
       console.error("Metadata repair worker failed:", error?.code || error?.message);
-    } finally {
-      running = false;
-    }
+    },
+  });
+  repairWorkerWakes.add(worker.wake);
+  return () => {
+    repairWorkerWakes.delete(worker.wake);
+    worker.stop();
   };
-  const timer = setInterval(run, intervalMs);
-  timer.unref?.();
-  void run();
-  return () => clearInterval(timer);
 }
 
 export async function listMetadataCandidates(

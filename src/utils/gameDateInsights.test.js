@@ -22,11 +22,13 @@ test("computeGameDateInsights summarizes started and finished dates", () => {
       },
       {
         name: "Old Active",
+        status: "playing",
         started_at: "2024-05-01",
         finished_at: null,
       },
       {
         name: "New Active",
+        status: "played and should come back",
         started_at: "2026-02-01",
         finished_at: "",
       },

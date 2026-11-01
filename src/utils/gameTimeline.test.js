@@ -120,8 +120,8 @@ test("buildTimelineEvents handles same-day started and finished deterministicall
 
 test("summarizeTimeline counts active unfinished games", () => {
   const games = [
-    { id: 1, name: "Active", started_at: "2026-04-10", finished_at: null },
-    { id: 2, name: "Done", started_at: "2026-04-01", finished_at: "2026-04-02" },
+    { id: 1, name: "Active", status: "playing", started_at: "2026-04-10", finished_at: null },
+    { id: 2, name: "Done", status: "playing", started_at: "2026-04-01", finished_at: "2026-04-02" },
   ];
   const events = buildTimelineEvents(games);
 

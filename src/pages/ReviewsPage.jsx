@@ -1,3 +1,4 @@
+import { hasCompletedGame } from "../../shared/statusModel.js";
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageSquareText, SearchX, Sparkles, X } from "lucide-react";
@@ -10,7 +11,6 @@ import {
 } from "../components/layout";
 import { Button, EmptyState, useToast } from "../components/ui";
 import { useAuth } from "../contexts/AuthContext";
-import { useStatusGroups } from "../contexts/StatusGroupsContext";
 import { useGames } from "../hooks/useGames";
 import { apiErrorMessage, buildEditGamePayload } from "./Backlog/backlogForm";
 import {
@@ -30,7 +30,6 @@ import {
 export default function ReviewsPage() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { games, loading, error, refresh, editGame } = useGames();
-  const { statusGroupOf } = useStatusGroups();
   const navigate = useNavigate();
   const toast = useToast();
   const [selectedGame, setSelectedGame] = useState(null);
@@ -44,8 +43,8 @@ export default function ReviewsPage() {
   const [isReversed, setIsReversed] = useState(false);
 
   const isCompleted = React.useCallback(
-    (game) => statusGroupOf(game?.status) === "done",
-    [statusGroupOf],
+    (game) => hasCompletedGame(game),
+    [],
   );
 
   const reviewedGames = useMemo(() => games.filter(hasReview), [games]);

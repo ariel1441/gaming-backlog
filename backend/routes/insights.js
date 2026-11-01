@@ -1,3 +1,4 @@
+import { completionDate, hasCompletedGame } from "../../shared/statusModel.js";
 import express from "express";
 import { insightsQuery } from "../validators/insights.js";
 import { pool } from "../db.js";
@@ -106,7 +107,7 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
       id: Number(row.id), name: row.name, status: row.status, rank: Number(row.rank),
       score: row.my_score == null ? null : Number(row.my_score),
       addedAt: backlogAddedDay(row.backlog_added_at),
-      startedAt: row.started_at || null, finishedAt: row.finished_at || null,
+      startedAt: row.started_at || null, finishedAt: completionDate(row) || null,
       personalGenres: names(row.personal_genres), rawgGenres: names(row.rawg_genres),
       hours: resolved.hours, hoursSource: resolved.source,
       // Backlog does not expose the process-local HLTB lookup. Keep estimate
@@ -141,14 +142,14 @@ export function buildInsightsPayload(rows, app, selectedYear = null) {
     }
   });
   const rated = focusedGames.filter((game) => game.score != null);
-  const startedUnfinished = games.filter((game) => game.startedAt && !game.finishedAt);
+  const startedUnfinished = games.filter((game) => game.startedAt && !game.finishedAt && ["playing", "returning"].includes(statusGroupOf(game.status)));
   return {
     params: { year: selectedYear }, games,
     totals: {
       games: games.length,
       estimatedGames: games.filter((game) => game.backlogEstimateCovered).length,
       missingEstimates: games.filter((game) => !game.backlogEstimateCovered).length,
-      finished: games.filter((game) => statusGroupOf(game.status) === "done").length,
+      finished: games.filter((game) => hasCompletedGame(game)).length,
       playing: games.filter((game) => statusGroupOf(game.status) === "playing").length,
       startedUnfinished: startedUnfinished.length,
       addedKnown: games.filter((game) => game.addedAt).length,

@@ -1,4 +1,5 @@
 export const statusClassMap = {
+  occasional: "bg-status-flexible/20 text-status-flexible border-status-flexible/30",
   playing: "bg-status-active/20 text-status-active border-status-active/30",
   "plan to play soon":
     "bg-status-soon/20 text-status-soon border-status-soon/30",

@@ -19,6 +19,7 @@ import {
   steamGameAchievementSync as validateSteamGameAchievementSync,
   steamSync as validateSteamSync,
   steamSyncJob as validateSteamSyncJob,
+  steamSyncHealth as validateSteamSyncHealth,
   unlinkSteamGame as validateUnlinkSteamGame,
   updateSteamCandidate as validateUpdateSteamCandidate,
 } from "../validators/steam.js";
@@ -134,10 +135,10 @@ router.get("/account", verifyToken, async (req, res, next) => {
   }
 });
 
-router.get('/sync-health', verifyToken, async (req, res, next) => {
+router.get('/sync-health', verifyToken, validateSteamSyncHealth, async (req, res, next) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
-    res.json(await getSteamExperienceHealth(req.user.id));
+    res.json(await getSteamExperienceHealth(req.user.id, req.query));
   } catch (error) { next(error); }
 });
 

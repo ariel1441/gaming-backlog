@@ -286,7 +286,7 @@ async function mockApi(page) {
   });
   // Steam experience polling is a saved-data read. Keep generic smoke tests
   // independent of a separately running Express server.
-  await page.route(`${API_BASE}/api/steam/sync-health`, (route) =>
+  await page.route(new RegExp(`^${API_BASE}/api/steam/sync-health(?:\\?.*)?$`), (route) =>
     route.fulfill({
       json: {
         account: null,
@@ -841,7 +841,7 @@ test("adds, edits, and deletes a game in the backlog", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Add game" })).toBeVisible();
   await page.getByLabel("Name").fill("Hollow Knight");
   await page.getByLabel("Status").click();
-  await page.getByRole("option", { name: "plan to play soon" }).click();
+  await page.getByRole("option", { name: "Play soon", exact: true }).click();
   await page.getByLabel("HLTB hours").fill("27");
   await page
     .getByRole("dialog")
@@ -949,7 +949,7 @@ test("reorders games when a status-only filter keeps the complete rank visible",
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("button", { name: "Status", exact: true }).click();
-  await page.getByRole("button", { name: "playing", exact: true }).click();
+  await page.getByRole("button", { name: "Playing", exact: true }).click();
   await page.keyboard.press("Escape");
 
   const baldursGate = page.locator("article").filter({
@@ -1018,7 +1018,7 @@ test("finishing a game keeps the completion result open during backlog refresh",
   const dialog = page.getByRole("dialog", { name: "Finish Baldur's Gate 3" });
   await dialog.getByRole("button", { name: "Finish game" }).click();
 
-  await expect(page.getByRole("dialog", { name: "Completion saved" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Status saved" })).toBeVisible();
   await expect(page.getByText("Baldur's Gate 3 is now Finished.")).toBeVisible();
   expect(page.apiState.finishPayloads).toHaveLength(1);
 });
@@ -1044,7 +1044,7 @@ test("backlog filters stay open while server results update", async ({ page }) =
   const firstCard = page.locator("article").first();
   const beforeFilter = await firstCard.boundingBox();
   await page.getByRole("button", { name: "Status", exact: true }).click();
-  const playingOption = page.getByRole("button", { name: "playing", exact: true });
+  const playingOption = page.getByRole("button", { name: "Playing", exact: true });
   await playingOption.click();
   await page.waitForTimeout(200);
 
@@ -1074,7 +1074,7 @@ test("a failed background filter refresh keeps the loaded backlog usable", async
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("button", { name: "Status", exact: true }).click();
-  const playingOption = page.getByRole("button", { name: "playing", exact: true });
+  const playingOption = page.getByRole("button", { name: "Playing", exact: true });
   await playingOption.click();
 
   await expect(page.getByText("Could not refresh this view. Your loaded games are still available."))
@@ -1175,12 +1175,13 @@ test("a game can be completed without marking it finished", async ({ page }) => 
   await card.getByLabel("Actions for Baldur's Gate 3").click();
   await page.getByRole("menuitem", { name: "Finish game" }).click();
   const dialog = page.getByRole("dialog", { name: "Finish Baldur's Gate 3" });
-  await dialog.getByText("Mark as played a lot, but not finished").click();
-  await dialog.getByRole("button", { name: "Save completion" }).click();
+  await dialog.getByText("Played enough", { exact: true }).click();
+  await expect(dialog.getByRole("checkbox", { name: /^Played enough/ })).toBeChecked();
+  await dialog.getByRole("button", { name: "Save status", exact: true }).click();
 
-  await expect(page.getByRole("dialog", { name: "Completion saved" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Status saved" })).toBeVisible();
   await expect(page.getByText(
-    "Baldur's Gate 3 is now Played a lot, but didn’t finish.",
+    "Baldur's Gate 3 is now Played enough.",
   )).toBeVisible();
   expect(page.apiState.finishPayloads).toHaveLength(1);
   expect(page.apiState.finishPayloads[0].body.completion_status)
